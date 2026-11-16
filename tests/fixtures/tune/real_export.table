@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<tableData xmlns="http://www.EFIAnalytics.com/:table">
+    <bibliography author="EFI Analytics - philip.tobin@yahoo.com" company="EFI Analytics, copyright 2010, All Rights Reserved." writeDate="Fri Aug 14 22:08:01 COT 2026"/>
+    <versionInfo fileFormat="1.0"/>
+    <table cols="8" rows="2">
+        <xAxis cols="8" name="VBatt">         6.00
+         8.00
+         10.00
+         11.00
+         12.00
+         13.00
+         14.00
+         15.00
+</xAxis>
+        <yAxis name="pressureCorrectionReference" rows="2">         206.80
+         413.70
+</yAxis>
+        <zValues cols="8" rows="2">         4.0 2.4 1.65 1.25 1.05 0.85 0.79 0.70
+         3.08 1.65 1.15 1.19 0.99 0.76 0.64 0.6
+</zValues>
+    </table>
+</tableData>

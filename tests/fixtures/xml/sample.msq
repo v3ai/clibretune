@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<!-- a comment -- here -->
+<!DOCTYPE msq PUBLIC "-//rusEfi//DTD msq//EN" "msq.dtd">
+<msq xmlns="http://www.msefi.com/:msq">
+  <bibliography author="A &amp; B" engineMake="x" writeDate="Mon"/>
+  <versionInfo fileFormat="5.0" nPages="2" signature="speeduino 202501" />
+  <page number="0" size="288">
+    <constant name="reqFuel" units="ms" digits="1">6.9</constant>
+    <constant name='veTable' cols="2" rows="2">
+      1 2
+      3 4
+    </constant>
+    <constant name="s">"a &lt; b &#x263A; &#65;"</constant>
+    <![CDATA[ raw <data> & stuff ]]>
+  </page>
+</msq>

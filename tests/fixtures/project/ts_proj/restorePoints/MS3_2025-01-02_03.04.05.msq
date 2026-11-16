@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<msq xmlns="http://www.msefi.com/:msq">
+<bibliography author="LibreTune" writeDate="Sun May 03 20:46:57 NZST 2026"/>
+<versionInfo fileFormat="5.0" firmwareInfo="Speeduino+2025.01.4" nPages="2" signature="speeduino 202501"/>
+<settings Comment="These setting are only used if this msq is opened without a project.">
+<setting name="CELSIUS"/>
+<setting name="AFR"/>
+</settings>
+<page number="1" size="288">
+<constant cols="1" digits="0" name="wueRates" rows="10" units="%">150 136 131 126 120 115 110 105 100 100</constant>
+<constant digits="1" name="reqFuel" units="ms">12.6</constant>
+</page>
+<page number="-1">
+<pcVariable digits="0" name="rpmhigh" units="rpm">7000</pcVariable>
+</page>
+</msq>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<msq xmlns="http://www.msefi.com/:msq">
+<versionInfo fileFormat="5.0" nPages="0" signature="speeduino 202501-mini"/>
+<page number="-1">
+<pcVariable name="rpmhigh">7500</pcVariable>
+</page>
+</msq>

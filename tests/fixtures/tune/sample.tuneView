@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<tuneView xmlns="http://www.EFIAnalytics.com/:tuneView">
+<bibliography author="Test" company="LibreTune" viewName="Demo" writeDate="2026-04-29"/>
+<versionInfo enabledCondition="" fileFormat="1.0" firmwareSignature="MS3 Format 0545.02 "/>
+<previewImage>QUJD</previewImage>
+<tuningView Id="42" ShieldedDuringEdit="false">
+<tuneComp type="TuneSettingsPanel">
+<Dirty type="boolean">true</Dirty>
+<SettingPanelName type="String">antilag</SettingPanelName>
+<Id type="String"/>
+<RelativeHeight type="double">1.0</RelativeHeight>
+<WarnColor alpha="255" blue="0" green="242" red="242" type="Color">-85552</WarnColor>
+</tuneComp>
+<tuneComp type="TuneSlectableTable">
+<SelectedTableName type="String">als_timing_tbl</SelectedTableName>
+</tuneComp>
+</tuningView>
+</tuneView>
