@@ -756,6 +756,7 @@ int lt_app_run(lt_app *app)
     lt_event ev;
     lt_backend *be = app->backend;
     int got, timeout, hint, frames = 0, max_frames = 0;
+    double last_frame_ms = 0.0;
     char *fenv = lt_plat_getenv("LT_MAX_FRAMES");
     if (fenv != NULL) { max_frames = atoi(fenv); lt_free(fenv); }
     while (!app->quit) {
@@ -783,7 +784,13 @@ int lt_app_run(lt_app *app)
             got = be->poll(be, &ev, 0);
         }
         if (lt_app_service(app)) { lt_ui_request_redraw(app->ui); }
-        if (lt_ui_needs_redraw(app->ui) || timeout >= 0) {
+        /* Redraw only when something changed (input, new ECU data, explicit
+         * request) or when the toolkit's own timer (tooltips, toasts, caret
+         * blink) has come due. Redrawing unconditionally every poll tick made
+         * the app CPU-bound and input laggy. */
+        if (lt_ui_needs_redraw(app->ui) ||
+            (hint >= 0 && lt_plat_now_ms() - last_frame_ms >= (double)hint)) {
+            last_frame_ms = lt_plat_now_ms();
             run_frame(app);
             frames++;
             if (max_frames > 0 && frames >= max_frames) { app->quit = 1; }

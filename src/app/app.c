@@ -463,6 +463,11 @@ void lt_app_disconnect(lt_app *app)
     lt_app_set_status(app, "Disconnected");
 }
 
+/* In-process simulator: answers are immediate, so serial pacing sleeps
+ * (inter-write delays, transmit-time waits) only add latency. */
+static double sim_clock_now(void *ud) { LT_UNUSED(ud); return lt_plat_now_ms(); }
+static void sim_clock_sleep(void *ud, int ms) { LT_UNUSED(ud); LT_UNUSED(ms); }
+
 static int connect_io(lt_app *app, const lt_proto_io *io, const char *port, long baud)
 {
     lt_proto_cfg cfg;
@@ -471,6 +476,13 @@ static int connect_io(lt_app *app, const lt_proto_io *io, const char *port, long
     cfg.baud = baud;
     cfg.port_name = port;
     app->proto = lt_proto_new(io, app->ini, &cfg);
+    if (strcmp(port, "demo") == 0) {
+        lt_proto_clock clk;
+        clk.ud = NULL;
+        clk.now_ms = sim_clock_now;
+        clk.sleep_ms = sim_clock_sleep;
+        lt_proto_set_clock(app->proto, &clk);
+    }
     app->conn = LT_APP_CONNECTING;
     rc = lt_proto_connect(app->proto);
     if (rc < 0) {

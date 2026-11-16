@@ -670,6 +670,7 @@ void lt_gfx_line(lt_gfx *g, double x0, double y0, double x1, double y1, double w
 typedef struct arc_ctx {
     double cx, cy, rin, rout, a0, sweep;
     int full;
+    int bx0, by0, bx1, by1; /* pixel bounding box of the sector (inclusive) */
 } arc_ctx;
 
 static double arc_cov(const arc_ctx *a, double x, double y)
@@ -700,6 +701,8 @@ static void arc_pixels(lt_gfx *g, const arc_ctx *a, int py, int xa, int xb, lt_c
     double yc = py + 0.5;
     if (xa < g->clip.x) { xa = g->clip.x; }
     if (xb >= g->clip.x + g->clip.w) { xb = g->clip.x + g->clip.w - 1; }
+    if (xa < a->bx0) { xa = a->bx0; }
+    if (xb > a->bx1) { xb = a->bx1; }
     for (px = xa; px <= xb; px++) {
         double cv = arc_cov(a, px + 0.5, yc);
         if (cv > 0.0) { put_span(g, px, py, 1, c, cov255(cv)); }
@@ -711,6 +714,8 @@ static void arc_draw(lt_gfx *g, const arc_ctx *a, lt_color c)
     int py, ya, yb;
     double ro = a->rout + 1.0, ri = a->rin - 1.0;
     ya = ifloor(a->cy - ro); yb = iceil(a->cy + ro);
+    if (ya < a->by0) { ya = a->by0; }
+    if (yb > a->by1 + 1) { yb = a->by1 + 1; }
     if (ya < g->clip.y) { ya = g->clip.y; }
     if (yb > g->clip.y + g->clip.h) { yb = g->clip.y + g->clip.h; }
     for (py = ya; py < yb; py++) {
@@ -744,6 +749,41 @@ static void arc_draw(lt_gfx *g, const arc_ctx *a, lt_color c)
                  iceil(2.0 * ro) + 1);
 }
 
+/* Bounding box of the annular sector: endpoints at both radii plus every
+ * axis extreme (0, 90, 180, 270 deg) the sweep crosses, padded for AA. */
+static void arc_bbox(arc_ctx *a)
+{
+    double x0, y0, x1, y1, px, py, ang;
+    int i, k;
+    double r[2];
+    if (a->full) {
+        a->bx0 = ifloor(a->cx - a->rout - 2.0); a->bx1 = iceil(a->cx + a->rout + 2.0);
+        a->by0 = ifloor(a->cy - a->rout - 2.0); a->by1 = iceil(a->cy + a->rout + 2.0);
+        return;
+    }
+    r[0] = a->rin; r[1] = a->rout;
+    x0 = x1 = a->cx + a->rout * cos(a->a0);
+    y0 = y1 = a->cy + a->rout * sin(a->a0);
+    for (i = 0; i < 2; i++) {
+        for (k = 0; k < 2; k++) {
+            ang = k ? a->a0 + a->sweep : a->a0;
+            px = a->cx + r[i] * cos(ang); py = a->cy + r[i] * sin(ang);
+            if (px < x0) { x0 = px; } if (px > x1) { x1 = px; }
+            if (py < y0) { y0 = py; } if (py > y1) { y1 = py; }
+        }
+    }
+    /* axis extremes crossed by the sweep */
+    ang = ceil(a->a0 / (LT_PI / 2.0)) * (LT_PI / 2.0);
+    for (k = 0; k < 5 && ang <= a->a0 + a->sweep; k++, ang += LT_PI / 2.0) {
+        px = a->cx + a->rout * cos(ang); py = a->cy + a->rout * sin(ang);
+        if (px < x0) { x0 = px; } if (px > x1) { x1 = px; }
+        if (py < y0) { y0 = py; } if (py > y1) { y1 = py; }
+    }
+    /* pad for anti-aliased edges (radial and angular) */
+    a->bx0 = ifloor(x0 - 2.0); a->bx1 = iceil(x1 + 2.0);
+    a->by0 = ifloor(y0 - 2.0); a->by1 = iceil(y1 + 2.0);
+}
+
 static void arc_setup(arc_ctx *a, double cx, double cy, double rin, double rout,
                       double a0, double a1)
 {
@@ -755,6 +795,7 @@ static void arc_setup(arc_ctx *a, double cx, double cy, double rin, double rout,
     a->a0 = a0;
     a->sweep = a1 - a0;
     a->full = a->sweep >= TWO_PI - 1.0e-9;
+    arc_bbox(a);
 }
 
 static int arc_inside(const void *ctx, double x, double y)
