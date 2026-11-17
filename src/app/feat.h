@@ -45,6 +45,7 @@ void lt_feat_sync_ignore(lt_app *app);
 
 void lt_feat_logging_register(lt_app_ext *reg);  /* smart recording, sample rate, rec channels, alerts */
 void lt_feat_math_register(lt_app_ext *reg);     /* math channels editor */
+void lt_feat_afrdelay_register(lt_app_ext *reg);  /* AFR delay test dialog */
 
 /* connection/projects/files/prefs batch (G-05, G-06, G-17, G-18, G-19, G-92..G-96, G-102, G-104) */
 void lt_feat_error_register(lt_app_ext *reg);     /* error details dialog */

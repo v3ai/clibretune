@@ -521,6 +521,73 @@ lt_bool lt_sim_seed_ve_table(const lt_ini *ini, lt_pagesrc *dst)
     return ok;
 }
 
+lt_bool lt_sim_seed_afr_target(const lt_ini *ini, lt_pagesrc *dst)
+{
+    const lt_ini_table *t;
+    const lt_ini_const *cx, *cy, *cz, *cw;
+    size_t nx, ny, nz, i, n;
+    double *rpm, *load, *z, tgt = 14.7;
+    lt_bool ok;
+
+    if (!ini || !dst || !ini->ve_analyze.present || !ini->ve_analyze.target_table) {
+        return LT_FALSE;
+    }
+    t = lt_ini_find_table(ini, ini->ve_analyze.target_table);
+    if (!t || !t->x_const || !t->y_const || !t->z_const) {
+        return LT_FALSE;
+    }
+    cx = lt_ini_find_const(ini, t->x_const);
+    cy = lt_ini_find_const(ini, t->y_const);
+    cz = lt_ini_find_const(ini, t->z_const);
+    if (!cx || !cy || !cz) {
+        return LT_FALSE;
+    }
+    nx = lt_shape_count(&cx->shape);
+    ny = lt_shape_count(&cy->shape);
+    nz = lt_shape_count(&cz->shape);
+    if (nx < 2 || ny < 2 || nz != nx * ny) {
+        return LT_FALSE;
+    }
+    if (cz->max < 5.0) {
+        tgt = 1.0;      /* a lambda target table */
+    }
+    rpm = (double *)lt_malloc(nx * sizeof(double));
+    load = (double *)lt_malloc(ny * sizeof(double));
+    z = (double *)lt_malloc(nz * sizeof(double));
+    spread(nx, 500.0, 7000.0, rpm);
+    spread(ny, 20.0, 100.0, load);
+    for (i = 0; i < nz; i++) {
+        z[i] = tgt;
+    }
+    ok = lt_ini_const_set_array(ini, cx, dst, rpm, nx) >= 0 &&
+         lt_ini_const_set_array(ini, cy, dst, load, ny) >= 0 &&
+         lt_ini_const_set_array(ini, cz, dst, z, nz) >= 0;
+    lt_free(rpm);
+    lt_free(load);
+    lt_free(z);
+    /* warmup enrichment: decays to neutral by the warm slots (wueRates in percent, else ratio) */
+    cw = lt_ini_find_const(ini, "wueRates");
+    if (!cw) {
+        cw = lt_ini_find_const(ini, "cltFuelCorr");
+    }
+    if (cw) {
+        double one = cw->max > 20.0 ? 100.0 : 1.0;
+
+        n = lt_shape_count(&cw->shape);
+        if (n >= 2 && n <= 64) {
+            double w[64];
+
+            for (i = 0; i < n; i++) {
+                double f = (double)i / (double)(n - 1);
+
+                w[i] = f >= 0.6 ? one : one * (1.5 - 0.5 * f / 0.6);
+            }
+            (void)lt_ini_const_set_array(ini, cw, dst, w, n);
+        }
+    }
+    return ok;
+}
+
 /* ------------------------------------------------------- och codec */
 static size_t dtype_width(lt_dtype t)
 {

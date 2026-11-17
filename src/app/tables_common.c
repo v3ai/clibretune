@@ -6,6 +6,7 @@
 #include <math.h>
 #include "tables_priv.h"
 #include "feat.h"
+#include "feat_log.h"
 
 void lt_tabs_fmt(char *buf, size_t cap, double v, int digits)
 {
@@ -126,4 +127,19 @@ int lt_app_autotune_open(lt_app *app)
 void lt_app_tables_service(lt_app *app)
 {
     lt_tabs_autotune_service(app);
+}
+
+int lt_tabs_check_change(lt_app *app, const lt_tblview *v)
+{
+    size_t i, n, best = 0;
+    double bd = 0.0, d;
+    int found = 0;
+    if (v == NULL || v->z == NULL || v->z0 == NULL) { return 0; }
+    n = v->rows * v->cols;
+    for (i = 0; i < n; i++) {
+        d = fabs(v->z[i] - v->z0[i]);
+        if (d > bd) { bd = d; best = i; found = 1; }
+    }
+    if (!found) { return 0; }
+    return lt_logx_check_change(app, v->z0[best], v->z[best]);
 }
