@@ -220,7 +220,9 @@ static void settings_draw(lt_app *app, lt_app_dialog *d)
         }
         if (nv > 0 && sd->vis[cur] != *tab) { *tab = sd->vis[0]; cur = 0; }
         wc[0] = 190; wc[1] = -1;
-        lt_ui_layout_row(ui, 2, wc, -(fh + 8));
+        /* terminal: one row per section (the body scrolls) so the modal fits its
+         * content instead of filling the screen; pixel mode fills the modal */
+        lt_ui_layout_row(ui, 2, wc, lt_ui_cell_mode(ui) ? (nt + 2) * lt_ui_row_height(ui) : -(fh + 8));
         lt_ui_layout_column_begin(ui);
         lt_ui_layout_row(ui, 1, &w1, -1);
         if (nv > 0) {

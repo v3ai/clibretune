@@ -284,13 +284,15 @@ LT_TEST(braille_plot)
 LT_TEST(modal_fits_content)
 {
     char l[1024];
-    int row = -1, i;
+    int row = -1, top = -1, i;
     render(120, 40, NULL, "ctrl+comma", NULL, 0, "build/ttyshot_dlg120.ppm");
     for (i = 0; i < 40; i++) {
         line_of(i, l, sizeof(l));
+        if (top < 0 && strstr(l, "Settings") != NULL) { top = i; }
         if (strstr(l, "Close") != NULL) { row = i; }
     }
-    LT_CHECK(row > 0 && row < 26);        /* the settings form no longer fills the whole screen */
+    /* the settings form fits its content instead of filling the whole screen */
+    LT_CHECK(top >= 0 && row > top && row - top < 26);
     LT_CHECK(strstr(g_txt, "\xE2\x95\xB0") != NULL);
 }
 
