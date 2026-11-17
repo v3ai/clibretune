@@ -9,6 +9,7 @@
 #include <math.h>
 #include "dialogs.h"
 #include "view_kit.h"
+#include "feat.h"
 
 #define MAX_DEPTH 5
 #define N_STR 8
@@ -65,6 +66,8 @@ static void val_set(lt_app *app, const lt_ini_const *c, double v)
 {
     lt_pagesrc ps = lt_app_pages(app);
     int rc;
+    double old_v = 0.0;
+    int recording = lt_feat_actions_recording(app) && val_get(app, c, &old_v) == 0;
     if (c->is_pc_var) {
         lt_tune_value tv;
         if (app->tune == NULL) { return; }
@@ -80,6 +83,7 @@ static void val_set(lt_app *app, const lt_ini_const *c, double v)
         if (rc == 0) { lt_app_edited(app); }
     }
     if (rc < 0) { lt_app_toast(app, 3, "Cannot write %s: %s", c->name, lt_err_get()); return; }
+    if (recording) { lt_feat_actions_note_constant(app, c->name, old_v, v); }
     if (lt_ini_feeds_dynamic_scale(app->ini, c->name)) {
         lt_ini_resolve_dynamic(app->ini, &app->varenv.env);
     }

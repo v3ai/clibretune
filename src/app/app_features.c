@@ -34,4 +34,8 @@ void lt_app_features_register(lt_app_ext *reg)
     lt_feat_hotkeys_register(reg);
     lt_feat_i18n_register(reg);
     lt_feat_lua_register(reg);
+    lt_feat_tablecmp_register(reg);
+    lt_feat_dyno_register(reg);
+    lt_feat_actions_register(reg);
+    lt_feat_perf_register(reg);
 }

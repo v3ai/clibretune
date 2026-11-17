@@ -414,3 +414,24 @@ void lt_dyno_cmp_free(lt_dyno_cmp *c)
     lt_free(c->tq_diff);
     memset(c, 0, sizeof *c);
 }
+
+lt_bool lt_dyno_chart_range(const lt_dyno_run *runs, size_t n, double *rpm0, double *rpm1,
+                            double *vmax)
+{
+    size_t k, i;
+    double lo = 1e300, hi = -1e300, vm = 0.0;
+    for (k = 0; k < n; k++) {
+        for (i = 0; i < runs[k].n; i++) {
+            const lt_dyno_point *p = &runs[k].data[i];
+            if (p->rpm < lo) { lo = p->rpm; }
+            if (p->rpm > hi) { hi = p->rpm; }
+            if (p->has_hp && p->hp > vm) { vm = p->hp; }
+            if (p->has_tq && p->tq_val > vm) { vm = p->tq_val; }
+        }
+    }
+    if (!(lo < hi)) { return LT_FALSE; }
+    *rpm0 = floor(lo / 500.0) * 500.0;
+    *rpm1 = ceil(hi / 500.0) * 500.0;
+    *vmax = vm > 0.0 ? ceil(vm / 50.0) * 50.0 : 50.0;
+    return LT_TRUE;
+}
