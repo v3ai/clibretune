@@ -6,3 +6,4 @@ build/
 /test_*
 .toolchain/
 __pycache__/
+.claude/
