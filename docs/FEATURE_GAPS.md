@@ -623,20 +623,34 @@ Orig = path under `ref/LibreTune/crates/`. `app/` = `libretune-app/src/component
 - Approach: section 14 (recommend replacing with Lua-subset plugins).
 
 ### G-123 AI assistant
-- Status: MISSING | Priority: P2 | Effort: XL (cloud) / L (local HTTP only)
-- Missing: chat panel, provider settings, capability tiers (read / tune / config), 11-tool catalogue (list tables,
-  read table/constant, summarize tune, tune health, realtime snapshot, query datalog, propose table edit / bulk op /
-  constant change), proposal queue with validation, authority clamping, restore point before apply, chat history,
-  "Ask AI" button on tables, risk acknowledgement.
+- Status: PARTIAL (local-only form) | Priority: P2 | Effort: XL (cloud) / L (local HTTP only)
+- Done: Tools -> AI Assistant tab (`src/app/feat_assistant.c`); Settings > Assistant (enable, risk acknowledgement,
+  base URL with Ollama / LM Studio presets, model, API key, capability tier); OpenAI-compatible
+  `/chat/completions` client over plain HTTP (`src/net/http.c`, SSE streaming or one JSON document, polled once per
+  frame, Stop button, 6-round tool loop); the tool catalogue (list_tables, read_table, read_constant, list_features,
+  tune_health_check, get_realtime_snapshot, query_datalog, propose_table_edit, propose_bulk_operation,
+  propose_constant_change) with read / tune / config tiers enforced both in the offered catalogue and at execution;
+  proposal review queue (INI validation, AutoTune authority clamping, dangerous-constant flag), Accept / Reject,
+  "Stage accepted changes" creates a restore point first and never burns. Config in `<config>/assistant.conf`
+  (mode 0600, API key in PLAINTEXT like the original's v1; `LT_AI_KEY` overrides). `https://` is refused with advice
+  (no TLS): use a local endpoint or a local TLS-terminating proxy. Tests: `tests/test_agent.c` (fake server in-process).
+- Left: summarize_tune_context tool (per-cell AFR error needs datalog correlation; tune_health_check covers table
+  statistics only), batch-drift warning at stage time, per-project chat history and chat switcher, docked/popped-out
+  panel (it is a tab), token usage per chat is shown but not persisted, "Ask AI" button inside table editors
+  (the open table is sent as context instead), native Anthropic / Google protocols (need TLS).
 - Orig: `core/agent/*` (2.4k lines), `core/llm/*`, `cmd/agent.rs`, `cmd/ai_keychain.rs`, `app/agent/*`, `docs/src/features/ai-assistant.md`.
 - Approach: section 14.
 
 ### G-124 MCP server (read-only)
-- Status: MISSING | Priority: P2 | Effort: M
-- Missing: opt-in loopback HTTP JSON-RPC server with bearer token exposing read-only tune tools.
+- Status: DONE | Priority: P2 | Effort: M
+- Done: `src/mcp/mcp.c`. JSON-RPC 2.0 (initialize, ping, tools/list, tools/call, notifications, batches) over (a) opt-in
+  loopback HTTP `POST /mcp` on 127.0.0.1 (Settings > Assistant: switch, port, access token with Show / Regenerate;
+  bearer token in `<config>/mcp-token`, 0600, constant-time compare, Host and Origin pinned to loopback, bare 401) and
+  (b) stdio: `libretune --mcp --project DIR` / `--ini FILE`. Exposes the read tools of the assistant only; the
+  propose_* tools are not listed and are refused. Tests in `tests/test_agent.c`.
+- Left: the original also lists summarize_tune_context (see G-123); no SSE/session management (every POST is
+  answered in one JSON response, which MCP "streamable HTTP" clients accept).
 - Orig: `src-tauri/src/mcp/*`, `app/tuner-ui/dialogs/McpServerSection.tsx`, `docs/src/features/mcp-server.md`.
-- Ours: dependency-free and natural: `be_web.c` already runs a loopback HTTP server with a token; `lt_server` TCP
-  exists. New `src/net/http.c`, `src/mcp/mcp.c`, uses `json`.
 
 ---------------------------------------------------------------------------------------------------
 

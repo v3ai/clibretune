@@ -12,6 +12,7 @@
 #include <string.h>
 #include "app/app.h"
 #include "app/app_ttyshot.h"
+#include "app/feat.h"
 
 static void usage(void)
 {
@@ -21,6 +22,8 @@ static void usage(void)
          "  --demo           start in demo mode (simulated ECU)\n"
          "  --project DIR    open a project directory\n"
          "  --ini FILE       open an ECU definition offline (or demo with --demo)\n"
+         "  --mcp            serve read-only MCP tools (JSON-RPC) on stdin/stdout; use with\n"
+         "                   --project DIR or --ini FILE\n"
          "  --help           this text\n"
          "  --version        print the version");
 }
@@ -28,7 +31,7 @@ static void usage(void)
 int main(int argc, char **argv)
 {
     const char *backend = NULL, *project = NULL, *ini = NULL;
-    int demo = 0, i, rc = 0;
+    int demo = 0, mcp = 0, i, rc = 0;
     lt_app *app;
     char *shot;
 
@@ -36,12 +39,22 @@ int main(int argc, char **argv)
         if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) { usage(); return 0; }
         if (strcmp(argv[i], "--version") == 0) { puts("libretune 0.1.0"); return 0; }
         if (strcmp(argv[i], "--demo") == 0) { demo = 1; }
+        else if (strcmp(argv[i], "--mcp") == 0) { mcp = 1; }
         else if (strcmp(argv[i], "--backend") == 0 && i + 1 < argc) { backend = argv[++i]; }
         else if (strcmp(argv[i], "--project") == 0 && i + 1 < argc) { project = argv[++i]; }
         else if (strcmp(argv[i], "--ini") == 0 && i + 1 < argc) { ini = argv[++i]; }
         else { fprintf(stderr, "libretune: unknown option '%s' (try --help)\n", argv[i]); return 2; }
     }
     app = lt_app_new();
+    if (mcp) {
+        /* no window: tools answer from the opened project / definition */
+        if (project != NULL) { lt_app_open_project(app, project); }
+        else if (demo) { lt_app_start_demo(app, ini); }
+        else if (ini != NULL) { lt_app_open_ini(app, ini); }
+        rc = lt_feat_mcp_stdio(app);
+        lt_app_free(app);
+        return rc;
+    }
     shot = lt_plat_getenv("LT_SCREENSHOT");
     if (shot == NULL && lt_app_shot_is_tty()) { shot = lt_strdup(""); }
     if (shot == NULL) {

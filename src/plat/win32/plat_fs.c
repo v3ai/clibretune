@@ -24,6 +24,13 @@ int lt_plat_mkdir(const char *path)
     return -1;
 }
 
+int lt_plat_chmod_private(const char *path)
+{
+    /* the profile directory is already private to the user */
+    LT_UNUSED(path);
+    return 0;
+}
+
 int lt_plat_remove(const char *path)
 {
     if (lt_plat_is_dir(path)) {

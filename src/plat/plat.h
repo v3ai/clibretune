@@ -37,6 +37,8 @@ int   lt_plat_mkdirs(const char *path);     /* recursive */
 lt_bool lt_plat_is_dir(const char *path);
 int   lt_plat_remove(const char *path);     /* file or empty dir */
 int   lt_plat_rename(const char *from, const char *to);
+/* restrict a file to the current user (POSIX mode 0600; no-op where the OS has no such mode) */
+int   lt_plat_chmod_private(const char *path);
 int   lt_plat_copy_file(const char *from, const char *to);
 /* list directory entries (excluding . and ..): returns count, *names is a
  * malloc'd array of malloc'd strings, sorted ascii; free with lt_plat_free_list */

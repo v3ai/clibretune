@@ -1470,6 +1470,18 @@ int lt_app_screenshot(lt_app *app, const char *ppm_path, int w, int h, int frame
             run_frame(app);
             run_frame(app);
         }
+        {
+            /* LT_SHOT_SETTLE=N: N more service+draw frames after the scripted keys, so that
+             * asynchronous work started by them (network requests) can finish */
+            char *se = lt_plat_getenv("LT_SHOT_SETTLE");
+            int settle = se != NULL ? atoi(se) : 0;
+            lt_free(se);
+            for (i = 0; i < settle; i++) {
+                lt_app_service(app);
+                run_frame(app);
+                lt_plat_sleep_ms(30);
+            }
+        }
         return lt_app_shot_write(&app->cells);
     }
     write_ppm(&app->canvas, ppm_path);

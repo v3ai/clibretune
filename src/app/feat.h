@@ -84,4 +84,10 @@ int  lt_feat_prefs_session_record(lt_app *app);
 void lt_feat_prefs_project_opened(lt_app *app);   /* a project was (re)opened: restore its tabs */
 void lt_feat_statusbar_defaults(lt_prefs *p, char *const *names, size_t n);
 
+/* assistant chat tab, Settings > Assistant, MCP server (G-123 local form, G-124) */
+struct lt_ag_env;
+void lt_feat_assistant_register(lt_app_ext *reg);
+int  lt_feat_assistant_env(lt_app *app, struct lt_ag_env *env);   /* tool view of the app; 0 = ini open */
+int  lt_feat_mcp_stdio(lt_app *app);                              /* `libretune --mcp`: serve stdin/stdout */
+
 #endif

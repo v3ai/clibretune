@@ -60,6 +60,13 @@ int lt_plat_remove(const char *path)
     return -1;
 }
 
+int lt_plat_chmod_private(const char *path)
+{
+    if (chmod(path, 0600) == 0) return 0;
+    lt_err_set("chmod %s: %s", path, strerror(errno));
+    return -1;
+}
+
 int lt_plat_rename(const char *from, const char *to)
 {
     if (rename(from, to) == 0) return 0;
