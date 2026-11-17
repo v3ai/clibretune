@@ -32,6 +32,7 @@
 #include "../project/project.h"
 #include "../sim/sim.h"
 #include "../datalog/datalog.h"
+#include "prefs.h"
 
 typedef struct lt_app lt_app;
 typedef struct lt_app_tab lt_app_tab;
@@ -98,6 +99,7 @@ typedef struct lt_app_settings {
     int  reconnect_fw;      /* reconnect after a firmware update (default 1) */
     int  auto_commit;       /* tune history on save: 0 never, 1 always, 2 ask (default 2) */
     char commit_fmt[96];    /* commit message format, {date} {time} {table} */
+    lt_prefs prefs;         /* table display, behaviour, protocol tuning, session (prefs.h) */
 } lt_app_settings;
 
 struct lt_app {

@@ -223,7 +223,7 @@ typedef struct sig_state {
     char ecu_sig[128], ini_sig[128], note[200];
     lt_ini_repo repo; int repo_ok;
     lt_sync_ini_match m[MAX_MATCH]; int n_m, sel;
-    int preview;
+    int preview, online_gen;
 } sig_state;
 
 static void sig_reload(sig_state *s)
@@ -323,6 +323,11 @@ static void sig_draw(lt_app *app, lt_app_dialog *d)
             if (n > 0) { s->ecu_sig[n - 1] = s->ecu_sig[n - 1] == '9' ? '8' : '9'; }
         }
         sig_reload(s);
+        s->online_gen = lt_feat_online_generation(app);
+    }
+    if (s->online_gen != lt_feat_online_generation(app)) {     /* INI imported by Search Online */
+        s->online_gen = lt_feat_online_generation(app);
+        sig_reload(s);
     }
     picked = lt_app_file_result(app, FD_SYNC_INI);
     if (picked != NULL) {
@@ -376,10 +381,7 @@ static void sig_draw(lt_app *app, lt_app_dialog *d)
             lt_app_file_dialog(app, FD_SYNC_INI, LT_UI_FILE_OPEN, NULL, "",
                                "ECU definitions|*.ini|All files|*");
         }
-        if (lt_ui_button_ex(ui, "Search Online", LT_UI_BTN_DISABLED)) { act = 0; }
-        lt_ui_layout_row(ui, 1, &w1, 0);
-        lt_ui_label_ex(ui, "Online search needs the INI library (not available yet).", t->muted,
-                       LT_UI_ALIGN_LEFT);
+        if (lt_ui_button(ui, "Search Online")) { lt_feat_online_open(app, s->ecu_sig); }
         w2[0] = -1; w2[1] = -1;
         lt_ui_layout_row(ui, 2, w2, 0);
         if (lt_ui_button(ui, "Continue Anyway")) { act = 2; }

@@ -16,6 +16,8 @@ void lt_dlg_register_log(lt_app *app);      /* tab kinds datalog, datalog-viewer
 /* shared helpers */
 /* case-insensitive substring test; empty needle matches */
 lt_bool lt_dlg_contains_ci(const char *hay, const char *needle);
+/* Settings search: does the section `title` match the query (title or keywords; empty = all) */
+lt_bool lt_dlg_settings_match(const char *title, const char *query);
 #define LT_DLG_FD_LOG_OPEN   (LT_APP_FD_USER0 + 1)
 #define LT_DLG_FD_LOG_EXPORT (LT_APP_FD_USER0 + 2)
 #define LT_DLG_FD_PROJ_INI   LT_APP_FD_NEW_PROJECT_INI

@@ -6,6 +6,7 @@
 #include <string.h>
 #include "app.h"
 #include "app_ext.h"
+#include "feat.h"
 
 #define LT_APP_VERSION "0.1.0"
 
@@ -66,6 +67,7 @@ void lt_app_settings_load(lt_app *app)
     int i, n;
     char key[24];
     settings_defaults(s);
+    (void)lt_prefs_load(&s->prefs, app->config_dir);
     if (path == NULL) { return; }
     lt_props_init(&p);
     if (lt_file_exists(path) && lt_props_load(&p, path) == 0) {
@@ -135,6 +137,7 @@ void lt_app_settings_save(lt_app *app)
     char key[24], num[24];
     int i;
     if (path == NULL) { return; }
+    (void)lt_prefs_save(&s->prefs, app->config_dir);
     lt_props_init(&p);
     lt_props_set(&p, "theme", s->theme);
     lt_snprintf(num, sizeof(num), "%d", s->metric); lt_props_set(&p, "units_metric", num);
@@ -519,6 +522,8 @@ static int connect_io(lt_app *app, const lt_proto_io *io, const char *port, long
     lt_proto_cfg_default(&cfg);
     cfg.baud = baud;
     cfg.port_name = port;
+    cfg.runtime_mode = (lt_runtime_mode)app->settings.prefs.packet_mode;
+    cfg.adaptive_timing = app->settings.prefs.adaptive_timing ? LT_TRUE : LT_FALSE;
     app->proto = lt_proto_new(io, app->ini, &cfg);
     if (strcmp(port, "demo") == 0) {
         lt_proto_clock clk;
@@ -531,6 +536,7 @@ static int connect_io(lt_app *app, const lt_proto_io *io, const char *port, long
     rc = lt_proto_connect(app->proto);
     if (rc < 0) {
         lt_app_toast(app, 3, "Connect failed: %s", lt_proto_errinfo(app->proto)->msg);
+        lt_feat_error_proto(app, "Connection Failed");
         link_free(app);
         app->conn = LT_APP_OFFLINE;
         return rc;
@@ -539,6 +545,7 @@ static int connect_io(lt_app *app, const lt_proto_io *io, const char *port, long
     rc = lt_proto_read_all(app->proto, app->mem, LT_TRUE);
     if (rc < 0) {
         lt_app_toast(app, 3, "Reading ECU failed: %s", lt_err_get());
+        lt_feat_error_proto(app, "Reading the ECU Failed");
         link_free(app);
         app->conn = LT_APP_OFFLINE;
         return rc;
@@ -773,6 +780,7 @@ int lt_app_open_project(lt_app *app, const char *dir)
     if (app->project.tune == NULL) { app->project.tune = lt_tune_from_defaults(ini); }
     session_begin(app, ini, app->project.tune);
     lt_app_recent_add(app, app->project.path);
+    lt_feat_connset_apply(app);
     lt_app_set_status(app, "Opened project %s", app->project.cfg.name);
     return 0;
 }

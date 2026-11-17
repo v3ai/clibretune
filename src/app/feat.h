@@ -46,4 +46,41 @@ void lt_feat_sync_ignore(lt_app *app);
 void lt_feat_logging_register(lt_app_ext *reg);  /* smart recording, sample rate, rec channels, alerts */
 void lt_feat_math_register(lt_app_ext *reg);     /* math channels editor */
 
+/* connection/projects/files/prefs batch (G-05, G-06, G-17, G-18, G-19, G-92..G-96, G-102, G-104) */
+void lt_feat_error_register(lt_app_ext *reg);     /* error details dialog */
+void lt_feat_online_register(lt_app_ext *reg);    /* Search for INI Online (assisted) */
+void lt_feat_import_register(lt_app_ext *reg);    /* TunerStudio import wizard */
+void lt_feat_tunes_register(lt_app_ext *reg);     /* Open Tune / New Tune */
+void lt_feat_connset_register(lt_app_ext *reg);   /* project connection, protocol tuning, metrics */
+void lt_feat_prefs_register(lt_app_ext *reg);     /* table display, behaviour, status bar, project pages */
+/* error dialog: title/message/details, or from the protocol layer (code, CRC, page/offset) */
+void lt_feat_error_show(lt_app *app, const char *title, const char *message, const char *details);
+void lt_feat_error_proto(lt_app *app, const char *title);
+void lt_feat_error_describe(const lt_proto_err *e, char *out, size_t cap);
+void lt_feat_error_report(const char *title, const char *msg, const char *det, char *out, size_t cap);
+const char *lt_feat_error_code_name(int code);
+/* INI online: open the dialog (signature may be ""); import counter lets other dialogs refresh */
+void lt_feat_online_open(lt_app *app, const char *signature);
+int  lt_feat_online_generation(lt_app *app);
+/* TunerStudio import: the wizard; the import itself (ini_path "" = the project's own INI) */
+void lt_feat_import_ts_wizard(lt_app *app, const char *picked_path);
+int  lt_feat_import_ts_with_ini(lt_app *app, const char *root, const char *ini_path);
+void lt_feat_import_ts_root(const char *picked, char *root, size_t cap);
+/* New Tune: default-valued tune saved as a new file of the project and made current */
+int  lt_feat_tune_new(lt_app *app, const char *name, char *out, size_t cap);
+/* connection: project settings -> app settings (called when a project opens); settings dialog block;
+ * metrics dialog */
+void lt_feat_connset_apply(lt_app *app);
+void lt_feat_connset_draw(lt_app *app);
+void lt_feat_connset_metrics(lt_app *app);
+/* prefs: table colours (trail 0/1) and custom heat-map colour of a context (0 value, 1 change,
+ * 2 coverage); status bar channel text; burn before quit; session recording (tests) */
+lt_bool lt_feat_prefs_color(const lt_app *app, int trail, lt_color *out);
+lt_bool lt_feat_prefs_heat(const lt_app *app, int ctx, double t, lt_color *out);
+int  lt_feat_statusbar_channels(lt_app *app, char *out, size_t cap);
+int  lt_feat_prefs_auto_burn(lt_app *app);
+int  lt_feat_prefs_session_record(lt_app *app);
+void lt_feat_prefs_project_opened(lt_app *app);   /* a project was (re)opened: restore its tabs */
+void lt_feat_statusbar_defaults(lt_prefs *p, char *const *names, size_t n);
+
 #endif

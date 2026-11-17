@@ -6,6 +6,7 @@
 #include <math.h>
 #include "tables_priv.h"
 #include "view_kit.h"
+#include "feat.h"
 
 #define TRAIL_N 20
 
@@ -1166,6 +1167,11 @@ static void tbl_overlay_record(lt_ui *ui, tbl_tab *st, const lt_theme *th, int r
     int k, n = 0;
     st->ov_trail = th->cursor_trail;
     st->ov_live_c = th->cursor_live;
+    if (st->app_ != NULL) {                              /* colours from the table display prefs (G-93) */
+        lt_color pc;
+        if (lt_feat_prefs_color(st->app_, 0, &pc)) { st->ov_live_c = pc; }
+        if (lt_feat_prefs_color(st->app_, 1, &pc)) { st->ov_trail = pc; }
+    }
     if (st->live_ok) {
         int lr = st->ybottom ? rows - 1 - st->live_r : st->live_r;
         lt_rect c = lt_ui_grid_cell_rect(ui, lr, st->live_c);
@@ -1444,7 +1450,7 @@ static void tbl_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
     if (st == NULL) {
         st = (tbl_tab *)lt_calloc(1, sizeof(*st));
         tab->data = st;
-        st->shading = 1; st->ybottom = 1; st->yaw = 0.6; st->pitch = 0.55;
+        st->shading = 1; st->ybottom = app->settings.prefs.y_bottom ? 1 : 0; st->yaw = 0.6; st->pitch = 0.55;
         st->rebin_interp = 1; st->scale_val = 1.05; st->cur_r = st->cur_c = 0;
         st->step = 1.0; st->step_mult = 5.0; st->step_pct = 5.0;
         tbl_load(app, tab, st);

@@ -6,6 +6,7 @@
 #include <string.h>
 #include "app.h"
 #include "app_ext.h"
+#include "feat.h"
 #include "app_ttyshot.h"
 
 
@@ -245,7 +246,7 @@ static void file_dialog_frame(lt_app *app)
     case LT_APP_FD_IMPORT_TS:
     case LT_APP_FD_OPEN_PROJECT: {
         char *d = dir_of(app->fd.path);
-        if (app->fd_purpose == LT_APP_FD_IMPORT_TS) { lt_app_import_ts(app, d); }
+        if (app->fd_purpose == LT_APP_FD_IMPORT_TS) { lt_feat_import_ts_wizard(app, app->fd.path); }
         else { lt_app_open_project(app, d); }
         lt_free(d);
         break;
@@ -778,6 +779,12 @@ static void statusbar(lt_app *app)
         }
     }
     if (mid[0] == '\0') { lt_snprintf(mid, sizeof(mid), "%s", app->status); }
+    {
+        char chn[160];
+        if (lt_feat_statusbar_channels(app, chn, sizeof(chn)) > 0) {      /* chosen channels (G-104) */
+            lt_snprintf(mid, sizeof(mid), "%s   %s", chn, app->status);
+        }
+    }
     lt_snprintf(proj, sizeof(proj), "%s%s", app->has_project ? app->project.cfg.name : "",
                 app->modified ? " (modified)" : "");
     if (app->conn == LT_APP_ONLINE || app->conn == LT_APP_DEMO) { lt_snprintf(rate, sizeof(rate), "%.0f Hz", app->data_rate); }
@@ -796,6 +803,9 @@ static void statusbar(lt_app *app)
     r = lt_ui_layout_next(ui);
     lt_ui_draw_circle_fill(ui, r.x + (double)lt_ui_px(ui, 6), r.y + r.h / 2.0, 3.5 * (double)lt_ui_scale_pct(ui) / 100.0, cc);
     lt_ui_draw_text_in(ui, lt_rect_make(r.x + lt_ui_px(ui, 16), r.y, r.w - lt_ui_px(ui, 16), r.h), conn, t->text2, 0);
+    lt_ui_layout_set_rect(ui, r);                       /* click: connection metrics (G-06) */
+    if (lt_ui_button_ex(ui, "", LT_UI_BTN_FLAT)) { lt_feat_connset_metrics(app); }
+    lt_ui_tooltip(ui, "Connection metrics");
     r = lt_ui_layout_next(ui);
     lt_ui_draw_text_in(ui, r, mid, t->muted, 1);
     r = lt_ui_layout_next(ui);
@@ -1032,6 +1042,7 @@ static void tab_area(lt_app *app, lt_rect main_r)
 /* quit, shortcuts, dialogs                                            */
 void lt_app_request_quit(lt_app *app)
 {
+    (void)lt_feat_prefs_auto_burn(app);          /* "burn on close" setting */
     if (app->ini != NULL && (app->modified || (app->mem != NULL && lt_ecu_mem_has_pending_burn(app->mem)))) {
         app->quit_open = 1;
     } else {

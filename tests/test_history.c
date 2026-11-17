@@ -347,6 +347,46 @@ LT_TEST(app_history)
     lt_app_free(app);
 }
 
+LT_TEST(restore_reloads_config)
+{
+    lt_app *app = lt_app_new();
+    char ini[512], name[64], id1[9], id2[9], *dst, *txt;
+    size_t len = 0;
+    LT_CHECK(lt_app_find_demo_ini(ini, sizeof(ini)) != NULL);
+    LT_CHECK(lt_plat_setenv("LIBRETUNE_PROJECTS", "build/test_hist_proj") == 0);
+    LT_CHECK(lt_plat_mkdirs("build/test_hist_proj") == 0);
+    unique_name(name, sizeof(name), "cfg");
+    LT_CHECK(lt_app_new_project(app, name, ini) == 0);
+    lt_free(app->project.cfg.conn.port);
+    app->project.cfg.conn.port = lt_strdup("PORT_A");
+    LT_CHECK(lt_project_save_config(&app->project) == 0);
+    LT_CHECK(lt_feat_history_commit(app, "A", NULL, id1) == 0);
+    lt_free(app->project.cfg.conn.port);
+    app->project.cfg.conn.port = lt_strdup("PORT_B");
+    LT_CHECK(lt_project_save_config(&app->project) == 0);
+    LT_CHECK(lt_feat_history_commit(app, "B", NULL, id2) == 0);
+    LT_CHECK(strcmp(app->project.cfg.conn.port, "PORT_B") == 0);
+    LT_CHECK(lt_feat_history_restore(app, id1) == 0);
+    LT_CHECK(app->project.cfg.conn.port != NULL && strcmp(app->project.cfg.conn.port, "PORT_A") == 0);
+    /* a snapshot with another definition INI: the project is reopened from the tick hook */
+    dst = lt_project_ini_path(&app->project);
+    txt = lt_file_read(dst, &len);
+    LT_CHECK(txt != NULL);
+    if (txt != NULL) {
+        lt_free(txt);
+        txt = lt_file_read("tests/fixtures/ini/ms3.ini", &len);
+    }
+    LT_CHECK(txt != NULL && lt_file_write(dst, txt, len) == 0);
+    lt_free(txt);
+    lt_free(dst);
+    LT_CHECK(lt_feat_history_commit(app, "C", NULL, id2) == 0);
+    LT_CHECK(lt_feat_history_restore(app, id1) == 0);
+    lt_ext_tick(app);
+    LT_CHECK(app->has_project && app->ini != NULL);
+    LT_CHECK(app->project.cfg.conn.port != NULL && strcmp(app->project.cfg.conn.port, "PORT_A") == 0);
+    lt_app_free(app);
+}
+
 int main(void)
 {
     LT_RUN(branches);
@@ -356,5 +396,6 @@ int main(void)
     LT_RUN(csv_roundtrip);
     LT_RUN(restore_cleanup);
     LT_RUN(app_history);
+    LT_RUN(restore_reloads_config);
     LT_TEST_MAIN_END
 }

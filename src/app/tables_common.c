@@ -5,6 +5,7 @@
 #include <ctype.h>
 #include <math.h>
 #include "tables_priv.h"
+#include "feat.h"
 
 void lt_tabs_fmt(char *buf, size_t cap, double v, int digits)
 {
@@ -29,7 +30,9 @@ static int scheme_of(const char *n)
 lt_color lt_tabs_heat(const lt_app *app, const lt_theme *t, double lo, double hi, double v)
 {
     double f = hi > lo ? (v - lo) / (hi - lo) : 0.5;
+    lt_color custom;
     LT_UNUSED(t);
+    if (lt_feat_prefs_heat(app, LT_HEAT_VALUE, f, &custom)) { return custom; }   /* custom stops (G-93) */
     return lt_heat_color(scheme_of(app->settings.heatmap), f);
 }
 

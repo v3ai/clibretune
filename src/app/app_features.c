@@ -22,4 +22,10 @@ void lt_app_features_register(lt_app_ext *reg)
     lt_feat_restore_register(reg);
     lt_feat_annot_register(reg);
     lt_feat_csv_register(reg);
+    lt_feat_error_register(reg);
+    lt_feat_online_register(reg);
+    lt_feat_import_register(reg);
+    lt_feat_tunes_register(reg);
+    lt_feat_connset_register(reg);
+    lt_feat_prefs_register(reg);
 }

@@ -17,7 +17,7 @@
 #define CV 16
 #define HIST_MAX 50
 
-typedef struct hist_state { int guard; } hist_state;
+typedef struct hist_state { int guard; int reopen; char dir[512]; } hist_state;
 
 static hist_state *hs(lt_app *app)
 {
@@ -71,18 +71,73 @@ static void reload_tune(lt_app *app)
     lt_free(p);
 }
 
+/* A snapshot also replaces project.json and projectCfg/: bring the in-memory project config
+ * (name, connection, settings) in line, and when the definition INI itself changed, reopen the
+ * project from the tick hook (never from inside a dialog draw: reopening closes the dialogs). */
+static void reload_config(lt_app *app, const char *ini_before, size_t n_before)
+{
+    lt_project tmp;
+    char *ip, *now;
+    size_t n_now = 0;
+    int differs;
+    memset(&tmp, 0, sizeof(tmp));
+    if (lt_project_open(app->project.path, &tmp) == 0) {
+        lt_proj_config cfg_old = app->project.cfg;
+        app->project.cfg = tmp.cfg;
+        tmp.cfg = cfg_old;               /* freed with tmp below */
+        lt_project_free(&tmp);
+    }
+    ip = lt_project_ini_path(&app->project);
+    now = ip != NULL ? (char *)lt_file_read(ip, &n_now) : NULL;
+    differs = (now == NULL) != (ini_before == NULL) ||
+              (now != NULL && (n_now != n_before || memcmp(now, ini_before, n_now) != 0));
+    lt_free(now);
+    lt_free(ip);
+    if (differs) {
+        hist_state *h = hs(app);
+        h->reopen = 1;
+        lt_strlcpy(h->dir, app->project.path, sizeof(h->dir));
+    }
+}
+
+static int restore_with(lt_app *app, int sw, const char *name)
+{
+    char *ip = lt_project_ini_path(&app->project);
+    size_t n_before = 0;
+    char *before = ip != NULL ? (char *)lt_file_read(ip, &n_before) : NULL;
+    int rc = sw ? lt_snap_branch_switch(app->project.path, name, LT_TRUE)
+                : lt_snap_restore(app->project.path, name, LT_TRUE);
+    lt_free(ip);
+    if (rc == 0) {
+        reload_config(app, before, n_before);
+        reload_tune(app);
+    }
+    lt_free(before);
+    return rc;
+}
+
 int lt_feat_history_restore(lt_app *app, const char *id)
 {
-    int rc = lt_snap_restore(app->project.path, id, LT_TRUE);
-    if (rc == 0) { reload_tune(app); }
-    return rc;
+    return restore_with(app, 0, id);
 }
 
 int lt_feat_history_switch(lt_app *app, const char *branch)
 {
-    int rc = lt_snap_branch_switch(app->project.path, branch, LT_TRUE);
-    if (rc == 0) { reload_tune(app); }
-    return rc;
+    return restore_with(app, 1, branch);
+}
+
+/* deferred project reopen after a restore that changed the definition INI */
+static void history_tick(lt_app *app)
+{
+    hist_state *h = hs(app);
+    char dir[512];
+    if (!h->reopen) { return; }
+    h->reopen = 0;
+    lt_strlcpy(dir, h->dir, sizeof(dir));
+    if (app->has_project && strcmp(app->project.path, dir) == 0) {
+        int mod = app->modified;
+        if (lt_app_open_project(app, dir) == 0) { app->modified = mod; }
+    }
 }
 
 /* auto-commit after a save, per the setting */
@@ -558,6 +613,7 @@ static void settings_page(lt_app *app)
 void lt_feat_history_register(lt_app_ext *reg)
 {
     lt_app_dialog_kind dk;
+    lt_ext_add_tick(reg, history_tick);
     lt_ext_add_menu_item(reg, LT_EXT_MENU_FILE, "Tune &History...", NULL, open_history, lt_ext_pred_project);
     lt_ext_add_settings_page(reg, "Version Control", settings_page);
     lt_ext_add_on_save(reg, on_save);
