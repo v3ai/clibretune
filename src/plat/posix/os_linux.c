@@ -25,9 +25,15 @@ double lt_plat_now_ms(void)
     return lt_posix_clamp_time(t);
 }
 
-char *lt_plat_config_dir(void)
+static char *config_dir_os(void)
 {
     return lt_posix_xdg_config_dir();
+}
+
+char *lt_plat_config_dir(void)
+{
+    char *o = lt_plat_config_override();
+    return o != NULL ? o : config_dir_os();
 }
 
 char *lt_plat_exe_path(void)

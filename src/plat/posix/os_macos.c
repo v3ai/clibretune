@@ -24,7 +24,7 @@ double lt_plat_now_ms(void)
     return lt_posix_clamp_time(t);
 }
 
-char *lt_plat_config_dir(void)
+static char *config_dir_os(void)
 {
     char *h = lt_posix_home_dir();
     char *base = lt_path_join(h, "Library/Application Support");
@@ -33,6 +33,12 @@ char *lt_plat_config_dir(void)
     lt_free(base);
     lt_plat_mkdirs(dir);
     return dir;
+}
+
+char *lt_plat_config_dir(void)
+{
+    char *o = lt_plat_config_override();
+    return o != NULL ? o : config_dir_os();
 }
 
 char *lt_plat_exe_path(void)

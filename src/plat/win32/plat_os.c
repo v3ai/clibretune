@@ -45,7 +45,7 @@ char *lt_plat_home_dir(void)
     return h;
 }
 
-char *lt_plat_config_dir(void)
+static char *config_dir_os(void)
 {
     char *base = lt_plat_getenv("APPDATA");
     char *dir;
@@ -54,6 +54,12 @@ char *lt_plat_config_dir(void)
     lt_free(base);
     lt_plat_mkdirs(dir);
     return dir;
+}
+
+char *lt_plat_config_dir(void)
+{
+    char *o = lt_plat_config_override();
+    return o != NULL ? o : config_dir_os();
 }
 
 char *lt_plat_exe_path(void)

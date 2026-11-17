@@ -151,11 +151,12 @@ case $target in
             # private config/home/projects per test program: tests never touch the
             # user's real settings, and concurrent runs cannot interfere. (Not for
             # Windows targets: wine finds its prefix through HOME.)
-            tenv=""
+            # relative paths work for native and wine-run binaries alike
+            tdir="$OBJDIR/test/env-$name"
+            rm -rf "$tdir" && mkdir -p "$tdir/home" "$tdir/projects"
+            tenv="env LIBRETUNE_CONFIG_DIR=$tdir/config LIBRETUNE_PROJECTS=$tdir/projects"
             if [ "$TARGET" != windows ]; then
-                tdir="$PWD/$OBJDIR/test/env-$name"
-                rm -rf "$tdir" && mkdir -p "$tdir/home" "$tdir/projects"
-                tenv="env HOME=$tdir/home XDG_CONFIG_HOME=$tdir/home/.config LIBRETUNE_PROJECTS=$tdir/projects"
+                tenv="$tenv HOME=$PWD/$tdir/home XDG_CONFIG_HOME=$PWD/$tdir/home/.config"
             fi
             if ! $tenv $RUNNER "./$OBJDIR/test/$name$EXE"; then
                 failed=$((failed + 1))

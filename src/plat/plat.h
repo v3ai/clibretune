@@ -47,6 +47,10 @@ void  lt_plat_free_list(char **names, int n);
 /* user config dir (e.g. ~/.config/libretune, %APPDATA%\LibreTune,
  * ~/Library/Application Support/LibreTune); malloc'd, created if missing */
 char *lt_plat_config_dir(void);
+/* LIBRETUNE_CONFIG_DIR, when set and non-empty, replaces the per-OS config dir on every
+ * platform (portable installs, tests). Returns a malloc'd, created dir or NULL if unset;
+ * each lt_plat_config_dir implementation checks it first. */
+char *lt_plat_config_override(void);
 /* user documents dir for projects (e.g. ~/LibreTune Projects); malloc'd */
 char *lt_plat_projects_dir(void);
 char *lt_plat_getenv(const char *name);    /* malloc'd copy or NULL */

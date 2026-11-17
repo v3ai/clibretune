@@ -157,3 +157,14 @@ int lt_stream_read_full(lt_stream *s, void *buf, int n, int timeout_ms)
     }
     return total;
 }
+
+char *lt_plat_config_override(void)
+{
+    char *d = lt_plat_getenv("LIBRETUNE_CONFIG_DIR");
+    if (d != NULL && d[0] == '\0') {
+        lt_free(d);
+        d = NULL;
+    }
+    if (d != NULL) lt_plat_mkdirs(d);
+    return d;
+}
