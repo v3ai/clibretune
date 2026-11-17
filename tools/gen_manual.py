@@ -69,18 +69,24 @@ def clean(s):
 
 def cesc(s):
     out = []
+    octal = False
     for b in s.encode("utf-8"):
         c = chr(b)
+        if octal and c.isdigit():
+            out.append('" "')          # a digit after an octal escape: split the literal
+        octal = False                  # (valid C, but MSVC warns C4125)
         if c == '"' or c == "\\":
             out.append("\\" + c)
         elif c == "?":
             out.append("\\?")          # no trigraphs
         elif c == "%":
             out.append("\\045")        # keeps printf-format scanners quiet
+            octal = True
         elif 32 <= b < 127:
             out.append(c)
         else:
             out.append("\\%03o" % b)
+            octal = True
     return "".join(out)
 
 
