@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "app.h"
+#include "app_ext.h"
 
 #define LT_APP_VERSION "0.1.0"
 
@@ -353,6 +354,7 @@ lt_app *lt_app_new(void)
     lt_app_register_tables(app);
     lt_app_register_dash(app);
     lt_app_register_dialogs(app);
+    lt_ext_new(app);
     return app;
 }
 
@@ -364,6 +366,7 @@ void lt_app_free(lt_app *app)
     for (i = app->n_dialogs - 1; i >= 0; i--) { lt_free(app->dialogs[i]); }
     lt_free(app->dialogs);
     lt_free(app->tabs);
+    lt_ext_free(app);
     lt_free(app->tab_kinds);
     lt_free(app->dlg_kinds);
     lt_ui_filedlg_free(&app->fd);
@@ -626,6 +629,7 @@ int lt_app_service(lt_app *app)
 {
     double now;
     int rc, got = 0;
+    lt_ext_tick(app);
     if ((app->conn != LT_APP_ONLINE && app->conn != LT_APP_DEMO) || app->proto == NULL) { return 0; }
     now = lt_plat_now_ms();
     if (now - app->last_poll_ms < 1000.0 / (double)LT_CLAMP(app->settings.poll_hz, 5, 100)) { return 0; }
@@ -925,19 +929,14 @@ int lt_app_start_demo(lt_app *app, const char *ini_path)
 int lt_app_open_target(lt_app *app, const char *target, const char *label)
 {
     lt_ini *ini = app->ini;
+    int rc;
     LT_UNUSED(label);
     if (ini == NULL || target == NULL) { return -1; }
     if (lt_ini_find_table(ini, target) != NULL) { return lt_app_table_editor_open(app, target); }
     if (lt_ini_find_curve(ini, target) != NULL) { return lt_app_curve_editor_open(app, target); }
     if (lt_ini_find_dialog(ini, target) != NULL) { return lt_app_dialog_open(app, target); }
-    if (strcmp(target, "std_realtime") == 0) { return lt_app_dashboard_tab_open(app); }
-    if (strcmp(target, "autotune") == 0) { return lt_app_autotune_open(app); }
-    if (strcmp(target, "datalog") == 0) { return lt_app_datalog_open(app, 0); }
-    if (strcmp(target, "datalog-viewer") == 0) { return lt_app_datalog_open(app, 1); }
-    if (strcmp(target, "och-status") == 0 || strcmp(target, "tooth-logger") == 0 ||
-        strcmp(target, "composite-logger") == 0 || strcmp(target, "console") == 0) {
-        return lt_app_special_open(app, target);
-    }
+    rc = lt_ext_dispatch_target(app, target);      /* feature-registered targets */
+    if (rc != LT_EXT_NO_TARGET) { return rc; }
     if (lt_str_starts(target, "std_")) {
         if (strcmp(target, "std_separator") == 0) { return 0; }
         if (lt_ini_std_panel(ini, target) != NULL) { return lt_app_dialog_open(app, target); }

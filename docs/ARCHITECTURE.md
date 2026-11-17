@@ -313,3 +313,46 @@ option lists; `table()` uses the `lt_inc_cache`.
   `lt_proto_set_clock` with a fake clock so no test sleeps. The sim is the
   second implementation of the same interface used for integration tests with
   the fixtures in `tests/fixtures/` (speeduino, ms3, ms2extra, rusEFI demo.ini).
+
+## 8. Adding a feature
+
+New screens and tools plug into the shell through the registry in `src/app/app_ext.h`;
+they must not edit `app.c`, `app_shell.c`, `app.h` or the dialog files of other features.
+Each feature owns its own files, so parallel work merges without conflicts.
+
+1. **Files.** Create `src/app/feat_<name>.c` (and, for logic that does not need the UI, a
+   module under `src/<module>/`). Build lists are discovered (`find src -name '*.c'`), nothing to edit.
+2. **Registration.** In `feat_<name>.c` define `void lt_feat_<name>_register(lt_app_ext *reg)`.
+   Declare it in `src/app/feat.h` (one line) and call it from `src/app/app_features.c` (one
+   line, appended at the end; that file contains nothing else). Inside it call any of:
+   * `lt_ext_add_target(reg, "std_xyz", open_fn)`: menu/std target handler
+     `int open_fn(lt_app *, const char *target)`; reached from INI menus, the sidebar search and
+     `LT_SHOT_OPEN=std_xyz`. Checked after INI tables/curves/dialogs and before the INI std panels,
+     so it can replace a placeholder.
+   * `lt_ext_add_menu_item(reg, LT_EXT_MENU_FILE|VIEW|TOOLS|HELP, "&Label", "Ctrl+K", fn, pred)`;
+     `pred` is a capability predicate (`lt_ext_pred_ini/_project/_online` or your own, NULL = always).
+   * `lt_ext_add_shortcut(reg, key, LT_MOD_*, fn, pred)`: global key (the menu text is display only).
+   * `lt_ext_add_settings_page(reg, "Title", draw)`: a tab in the Settings dialog; `draw(app)` runs in
+     the scrolled body with a full-width layout row set; call `lt_app_settings_save` on change.
+   * `lt_ext_add_tick(reg, fn)`: per-frame service hook, run at the start of `lt_app_service`
+     (also offline); use it for auto-record, alerts, polling.
+   * `lt_ext_add_tab_kind` / `lt_ext_add_dialog_kind`: editor tabs and modal dialog kinds.
+   * `lt_ext_add_overlay(reg, fn)`: drawn every frame with the dialogs, for flag-driven modals.
+3. **State.** Never add fields to `lt_app`. Keep a per-feature struct and fetch it with
+   `st = (my_state *)lt_ext_state(app, "name", sizeof(*st), cleanup_or_NULL)`: zeroed on first use,
+   the same pointer afterwards, `cleanup` runs from `lt_app_free` (free what the struct owns;
+   the block itself is freed by the registry). Dialog/tab-local state may instead live in
+   `d->data` / `tab->data` and be freed in the kind's `close`.
+4. **Modals.** Register a dialog kind (`draw(app, d)` runs every frame while `d->open`; set
+   `d->open = 0` to close; use `lt_ui_modal_begin/_end` or `lt_ui_msgbox(..., &d->open)`) and open it
+   with `lt_app_dialog_push(app, "kind", target, title)` from a menu item, shortcut or target.
+   Try it without clicking: `LT_SHOT_OPEN=dlg:<kind>`. Worked examples: `feat_help.c` (About,
+   shortcuts dialog, F1, Help items, a Settings page) and `feat_core.c` (std targets, Tools item,
+   shortcut).
+5. **Tests.** Add `tests/test_<name>.c` (picked up automatically; see section 7). The registry
+   itself is covered in `tests/test_app.c` (`ext_registry`): `lt_app_new()` already runs
+   every feature registration, so `lt_ext_has_target`, `lt_ext_dispatch_target`,
+   `lt_ext_n_menu_items` and `lt_ext_n_settings_pages` can be asserted on a headless `lt_app`.
+
+Dialog sources: `dialogs_connect.c`, `dialogs_settings.c`, `dialogs_newproj.c` (one dialog each),
+registered from `dialogs_reg.c`.

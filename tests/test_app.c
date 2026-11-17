@@ -4,6 +4,7 @@
  */
 #include "lt_test.h"
 #include "../src/app/app.h"
+#include "../src/app/app_ext.h"
 
 static const char *demo_ini(char *buf, size_t cap)
 {
@@ -157,10 +158,82 @@ LT_TEST(scale_and_geometry_settings)
     lt_app_free(app);
 }
 
+/* ---- extension registry ---- */
+static int hit_n;
+static char hit_target[64];
+static int my_target(lt_app *app, const char *t)
+{
+    LT_UNUSED(app);
+    hit_n++;
+    lt_strlcpy(hit_target, t, sizeof(hit_target));
+    return 0;
+}
+static int my_tick_n;
+static void my_tick(lt_app *app) { LT_UNUSED(app); my_tick_n++; }
+static void my_action(lt_app *app) { LT_UNUSED(app); }
+static void my_page(lt_app *app) { LT_UNUSED(app); }
+static void my_free(lt_app *app, void *st) { LT_UNUSED(app); *(int *)st = 99; }
+
+LT_TEST(ext_registry)
+{
+    char buf[512];
+    lt_app *app = lt_app_new();
+    int *st, *st2, n_pages, n_help, n_tools;
+    LT_CHECK(app->ext != NULL);
+    /* builtin features are registered */
+    LT_CHECK(lt_ext_has_target(app, "std_realtime"));
+    LT_CHECK(lt_ext_has_target(app, "och-status"));
+    LT_CHECK(!lt_ext_has_target(app, "std_unit_test_target"));
+    LT_CHECK(lt_ext_dispatch_target(app, "std_unit_test_target") == LT_EXT_NO_TARGET);
+    n_pages = lt_ext_n_settings_pages(app);
+    n_help = lt_ext_n_menu_items(app, LT_EXT_MENU_HELP);
+    n_tools = lt_ext_n_menu_items(app, LT_EXT_MENU_TOOLS);
+    LT_CHECK(n_pages >= 1);
+    LT_CHECK(lt_ext_settings_title(app, 0) != NULL);
+    LT_CHECK(n_help >= 2);
+    LT_CHECK(strcmp(lt_ext_menu_item_label(app, LT_EXT_MENU_HELP, n_help - 1), "&About LibreTune") == 0);
+    LT_CHECK(lt_ext_menu_item_label(app, LT_EXT_MENU_HELP, n_help) == NULL);
+    /* a feature registers itself */
+    lt_ext_add_target(app->ext, "std_unit_test_target", my_target);
+    lt_ext_add_menu_item(app->ext, LT_EXT_MENU_TOOLS, "Unit &Test", NULL, my_action, NULL);
+    lt_ext_add_settings_page(app->ext, "Unit Test", my_page);
+    lt_ext_add_tick(app->ext, my_tick);
+    LT_CHECK(lt_ext_has_target(app, "std_unit_test_target"));
+    LT_CHECK(lt_ext_dispatch_target(app, "std_unit_test_target") == 0);
+    LT_CHECK(hit_n == 1 && strcmp(hit_target, "std_unit_test_target") == 0);
+    LT_CHECK(lt_ext_n_menu_items(app, LT_EXT_MENU_TOOLS) == n_tools + 1);
+    LT_CHECK(lt_ext_n_settings_pages(app) == n_pages + 1);
+    LT_CHECK(strcmp(lt_ext_settings_title(app, n_pages), "Unit Test") == 0);
+    LT_CHECK(lt_ext_settings_title(app, n_pages + 1) == NULL);
+    /* re-registering a name replaces the handler, no duplicate */
+    lt_ext_add_target(app->ext, "std_unit_test_target", my_target);
+    LT_CHECK(lt_ext_dispatch_target(app, "std_unit_test_target") == 0 && hit_n == 2);
+    /* tick hooks run from the service loop even offline */
+    lt_app_service(app);
+    LT_CHECK(my_tick_n == 1);
+    /* state blocks are zeroed, stable and cleaned up */
+    st = (int *)lt_ext_state(app, "unit", sizeof(int), my_free);
+    LT_CHECK(st != NULL && *st == 0);
+    *st = 5;
+    st2 = (int *)lt_ext_state(app, "unit", sizeof(int), my_free);
+    LT_CHECK(st2 == st && *st2 == 5);
+    /* open_target reaches registered targets (needs an ini) and still rejects unknown ones */
+    LT_CHECK(lt_app_find_demo_ini(buf, sizeof(buf)) != NULL);
+    LT_CHECK(lt_app_open_ini(app, buf) == 0);
+    hit_n = 0;
+    LT_CHECK(lt_app_open_target(app, "std_unit_test_target", "x") == 0 && hit_n == 1);
+    LT_CHECK(lt_app_open_target(app, "no_such_target_zz", "x") < 0);
+    /* shipped dialogs resolve through the dialog registry */
+    LT_CHECK(lt_app_dialog_push(app, "about", "", "About") != NULL);
+    LT_CHECK(lt_app_dialog_push(app, "shortcuts", "", "Shortcuts") != NULL);
+    lt_app_free(app);
+}
+
 int main(void)
 {
     LT_RUN(demo_edit_burn_save);
     LT_RUN(tabs_and_dialogs);
     LT_RUN(scale_and_geometry_settings);
+    LT_RUN(ext_registry);
     LT_TEST_MAIN_END
 }

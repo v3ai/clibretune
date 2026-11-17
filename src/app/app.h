@@ -36,6 +36,9 @@
 typedef struct lt_app lt_app;
 typedef struct lt_app_tab lt_app_tab;
 typedef struct lt_app_dialog lt_app_dialog;
+typedef struct lt_app_ext lt_app_ext;     /* extension registry, see app_ext.h */
+
+#define LT_APP_VERSION "0.1.0"
 
 typedef enum lt_app_conn {
     LT_APP_OFFLINE = 0, LT_APP_CONNECTING, LT_APP_ONLINE, LT_APP_DEMO
@@ -143,12 +146,13 @@ struct lt_app {
     lt_app_dialog **dialogs; int n_dialogs, cap_dialogs;
     lt_app_tab_kind *tab_kinds; int n_tab_kinds, cap_tab_kinds;
     lt_app_dialog_kind *dlg_kinds; int n_dlg_kinds, cap_dlg_kinds;
+    lt_app_ext  *ext;                /* feature registry (app_ext.c); features keep state there */
 
     /* shell UI state */
     char        search[64];
     lt_ui_filedlg fd;
     int         fd_purpose;          /* LT_APP_FD_* */
-    int         about_open, burn_open, quit_open, shortcuts_open, close_proj_open;
+    int         burn_open, quit_open, close_proj_open;
     int         confirm_delete;      /* recent index awaiting a second click, -1 */
     int         theme_idx;
     int         settings_tab;        /* active tab of the Settings dialog */

@@ -5,8 +5,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include "app.h"
+#include "app_ext.h"
 
-#define LT_APP_VERSION "0.1.0"
 
 static const char *const theme_names[] = { "dark", "light", "midnight", "carbon", "synthwave",
                                            "solarized", "nord", "dracula", "highcontrast" };
@@ -352,6 +352,7 @@ static void menu_file(lt_app *app)
         }
         lt_ui_menu_separator(ui);
     }
+    if (lt_ext_menu_draw(app, LT_EXT_MENU_FILE, 0) > 0) { lt_ui_menu_separator(ui); }
     if (lt_ui_menu_item(ui, "E&xit", "Ctrl+Q", 0)) { lt_app_request_quit(app); }
 }
 
@@ -391,6 +392,7 @@ static void menu_view(lt_app *app)
         }
         lt_ui_submenu_end(ui);
     }
+    lt_ext_menu_draw(app, LT_EXT_MENU_VIEW, 1);
 }
 
 static void menu_tools(lt_app *app)
@@ -411,10 +413,9 @@ static void menu_tools(lt_app *app)
         if (lt_ui_menu_item(ui, "Composite Logger", NULL, 0)) { lt_app_special_open(app, "composite-logger"); }
     }
     lt_ui_menu_separator(ui);
-    if (lt_ui_menu_item(ui, "Generate &Base Map...", NULL, 0)) { lt_app_basemap_wizard(app); }
-    lt_ui_menu_separator(ui);
     if (lt_ui_menu_item(ui, "ECU &Connection...", "Ctrl+Shift+C", 0)) { lt_app_connect_dialog(app); }
     if (lt_ui_menu_item(ui, "&Settings...", "Ctrl+,", 0)) { lt_app_settings_dialog(app); }
+    lt_ext_menu_draw(app, LT_EXT_MENU_TOOLS, 1);
 }
 
 static void menu_ini(lt_app *app)
@@ -473,8 +474,7 @@ static void menubar(lt_app *app)
     }
     lt_ui_menubar_separator(ui);
     if (lt_ui_menu_begin(ui, "&Help")) {
-        if (lt_ui_menu_item(ui, "Keyboard &Shortcuts", "F1", 0)) { app->shortcuts_open = 1; }
-        if (lt_ui_menu_item(ui, "&About LibreTune", NULL, 0)) { app->about_open = 1; }
+        lt_ext_menu_draw(app, LT_EXT_MENU_HELP, 0);
         lt_ui_menu_end(ui);
     }
     lt_ui_menubar_end(ui);
@@ -1002,7 +1002,7 @@ static void shortcuts(lt_app *app)
     if (lt_ui_key_pressed(ui, 'q', LT_MOD_CTRL)) { lt_app_request_quit(app); }
     if (lt_ui_key_pressed(ui, 'n', LT_MOD_CTRL)) { lt_app_new_project_dialog(app); }
     if (lt_ui_key_pressed(ui, LT_KEY_F9, 0)) { app->settings.sidebar_on = !app->settings.sidebar_on; }
-    if (lt_ui_key_pressed(ui, LT_KEY_F1, 0)) { app->shortcuts_open = 1; }
+    lt_ext_shortcuts(app);
     if (app->ini == NULL) { return; }
     if (lt_ui_key_pressed(ui, 'o', LT_MOD_CTRL)) {
         lt_app_file_dialog(app, LT_APP_FD_LOAD_TUNE, LT_UI_FILE_OPEN, NULL, "", "Tune files|*.msq;*.xml|All files|*");
@@ -1016,7 +1016,6 @@ static void shortcuts(lt_app *app)
     if (lt_ui_key_pressed(ui, 'd', LT_MOD_CTRL | LT_MOD_SHIFT)) { lt_app_disconnect(app); }
     if (lt_ui_key_pressed(ui, 'd', LT_MOD_CTRL)) { lt_app_dashboard_tab_open(app); }
     if (lt_ui_key_pressed(ui, 'l', LT_MOD_CTRL)) { lt_app_log_toggle(app); }
-    if (lt_ui_key_pressed(ui, 'a', LT_MOD_CTRL | LT_MOD_SHIFT)) { lt_app_autotune_open(app); }
     if (lt_ui_key_pressed(ui, ',', LT_MOD_CTRL)) { lt_app_settings_dialog(app); }
     if (lt_ui_key_pressed(ui, 'w', LT_MOD_CTRL)) {
         lt_app_tab *a = lt_app_tab_active(app);
@@ -1043,19 +1042,6 @@ static void app_dialogs(lt_app *app)
                            "Make sure the engine is not running. Continue?", "Burn|Cancel", &app->burn_open);
         if (res == 1) { lt_app_burn(app); }
     }
-    if (app->about_open) {
-        lt_ui_msgbox(ui, "about", "About LibreTune",
-                     "LibreTune " LT_APP_VERSION " - open source ECU tuning software.\n"
-                     "In Universal C. GPL-2.0-or-later.\nBuild: " __DATE__, "OK", &app->about_open);
-    }
-    if (app->shortcuts_open) {
-        lt_ui_msgbox(ui, "keys", "Keyboard shortcuts",
-                     "Ctrl+N new project   Ctrl+O load tune   Ctrl+S save   Ctrl+Shift+S save as\n"
-                     "Ctrl+B burn   Ctrl+Q quit   Ctrl+Shift+C connect   Ctrl+Shift+D disconnect\n"
-                     "Ctrl+D dashboard   Ctrl+L log   Ctrl+Shift+A autotune   Ctrl+, settings\n"
-                     "Ctrl+W close tab   Ctrl+Tab next tab   Ctrl+1..9 tab   F9 sidebar",
-                     "Close", &app->shortcuts_open);
-    }
     if (app->quit_open) {
         res = lt_ui_msgbox(ui, "quit", "Unsaved changes", "The tune has unsaved changes.",
                            "Save|Discard|Cancel", &app->quit_open);
@@ -1069,6 +1055,7 @@ static void app_dialogs(lt_app *app)
         else if (res == 2) { lt_app_close_project(app); }
     }
     file_dialog_frame(app);
+    lt_ext_overlays(app);
     for (i = 0; i < app->n_dialogs; i++) {
         lt_app_dialog *d = app->dialogs[i];
         for (k = 0; k < app->n_dlg_kinds; k++) {

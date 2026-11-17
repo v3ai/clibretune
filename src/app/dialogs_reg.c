@@ -25,7 +25,9 @@ lt_bool lt_dlg_contains_ci(const char *hay, const char *needle)
 void lt_app_register_dialogs(lt_app *app)
 {
     lt_dlg_register_ini(app);
-    lt_dlg_register_conn(app);
+    lt_dlg_register_connect(app);
+    lt_dlg_register_settings(app);
+    lt_dlg_register_newproj(app);
     lt_dlg_register_misc(app);
     lt_dlg_register_log(app);
 }

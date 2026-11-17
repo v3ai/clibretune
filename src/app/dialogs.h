@@ -7,7 +7,9 @@
 #include "app.h"
 
 void lt_dlg_register_ini(lt_app *app);      /* tab kind "dialog" (INI [UserDefined]) */
-void lt_dlg_register_conn(lt_app *app);     /* connect, settings, newproject */
+void lt_dlg_register_connect(lt_app *app);   /* connect dialog */
+void lt_dlg_register_settings(lt_app *app);  /* settings dialog */
+void lt_dlg_register_newproj(lt_app *app);   /* new project wizard */
 void lt_dlg_register_misc(lt_app *app);     /* basemap, restore, special tabs */
 void lt_dlg_register_log(lt_app *app);      /* tab kinds datalog, datalog-viewer */
 
