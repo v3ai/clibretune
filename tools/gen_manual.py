@@ -73,8 +73,9 @@ def cesc(s):
     for b in s.encode("utf-8"):
         c = chr(b)
         if octal and c.isdigit():
-            out.append('" "')          # a digit after an octal escape: split the literal
-        octal = False                  # (valid C, but MSVC warns C4125)
+            out.append("\\%03o" % b)   # a digit right after an octal escape is escaped too:
+            continue                   # valid C either way, but MSVC warns (C4125)
+        octal = False
         if c == '"' or c == "\\":
             out.append("\\" + c)
         elif c == "?":
