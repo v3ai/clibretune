@@ -38,7 +38,7 @@ static size_t parse_csv_line(const char *line, char ***out)
     return n;
 }
 
-static void strs_free(char **v, size_t n)
+static void dl_strs_free(char **v, size_t n)
 {
     lt_strv_free(v, n);
 }
@@ -157,9 +157,9 @@ void lt_dyno_compute_peaks(lt_dyno_run *r)
             r->peak_hp = p->hp;
             r->peak_hp_rpm = p->rpm;
         }
-        if (p->has_tq && (!r->has_peak_tq || p->torque >= r->peak_tq)) {
+        if (p->has_tq && (!r->has_peak_tq || p->tq_val >= r->peak_tq)) {
             r->has_peak_tq = LT_TRUE;
-            r->peak_tq = p->torque;
+            r->peak_tq = p->tq_val;
             r->peak_tq_rpm = p->rpm;
         }
     }
@@ -225,7 +225,7 @@ int lt_dyno_from_csv(const char *path, const char *name, lt_dyno_run *out)
             c_time = (long)i;
         }
     }
-    strs_free(hf, nh);
+    dl_strs_free(hf, nh);
     if (c_rpm < 0) {
         lt_free(buf);
         lt_err_set("Could not find RPM column in CSV headers");
@@ -244,7 +244,7 @@ int lt_dyno_from_csv(const char *path, const char *name, lt_dyno_run *out)
         nf = parse_csv_line(tl, &f);
         if (nf <= (size_t)c_rpm || !get_cell(f, nf, c_rpm, &rpm) ||
             !(rpm >= 100.0 && rpm <= 20000.0)) {
-            strs_free(f, nf);
+            dl_strs_free(f, nf);
             lt_free(line);
             continue;
         }
@@ -256,11 +256,11 @@ int lt_dyno_from_csv(const char *path, const char *name, lt_dyno_run *out)
         memset(pt, 0, sizeof *pt);
         pt->rpm = rpm;
         pt->has_hp = get_cell(f, nf, c_hp, &v); pt->hp = pt->has_hp ? v : 0.0;
-        pt->has_tq = get_cell(f, nf, c_tq, &v); pt->torque = pt->has_tq ? v : 0.0;
+        pt->has_tq = get_cell(f, nf, c_tq, &v); pt->tq_val = pt->has_tq ? v : 0.0;
         pt->has_afr = get_cell(f, nf, c_afr, &v); pt->afr = pt->has_afr ? v : 0.0;
         pt->has_boost = get_cell(f, nf, c_boost, &v); pt->boost = pt->has_boost ? v : 0.0;
         pt->has_time = get_cell(f, nf, c_time, &v); pt->time = pt->has_time ? v : 0.0;
-        strs_free(f, nf);
+        dl_strs_free(f, nf);
         lt_free(line);
     }
     lt_free(buf);
@@ -314,7 +314,7 @@ size_t lt_dyno_map_to_table(const lt_dyno_run *r, const double *x_bins, size_t n
         }
         k = row * nx + col;
         if (pt->has_hp) { shp[k] += pt->hp; nhp[k]++; }
-        if (pt->has_tq) { stq[k] += pt->torque; ntq[k]++; }
+        if (pt->has_tq) { stq[k] += pt->tq_val; ntq[k]++; }
         if (pt->has_afr) { safr[k] += pt->afr; nafr[k]++; }
     }
     for (row = 0; row < ny; row++) {
@@ -335,7 +335,7 @@ size_t lt_dyno_map_to_table(const lt_dyno_run *r, const double *x_bins, size_t n
             c->has_tq = ntq[k] > 0;
             c->has_afr = nafr[k] > 0;
             if (c->has_hp) { c->hp = shp[k] / (double)nhp[k]; }
-            if (c->has_tq) { c->torque = stq[k] / (double)ntq[k]; }
+            if (c->has_tq) { c->tq_val = stq[k] / (double)ntq[k]; }
             if (c->has_afr) { c->afr = safr[k] / (double)nafr[k]; }
         }
     }
@@ -352,7 +352,7 @@ lt_bool lt_dyno_interpolate(const lt_dyno_run *r, double rpm, int which, double 
     for (i = 0; i < r->n; i++) {
         const lt_dyno_point *p = &r->data[i];
         lt_bool has = which == 0 ? p->has_hp : p->has_tq;
-        double v = which == 0 ? p->hp : p->torque;
+        double v = which == 0 ? p->hp : p->tq_val;
         if (!has) {
             continue;
         }
@@ -392,18 +392,18 @@ int lt_dyno_compare(const lt_dyno_run *a, const lt_dyno_run *b, lt_dyno_cmp *out
         }
         if (p->has_tq && lt_dyno_interpolate(b, p->rpm, 1, &v)) {
             out->tq_diff[2 * out->n_tq] = p->rpm;
-            out->tq_diff[2 * out->n_tq + 1] = v - p->torque;
-            st += v - p->torque;
+            out->tq_diff[2 * out->n_tq + 1] = v - p->tq_val;
+            st += v - p->tq_val;
             out->n_tq++;
         }
     }
     if (out->n_hp > 0) {
         out->has_total_hp = LT_TRUE;
-        out->total_hp_change = sh / (double)out->n_hp;
+        out->hp_change_sum = sh / (double)out->n_hp;
     }
     if (out->n_tq > 0) {
         out->has_total_tq = LT_TRUE;
-        out->total_tq_change = st / (double)out->n_tq;
+        out->tq_change_sum = st / (double)out->n_tq;
     }
     return 0;
 }

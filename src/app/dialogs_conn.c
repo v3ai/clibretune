@@ -223,64 +223,118 @@ static void swatch_row(lt_ui *ui, const char *name, const int *w2)
     }
 }
 
+/* bold caption above a full-width field (stock settings form) */
+static void form_label(lt_ui *ui, const char *text)
+{
+    int w1 = -1;
+    lt_ui_layout_row(ui, 1, &w1, 0);
+    lt_ui_text_style(ui, (int)LT_FONT_SANS_SEMIBOLD, LT_UI_FS_BASE);
+    lt_ui_label_ex(ui, text, lt_ui_theme(ui)->text, LT_UI_ALIGN_LEFT);
+    lt_ui_text_style_reset(ui);
+}
+
+static void form_note(lt_ui *ui, const char *text)
+{
+    int w1 = -1;
+    lt_ui_layout_row(ui, 1, &w1, 0);
+    lt_ui_text_style(ui, (int)LT_FONT_SANS, LT_UI_FS_SM);
+    lt_ui_label_ex(ui, text, lt_ui_theme(ui)->muted, LT_UI_ALIGN_LEFT);
+    lt_ui_text_style_reset(ui);
+}
+
+static const char *const set_tabs[] = { "General", "Appearance", "Connection", "Keyboard Shortcuts" };
+
 static void settings_draw(lt_app *app, lt_app_dialog *d)
 {
     lt_ui *ui = app->ui;
     lt_app_settings *st = &app->settings;
-    const lt_theme *th = lt_ui_theme(ui);
-    int open = d->open, w2[2], w1 = -1, sel, ch = 0;
+    int open = d->open, w1 = -1, sel, ch = 0, wf[2], fh;
     double hz;
-    if (lt_ui_modal_begin(ui, "Settings", CH * 64, 600, &open)) {
-        w2[0] = CH * 20; w2[1] = -1;
+    int *tab = &app->settings_tab;
+    const lt_theme *th = lt_ui_theme(ui);
+    if (lt_ui_modal_begin(ui, "Settings", 600, 560, &open)) {
+        fh = lt_ui_cell_mode(ui) ? 16 : 30;
         lt_ui_layout_row(ui, 1, &w1, 0);
-        lt_ui_heading(ui, "Appearance");
-        lt_ui_layout_row(ui, 2, w2, 0);
-        lt_ui_label(ui, "Theme");
-        sel = find_str(themes, 9, st->theme);
-        if (lt_ui_combo(ui, "theme", &sel, themes, 9)) { lt_app_apply_theme(app, themes[sel]); ch = 1; }
-        swatch_row(ui, themes[sel], w2);
-        lt_ui_layout_row(ui, 2, w2, 0);
-        lt_ui_label(ui, "Heat map");
-        sel = find_str(heatmaps, 6, st->heatmap);
-        if (lt_ui_combo(ui, "heat", &sel, heatmaps, 6)) { lt_strlcpy(st->heatmap, heatmaps[sel], sizeof(st->heatmap)); ch = 1; }
-        lt_ui_label(ui, "UI scale");
-        sel = LT_CLAMP(st->scale, 1, 3) - 1;
-        if (lt_ui_combo(ui, "scale", &sel, scales, 3)) { st->scale = sel + 1; lt_ui_set_scale(ui, st->scale); ch = 1; }
-        lt_ui_label(ui, "Menus");
-        if (lt_ui_checkbox(ui, "Show ECU menus in the menu bar", &st->show_ecu_menus)) { ch = 1; }
-        lt_ui_layout_row(ui, 1, &w1, 0);
-        lt_ui_heading(ui, "Units");
-        lt_ui_layout_row(ui, 2, w2, 0);
-        lt_ui_label(ui, "System");
-        if (lt_ui_checkbox(ui, "Metric", &st->metric)) {
-            st->temp_unit = st->metric ? 0 : 1;
-            st->press_unit = st->metric ? 0 : 1;
-            ch = 1;
+        lt_ui_layout_gap(ui, 0, 0);
+        lt_ui_tabs_flat(ui, "settabs", set_tabs, 4, tab);
+        lt_ui_layout_row(ui, 1, &w1, -(fh + 8));
+        if (lt_ui_scroll_begin(ui, "setbody")) {
+            lt_ui_layout_row(ui, 1, &w1, 0);
+            switch (*tab) {
+            case 0:
+                form_label(ui, "Unit system");
+                lt_ui_layout_row(ui, 1, &w1, 0);
+                if (lt_ui_checkbox(ui, "Metric (\xC2\xB0" "C, kPa)", &st->metric)) {
+                    st->temp_unit = st->metric ? 0 : 1;
+                    st->press_unit = st->metric ? 0 : 1;
+                    ch = 1;
+                }
+                lt_ui_layout_space(ui, 8);
+                form_label(ui, "Temperature");
+                lt_ui_layout_row(ui, 1, &w1, 0);
+                sel = LT_CLAMP(st->temp_unit, 0, 1);
+                if (lt_ui_combo(ui, "temp", &sel, temps, 2)) { st->temp_unit = sel; ch = 1; }
+                form_label(ui, "Pressure");
+                lt_ui_layout_row(ui, 1, &w1, 0);
+                sel = LT_CLAMP(st->press_unit, 0, 2);
+                if (lt_ui_combo(ui, "press", &sel, press, 3)) { st->press_unit = sel; ch = 1; }
+                form_label(ui, "Air-Fuel Ratio");
+                lt_ui_layout_row(ui, 1, &w1, 0);
+                sel = LT_CLAMP(st->afr_unit, 0, 1);
+                if (lt_ui_combo(ui, "afr", &sel, afrs, 2)) { st->afr_unit = sel; ch = 1; }
+                break;
+            case 1:
+                form_label(ui, "Theme");
+                lt_ui_layout_row(ui, 1, &w1, 0);
+                sel = find_str(themes, 9, st->theme);
+                if (lt_ui_combo(ui, "theme", &sel, themes, 9)) { lt_app_apply_theme(app, themes[sel]); ch = 1; }
+                wf[0] = 0; wf[1] = -1;
+                swatch_row(ui, themes[sel], wf);
+                lt_ui_layout_space(ui, 8);
+                form_label(ui, "Heat map");
+                lt_ui_layout_row(ui, 1, &w1, 0);
+                sel = find_str(heatmaps, 6, st->heatmap);
+                if (lt_ui_combo(ui, "heat", &sel, heatmaps, 6)) { lt_strlcpy(st->heatmap, heatmaps[sel], sizeof(st->heatmap)); ch = 1; }
+                form_label(ui, "UI scale");
+                lt_ui_layout_row(ui, 1, &w1, 0);
+                sel = LT_CLAMP(st->scale, 1, 3) - 1;
+                if (lt_ui_combo(ui, "scale", &sel, scales, 3)) { st->scale = sel + 1; lt_ui_set_scale(ui, st->scale); ch = 1; }
+                lt_ui_layout_space(ui, 8);
+                lt_ui_layout_row(ui, 1, &w1, 0);
+                if (lt_ui_checkbox(ui, "Show ECU menus in the menu bar", &st->show_ecu_menus)) { ch = 1; }
+                break;
+            case 2:
+                form_label(ui, "Realtime rate (Hz)");
+                lt_ui_layout_row(ui, 1, &w1, 0);
+                hz = st->poll_hz;
+                if (lt_ui_number(ui, "hz", &hz, 5, 100, 1, 0) & LT_UI_CHANGED) { st->poll_hz = (int)(hz + 0.5); ch = 1; }
+                lt_ui_layout_space(ui, 8);
+                lt_ui_layout_row(ui, 1, &w1, 0);
+                if (lt_ui_checkbox(ui, "Connect automatically when a project opens", &st->auto_connect)) { ch = 1; }
+                lt_ui_layout_space(ui, 8);
+                form_label(ui, "Graphics backend");
+                lt_ui_layout_row(ui, 1, &w1, 0);
+                sel = find_str(backends, 5, st->backend);
+                if (lt_ui_combo(ui, "backend", &sel, backends, 5)) { lt_strlcpy(st->backend, backends[sel], sizeof(st->backend)); ch = 1; }
+                form_note(ui, "The backend change applies at the next start.");
+                break;
+            default:
+                form_label(ui, "Global shortcuts");
+                lt_ui_layout_row(ui, 1, &w1, 0);
+                lt_ui_label_wrap(ui, "Ctrl+N new project    Ctrl+O load tune    Ctrl+S save    Ctrl+Shift+S save as\n"
+                                 "Ctrl+B burn    Ctrl+Q quit    Ctrl+Shift+C connect    Ctrl+Shift+D disconnect\n"
+                                 "Ctrl+D dashboard    Ctrl+L log    Ctrl+Shift+A autotune    Ctrl+, settings\n"
+                                 "Ctrl+W close tab    Ctrl+Tab next tab    Ctrl+1..9 tab    Ctrl+K search    F9 sidebar",
+                                 th->text2);
+                break;
+            }
+            lt_ui_scroll_end(ui);
         }
-        lt_ui_label(ui, "Temperature");
-        sel = LT_CLAMP(st->temp_unit, 0, 1);
-        if (lt_ui_combo(ui, "temp", &sel, temps, 2)) { st->temp_unit = sel; ch = 1; }
-        lt_ui_label(ui, "Pressure");
-        sel = LT_CLAMP(st->press_unit, 0, 2);
-        if (lt_ui_combo(ui, "press", &sel, press, 3)) { st->press_unit = sel; ch = 1; }
-        lt_ui_label(ui, "Air/fuel");
-        sel = LT_CLAMP(st->afr_unit, 0, 1);
-        if (lt_ui_combo(ui, "afr", &sel, afrs, 2)) { st->afr_unit = sel; ch = 1; }
-        lt_ui_layout_row(ui, 1, &w1, 0);
-        lt_ui_heading(ui, "Connection");
-        lt_ui_layout_row(ui, 2, w2, 0);
-        lt_ui_label(ui, "Realtime rate (Hz)");
-        hz = st->poll_hz;
-        if (lt_ui_number(ui, "hz", &hz, 5, 100, 1, 0) & LT_UI_CHANGED) { st->poll_hz = (int)(hz + 0.5); ch = 1; }
-        lt_ui_label(ui, "Auto connect");
-        if (lt_ui_checkbox(ui, "On project open", &st->auto_connect)) { ch = 1; }
-        lt_ui_label(ui, "Graphics backend");
-        sel = find_str(backends, 5, st->backend);
-        if (lt_ui_combo(ui, "backend", &sel, backends, 5)) { lt_strlcpy(st->backend, backends[sel], sizeof(st->backend)); ch = 1; }
-        lt_ui_layout_row(ui, 1, &w1, 0);
-        lt_ui_label_ex(ui, "The backend change applies at the next start.", th->muted, LT_UI_ALIGN_LEFT);
-        if (ch) { lt_app_settings_save(app); }
+        wf[0] = -1; wf[1] = 96;
+        lt_ui_layout_row(ui, 2, wf, fh);
+        lt_ui_layout_next(ui);
         if (lt_ui_button_ex(ui, "Close", LT_UI_BTN_DEFAULT)) { open = 0; }
+        if (ch) { lt_app_settings_save(app); }
         lt_ui_modal_end(ui);
     }
     d->open = open;

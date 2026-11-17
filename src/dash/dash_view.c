@@ -40,7 +40,7 @@ lt_bool lt_gauge_is_spike(double raw, double smoothed, double min, double max)
 {
     double range = max - min;
     if (!(range > 0.0)) return LT_FALSE;
-    return fabs(raw - smoothed) > 0.15 * range;
+    return fabs(raw - smoothed) * 20.0 > 3.0 * range;   /* 15% of range, exact at the boundary */
 }
 
 double lt_gauge_seed_peak(const lt_dash_gauge *g, double fallback, double min, double max)

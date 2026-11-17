@@ -174,7 +174,8 @@ LT_TEST(authority_limits)
     /* NaN begin does not misbehave */
     lt_at_authority_default(&a);
     r = lt_at_apply_authority_limits(0.0 / 0.0 + 0.0, 100, &a);
-    LT_CHECK(r == r || r != r);
+    (void)r;
+    LT_CHECK(1);
     /* default rails */
     LT_CHECK_NEAR(lt_at_clamp_to_rails(&a, -5), 0, 0);
     LT_CHECK_NEAR(lt_at_clamp_to_rails(&a, 300), 255, 0);
@@ -368,7 +369,7 @@ LT_TEST(target_table_lambda_normalised)
     fx_free(&x);
 }
 
-LT_TEST(strict_lambda_match)
+LT_TEST(lambda_match_strict)
 {
     fx x;
     lt_ve_point p;
@@ -1151,7 +1152,7 @@ int main(void)
     LT_RUN(accumulate);
     LT_RUN(target_table_used);
     LT_RUN(target_table_lambda_normalised);
-    LT_RUN(strict_lambda_match);
+    LT_RUN(lambda_match_strict);
     LT_RUN(cma_alternating);
     LT_RUN(y_axis_filter);
     LT_RUN(ramp_holds_sparse_cell);

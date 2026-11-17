@@ -800,7 +800,7 @@ LT_TEST(validate)
     lt_dash_validate(d, NULL, 0, &r);
     LT_CHECK(!r.is_valid);
     LT_CHECK_INT(r.n, 1);
-    LT_CHECK(r.issues[0].kind == LT_DI_EMPTY && r.issues[0].is_error);
+    LT_CHECK(r.problems[0].kind == LT_DI_EMPTY && r.problems[0].is_error);
     lt_dash_report_free(&r);
 
     g1 = lt_dash_add_gauge(d);
@@ -827,11 +827,11 @@ LT_TEST(validate)
     {
         int unk = 0, rng = 0, img = 0, tiny = 0, oob = 0;
         for (i = 0; i < r.n; i++) {
-            switch (r.issues[i].kind) {
-            case LT_DI_UNKNOWN_CHANNEL: unk++; LT_CHECK(r.issues[i].is_error); break;
-            case LT_DI_INVALID_RANGE: rng++; LT_CHECK_STR(r.issues[i].gauge_id, "g2"); break;
+            switch (r.problems[i].kind) {
+            case LT_DI_UNKNOWN_CHANNEL: unk++; LT_CHECK(r.problems[i].is_error); break;
+            case LT_DI_INVALID_RANGE: rng++; LT_CHECK_STR(r.problems[i].gauge_id, "g2"); break;
             case LT_DI_MISSING_IMAGE: img++; break;
-            case LT_DI_TINY_GAUGE: tiny++; LT_CHECK(!r.issues[i].is_error); break;
+            case LT_DI_TINY_GAUGE: tiny++; LT_CHECK(!r.problems[i].is_error); break;
             case LT_DI_OUT_OF_BOUNDS: oob++; break;
             case LT_DI_OVERLAP: n_overlap++; break;
             default: break;
@@ -857,7 +857,7 @@ LT_TEST(validate)
     lt_dash_validate(d, NULL, 0, &r);
     n_overlap = 0;
     for (i = 0; i < r.n; i++)
-        if (r.issues[i].kind == LT_DI_OVERLAP) n_overlap++;
+        if (r.problems[i].kind == LT_DI_OVERLAP) n_overlap++;
     LT_CHECK_INT(n_overlap, 1);
     LT_CHECK(r.is_valid);
     lt_dash_report_free(&r);
@@ -872,7 +872,7 @@ LT_TEST(validate)
     LT_CHECK(r.has_embedded_fonts);
     {
         int img = 0;
-        for (i = 0; i < r.n; i++) if (r.issues[i].kind == LT_DI_MISSING_IMAGE) img++;
+        for (i = 0; i < r.n; i++) if (r.problems[i].kind == LT_DI_MISSING_IMAGE) img++;
         LT_CHECK_INT(img, 0);
     }
     lt_dash_report_free(&r);
@@ -881,7 +881,7 @@ LT_TEST(validate)
     lt_dash_validate(d, NULL, 0, &r);
     {
         int perf = 0;
-        for (i = 0; i < r.n; i++) if (r.issues[i].kind == LT_DI_PERFORMANCE) perf++;
+        for (i = 0; i < r.n; i++) if (r.problems[i].kind == LT_DI_PERFORMANCE) perf++;
         LT_CHECK_INT(perf, 1);
     }
     lt_dash_report_free(&r);
@@ -901,7 +901,7 @@ static void check_template(lt_dash_file *d, size_t n)
     lt_dash_validate(d, NULL, 0, &r);
     LT_CHECK(r.is_valid);
     for (i = 0; i < r.n; i++)
-        LT_CHECK(r.issues[i].kind != LT_DI_INVALID_RANGE && r.issues[i].kind != LT_DI_EMPTY);
+        LT_CHECK(r.problems[i].kind != LT_DI_INVALID_RANGE && r.problems[i].kind != LT_DI_EMPTY);
     lt_dash_report_free(&r);
     rt = roundtrip(d);
     LT_CHECK(rt != NULL && dash_eq(d, rt));
@@ -1111,7 +1111,7 @@ LT_TEST(from_frontpage)
     {
         size_t ov = 0;
         for (i = 0; i < r.n; i++)
-            if (r.issues[i].kind == LT_DI_OVERLAP || r.issues[i].kind == LT_DI_OUT_OF_BOUNDS) ov++;
+            if (r.problems[i].kind == LT_DI_OVERLAP || r.problems[i].kind == LT_DI_OUT_OF_BOUNDS) ov++;
         LT_CHECK_INT(ov, 0);
     }
     lt_dash_report_free(&r);

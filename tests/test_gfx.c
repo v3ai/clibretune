@@ -4,7 +4,7 @@
 #include "lt_test.h"
 #include "../src/gui/gui.h"
 
-static lt_u32 P(lt_canvas *c, int x, int y) { return c->px[y * c->stride + x] & 0xFFFFFFUL; }
+static lt_u32 P(lt_canvas *c, int x, int y) { return c->px[y * c->pitch + x] & 0xFFFFFFUL; }
 
 static void write_ppm(lt_canvas *c, const char *path)
 {
@@ -14,7 +14,7 @@ static void write_ppm(lt_canvas *c, const char *path)
     fprintf(f, "P6\n%d %d\n255\n", c->w, c->h);
     for (y = 0; y < c->h; y++) {
         for (x = 0; x < c->w; x++) {
-            lt_u32 v = c->px[y * c->stride + x];
+            lt_u32 v = c->px[y * c->pitch + x];
             fputc((int)((v >> 16) & 255), f); fputc((int)((v >> 8) & 255), f);
             fputc((int)(v & 255), f);
         }
@@ -180,7 +180,7 @@ LT_TEST(test_speed)
                         LT_RGB(255, 255, 255), 1);
         }
     }
-    ms = (clock() - t0) * 1000.0 / CLOCKS_PER_SEC / 10.0;
+    ms = (double)(clock() - t0) * 1000.0 / CLOCKS_PER_SEC / 10.0;
     printf("frame (clear+20 rects+40 text lines): %.2f ms\n", ms);
     LT_CHECK(ms < 50.0);
     lt_canvas_free(&cv);

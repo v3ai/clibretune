@@ -19,6 +19,8 @@
 #define LT_GUI_H
 
 #include "../lt.h"
+#include "ttf.h"
+#include "icons.h"
 
 typedef lt_u32 lt_color;
 #define LT_RGB(r, g, b) ((lt_color)(0xFF000000UL | ((lt_u32)(r) << 16) | ((lt_u32)(g) << 8) | (lt_u32)(b)))
@@ -37,10 +39,10 @@ lt_bool lt_rect_contains(lt_rect r, int x, int y);
 lt_rect lt_rect_inset(lt_rect r, int dx, int dy);
 
 /* ------------------------------------------------------------------ */
-/* Pixel canvas: 32-bit XRGB, row-major, stride in pixels.             */
+/* Pixel canvas: 32-bit XRGB, row-major, pitch in pixels.             */
 typedef struct lt_canvas {
     lt_u32 *px;
-    int w, h, stride;
+    int w, h, pitch;
 } lt_canvas;
 void lt_canvas_init(lt_canvas *c, int w, int h);   /* allocates */
 void lt_canvas_resize(lt_canvas *c, int w, int h);
@@ -85,6 +87,8 @@ typedef struct lt_gfx {
     int        cell_w, cell_h; /* 1,1 in pixel mode; 8,16 in cell mode */
     int        ox, oy;    /* translation applied to all coordinates */
     lt_rect    dirty;     /* union of everything drawn since last reset */
+    int        bitmap_text; /* nonzero: lt_gfx_text/vtext use the 8x16 bitmap/Hershey
+                             * fonts even in pixel mode (default 0 = IBM Plex) */
 } lt_gfx;
 
 void lt_gfx_init_canvas(lt_gfx *g, lt_canvas *c);
@@ -117,7 +121,12 @@ void lt_gfx_fill_poly(lt_gfx *g, const double *xy, int npoints, lt_color c);
 /* vertical gradient */
 void lt_gfx_fill_rect_vgrad(lt_gfx *g, lt_rect r, lt_color top, lt_color bottom);
 /* blit ARGB image (alpha blended) */
-void lt_gfx_blit(lt_gfx *g, int x, int y, const lt_u32 *px, int w, int h, int stride);
+void lt_gfx_blit(lt_gfx *g, int x, int y, const lt_u32 *px, int w, int h, int pitch);
+/* blit an 8-bit coverage mask tinted with color c (alpha-blended). lut, if
+ * non-NULL, is a 256-entry table remapping coverage (text contrast). No-op in
+ * cell mode. */
+void lt_gfx_blit_mask(lt_gfx *g, int x, int y, const lt_u8 *a, int w, int h, int pitch,
+                      lt_color c, const lt_u8 *lut);
 
 /* bitmap text (UTF-8). scale 1..4. Returns advance width in pixels. */
 int  lt_gfx_text(lt_gfx *g, int x, int y, const char *utf8, lt_color c, int scale);
@@ -128,6 +137,72 @@ int  lt_gfx_text_height(int scale);
 void lt_gfx_vtext(lt_gfx *g, double x, double y, const char *utf8, double height,
                   double rotation, int align, int valign, double stroke, lt_color c);
 double lt_gfx_vtext_width(const char *utf8, double height);
+
+/* ------------------------------------------------------------------ */
+/* TrueType text (IBM Plex, embedded). Pixel mode only; in cell mode these
+ * fall back to the 8x16 cell font (text snapped to the grid).
+ *
+ * Fonts are loaded lazily on first use. lt_font_get returns NULL if the
+ * embedded data could not be parsed (never happens in a healthy build); all
+ * text functions accept NULL and then use the bitmap font.
+ *
+ * Sizes are em heights in pixels (CSS font-size): 11..16 for UI text.
+ * Stock LibreTune: Plex Sans 12px body, Plex Mono for numbers, SemiBold
+ * for headings.
+ *
+ * Vertical placement: lt_gfx_text_ex puts y at the TOP of the line box (the
+ * line box is lt_font_line_height tall and the baseline lies lt_font_ascent
+ * below y); lt_gfx_text_bl puts y at the baseline. Fractional x is honored
+ * (glyphs are positioned on a 1/4 pixel grid). Kerning is applied. */
+typedef lt_ttf lt_font;
+typedef enum lt_font_id {
+    LT_FONT_SANS = 0,
+    LT_FONT_SANS_MEDIUM,
+    LT_FONT_SANS_SEMIBOLD,
+    LT_FONT_MONO,
+    LT_FONT_MONO_MEDIUM,
+    LT_FONT_COUNT
+} lt_font_id;
+
+lt_font *lt_font_get(lt_font_id id);
+void lt_font_release_all(void);          /* free every loaded font (tests/exit) */
+/* metrics at size px, rounded to whole pixels so line boxes tile exactly */
+int lt_font_ascent(lt_font *f, double px);
+int lt_font_descent(lt_font *f, double px);       /* positive */
+int lt_font_line_height(lt_font *f, double px);   /* ascent + descent */
+double lt_font_cap_height(lt_font *f, double px); /* unrounded */
+double lt_font_x_height(lt_font *f, double px);
+
+/* width of utf8 in pixels (kerning included); bitmap-font width if f is NULL */
+double lt_gfx_text_measure(lt_font *f, double px, const char *utf8);
+/* byte count of the longest prefix of utf8 that fits in max_w pixels */
+size_t lt_gfx_text_fit(lt_font *f, double px, const char *utf8, double max_w);
+/* draw; return the advance width in whole pixels (rounded) */
+int lt_gfx_text_ex(lt_gfx *g, lt_font *f, double px, int x, int y, const char *utf8, lt_color c);
+int lt_gfx_text_bl(lt_gfx *g, lt_font *f, double px, double x, int baseline, const char *utf8,
+                   lt_color c);
+/* rotated text (gauge labels): (x, y) is the anchor, rotation in radians
+ * (0 = left-to-right, increasing clockwise on screen), align 0 left / 1
+ * center / 2 right along the text direction, valign 0 = anchor at the cap
+ * top, 1 = middle of the capital letters, 2 = baseline. */
+void lt_gfx_text_rot(lt_gfx *g, lt_font *f, double px, double x, double y, const char *utf8,
+                     double rotation, int align, int valign, lt_color c);
+
+/* ------------------------------------------------------------------ */
+/* Icons: the Lucide icon set (ISC, https://lucide.dev), 24x24 design grid,
+ * stroked with round caps/joins. Ids are the LT_ICON_* macros from icons.h
+ * (LT_ICON_FOLDER_OPEN, LT_ICON_SETTINGS, ...). Pixel mode only; cell mode
+ * draws nothing. */
+/* lucide name ("folder-open") or lucide-react name ("FolderOpen") -> id, or
+ * LT_ICON_NONE (0) when unknown. Case-insensitive, ignores '-' and '_'. */
+int lt_icon_find(const char *name);
+const char *lt_icon_name(int icon);   /* kebab-case lucide name or NULL */
+int lt_icon_count(void);              /* number of icons; ids are 1..count */
+/* Draw icon with its top-left at (x, y), size_px wide/high, strokes stroke_px
+ * wide (lucide default: 2 * size_px / 24; pass <= 0 for the default).
+ * Fractional positions are anti-aliased exactly. */
+void lt_gfx_icon(lt_gfx *g, int icon, double x, double y, double size_px, double stroke_px,
+                 lt_color c);
 
 /* ------------------------------------------------------------------ */
 /* Input events                                                        */
@@ -205,7 +280,8 @@ struct lt_backend {
 /* Backend constructors. Each returns NULL if unavailable on this system
  * (e.g. no $DISPLAY, not running on Windows). Never abort. */
 lt_backend *lt_backend_x11_create(void);
-lt_backend *lt_backend_win32_create(void);
+lt_backend *lt_backend_win32_create(void);   /* NULL unless built for Windows */
+lt_backend *lt_backend_cocoa_create(void);   /* NULL unless built for macOS */
 lt_backend *lt_backend_web_create(int port);   /* port 0 = default 8640 */
 lt_backend *lt_backend_tty_create(void);
 /* Pick by name ("auto" = win32 -> x11 -> web (macOS) -> tty). */

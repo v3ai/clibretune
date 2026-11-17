@@ -29,7 +29,15 @@ static int scheme_of(const char *n)
 lt_color lt_tabs_heat(const lt_app *app, const lt_theme *t, double lo, double hi, double v)
 {
     double f = hi > lo ? (v - lo) / (hi - lo) : 0.5;
-    return lt_color_mix(lt_heat_color(scheme_of(app->settings.heatmap), f), t->table_bg, 70);
+    LT_UNUSED(t);
+    return lt_heat_color(scheme_of(app->settings.heatmap), f);
+}
+
+lt_color lt_tabs_heat_text(lt_color bg)
+{
+    /* same rule as the stock heat map: dark ink above 55% luminance */
+    int lum = LT_COLOR_R(bg) * 299 + LT_COLOR_G(bg) * 587 + LT_COLOR_B(bg) * 114;
+    return lum > 140250 ? LT_RGB(0x11, 0x14, 0x18) : LT_RGB(255, 255, 255);
 }
 
 int lt_tabs_const_digits(const lt_ini *ini, const char *name)

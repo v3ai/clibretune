@@ -25,7 +25,8 @@ enum { UL_MAIN = 0, UL_WINDOW, UL_POPUP, UL_MODAL, UL_TIP };
 
 /* draw command types */
 enum { UC_CLIP = 0, UC_FILL, UC_RECT, UC_ROUND, UC_HLINE, UC_VLINE, UC_LINE, UC_TEXT,
-       UC_VTEXT, UC_CFILL, UC_CIRCLE, UC_ARC, UC_POLY, UC_VGRAD, UC_BLIT, UC_CUSTOM };
+       UC_VTEXT, UC_CFILL, UC_CIRCLE, UC_ARC, UC_POLY, UC_VGRAD, UC_BLIT, UC_CUSTOM,
+       UC_ICON, UC_FRRECT };
 
 typedef struct ui_cmd {
     int type;
@@ -200,7 +201,7 @@ struct lt_ui {
     ui_prev_layer prev[UI_MAX_LAYERS];
     int nprev;
     lt_u32 hover_layer;
-    int top_modal_z, modal_seq, popup_seq;
+    int modal_z_top, modal_seq, popup_seq;
     lt_u32 win_order[24];
     int nwin;
     /* clip / layout / scroll stacks */
@@ -233,8 +234,10 @@ struct lt_ui {
     int nbar;
     char typeahead[32];
     double typeahead_t;
+    /* default text style (lt_ui_text_style) */
+    int tfont, tpx;
     /* shell regions */
-    int top_used, bottom_used;
+    int used_top, bottom_used;
     /* text editing */
     ui_edit edit;
     lt_buf clipbuf;
@@ -245,9 +248,9 @@ struct lt_ui {
     int tab_idx, tab_x, *tab_active_ptr;
     lt_rect tab_rect;
     /* tree */
-    int tree_depth;
-    /* toasts */
-    ui_toast toasts[UI_MAX_TOASTS];
+    int tree_depth, tree_cmd, tree_cmd_left;
+    /* msg_q */
+    ui_toast msg_q[UI_MAX_TOASTS];
     int ntoasts;
     /* modal bookkeeping */
     int modal_depth;
@@ -262,7 +265,15 @@ struct lt_ui {
     ui_grid *grid;
 };
 
-/* ---- theme (ui_theme.c) ---- */
+/* ---- theme (ui_theme.c, ui_theme_data.c) ---- */
+#define LT_THEME_NTOK 57
+#define LT_THEME_NROWS 9
+typedef struct lt_theme_row {
+    const char *name;
+    int dark;
+    lt_u32 col[LT_THEME_NTOK];       /* 0xRRGGBB, 0xFFFFFFFF = unset */
+} lt_theme_row;
+extern const lt_theme_row lt_theme_rows[LT_THEME_NROWS];
 void ui_theme_metrics(lt_theme *t, int cell, int scale);
 
 /* ---- core (ui.c) ---- */
@@ -286,8 +297,14 @@ lt_rect   ui_next(lt_ui *ui, int pref_w);
 lt_rect   ui_next_full(lt_ui *ui, int height);
 int       ui_hover_only(lt_ui *ui, lt_u32 id, lt_rect r);
 void      ui_text_in(lt_ui *ui, lt_rect r, const char *s, lt_color c, int align);
-int       ui_fit_text(const char *s, int maxw, char *out, size_t cap);
+void      ui_text_in_f(lt_ui *ui, lt_rect r, const char *s, lt_color c, int align, int font, int px);
+int       ui_fit_text(const lt_ui *ui, const char *s, int maxw, char *out, size_t cap, int font, int px);
+int       ui_text_w(const lt_ui *ui, const char *s, int font, int px);   /* explicit face */
+int       ui_line_h(const lt_ui *ui);       /* line pitch of the default text style */
+int       ui_font_px(const lt_ui *ui, int px);  /* px (0 = default) scaled */
+int       ui_prefix_w(const lt_ui *ui, const char *s, int nbytes);       /* width of s[0..nbytes) */
 lt_rect   ui_text_rect(const lt_ui *ui, lt_rect r, int pad);
+void      ui_field_box(lt_ui *ui, lt_rect r, lt_color fill, lt_color border, int focused);
 void      ui_request(lt_ui *ui);       /* ask for an extra frame */
 void      ui_animate(lt_ui *ui, int ms);
 
@@ -330,7 +347,7 @@ void ui_popup_begin(lt_ui *ui, int idx, int min_w, int est_h);
 void ui_popup_end(lt_ui *ui, int idx);
 
 /* ---- widgets / containers ---- */
-int  ui_wrap_lines(const char *text, int maxc, const char **starts, int *lens, int cap);
+int  ui_wrap_lines(const lt_ui *ui, const char *text, int maxw, const char **starts, int *lens, int cap);
 
 /* ---- text (ui_text.c) ---- */
 int  ui_edit_widget(lt_ui *ui, lt_u32 id, lt_rect r, char *buf, size_t cap, int flags, int draw_box);

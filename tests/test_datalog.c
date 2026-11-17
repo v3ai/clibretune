@@ -985,7 +985,7 @@ static lt_dyno_run mkrun(const double *rpm, const double *hp, const double *tq, 
     for (i = 0; i < n; i++) {
         r.data[i].rpm = rpm[i];
         if (hp) { r.data[i].has_hp = LT_TRUE; r.data[i].hp = hp[i]; }
-        if (tq) { r.data[i].has_tq = LT_TRUE; r.data[i].torque = tq[i]; }
+        if (tq) { r.data[i].has_tq = LT_TRUE; r.data[i].tq_val = tq[i]; }
     }
     return r;
 }
@@ -1089,7 +1089,7 @@ LT_TEST(dyno_interpolate_and_compare)
     LT_CHECK_NEAR(v, 150, 1e-9);
     LT_CHECK(!lt_dyno_interpolate(&a, 999, 0, &v));
     LT_CHECK(!lt_dyno_interpolate(&a, 3001, 0, &v));
-    LT_CHECK(!lt_dyno_interpolate(&a, 1500, 1, &v));   /* no torque */
+    LT_CHECK(!lt_dyno_interpolate(&a, 1500, 1, &v));   /* no tq_val */
     lt_dyno_run_free(&a);
     {
         static const double r3[2] = { 3000, 6000 };
@@ -1116,9 +1116,9 @@ LT_TEST(dyno_interpolate_and_compare)
         LT_CHECK_NEAR(c.hp_diff[2], 5000, 0);
         LT_CHECK_NEAR(c.hp_diff[3], 15, 1e-9);
         LT_CHECK(c.has_total_hp);
-        LT_CHECK_NEAR(c.total_hp_change, 12.5, 1e-9);
+        LT_CHECK_NEAR(c.hp_change_sum, 12.5, 1e-9);
         LT_CHECK_INT(c.n_tq, 2);
-        LT_CHECK_NEAR(c.total_tq_change, 0.0, 1e-9);   /* -10 and +10 */
+        LT_CHECK_NEAR(c.tq_change_sum, 0.0, 1e-9);   /* -10 and +10 */
         lt_dyno_cmp_free(&c);
         lt_dyno_run_free(&x);
         lt_dyno_run_free(&y);
@@ -1132,7 +1132,7 @@ LT_TEST(dyno_interpolate_and_compare)
         LT_CHECK_INT(c.n_hp, 2);
         LT_CHECK_NEAR(c.hp_diff[0], 3000, 0);
         LT_CHECK_NEAR(c.hp_diff[2], 6000, 0);
-        LT_CHECK_NEAR(c.total_hp_change, 12.5, 1e-9);
+        LT_CHECK_NEAR(c.hp_change_sum, 12.5, 1e-9);
         LT_CHECK(!c.has_total_tq);
         lt_dyno_cmp_free(&c);
         lt_dyno_run_free(&x);
@@ -1295,6 +1295,8 @@ static int fx_eval(const lt_expr *e, const lt_expr_env *env, double *out)
     *out = fx_expr(&f);
     return f.err ? LT_EDATA : 0;
 }
+static char mark_present;
+
 static void fx_vars(const lt_expr *e, lt_map *set)
 {
     const char *p = e->src;
@@ -1307,7 +1309,7 @@ static void fx_vars(const lt_expr *e, lt_map *set)
                 p++;
             }
             nm[n] = '\0';
-            lt_map_put(set, nm, (void *)1);
+            lt_map_put(set, nm, (void *)&mark_present);
         } else if (isdigit((unsigned char)*p) || *p == '.') {
             while (isalnum((unsigned char)*p) || *p == '.') p++;
         } else {
@@ -1593,7 +1595,8 @@ static void review_fixes(void)
     lt_log l;
     lt_player p;
     static const char *csv = "Time,rpm\nnan,900\n1,1000\n";
-    char big[40000];
+    enum { BIG_CAP = 40000 };
+    char *big = (char *)lt_malloc(BIG_CAP);
     size_t off = 0;
     int i;
     /* NaN timestamp clamps to 0 */
@@ -1602,11 +1605,14 @@ static void review_fixes(void)
     LT_CHECK_NEAR(l.t[0], 0.0, 0);
     lt_log_free(&l);
     /* NaN rpm rejected, stable sort by rpm with many rows (reverse order, ties kept) */
-    off += (size_t)lt_snprintf(big + off, sizeof big - off, "rpm,hp\nnan,5\n");
+    LT_CHECK(big != NULL);
+    if (!big) return;
+    off += (size_t)lt_snprintf(big + off, (size_t)BIG_CAP - off, "rpm,hp\nnan,5\n");
     for (i = 1500; i >= 1; i--) {
-        off += (size_t)lt_snprintf(big + off, sizeof big - off, "%d,%d\n", 1000 + i / 2, i);
+        off += (size_t)lt_snprintf(big + off, (size_t)BIG_CAP - off, "%d,%d\n", 1000 + i / 2, i);
     }
     LT_CHECK_INT(lt_file_write(TMP "sort.csv", big, off), 0);
+    lt_free(big);
     LT_CHECK_INT(lt_dyno_from_csv(TMP "sort.csv", "s", &r), 0);
     LT_CHECK_INT((int)r.n, 1500);
     for (i = 1; i < (int)r.n; i++) {

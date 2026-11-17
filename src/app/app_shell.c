@@ -36,6 +36,172 @@ static lt_bool icontains(const char *hay, const char *needle)
 }
 
 /* ------------------------------------------------------------------ */
+/* toolbar                                                             */
+static void app_toolbar(lt_app *app)
+{
+    lt_ui *ui = app->ui;
+    const lt_theme *t = lt_ui_theme(ui);
+    int has = app->ini != NULL;
+    int online = (app->conn == LT_APP_ONLINE || app->conn == LT_APP_DEMO);
+    int rec = app->rec != NULL && lt_rec_is_recording(app->rec);
+    int burn = lt_app_can_burn(app) ? 1 : 0;
+    int cell = lt_ui_cell_mode(ui);
+    lt_ui_toolbar_begin(ui);
+    lt_ui_push_id(ui, "toolbar");
+    if (cell) {
+        /* tty: the same actions as a text row */
+        if (lt_ui_button_ex(ui, "Open", LT_UI_BTN_FLAT)) {
+            lt_app_file_dialog(app, LT_APP_FD_OPEN_PROJECT, LT_UI_FILE_OPEN, NULL, "project.json",
+                               "Project|project.json|All files|*");
+        }
+        if (has && lt_ui_button_ex(ui, "Save", LT_UI_BTN_FLAT)) { lt_app_save_tune(app); }
+        if (has && lt_ui_button_ex(ui, burn ? "Burn" : "Burn##x", burn ? LT_UI_BTN_FLAT : LT_UI_BTN_DISABLED) && burn) {
+            app->burn_open = 1;
+        }
+        lt_ui_pop_id(ui);
+        lt_ui_toolbar_end(ui);
+        return;
+    }
+    if (lt_ui_icon_button(ui, LT_UI_LUCIDE(LT_ICON_FOLDER_OPEN), "Open project",  0)) {
+        lt_app_file_dialog(app, LT_APP_FD_OPEN_PROJECT, LT_UI_FILE_OPEN, NULL, "project.json",
+                           "Project|project.json|All files|*");
+    }
+    if (lt_ui_icon_button(ui, LT_UI_LUCIDE(LT_ICON_SAVE), "Save tune (Ctrl+S)", has ? 0 : LT_UI_BTN_DISABLED) && has) {
+        lt_app_save_tune(app);
+    }
+    if (lt_ui_icon_button(ui, LT_UI_LUCIDE(LT_ICON_FLAME), burn ? "Burn to ECU (Ctrl+B)" : "Nothing to burn",
+                          burn ? LT_UI_BTN_DANGER : LT_UI_BTN_DISABLED) && burn) {
+        app->burn_open = 1;
+    }
+    lt_ui_toolbar_separator(ui);
+    if (lt_ui_icon_button(ui, LT_UI_LUCIDE(online ? LT_ICON_UNPLUG : LT_ICON_PLUG_ZAP),
+                          online ? "Disconnect (Ctrl+Shift+D)" : "Connect to ECU (Ctrl+Shift+C)",
+                          has ? (online ? LT_UI_BTN_SELECTED : 0) : LT_UI_BTN_DISABLED) && has) {
+        if (online) { lt_app_disconnect(app); } else { lt_app_connect_dialog(app); }
+    }
+    if (lt_ui_icon_button(ui, LT_UI_LUCIDE(LT_ICON_LAYOUT_DASHBOARD), "Dashboard (Ctrl+D)", has ? 0 : LT_UI_BTN_DISABLED) && has) {
+        lt_app_dashboard_tab_open(app);
+    }
+    if (lt_ui_icon_button(ui, LT_UI_LUCIDE(LT_ICON_WAND_SPARKLES), "AutoTune (Ctrl+Shift+A)", has ? 0 : LT_UI_BTN_DISABLED) && has) {
+        lt_app_autotune_open(app);
+    }
+    lt_ui_toolbar_separator(ui);
+    if (lt_ui_icon_button(ui, LT_UI_LUCIDE(rec ? LT_ICON_CIRCLE_STOP : LT_ICON_CIRCLE),
+                          rec ? "Stop data logging (Ctrl+L)" : "Start data logging (Ctrl+L)",
+                          has ? (rec ? LT_UI_BTN_DANGER : 0) : LT_UI_BTN_DISABLED) && has) {
+        lt_app_log_toggle(app);
+    }
+    lt_ui_toolbar_separator(ui);
+    if (lt_ui_icon_button(ui, LT_UI_LUCIDE(LT_ICON_SETTINGS), "Settings (Ctrl+,)", 0)) { lt_app_settings_dialog(app); }
+    lt_ui_pop_id(ui);
+    lt_ui_toolbar_end(ui);
+    LT_UNUSED(t);
+}
+
+/* ------------------------------------------------------------------ */
+/* sidebar node icons: label keyword rules (same table as stock LibreTune,
+ * first match wins). Pattern syntax: "|" separates alternatives, a leading
+ * "=" means the whole label, a leading "~" means a whole word. */
+typedef struct node_rule { const char *pat; int icon; } node_rule;
+static const node_rule node_rules[] = {
+    { "=setup", LT_ICON_WRENCH }, { "=fuel", LT_ICON_DROPLET }, { "=ignition", LT_ICON_FLAME },
+    { "=cranking", LT_ICON_CIRCLE_PLAY }, { "=idle", LT_ICON_WIND },
+    { "=advanced", LT_ICON_SETTINGS_2 }, { "=sensor|=sensors", LT_ICON_RADIO },
+    { "=can bus|=can-bus|=canbus", LT_ICON_NETWORK }, { "=controller", LT_ICON_CPU },
+    { "=expert/extra|=expert / extra|=expert extra", LT_ICON_PUZZLE },
+    { "=help|=about", LT_ICON_CIRCLE_HELP }, { "=diagnostics|=diagnostic", LT_ICON_STETHOSCOPE },
+    { "=tools|=tool", LT_ICON_WRENCH }, { "=tables|=table", LT_ICON_TABLE_2 },
+    { "=curves|=curve|=graphs|=graph", LT_ICON_TRENDING_UP },
+    { "vehicle info", LT_ICON_CAR },
+    { "limits and protection|limits & protection|limit and protection", LT_ICON_SHIELD_ALERT },
+    { "misfire", LT_ICON_TRIANGLE_ALERT }, { "vr sensor|reluctance", LT_ICON_ACTIVITY },
+    { "odd fire", LT_ICON_GIT_BRANCH }, { "firing order", LT_ICON_LIST_ORDERED },
+    { "~cam|camshaft", LT_ICON_DISC_3 }, { "~crank|crankshaft", LT_ICON_CIRCLE_DOT },
+    { "~trigger", LT_ICON_ZAP }, { "battery|alternator", LT_ICON_BATTERY_CHARGING },
+    { "key input|immobilizer|immobiliser", LT_ICON_KEY_ROUND },
+    { "sd card|sd-card|sdcard", LT_ICON_MEMORY_STICK },
+    { "data log|datalog|logging|~log", LT_ICON_SCROLL_TEXT },
+    { "standard output", LT_ICON_PLUG }, { "programmable port|programmable output", LT_ICON_TOGGLE_LEFT },
+    { "fans and water|fan & water|fans & water|fan and water|~fan|~fans", LT_ICON_FAN },
+    { "water pump|~pump", LT_ICON_DROPLETS }, { "tach", LT_ICON_GAUGE }, { "speedo", LT_ICON_ROUTE },
+    { "air condition|~ac|a/c", LT_ICON_SNOWFLAKE }, { "status led|~led|~leds", LT_ICON_LIGHTBULB },
+    { "check engine|~mil", LT_ICON_CIRCLE_ALERT }, { "boost", LT_ICON_GAUGE },
+    { "injector", LT_ICON_DROPLET }, { "afr|lambda|wideband|~o2|oxygen", LT_ICON_WAVES },
+    { "knock", LT_ICON_TRIANGLE_ALERT }, { "spark|dwell|coil", LT_ICON_ZAP },
+    { "throttle|~tps", LT_ICON_GAUGE }, { "~map|manifold pressure", LT_ICON_GAUGE },
+    { "coolant|~clt", LT_ICON_THERMOMETER }, { "~iat|intake air temp", LT_ICON_THERMOMETER },
+    { "~oil", LT_ICON_DROPLET },
+    { "warm-up|warmup|warm up|~wue|~ase|cold start", LT_ICON_THERMOMETER },
+    { "accel enrich|acceleration enrich|accel. enrich", LT_ICON_TRENDING_UP },
+    { "launch control", LT_ICON_ROCKET },
+    { "flat shift|shift cut|shift light", LT_ICON_ARROW_UP_DOWN }, { "nitrous", LT_ICON_FLAME },
+    { "staging", LT_ICON_LAYERS }, { "~vvt", LT_ICON_DISC_3 }, { "wizard", LT_ICON_SPARKLES },
+    { "communication|serial|usb", LT_ICON_USB }, { "board|pinout|wiring", LT_ICON_CIRCUIT_BOARD },
+    { "security", LT_ICON_SHIELD_CHECK }, { "~custom", LT_ICON_SLIDERS_HORIZONTAL },
+    { "warning|alarm", LT_ICON_TRIANGLE_ALERT }
+};
+
+static int word_char(char c)
+{
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
+}
+
+/* does one alternative (len bytes at alt) match label? */
+static int alt_match(const char *label, const char *alt, size_t len)
+{
+    size_t ll = strlen(label), i;
+    int exact = 0, word = 0;
+    if (len > 0 && alt[0] == '=') { exact = 1; alt++; len--; }
+    else if (len > 0 && alt[0] == '~') { word = 1; alt++; len--; }
+    if (len == 0) { return 0; }
+    if (exact) { return ll == len && lt_strnicmp(label, alt, len) == 0; }
+    for (i = 0; i + len <= ll; i++) {
+        if (lt_strnicmp(label + i, alt, len) != 0) { continue; }
+        if (word && ((i > 0 && word_char(label[i - 1])) || (i + len < ll && word_char(label[i + len])))) { continue; }
+        return 1;
+    }
+    return 0;
+}
+
+enum { NODE_FOLDER = 0, NODE_TABLE, NODE_DIALOG, NODE_DASH, NODE_LOG, NODE_HELP };
+
+static int node_icon(const char *label, int type, lt_color *col, const lt_theme *t)
+{
+    size_t i;
+    int icon = 0;
+    for (i = 0; i < sizeof(node_rules) / sizeof(node_rules[0]) && icon == 0; i++) {
+        const char *p = node_rules[i].pat;
+        while (*p != '\0') {
+            const char *e = strchr(p, '|');
+            size_t len = e != NULL ? (size_t)(e - p) : strlen(p);
+            if (alt_match(label, p, len)) { icon = node_rules[i].icon; break; }
+            if (e == NULL) { break; }
+            p = e + 1;
+        }
+    }
+    switch (type) {
+    case NODE_FOLDER: *col = t->warning; if (icon == 0) { icon = LT_ICON_FOLDER; } break;
+    case NODE_TABLE: *col = t->info; if (icon == 0) { icon = LT_ICON_TABLE_2; } break;
+    case NODE_DASH: *col = t->accent; if (icon == 0) { icon = LT_ICON_GAUGE; } break;
+    case NODE_LOG: *col = t->text2; if (icon == 0) { icon = LT_ICON_SCROLL_TEXT; } break;
+    case NODE_HELP: *col = t->primary; if (icon == 0) { icon = LT_ICON_CIRCLE_HELP; } break;
+    default: *col = t->success; if (icon == 0) { icon = LT_ICON_SETTINGS_2; } break;
+    }
+    return icon;
+}
+
+static int tab_icon(const char *kind)
+{
+    if (strcmp(kind, "table") == 0) { return LT_ICON_TABLE_2; }
+    if (strcmp(kind, "curve") == 0) { return LT_ICON_TRENDING_UP; }
+    if (strcmp(kind, "dashboard") == 0) { return LT_ICON_GAUGE; }
+    if (strncmp(kind, "datalog", 7) == 0) { return LT_ICON_SCROLL_TEXT; }
+    if (strcmp(kind, "autotune") == 0) { return LT_ICON_WAND_SPARKLES; }
+    if (strcmp(kind, "special") == 0) { return LT_ICON_ACTIVITY; }
+    return LT_ICON_SETTINGS_2;
+}
+
+/* ------------------------------------------------------------------ */
 /* file dialog                                                         */
 const char *lt_app_file_result(lt_app *app, int purpose)
 {
@@ -301,7 +467,11 @@ static void menubar(lt_app *app)
     }
     if (lt_ui_menu_begin(ui, "&View")) { menu_view(app); lt_ui_menu_end(ui); }
     if (app->ini != NULL && lt_ui_menu_begin(ui, "&Tools")) { menu_tools(app); lt_ui_menu_end(ui); }
-    menu_ini(app);
+    if (app->ini != NULL && app->settings.show_ecu_menus && app->ini->n_menus > 0) {
+        lt_ui_menubar_separator(ui);
+        menu_ini(app);
+    }
+    lt_ui_menubar_separator(ui);
     if (lt_ui_menu_begin(ui, "&Help")) {
         if (lt_ui_menu_item(ui, "Keyboard &Shortcuts", "F1", 0)) { app->shortcuts_open = 1; }
         if (lt_ui_menu_item(ui, "&About LibreTune", NULL, 0)) { app->about_open = 1; }
@@ -333,9 +503,11 @@ static void sidebar_items(lt_app *app, lt_ini_menu_item *const *items, size_t n,
     size_t i;
     char lab[160];
     lt_ui *ui = app->ui;
+    const lt_theme *th = lt_ui_theme(ui);
     for (i = 0; i < n; i++) {
         const lt_ini_menu_item *it = items[i];
-        int r;
+        int r, ico;
+        lt_color ic;
         if (it->kind == LT_MENU_SEPARATOR ||
             (it->target != NULL && strcmp(it->target, "std_separator") == 0)) { continue; }
         if (!env_test(app, it->vis_cond)) { continue; }
@@ -344,20 +516,28 @@ static void sidebar_items(lt_app *app, lt_ini_menu_item *const *items, size_t n,
         if (it->kind == LT_MENU_SUBMENU) {
             lt_bool self = item_matches(it, q);
             if (q[0] != '\0' && !parent_match && !subtree_matches(it, q)) { lt_ui_pop_id(ui); continue; }
-            r = lt_ui_tree_node(ui, lab, LT_UI_ICON_FOLDER, q[0] ? LT_UI_TREE_FORCE_OPEN : 0);
+            ico = node_icon(lab, NODE_FOLDER, &ic, th);
+            r = lt_ui_tree_node_ex(ui, lab, LT_UI_LUCIDE(ico), ic, q[0] ? LT_UI_TREE_FORCE_OPEN : 0);
             if (r & LT_UI_TREE_OPEN) {
                 sidebar_items(app, items[i]->items, items[i]->n_items, q, parent_match || self,
                               active, counter);
                 lt_ui_tree_end(ui);
             }
         } else {
-            int fl = LT_UI_TREE_LEAF;
+            int fl = LT_UI_TREE_LEAF, type = NODE_DIALOG;
+            int en = env_test(app, it->en_cond);
             if (q[0] != '\0' && !parent_match && !item_matches(it, q)) { lt_ui_pop_id(ui); continue; }
             if (it->target != NULL && active != NULL && strcmp(it->target, active) == 0) {
                 fl |= LT_UI_TREE_SELECTED;
             }
-            r = lt_ui_tree_node(ui, lab, lt_ini_find_table(app->ini, it->target ? it->target : "")
-                                         ? LT_UI_ICON_TABLE : LT_UI_ICON_FILE, fl);
+            if (!en) { fl |= LT_UI_TREE_DISABLED; }
+            if (it->kind == LT_MENU_HELP) { type = NODE_HELP; }
+            else if (lt_ini_find_table(app->ini, it->target ? it->target : "")) { type = NODE_TABLE; }
+            else if (it->target != NULL && (strstr(it->target, "realtime") != NULL || strstr(it->target, "dash") != NULL)) {
+                type = NODE_DASH;
+            }
+            ico = node_icon(lab, type, &ic, th);
+            r = lt_ui_tree_node_ex(ui, lab, LT_UI_LUCIDE(ico), ic, fl);
             if (r & LT_UI_TREE_CLICKED) { lt_app_open_target(app, it->target, it->label); }
         }
         lt_ui_pop_id(ui);
@@ -370,32 +550,90 @@ static void sidebar(lt_app *app, lt_rect r)
     const lt_theme *t = lt_ui_theme(ui);
     const lt_ini *ini = app->ini;
     int w1 = -1, counter = 0;
+    int cell = lt_ui_cell_mode(ui);
+    int sc = cell ? 1 : lt_ui_row_height(ui) / 24;
+    int hh = t->tab_h, sh = cell ? 16 : 30 * sc;
     size_t i;
-    char lab[160];
+    char lab[160], title[160];
     const char *active = NULL;
+    lt_rect hdr, srow, sin, tree;
     lt_app_tab *at = lt_app_tab_active(app);
     if (at != NULL) { active = at->target; }
     lt_ui_region_begin(ui, r, t->sidebar);
-    lt_ui_layout_row(ui, 1, &w1, 0);
-    lt_ui_layout_space(ui, 4);
-    lt_ui_label_ex(ui, app->has_project ? app->project.cfg.name
-                       : (ini->signature != NULL ? ini->signature : "Definition"),
-                   t->text, LT_UI_ALIGN_LEFT);
-    lt_ui_text(ui, "search", app->search, sizeof(app->search), 0);
-    if (app->search[0] == '\0' && !lt_ui_text_focused(ui)) {
-        lt_rect sr = lt_ui_last_rect(ui);
-        lt_ui_draw_icon(ui, lt_rect_make(sr.x + sr.w - 26, sr.y, 22, sr.h), LT_UI_ICON_SEARCH, t->muted);
-        lt_ui_draw_text_in(ui, lt_rect_make(sr.x + t->pad_x, sr.y, sr.w - 40, sr.h), "Search menus",
-                           t->disabled, 0);
+    /* header: project name in small caps */
+    hdr = lt_rect_make(r.x, r.y, r.w, hh);
+    lt_ui_draw_fill(ui, hdr, t->bg_toolbar);
+    if (!cell) { lt_ui_draw_hline(ui, r.x, r.x + r.w - 1, hdr.y + hdr.h - 1, t->border_subtle); }
+    {
+        const char *nm = ini == NULL ? "Project"
+                       : (app->has_project ? app->project.cfg.name
+                          : (ini->signature != NULL ? ini->signature : "Definition"));
+        size_t k;
+        lt_strlcpy(title, nm, sizeof(title));
+        if (!cell) { for (k = 0; title[k] != '\0'; k++) { if (title[k] >= 'a' && title[k] <= 'z') { title[k] = (char)(title[k] - 32); } } }
+        lt_ui_draw_text_in_f(ui, lt_rect_make(hdr.x + t->padding, hdr.y, hdr.w - 2 * t->padding, hdr.h), title,
+                             t->text2, 0, (int)LT_FONT_SANS_SEMIBOLD, LT_UI_FS_SM);
     }
+    /* search row */
+    srow = lt_rect_make(r.x, r.y + hh, r.w, sh);
+    lt_ui_draw_fill(ui, srow, t->bg_toolbar);
+    if (!cell) { lt_ui_draw_hline(ui, r.x, r.x + r.w - 1, srow.y + srow.h - 1, t->border_subtle); }
+    {
+        int ix = srow.x + (cell ? 0 : 6 * sc), bw = cell ? 16 : 22 * sc;
+        int gap = cell ? 0 : 4 * sc;
+        lt_rect ib;
+        lt_ui_draw_icon(ui, lt_rect_make(ix, srow.y, cell ? 16 : 14 * sc, srow.h),
+                        cell ? LT_UI_ICON_SEARCH : LT_UI_LUCIDE(LT_ICON_SEARCH), t->muted);
+        ix += cell ? 16 : 14 * sc + gap;
+        sin = lt_rect_make(ix, srow.y + (srow.h - (cell ? 16 : bw)) / 2, srow.x + srow.w - ix - bw - 2 * gap - (cell ? 0 : 2),
+                           cell ? 16 : bw);
+        lt_ui_region_begin(ui, sin, 0);
+        lt_ui_layout_row(ui, 1, &w1, sin.h);
+        lt_ui_layout_gap(ui, 0, 0);
+        lt_ui_text_style(ui, (int)LT_FONT_SANS, LT_UI_FS_SM);
+        lt_ui_text(ui, "search", app->search, sizeof(app->search), 0);
+        lt_ui_text_style_reset(ui);
+        if (ini != NULL && lt_ui_key_pressed(ui, 'k', LT_MOD_CTRL)) { lt_ui_set_focus(ui, lt_ui_last_id(ui)); }
+        if (app->search[0] == '\0' && !lt_ui_text_focused(ui)) {
+            lt_rect sr = lt_ui_last_rect(ui);
+            lt_ui_draw_text_in_f(ui, lt_rect_make(sr.x + t->pad_x, sr.y, sr.w - 2 * t->pad_x, sr.h),
+                                 "Search... (Ctrl+K)", t->muted, 0, (int)LT_FONT_SANS, LT_UI_FS_SM);
+        } else if (app->search[0] != '\0') {
+            lt_rect cr = lt_rect_make(sin.x + sin.w - 20 * sc, sin.y + 2, 18 * sc, sin.h - 4);
+            lt_ui_region_begin(ui, cr, 0);
+            lt_ui_layout_row(ui, 1, &w1, cr.h);
+            lt_ui_layout_gap(ui, 0, 0);
+            if (lt_ui_icon_button(ui, cell ? LT_UI_ICON_CLOSE : LT_UI_LUCIDE(LT_ICON_X), "Clear search", 0)) { app->search[0] = '\0'; }
+            lt_ui_region_end(ui);
+        }
+        lt_ui_region_end(ui);
+        ib = lt_rect_make(sin.x + sin.w + gap, sin.y, bw, sin.h);
+        lt_ui_region_begin(ui, ib, 0);
+        lt_ui_layout_row(ui, 1, &w1, ib.h);
+        lt_ui_layout_gap(ui, 0, 0);
+        lt_ui_push_id(ui, "expand");
+        if (lt_ui_icon_button(ui, cell ? LT_UI_ICON_PLUS : LT_UI_LUCIDE(LT_ICON_CHEVRONS_UP_DOWN),
+                              app->tree_expanded ? "Collapse all" : "Expand all", 0)) {
+            app->tree_expanded = !app->tree_expanded;
+            lt_ui_tree_set_all(ui, app->tree_expanded);
+        }
+        lt_ui_pop_id(ui);
+        lt_ui_region_end(ui);
+    }
+    /* tree */
+    tree = lt_rect_make(r.x, srow.y + srow.h, r.w, r.h - hh - sh);
+    if (ini == NULL) { lt_ui_region_end(ui); return; }
+    lt_ui_region_begin(ui, tree, 0);
     lt_ui_layout_row(ui, 1, &w1, -1);
     if (lt_ui_scroll_begin(ui, "tree")) {
         lt_ui_layout_gap(ui, 0, 0);
-        lt_ui_layout_row(ui, 1, &w1, 0);
+        lt_ui_layout_row(ui, 1, &w1, t->tree_row_h);
         for (i = 0; i < ini->n_menus; i++) {
             const lt_ini_menu *m = &ini->menus[i];
             size_t k;
             lt_bool any = LT_FALSE;
+            lt_color ic;
+            int ico;
             if (app->search[0] != '\0') {
                 if (!icontains(m->title, app->search)) {
                     for (k = 0; k < m->n_items && !any; k++) { any = subtree_matches(m->items[k], app->search); }
@@ -404,8 +642,9 @@ static void sidebar(lt_app *app, lt_rect r)
             }
             clean_label(lab, sizeof(lab), m->title);
             lt_ui_push_id_int(ui, 100000 + (int)i);
-            if (lt_ui_tree_node(ui, lab, LT_UI_ICON_FOLDER,
-                                app->search[0] ? LT_UI_TREE_FORCE_OPEN : (i < 2 ? LT_UI_TREE_DEFAULT_OPEN : 0))
+            ico = node_icon(lab, NODE_FOLDER, &ic, t);
+            if (lt_ui_tree_node_ex(ui, lab, LT_UI_LUCIDE(ico), ic,
+                                   app->search[0] ? LT_UI_TREE_FORCE_OPEN : (i < 2 ? LT_UI_TREE_DEFAULT_OPEN : 0))
                 & LT_UI_TREE_OPEN) {
                 sidebar_items(app, m->items, m->n_items, app->search,
                               app->search[0] != '\0' && icontains(m->title, app->search), active, &counter);
@@ -416,11 +655,12 @@ static void sidebar(lt_app *app, lt_rect r)
         lt_ui_scroll_end(ui);
     }
     lt_ui_region_end(ui);
+    lt_ui_region_end(ui);
 }
 
 /* ------------------------------------------------------------------ */
 /* status bar                                                          */
-static void statusbar(lt_app *app)
+static void statusbar_cell(lt_app *app)
 {
     lt_ui *ui = app->ui;
     const lt_theme *t = lt_ui_theme(ui);
@@ -466,9 +706,75 @@ static void statusbar(lt_app *app)
     lt_ui_statusbar_end(ui);
 }
 
+static void statusbar(lt_app *app)
+{
+    lt_ui *ui = app->ui;
+    const lt_theme *t = lt_ui_theme(ui);
+    int w[7], sc;
+    char conn[200], mid[200], proj[200], rate[48];
+    const char *units = app->settings.metric ? "Metric" : "Imperial";
+    const char *logt;
+    lt_color cc;
+    lt_rect r;
+    int rec = app->rec != NULL && lt_rec_is_recording(app->rec);
+    if (lt_ui_cell_mode(ui)) { statusbar_cell(app); return; }
+    sc = lt_ui_row_height(ui) / 24;
+    lt_ui_text_style(ui, (int)LT_FONT_SANS, LT_UI_FS_SM);
+    switch (app->conn) {
+    case LT_APP_ONLINE: cc = t->success; break;
+    case LT_APP_DEMO: cc = t->accent; break;
+    case LT_APP_CONNECTING: cc = t->warning; break;
+    default: cc = t->error; break;
+    }
+    if (app->conn == LT_APP_OFFLINE) { lt_snprintf(conn, sizeof(conn), "Disconnected"); }
+    else { lt_snprintf(conn, sizeof(conn), "%s: %s", lt_app_conn_label(app), app->signature); }
+    mid[0] = '\0';
+    if (app->conn == LT_APP_ONLINE || app->conn == LT_APP_DEMO) {
+        double rpm = 0.0;
+        if (lt_app_channel(app, "RPMValue", &rpm) || lt_app_channel(app, "rpm", &rpm)) {
+            lt_snprintf(mid, sizeof(mid), "RPM %.0f   %s", rpm, app->status);
+        }
+    }
+    if (mid[0] == '\0') { lt_snprintf(mid, sizeof(mid), "%s", app->status); }
+    lt_snprintf(proj, sizeof(proj), "%s%s", app->has_project ? app->project.cfg.name : "",
+                app->modified ? " (modified)" : "");
+    if (app->conn == LT_APP_ONLINE || app->conn == LT_APP_DEMO) { lt_snprintf(rate, sizeof(rate), "%.0f Hz", app->data_rate); }
+    else { rate[0] = '\0'; }
+    logt = rec ? "Logging" : "Not Logging";
+    lt_ui_statusbar_begin(ui);
+    w[0] = LT_MIN(lt_ui_text_width(ui, conn) + 24 * sc, lt_ui_surface(ui).w / 2);
+    w[1] = -1;
+    w[2] = proj[0] ? lt_ui_text_width(ui, proj) + 16 * sc : 1;
+    w[3] = rate[0] ? lt_ui_text_width(ui, rate) + 16 * sc : 1;
+    w[4] = lt_ui_text_width(ui, units) + 16 * sc;
+    w[5] = 20 * sc + lt_ui_text_width(ui, logt) + 8 * sc;
+    w[6] = lt_ui_text_width(ui, "v" LT_APP_VERSION) + 8 * sc;
+    lt_ui_layout_row(ui, 7, w, 0);
+    lt_ui_layout_indent(ui, 0);
+    r = lt_ui_layout_next(ui);
+    lt_ui_draw_circle_fill(ui, r.x + 6.0 * sc, r.y + r.h / 2.0, 3.5 * sc, cc);
+    lt_ui_draw_text_in(ui, lt_rect_make(r.x + 16 * sc, r.y, r.w - 16 * sc, r.h), conn, t->text2, 0);
+    r = lt_ui_layout_next(ui);
+    lt_ui_draw_text_in(ui, r, mid, t->muted, 1);
+    r = lt_ui_layout_next(ui);
+    lt_ui_draw_text_in(ui, r, proj, app->modified ? t->warning : t->text2, 2);
+    r = lt_ui_layout_next(ui);
+    lt_ui_draw_text_in(ui, r, rate, t->muted, 2);
+    r = lt_ui_layout_next(ui);
+    lt_ui_draw_text_in(ui, r, units, t->muted, 2);
+    r = lt_ui_layout_next(ui);
+    lt_ui_draw_lucide(ui, lt_rect_make(r.x, r.y, 16 * sc, r.h), rec ? LT_ICON_CIRCLE_DOT : LT_ICON_CIRCLE, 12, 2.0,
+                      rec ? t->error : t->muted);
+    lt_ui_draw_text_in(ui, lt_rect_make(r.x + 20 * sc, r.y, r.w - 20 * sc, r.h), logt, rec ? t->error : t->muted, 0);
+    r = lt_ui_layout_next(ui);
+    lt_ui_draw_text_in_f(ui, r, "v" LT_APP_VERSION, t->muted, 2, (int)LT_FONT_MONO, LT_UI_FS_XS);
+    lt_ui_statusbar_end(ui);
+    lt_ui_text_style_reset(ui);
+}
+
 /* ------------------------------------------------------------------ */
 /* welcome                                                             */
-static void welcome(lt_app *app, lt_rect area)
+static void welcome_cell(lt_app *app, lt_rect area)
 {
     lt_ui *ui = app->ui;
     const lt_theme *t = lt_ui_theme(ui);
@@ -538,6 +844,112 @@ static void welcome(lt_app *app, lt_rect area)
     lt_ui_region_end(ui);
 }
 
+static void welcome(lt_app *app, lt_rect area)
+{
+    lt_ui *ui = app->ui;
+    const lt_theme *t = lt_ui_theme(ui);
+    int sc, i, cw, y, bw1, bw2, bh, gap, cardw, cardh;
+    lt_rect r;
+    int w1 = -1, w2[2];
+    char buf[640];
+    if (lt_ui_cell_mode(ui)) { welcome_cell(app, area); return; }
+    sc = lt_ui_row_height(ui) / 24;
+    lt_ui_draw_fill(ui, area, t->bg_app);
+    /* the stock welcome view is centred about 40% down from the top */
+    y = area.y + LT_MAX(24 * sc, (area.h - 560 * sc) / 3);
+    lt_ui_draw_text_in_f(ui, lt_rect_make(area.x, y, area.w, 48 * sc), "LibreTune", t->text, 1,
+                         (int)LT_FONT_SANS_SEMIBOLD, 36);
+    lt_ui_draw_text_in_f(ui, lt_rect_make(area.x, y + 46 * sc, area.w, 24 * sc),
+                         "Open-source ECU tuning software", t->muted, 1, (int)LT_FONT_SANS, LT_UI_FS_LG);
+    y += 100 * sc;
+    bw1 = 154 * sc; bw2 = 164 * sc; bh = 56 * sc; gap = 16 * sc;
+    cw = bw1 + gap + bw2;
+    r = lt_rect_make(area.x + (area.w - cw) / 2, y, cw, bh);
+    lt_ui_region_begin(ui, r, 0);
+    w2[0] = bw1; w2[1] = bw2;
+    lt_ui_layout_row(ui, 2, w2, bh);
+    lt_ui_layout_gap(ui, gap, 0);
+    lt_ui_text_style(ui, (int)LT_FONT_SANS_MEDIUM, LT_UI_FS_XL);
+    if (lt_ui_button_ex(ui, "New Project", LT_UI_BTN_PRIMARY)) { lt_app_new_project_dialog(app); }
+    if (lt_ui_button(ui, "Open Project")) {
+        lt_app_file_dialog(app, LT_APP_FD_OPEN_PROJECT, LT_UI_FILE_OPEN, NULL, "project.json",
+                           "Project|project.json|All files|*");
+    }
+    lt_ui_text_style_reset(ui);
+    lt_ui_region_end(ui);
+    y += bh + 12 * sc;
+    /* secondary actions */
+    r = lt_rect_make(area.x + (area.w - cw) / 2, y, cw, 26 * sc);
+    lt_ui_region_begin(ui, r, 0);
+    lt_ui_layout_row(ui, 2, w2, 26 * sc);
+    lt_ui_layout_gap(ui, gap, 0);
+    if (lt_ui_button_ex(ui, "Demo mode", LT_UI_BTN_FLAT)) { lt_app_start_demo(app, NULL); }
+    if (lt_ui_button_ex(ui, "Import TunerStudio", LT_UI_BTN_FLAT)) {
+        lt_app_file_dialog(app, LT_APP_FD_IMPORT_TS, LT_UI_FILE_OPEN, NULL, "", "All files|*");
+    }
+    lt_ui_region_end(ui);
+    y += 26 * sc + 36 * sc;
+    /* recent projects */
+    cardw = LT_MIN(500 * sc, area.w - 32 * sc);
+    cardh = 72 * sc;
+    if (app->settings.n_recent > 0) {
+        lt_ui_draw_text_in_f(ui, lt_rect_make(area.x, y, area.w, 20 * sc), "Recent Projects", t->text2, 1,
+                             (int)LT_FONT_SANS_SEMIBOLD, LT_UI_FS_MD);
+        y += 32 * sc;
+    }
+    for (i = 0; i < app->settings.n_recent; i++) {
+        lt_rect card = lt_rect_make(area.x + (area.w - cardw) / 2, y, cardw, cardh);
+        lt_rect del = lt_rect_make(card.x + card.w - 28 * sc - 8 * sc, card.y + (card.h - 24 * sc) / 2, 28 * sc, 24 * sc);
+        lt_rect body = lt_rect_make(card.x, card.y, card.w - 40 * sc, card.h);
+        int hov;
+        if (card.y + card.h > area.y + area.h) { break; }
+        lt_ui_push_id_int(ui, i);
+        {
+            lt_point mp = lt_ui_mouse(ui);
+            lt_bool hv = lt_rect_contains(card, mp.x, mp.y) && !lt_ui_popup_open(ui);
+            lt_ui_draw_shadow(ui, card, t->radius_lg, 4 * sc, 40);
+            lt_ui_draw_box(ui, card, hv ? t->hover : t->elevated, hv ? t->border_strong : t->border, t->radius_lg);
+        }
+        lt_ui_region_begin(ui, body, 0);
+        lt_ui_layout_row(ui, 1, &w1, body.h);
+        lt_ui_layout_gap(ui, 0, 0);
+        hov = lt_ui_button_ex(ui, "##card", LT_UI_BTN_FLAT);
+        {
+            lt_rect cr = lt_ui_last_rect(ui);
+            lt_ui_draw_text_in_f(ui, lt_rect_make(cr.x + 16 * sc, cr.y + 12 * sc, cr.w - 24 * sc, 20 * sc),
+                                 lt_path_base(app->settings.recent[i]), t->text, 0, (int)LT_FONT_SANS_SEMIBOLD, LT_UI_FS_LG);
+            lt_snprintf(buf, sizeof(buf), "%s", app->settings.recent[i]);
+            lt_ui_draw_text_in_f(ui, lt_rect_make(cr.x + 16 * sc, cr.y + 36 * sc, cr.w - 24 * sc, 18 * sc), buf, t->muted, 0,
+                                 (int)LT_FONT_SANS, LT_UI_FS_BASE);
+        }
+        lt_ui_region_end(ui);
+        if (hov) { lt_app_open_project(app, app->settings.recent[i]); lt_ui_pop_id(ui); break; }
+        lt_ui_region_begin(ui, del, 0);
+        lt_ui_layout_row(ui, 1, &w1, del.h);
+        lt_ui_layout_gap(ui, 0, 0);
+        if (lt_ui_icon_button(ui, LT_UI_LUCIDE(LT_ICON_TRASH_2), app->confirm_delete == i ? "Click again to remove" : "Remove from list",
+                              app->confirm_delete == i ? LT_UI_BTN_DANGER : 0)) {
+            if (app->confirm_delete == i) {
+                int k;
+                for (k = i; k < app->settings.n_recent - 1; k++) {
+                    lt_strlcpy(app->settings.recent[k], app->settings.recent[k + 1],
+                               sizeof(app->settings.recent[0]));
+                }
+                app->settings.n_recent--;
+                app->confirm_delete = -1;
+                lt_app_settings_save(app);
+                lt_ui_region_end(ui);
+                lt_ui_pop_id(ui);
+                break;
+            }
+            app->confirm_delete = i;
+        }
+        lt_ui_region_end(ui);
+        lt_ui_pop_id(ui);
+        y += cardh + 8 * sc;
+    }
+}
+
 /* ------------------------------------------------------------------ */
 /* tab area                                                            */
 static void tab_area(lt_app *app, lt_rect main_r)
@@ -549,18 +961,18 @@ static void tab_area(lt_app *app, lt_rect main_r)
     lt_rect inner, body;
     lt_app_tab *at;
     lt_ui_draw_fill(ui, main_r, t->bg_app);
-    inner = lt_rect_inset(main_r, t->padding, cell ? 0 : t->padding);
+    inner = cell ? lt_rect_inset(main_r, t->padding, 0) : main_r;
     lt_ui_region_begin(ui, inner, 0);
+    lt_ui_layout_gap(ui, 0, 0);
     lt_ui_layout_row(ui, 1, &w1, 0);
     lt_ui_tabbar_begin(ui, "tabs", &app->active_tab);
     for (i = 0; i < app->n_tabs; i++) {
         int fl = (app->tabs[i]->closable ? LT_UI_TAB_CLOSABLE : 0) | (app->tabs[i]->dirty ? LT_UI_TAB_DIRTY : 0);
         lt_ui_push_id_int(ui, i);
-        if (lt_ui_tab(ui, app->tabs[i]->title, fl) & LT_UI_TAB_CLOSED) { closed = i; }
+        if (lt_ui_tab_icon(ui, app->tabs[i]->title, cell ? 0 : LT_UI_LUCIDE(tab_icon(app->tabs[i]->kind)), fl) & LT_UI_TAB_CLOSED) { closed = i; }
         lt_ui_pop_id(ui);
     }
     lt_ui_tabbar_end(ui);
-    lt_ui_layout_space(ui, cell ? 0 : 6);
     lt_ui_layout_row(ui, 1, &w1, -1);
     body = lt_ui_layout_next(ui);
     at = lt_app_tab_active(app);
@@ -683,10 +1095,17 @@ void lt_app_frame(lt_app *app)
     lt_rect cr, side, main_r;
     char title[200];
     menubar(app);
+    if (!lt_ui_cell_mode(ui)) { app_toolbar(app); }
     statusbar(app);
     cr = lt_ui_client_rect(ui);
     if (app->ini == NULL) {
-        welcome(app, cr);
+        if (!lt_ui_cell_mode(ui) && app->settings.sidebar_on) {
+            lt_ui_splitter(ui, "sidebar", cr, 1, &app->settings.sidebar_w, 160, cr.w / 2, &side, &main_r);
+            sidebar(app, side);
+        } else {
+            main_r = cr;
+        }
+        welcome(app, main_r);
     } else {
         if (app->settings.sidebar_on) {
             lt_ui_splitter(ui, "sidebar", cr, 1, &app->settings.sidebar_w, 160, cr.w / 2, &side, &main_r);
@@ -808,7 +1227,7 @@ static void write_ppm(const lt_canvas *c, const char *path)
     fprintf(f, "P6\n%d %d\n255\n", c->w, c->h);
     for (y = 0; y < c->h; y++) {
         for (x = 0; x < c->w; x++) {
-            lt_u32 v = c->px[y * c->stride + x];
+            lt_u32 v = c->px[y * c->pitch + x];
             fputc((int)((v >> 16) & 255), f);
             fputc((int)((v >> 8) & 255), f);
             fputc((int)(v & 255), f);

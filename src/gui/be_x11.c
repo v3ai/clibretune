@@ -125,7 +125,7 @@ static int key_of(lt_u32 s) {
 static lt_u32 sym_text(lt_u32 s) {
     if (s >= 0x20 && s <= 0x7e) return s;
     if (s >= 0xa0 && s <= 0xff) return s;
-    if (s >= 0x1000100UL && s <= 0x110ffffUL) return s - 0x1000000UL;
+    if (s >= 0x1000100UL && s <= 0x110ffffUL) return s - (lt_u32)0x1000000UL;
     if (s >= 0xffb0 && s <= 0xffb9) return '0' + (s - 0xffb0);
     switch (s) {
     case 0xffab: return '+';
@@ -754,7 +754,7 @@ static void x_present(lt_backend *be, lt_canvas *c, lt_cells *cells, lt_rect dir
             p8(&b, 0); p8(&b, x->depth); p8(&b, 0); p8(&b, 0);
             lt_buf_reserve(&b, (size_t)rowbytes * (size_t)sh);
             for (yy = 0; yy < sh; yy++) {
-                const lt_u32 *src = c->px + (size_t)(y0 + yy) * (size_t)c->stride + (size_t)x0;
+                const lt_u32 *src = c->px + (size_t)(y0 + yy) * (size_t)c->pitch + (size_t)x0;
                 lt_u8 *dst;
                 size_t base = b.len;
                 int written = 0;

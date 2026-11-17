@@ -54,7 +54,7 @@ typedef struct lt_theme {
     int dark;
     /* surfaces */
     lt_color bg_app, surface, elevated, input, hover, active, selected, dash_bg;
-    lt_color menubar, toolbar, statusbar, sidebar, tab, tab_active;
+    lt_color menubar, bg_toolbar, statusbar, sidebar, tab, tab_active;
     /* text */
     lt_color text, text2, muted, disabled, inverse, link;
     /* borders */
@@ -71,8 +71,21 @@ typedef struct lt_theme {
     lt_color cursor_live, cursor_trail, cursor_selected, cursor_active;
     /* metrics in pixels; derived from the 8x16 font by lt_ui_theme_changed() */
     int row_h, spacing_x, spacing_y, padding, pad_x, radius, scrollbar_w, indent;
-    int menubar_h, toolbar_h, tab_h, statusbar_h, splitter_w, title_h;
+    int menubar_h, tbar_h, tab_h, statusbar_h, splitter_w, title_h;
+    int tree_row_h;     /* sidebar tree row (stock: 20px) */
+    int radius_lg;      /* cards and dialogs */
 } lt_theme;
+
+/* Font sizes in px at scale 1 (stock LibreTune --font-size-* tokens). The
+ * toolkit multiplies them by the UI scale. */
+#define LT_UI_FS_XS   10
+#define LT_UI_FS_SM   11
+#define LT_UI_FS_BASE 12
+#define LT_UI_FS_MD   13
+#define LT_UI_FS_LG   14
+#define LT_UI_FS_XL   16
+#define LT_UI_FS_2XL  18
+#define LT_UI_FS_3XL  24
 
 void lt_theme_dark(lt_theme *t);
 void lt_theme_light(lt_theme *t);
@@ -163,8 +176,21 @@ void lt_ui_draw_arc(lt_ui *ui, double cx, double cy, double r, double a0, double
 void lt_ui_draw_poly(lt_ui *ui, const double *xy, int npoints, lt_color c);
 void lt_ui_draw_vgrad(lt_ui *ui, lt_rect r, lt_color top, lt_color bottom);
 /* pixels must stay valid until lt_ui_end */
-void lt_ui_draw_blit(lt_ui *ui, int x, int y, const lt_u32 *px, int w, int h, int stride);
+void lt_ui_draw_blit(lt_ui *ui, int x, int y, const lt_u32 *px, int w, int h, int pitch);
 int  lt_ui_draw_text(lt_ui *ui, int x, int y, const char *utf8, lt_color c);
+/* Same with an explicit face (lt_font_id) and size (px at scale 1, e.g.
+ * LT_UI_FS_SM). y is the top of a 16*scale px box in which the text is
+ * centred, so rows can stay on the 8x16 grid in cell mode. Cell mode ignores
+ * font and size. */
+int  lt_ui_draw_text_f(lt_ui *ui, int x, int y, const char *utf8, lt_color c, int font, int px);
+int  lt_ui_text_width_f(const lt_ui *ui, const char *utf8, int font, int px);
+/* default face/size used by lt_ui_draw_text, lt_ui_text_width and the
+ * widgets until reset (px 0 = LT_UI_FS_BASE) */
+void lt_ui_text_style(lt_ui *ui, int font, int px);
+void lt_ui_text_style_reset(lt_ui *ui);
+/* aligned in a rect with explicit face/size (ellipsis when too long) */
+void lt_ui_draw_text_in_f(lt_ui *ui, lt_rect r, const char *utf8, lt_color c, int align,
+                          int font, int px);
 /* aligned inside rect (0 left,1 center,2 right), vertically centered, with
  * an ellipsis when too long */
 void lt_ui_draw_text_in(lt_ui *ui, lt_rect r, const char *utf8, lt_color c, int align);
@@ -187,6 +213,14 @@ enum { LT_UI_ICON_NONE = 0, LT_UI_ICON_ARROW_RIGHT, LT_UI_ICON_ARROW_DOWN,
        LT_UI_ICON_WARN, LT_UI_ICON_INFO, LT_UI_ICON_SEARCH, LT_UI_ICON_TABLE,
        LT_UI_ICON_GAUGE };
 void lt_ui_draw_icon(lt_ui *ui, lt_rect r, int icon, lt_color c);
+/* Lucide icons (icons.h LT_ICON_*) can be passed wherever an icon id is
+ * taken (tree nodes, icon buttons, lt_ui_draw_icon): wrap them with
+ * LT_UI_LUCIDE(). Cell mode shows a placeholder glyph instead. */
+#define LT_UI_LUCIDE(id) (1000 + (id))
+/* Lucide icon centred in r, glyph size px (0 = 14 scaled), stroke 0 = default */
+void lt_ui_draw_lucide(lt_ui *ui, lt_rect r, int lucide_id, int px, double stroke, lt_color c);
+/* soft drop shadow under a rounded rect (pixel mode only) */
+void lt_ui_draw_shadow(lt_ui *ui, lt_rect r, int radius, int spread, int alpha);
 
 /* ------------------------------------------------------------------ */
 /* Layout                                                              */
@@ -241,6 +275,7 @@ void    lt_ui_statusbar_end(lt_ui *ui);
 /* Toolbar occupying the next full-width row of the client area */
 void    lt_ui_toolbar_begin(lt_ui *ui);
 void    lt_ui_toolbar_end(lt_ui *ui);
+void    lt_ui_toolbar_separator(lt_ui *ui);      /* 1px divider cell */
 
 /* Floating windows. flags: */
 #define LT_UI_WIN_RESIZE   1
@@ -323,11 +358,17 @@ int lt_ui_listbox_cb(lt_ui *ui, const char *id, int *sel, int n,
 #define LT_UI_TREE_SELECTED  2   /* in: highlight row */
 #define LT_UI_TREE_FORCE_OPEN 4  /* in: treat as open (search results) */
 #define LT_UI_TREE_DEFAULT_OPEN 8 /* in: initial state open */
+#define LT_UI_TREE_DISABLED  16  /* in: muted, hover ignored (still clickable) */
 #define LT_UI_TREE_OPEN      1   /* out */
 #define LT_UI_TREE_CLICKED   2   /* out: row clicked (or Enter) */
 #define LT_UI_TREE_ACTIVATED 4   /* out: double click */
 int  lt_ui_tree_node(lt_ui *ui, const char *label, int icon, int flags);
+/* icon may be LT_UI_LUCIDE(x); icon_color tints it */
+int  lt_ui_tree_node_ex(lt_ui *ui, const char *label, int icon, lt_color icon_color, int flags);
 void lt_ui_tree_end(lt_ui *ui);
+/* expand (open != 0) or collapse every tree node; takes a few frames to reach
+ * nodes that only appear once their parent opens */
+void lt_ui_tree_set_all(lt_ui *ui, int open);
 
 /* Tab bar occupying the next row: begin, one lt_ui_tab per tab, end. */
 #define LT_UI_TAB_CLOSABLE 1
@@ -336,13 +377,19 @@ void lt_ui_tree_end(lt_ui *ui);
 #define LT_UI_TAB_SELECTED 1    /* result bit: tab was clicked */
 void lt_ui_tabbar_begin(lt_ui *ui, const char *id, int *active);
 int  lt_ui_tab(lt_ui *ui, const char *title, int flags);
+int  lt_ui_tab_icon(lt_ui *ui, const char *title, int icon, int flags);
 int  lt_ui_tabbar_end(lt_ui *ui);               /* returns the active index */
+/* Full-width row of text tabs with the active one underlined (settings
+ * dialogs). Returns true when *sel changed. */
+lt_bool lt_ui_tabs_flat(lt_ui *ui, const char *id, const char *const *labels, int n, int *sel);
 
 /* Menus. Titles may contain '&' (Alt+letter access key). */
 #define LT_UI_MENU_DISABLED 1
 #define LT_UI_MENU_CHECKED  2
 lt_bool lt_ui_menu_begin(lt_ui *ui, const char *title);      /* inside a menubar */
 void    lt_ui_menu_end(lt_ui *ui);
+/* vertical divider between groups of top-level menus (menubar only) */
+void    lt_ui_menubar_separator(lt_ui *ui);
 lt_bool lt_ui_menu_item(lt_ui *ui, const char *label, const char *shortcut, int flags);
 void    lt_ui_menu_separator(lt_ui *ui);
 lt_bool lt_ui_submenu_begin(lt_ui *ui, const char *label, int flags);
@@ -365,7 +412,7 @@ void    lt_ui_progress(lt_ui *ui, double frac, const char *text); /* frac<0: bus
 void    lt_ui_spinner(lt_ui *ui);
 lt_bool lt_ui_color_swatch(lt_ui *ui, lt_color c);             /* returns clicked */
 lt_bool lt_ui_color_edit(lt_ui *ui, const char *id, lt_color *c); /* swatch + RGB sliders popup */
-void    lt_ui_image(lt_ui *ui, const lt_u32 *px, int w, int h, int stride); /* cell mode: placeholder */
+void    lt_ui_image(lt_ui *ui, const lt_u32 *px, int w, int h, int pitch); /* cell mode: placeholder */
 lt_bool lt_ui_link(lt_ui *ui, const char *text);
 
 /* ------------------------------------------------------------------ */

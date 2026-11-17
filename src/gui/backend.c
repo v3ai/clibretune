@@ -20,6 +20,9 @@ static lt_backend *try_name(const char *name)
     if (lt_stricmp(name, "win32") == 0) {
         return lt_backend_win32_create();
     }
+    if (lt_stricmp(name, "cocoa") == 0) {
+        return lt_backend_cocoa_create();
+    }
     if (lt_stricmp(name, "web") == 0) {
         return lt_backend_web_create(0);
     }
@@ -43,8 +46,13 @@ lt_backend *lt_backend_select(const char *name)
     if (name != NULL && name[0] != '\0' && lt_stricmp(name, "auto") != 0) {
         return try_name(name);
     }
-    /* auto: win32 -> x11 -> (macOS: web) -> tty -> web */
+    /* auto: win32 -> cocoa -> x11 -> (macOS: web) -> tty -> web.
+     * Constructors for other operating systems are build-selected stubs. */
     b = lt_backend_win32_create();
+    if (b != NULL) {
+        return b;
+    }
+    b = lt_backend_cocoa_create();
     if (b != NULL) {
         return b;
     }

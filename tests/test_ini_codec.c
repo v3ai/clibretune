@@ -219,7 +219,7 @@ LT_TEST(bit_roundtrip_all)
             int i;
             for (i = 0; i < 6; i++) d[i] = (lt_u8)(0xA5 ^ (i * 37));
             memcpy(before, d, 6);
-            want = (lt_u32)(0x1234567 + pos * 131 + size) & ((1UL << size) - 1UL);
+            want = (lt_u32)(0x1234567 + pos * 131 + size) & (((lt_u32)1 << size) - (lt_u32)1);
             if (lt_bits_set(d, 6, 0, pos, size, want) != 0) bad++;
             if (lt_bits_get(d, 6, 0, pos, size, &v) != 0 || v != want) bad++;
             /* other bits untouched */
@@ -248,7 +248,7 @@ LT_TEST(const_codec_scalars)
         "page = 2\n",
         "p2 = scalar, U08, 3, \"\", 2, 10, 0, 500, 0\n",
         "[PcVariables]\npcv = scalar, U08, \"\", 1, 0, 0, 10, 0\n",
-        "[Defaults]\ndefaultValue = pcv, 4\ndefaultValue = reqFuel, 7.5\n", NULL);
+        "[Defaults]\ndefaultValue = pcv, 4\ndefaultValue = reqFuel, 7.5\n", (const char *)NULL);
     tpages tp;
     lt_pagesrc src;
     double v;
@@ -348,7 +348,7 @@ LT_TEST(const_codec_arrays_and_strings)
         "[Constants]\npageSize = 512, 64\npage = 1\n",
         "bins = array, U08, 0, [4], \"rpm\", 100, 0, 0, 25500, 0\n",
         "tbl = array, U16, 10, [3x2], \"%\", 0.5, 0, 0, 100, 1\n",
-        "name = string, ASCII, 30, 8\n", NULL);
+        "name = string, ASCII, 30, 8\n", (const char *)NULL);
     tpages tp;
     lt_pagesrc src;
     double out[8];
@@ -415,7 +415,7 @@ LT_TEST(patch_invalid_sizes)
         "cols = scalar, U08, 1, \"\", 1, 0, 4, 16, 0\n",
         "other = scalar, U08, 5, \"\", 1, 0, 4, 16, 0\n",
         "tbl = array, U08, 10, [{cols}x{rows}], \"\", 1, 0, 0, 255, 0\n",
-        "[ConstantsExtensions]\ndefaultValue = rows, 8\ndefaultValue = cols, 8\ndefaultValue = other, 8\n", NULL);
+        "[ConstantsExtensions]\ndefaultValue = rows, 8\ndefaultValue = cols, 8\ndefaultValue = other, 8\n", (const char *)NULL);
     tpages tp;
     lt_pagesrc src;
     double v;
@@ -454,7 +454,7 @@ LT_TEST(channel_decode_spec_cases)
         "clt = scalar, S16, 0, \"C\", 0.1, -40.0\n",
         "plainBits = bits, U08, 0\n",
         "f = scalar, F32, 0, \"\", 1, 0\n",
-        "afr = { ego1 / 10.0 }, \"AFR\"\n", NULL);
+        "afr = { ego1 / 10.0 }, \"AFR\"\n", (const char *)NULL);
     const lt_endian e = LT_ENDIAN_LITTLE;
     lt_u8 b[8];
     double v;
@@ -531,7 +531,7 @@ LT_TEST(realtime_evaluator)
         "status = { flag > 0 ? 100 : 0 }, \"\"\n",
         "viaConst = { rpm + mult }, \"\"\n",
         "bad = { unknownFn(1) }, \"\"\n",
-        "huge = { 1 / 0 + sqrt(0 - 1) }, \"\"\n", NULL);
+        "huge = { 1 / 0 + sqrt(0 - 1) }, \"\"\n", (const char *)NULL);
     lt_ini_rt *rt = lt_ini_rt_new(ini);
     lt_u8 frame[3];
     double v;
@@ -592,7 +592,7 @@ LT_TEST(realtime_evaluator)
 LT_TEST(realtime_size_fallback)
 {
     lt_ini *ini = load_n(
-        "[OutputChannels]\na = scalar, U16, 4, \"\", 1, 0\nb = bits, U32, 10, [0:1]\nc = { a + 1 }\n", NULL);
+        "[OutputChannels]\na = scalar, U16, 4, \"\", 1, 0\nb = bits, U32, 10, [0:1]\nc = { a + 1 }\n", (const char *)NULL);
     LT_CHECK_INT(lt_ini_realtime_size(ini), 14);
     lt_ini_free(ini);
 }
@@ -623,7 +623,7 @@ LT_TEST(realtime_size_fallback)
     "    recordField = sync, \"Sync\", 4, 1, 1.0\n",\
     "    recordField = refTime, \"Ref Time\", 8, 32, 0.001, \"ms\"\n",\
     "    calcField = ignored\n",\
-    "[PcVariables]\ntsCanId = bits, U08, [0:3], \"A\"\n", NULL)
+    "[PcVariables]\ntsCanId = bits, U08, [0:3], \"A\"\n", (const char *)NULL)
 
 LT_TEST(loggers)
 {

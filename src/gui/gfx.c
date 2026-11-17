@@ -12,6 +12,7 @@
 #include <math.h>
 #include <string.h>
 #include "gui.h"
+#include "gfx_priv.h"
 
 /* vector font data from font_vec.c (generated) */
 extern const lt_u8 lt_vfont_adv[96];
@@ -65,7 +66,7 @@ void lt_canvas_init(lt_canvas *c, int w, int h)
 {
     if (w < 1) { w = 1; }
     if (h < 1) { h = 1; }
-    c->w = w; c->h = h; c->stride = w;
+    c->w = w; c->h = h; c->pitch = w;
     c->px = (lt_u32 *)lt_calloc((size_t)w * (size_t)h, sizeof(lt_u32));
 }
 
@@ -84,7 +85,7 @@ void lt_canvas_free(lt_canvas *c)
         lt_free(c->px);
     }
     c->px = NULL;
-    c->w = c->h = c->stride = 0;
+    c->w = c->h = c->pitch = 0;
 }
 
 void lt_cells_init(lt_cells *g, int cols, int rows)
@@ -131,6 +132,7 @@ void lt_gfx_init_canvas(lt_gfx *g, lt_canvas *c)
     g->ox = g->oy = 0;
     g->clip = lt_rect_make(0, 0, c->w, c->h);
     g->dirty = lt_rect_make(0, 0, 0, 0);
+    g->bitmap_text = 0;
 }
 
 void lt_gfx_init_cells(lt_gfx *g, lt_cells *cells)
@@ -141,6 +143,7 @@ void lt_gfx_init_cells(lt_gfx *g, lt_cells *cells)
     g->ox = g->oy = 0;
     g->clip = lt_rect_make(0, 0, cells->cols * CELL_W, cells->rows * CELL_H);
     g->dirty = lt_rect_make(0, 0, 0, 0);
+    g->bitmap_text = 0;
 }
 
 lt_bool lt_gfx_cell_mode(const lt_gfx *g)
@@ -276,7 +279,7 @@ static void put_span(lt_gfx *g, int x, int y, int w, lt_color col, int cov)
     a = LT_COLOR_A(col);
     if (cov < 255) { a = DIV255(a * cov); }
     if (a <= 0) { return; }
-    p = c->px + (size_t)y * (size_t)c->stride + x;
+    p = c->px + (size_t)y * (size_t)c->pitch + x;
     if (a >= 255) {
         lt_u32 v = (col | OPAQUE_MASK) & LT_U32_MASK;
         for (i = 0; i < w; i++) { p[i] = v; }
@@ -999,7 +1002,7 @@ void lt_gfx_fill_poly(lt_gfx *g, const double *xy, int n, lt_color c)
 
 /* ------------------------------------------------------------------ */
 /* blit                                                                */
-void lt_gfx_blit(lt_gfx *g, int x, int y, const lt_u32 *px, int w, int h, int stride)
+void lt_gfx_blit(lt_gfx *g, int x, int y, const lt_u32 *px, int w, int h, int pitch)
 {
     int j, i, ww;
     x += g->ox; y += g->oy;
@@ -1014,14 +1017,14 @@ void lt_gfx_blit(lt_gfx *g, int x, int y, const lt_u32 *px, int w, int h, int st
             for (cx = cx0; cx <= cx1; cx++) {
                 int sx = cx * CELL_W + CELL_W / 2 - x, sy = cy * CELL_H + CELL_H / 2 - y;
                 if (sx >= 0 && sy >= 0 && sx < w && sy < h) {
-                    cell_bg(g, cx, cy, px[(size_t)sy * (size_t)stride + sx]);
+                    cell_bg(g, cx, cy, px[(size_t)sy * (size_t)pitch + (size_t)sx]);
                 }
             }
         }
         return;
     }
     for (j = LT_MAX(0, g->clip.y - y); j < h && y + j < g->clip.y + g->clip.h; j++) {
-        const lt_u32 *row = px + (size_t)j * (size_t)stride;
+        const lt_u32 *row = px + (size_t)j * (size_t)pitch;
         i = LT_MAX(0, g->clip.x - x);
         if (w > g->clip.x + g->clip.w - x) { ww = g->clip.x + g->clip.w - x; } else { ww = w; }
         while (i < ww) {
@@ -1032,6 +1035,48 @@ void lt_gfx_blit(lt_gfx *g, int x, int y, const lt_u32 *px, int w, int h, int st
         }
     }
     mark_clipped(g, x, y, w, h);
+}
+
+/* ------------------------------------------------------------------ */
+/* coverage mask blit (anti-aliased text and icons)                    */
+void lt_gfx_blit_mask(lt_gfx *g, int x, int y, const lt_u8 *a, int w, int h, int pitch,
+                      lt_color col, const lt_u8 *lut)
+{
+    lt_canvas *c = g->canvas;
+    int x0, y0, x1, y1, j, i, ca, sr, sg, sb;
+    if (c == NULL || a == NULL || w <= 0 || h <= 0) { return; }
+    x += g->ox; y += g->oy;
+    x0 = LT_MAX(LT_MAX(g->clip.x, 0), x);
+    y0 = LT_MAX(LT_MAX(g->clip.y, 0), y);
+    x1 = LT_MIN(LT_MIN(g->clip.x + g->clip.w, c->w), x + w);
+    y1 = LT_MIN(LT_MIN(g->clip.y + g->clip.h, c->h), y + h);
+    if (x1 <= x0 || y1 <= y0) { return; }
+    ca = LT_COLOR_A(col);
+    if (ca <= 0) { return; }
+    sr = LT_COLOR_R(col); sg = LT_COLOR_G(col); sb = LT_COLOR_B(col);
+    for (j = y0; j < y1; j++) {
+        const lt_u8 *src = a + (size_t)(j - y) * (size_t)pitch + (size_t)(x0 - x);
+        lt_u32 *dst = c->px + (size_t)j * (size_t)c->pitch + x0;
+        for (i = 0; i < x1 - x0; i++) {
+            int cv = src[i], al, ia, r, gg, b;
+            lt_u32 d;
+            if (cv == 0) { continue; }
+            if (lut != NULL) { cv = lut[cv]; }
+            al = ca >= 255 ? cv : DIV255(ca * cv);
+            if (al <= 0) { continue; }
+            if (al >= 255) {
+                dst[i] = LT_RGB(sr, sg, sb);
+                continue;
+            }
+            ia = 255 - al;
+            d = dst[i];
+            r = sr * al + (int)((d >> 16) & 0xFF) * ia;
+            gg = sg * al + (int)((d >> 8) & 0xFF) * ia;
+            b = sb * al + (int)(d & 0xFF) * ia;
+            dst[i] = LT_RGB(DIV255(r), DIV255(gg), DIV255(b));
+        }
+    }
+    mark(g, x0, y0, x1 - x0, y1 - y0);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1055,6 +1100,10 @@ int lt_gfx_text(lt_gfx *g, int x, int y, const char *s, lt_color c, int scale)
     int total = lt_gfx_text_width(s, scale), cw, ch, x0;
     lt_u32 cp;
     if (scale < 1) { scale = 1; }
+    if (g->canvas != NULL && g->cells == NULL && !g->bitmap_text &&
+        lt_gfx_text_cellfont(g, x, y, s, c, scale)) {
+        return total;
+    }
     x += g->ox; y += g->oy;
     cw = LT_FONT_W * scale; ch = LT_FONT_H * scale;
     x0 = x;
@@ -1121,6 +1170,7 @@ double lt_gfx_vtext_width(const char *s, double height)
 {
     double w = 0.0, sc = height / VF_CAP;
     lt_u32 cp;
+    if (lt_gfx_vtext_width_plex(s, height, &w)) { return w; }
     while ((cp = lt_utf8_next(&s)) != 0) {
         w += lt_vfont_adv[vf_index(cp)] * sc;
     }
@@ -1133,6 +1183,10 @@ void lt_gfx_vtext(lt_gfx *g, double x, double y, const char *s, double height,
     double sc, tw, ca, sa, pen, vy;
     lt_u32 cp;
     if (height <= 0.0) { return; }
+    if (g->canvas != NULL && g->cells == NULL && !g->bitmap_text &&
+        lt_gfx_vtext_plex(g, x, y, s, height, rotation, align, valign, c)) {
+        return;
+    }
     sc = height / VF_CAP;
     tw = lt_gfx_vtext_width(s, height);
     if (g->cells != NULL) {

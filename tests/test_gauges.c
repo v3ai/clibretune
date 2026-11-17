@@ -27,7 +27,7 @@ static void ppm(const lt_canvas *c, const char *path)
     fprintf(f, "P6\n%d %d\n255\n", c->w, c->h);
     for (y = 0; y < c->h; y++) {
         for (x = 0; x < c->w; x++) {
-            lt_u32 p = c->px[y * c->stride + x];
+            lt_u32 p = c->px[y * c->pitch + x];
             fputc((int)((p >> 16) & 255), f); fputc((int)((p >> 8) & 255), f); fputc((int)(p & 255), f);
         }
     }
@@ -104,7 +104,7 @@ LT_TEST(gallery)
     lt_gfx_clear(&g, LT_RGB(0, 0, 0));
     lt_dash_view_render(v, &g, lt_rect_make(0, 0, cv.w, cv.h), &env);
     for (y = 0; y < cv.h; y += 3) {
-        for (x = 0; x < cv.w; x += 3) { if ((cv.px[y * cv.stride + x] & 0xFFFFFF) != 0) { nz++; } }
+        for (x = 0; x < cv.w; x += 3) { if ((cv.px[y * cv.pitch + x] & 0xFFFFFF) != 0) { nz++; } }
     }
     LT_CHECK(nz > 2000);
     if (shot != NULL) { ppm(&cv, shot); }

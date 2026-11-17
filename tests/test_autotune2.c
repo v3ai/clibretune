@@ -678,7 +678,7 @@ static void rcfg(lt_replay_config *c)
 {
     lt_replay_config_default(c);
     c->filters.min_clt = 71;
-    c->strict_lambda_match = LT_FALSE;
+    c->lambda_match_strict = LT_FALSE;
 }
 
 static int do_replay(const lt_log *l, const lt_replay_config *c, lt_replay_report *r)
@@ -718,7 +718,7 @@ LT_TEST(replay_basic)
     LT_CHECK_NEAR(r.cells[0].target_afr, 14.0, 1e-12);
     LT_CHECK_NEAR(r.cells[0].mean_afr, 14.7, 1e-9);
     LT_CHECK_INT(r.n_verdicts, 200);
-    LT_CHECK(r.total_samples > 100);
+    LT_CHECK(r.samples_all > 100);
     LT_CHECK(r.has_validation);
     LT_CHECK_NEAR(r.validation.gain_pct, 100.0, 1e-6);
     LT_CHECK_NEAR(r.validation.worsened_pct, 0.0, 1e-9);
@@ -740,7 +740,7 @@ LT_TEST(replay_cold_rejections)
     c.validate = LT_FALSE;
     LT_CHECK_INT(do_replay(&l, &c, &r), 0);
     LT_CHECK_INT(r.n_verdicts, 50);
-    LT_CHECK_INT(r.total_samples, 0);
+    LT_CHECK_INT(r.samples_all, 0);
     for (i = 0; i < r.n_rejections; i++) {
         if (strcmp(r.rejections[i].reason, "clt below min_clt") == 0 && r.rejections[i].count > 0) {
             found = 1;
@@ -990,7 +990,7 @@ LT_TEST(health_perfect_and_nocoverage)
     lt_health_score(z, hits, 10, 10, xb, yb, &h);
     LT_CHECK(h.overall_score >= 90);
     LT_CHECK(h.grade == 'A');
-    LT_CHECK_INT(h.total_cells, 100);
+    LT_CHECK_INT(h.cells_all, 100);
     LT_CHECK_INT(h.coverage_cells, 100);
     LT_CHECK_NEAR(h.coverage_percent, 100, 1e-12);
     LT_CHECK(h.n_regions >= 3);
@@ -1097,8 +1097,8 @@ LT_TEST(health_region_boundaries)
 
 LT_TEST(predict_basic)
 {
-    double z[25], xb[5] = {1000, 2000, 3000, 4000, 5000}, yb[5] = {20, 40, 60, 80, 100};
-    unsigned hits[25];
+    double z[25] = { 0 }, xb[5] = {1000, 2000, 3000, 4000, 5000}, yb[5] = {20, 40, 60, 80, 100};
+    unsigned hits[25] = { 0 };
     lt_predict_config c;
     lt_predicted_cell out[25];
     size_t r, cc, n, i;

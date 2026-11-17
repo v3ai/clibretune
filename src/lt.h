@@ -1,32 +1,139 @@
 /* lt.h - LibreTune-C portability layer and core utilities.
- * Valid C89 .. C23. Only standard C headers. See docs/CONVENTIONS.md.
+ * Valid C89 .. C23. Only standard C headers. Follows docs/UNIVERSAL_C.md
+ * (project prefix lt_/LT_ stands in for the standard's p_/P_).
+ * This is the ONLY file that may test compiler/version macros.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 #ifndef LT_H
 #define LT_H
 
+#include <limits.h>
 #include <stddef.h>
 #include <stdarg.h>
-#include <limits.h>
 
-/* ---- fixed-ish width integer types (no stdint.h in C89) ---- */
-typedef unsigned char  lt_u8;
-typedef signed char    lt_s8;
-typedef unsigned short lt_u16;
-typedef short          lt_s16;
-#if UINT_MAX >= 0xFFFFFFFFUL
-typedef unsigned int   lt_u32;
-typedef int            lt_s32;
+/* ---- language version ---------------------------------------------- */
+#if defined(__cplusplus)
+#  define LT_STDC 0L
+#elif defined(__STDC_VERSION__)
+#  define LT_STDC __STDC_VERSION__
 #else
-typedef unsigned long  lt_u32;
-typedef long           lt_s32;
+#  define LT_STDC 198900L
 #endif
-/* lt_u32 is >= 32 bits; mask with LT_U32_MASK when relying on wraparound. */
-#define LT_U32_MASK 0xFFFFFFFFUL
 
+/* ---- hard platform assumptions ------------------------------------- */
+#if CHAR_BIT != 8
+#  error "LibreTune requires 8-bit bytes"
+#endif
+
+/* ---- inline / restrict --------------------------------------------- */
+#if defined(__cplusplus) || LT_STDC >= 199901L
+#  define LT_INLINE inline
+#elif defined(__GNUC__)
+#  define LT_INLINE __inline__
+#elif defined(_MSC_VER)
+#  define LT_INLINE __inline
+#else
+#  define LT_INLINE
+#endif
+
+#if !defined(__cplusplus) && LT_STDC >= 199901L
+#  define LT_RESTRICT restrict
+#elif defined(__GNUC__)
+#  define LT_RESTRICT __restrict__
+#elif defined(_MSC_VER)
+#  define LT_RESTRICT __restrict
+#else
+#  define LT_RESTRICT
+#endif
+
+/* ---- boolean (never collides with C23/C++ bool) -------------------- */
 typedef int lt_bool;
 #define LT_TRUE  1
 #define LT_FALSE 0
+
+/* ---- exact-width integers without <stdint.h> ----------------------- */
+typedef unsigned char lt_u8;
+typedef signed char   lt_s8;
+
+#if USHRT_MAX == 0xFFFFU
+typedef unsigned short lt_u16;
+typedef short          lt_s16;
+#elif UINT_MAX == 0xFFFFU
+typedef unsigned int   lt_u16;
+typedef int            lt_s16;
+#else
+#  error "no 16-bit integer type"
+#endif
+
+#if UINT_MAX == 0xFFFFFFFFUL
+typedef unsigned int   lt_u32;
+typedef int            lt_s32;
+#elif ULONG_MAX == 0xFFFFFFFFUL
+typedef unsigned long  lt_u32;
+typedef long           lt_s32;
+#else
+#  error "no 32-bit integer type"
+#endif
+/* lt_u32 is exactly 32 bits; the mask is kept for readability. */
+#define LT_U32_MASK 0xFFFFFFFFUL
+
+/* 64-bit: optional. Code MUST check LT_HAS_64 before using lt_u64/lt_s64. */
+#if (!defined(__cplusplus) && LT_STDC >= 199901L) || \
+    (defined(__cplusplus) && __cplusplus >= 201103L)
+#  include <stdint.h>
+typedef uint64_t lt_u64;
+typedef int64_t  lt_s64;
+#  define LT_U64_C(c) UINT64_C(c)
+#  define LT_HAS_64 1
+#elif ((ULONG_MAX >> 31) >> 31) == 3
+typedef unsigned long lt_u64;
+typedef long          lt_s64;
+#  define LT_U64_C(c) c##UL
+#  define LT_HAS_64 1
+#elif defined(__GNUC__)
+__extension__ typedef unsigned long long lt_u64;
+__extension__ typedef long long          lt_s64;
+#  define LT_U64_C(c) c##ULL
+#  define LT_HAS_64 1
+#elif defined(_MSC_VER)
+typedef unsigned __int64 lt_u64;
+typedef __int64          lt_s64;
+#  define LT_U64_C(c) c##ui64
+#  define LT_HAS_64 1
+#else
+#  define LT_HAS_64 0
+#endif
+
+#define LT_SIZE_MAX ((size_t)-1)
+
+/* ---- utilities ------------------------------------------------------ */
+#define LT_CAT_(a, b) a##b
+#define LT_CAT(a, b)  LT_CAT_(a, b)
+/* File scope only. tag must be a unique identifier fragment (<= 14 chars). */
+#define LT_STATIC_ASSERT(cond, tag) \
+    typedef char LT_CAT(lt_static_assert_, tag)[(cond) ? 1 : -1]
+
+/* Wrap public headers: LT_BEGIN_DECLS ... LT_END_DECLS */
+#ifdef __cplusplus
+#  define LT_BEGIN_DECLS extern "C" {
+#  define LT_END_DECLS   }
+#else
+#  define LT_BEGIN_DECLS
+#  define LT_END_DECLS
+#endif
+
+LT_STATIC_ASSERT(sizeof(lt_u8) == 1, u8_size);
+LT_STATIC_ASSERT(sizeof(lt_u16) == 2, u16_size);
+LT_STATIC_ASSERT(sizeof(lt_u32) == 4, u32_size);
+LT_STATIC_ASSERT(sizeof(lt_s32) == 4, s32_size);
+LT_STATIC_ASSERT((-1 & 3) == 3, twos_compl);
+#if LT_HAS_64
+LT_STATIC_ASSERT(sizeof(lt_u64) == 8, u64_size);
+LT_STATIC_ASSERT(sizeof(lt_s64) == 8, s64_size);
+#endif
+
+/* Safe worst-case buffer size for formatting an int in decimal. */
+#define LT_INT_DEC_BUF (sizeof(int) * CHAR_BIT / 3 + 3)
 
 #define LT_MIN(a, b) ((a) < (b) ? (a) : (b))
 #define LT_MAX(a, b) ((a) > (b) ? (a) : (b))
@@ -35,6 +142,26 @@ typedef int lt_bool;
 #define LT_UNUSED(x) ((void)(x))
 
 #define LT_PI 3.14159265358979323846
+
+LT_BEGIN_DECLS
+
+/* ---- overflow-checked arithmetic (UNIVERSAL_C section 5) ----
+ * Return LT_FALSE and leave *out alone on overflow. */
+lt_bool lt_add_int(int a, int b, int *out);
+lt_bool lt_mul_int(int a, int b, int *out);
+lt_bool lt_mul_size(size_t a, size_t b, size_t *out);
+lt_bool lt_add_size(size_t a, size_t b, size_t *out);
+
+/* ---- endian-independent (de)serialization of 32-bit values ---- */
+void   lt_store_u32le(lt_u8 *p, lt_u32 v);
+lt_u32 lt_load_u32le(const lt_u8 *p);
+void   lt_store_u32be(lt_u8 *p, lt_u32 v);
+lt_u32 lt_load_u32be(const lt_u8 *p);
+lt_u32 lt_rotl32(lt_u32 x, unsigned n);
+#if LT_HAS_64
+/* decimal text of a 64-bit value; buf must hold >= 21 bytes; returns buf */
+char *lt_u64_to_dec(char *buf, lt_u64 v);
+#endif
 
 /* ---- memory (abort on OOM) ---- */
 void *lt_malloc(size_t n);
@@ -155,5 +282,7 @@ void   lt_wr_be(lt_u8 *p, int nbytes, lt_u32 v);
 void   lt_wr_le(lt_u8 *p, int nbytes, lt_u32 v);
 double lt_f32_from_bits(lt_u32 bits);
 lt_u32 lt_f32_to_bits(double v);
+
+LT_END_DECLS
 
 #endif /* LT_H */

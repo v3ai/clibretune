@@ -133,7 +133,7 @@ static const char *k_ini =
 LT_TEST(fuzz_envelope_decode)
 {
     int it, i;
-    lt_u8 pl[64], d[128];
+    lt_u8 pl[64] = {0}, d[128];
     lt_buf f;
     const lt_u8 *op;
     size_t on, used, len;
@@ -168,7 +168,7 @@ LT_TEST(fuzz_parsers)
     char s[200];
     lt_buf b;
     lt_u8 data[8];
-    lt_u8 sg[100];
+    lt_u8 sg[100] = {0};
     char sig[40], msg[40];
     size_t dl;
     int code;

@@ -9,7 +9,6 @@
 #include "project/proj_priv.h"
 #include "lt_test.h"
 
-extern int putenv(char *);
 
 #define FIX "tests/fixtures/project/"
 #define TMP "build/test_tmp/project_"
@@ -379,9 +378,8 @@ LT_TEST(project_config_validation)
 
 LT_TEST(projects_dir_env)
 {
-    static char envbuf[] = "LIBRETUNE_PROJECTS=build/test_tmp/pd_env";
     char *p;
-    putenv(envbuf);
+    lt_plat_setenv("LIBRETUNE_PROJECTS", "build/test_tmp/pd_env");
     p = lt_projects_dir();
     LT_CHECK(p != NULL);
     if (p) LT_CHECK_STR(p, "build/test_tmp/pd_env");
@@ -389,9 +387,7 @@ LT_TEST(projects_dir_env)
     {
         lt_project pr;
         char *base = fresh("envproj");
-        static char env2[256];
-        lt_snprintf(env2, sizeof env2, "LIBRETUNE_PROJECTS=%s", base);
-        putenv(env2);
+        lt_plat_setenv("LIBRETUNE_PROJECTS", base);
         LT_CHECK(lt_project_create("Env", FIX "mini.ini", "s", NULL, &pr) == 0);
         LT_CHECK(strncmp(pr.path, base, strlen(base)) == 0);
         lt_project_free(&pr);

@@ -8,6 +8,7 @@
 #include <string.h>
 #include <math.h>
 #include "dialogs.h"
+#include "view_kit.h"
 
 #define MAX_DEPTH 5
 #define N_STR 8
@@ -105,13 +106,43 @@ static const char *label_text(lt_app *app, const char *raw, char *buf, size_t ca
 static void field_layout(lt_ui *ui, int *w3, int *n)
 {
     int avail = lt_ui_layout_width(ui);
+    int cell = lt_ui_cell_mode(ui);
     if (avail >= 460) {
-        w3[0] = LT_CLAMP(avail * 42 / 100, 150, 340);
+        w3[0] = LT_CLAMP(avail * (cell ? 42 : 46) / 100, 150, cell ? 340 : 400);
         w3[1] = 200; w3[2] = -1; *n = 3;
     } else {
         w3[0] = -3; w3[1] = -2; *n = 2;
     }
-    lt_ui_layout_row(ui, *n, w3, 0);
+    lt_ui_layout_row(ui, *n, w3, cell ? 0 : 30);
+}
+
+/* label cell of a field row: uppercase caption, hint icon when the constant has help text,
+ * hairline under the whole row (pixel mode); plain label in cell mode */
+static void field_label(lt_ui *ui, const char *label, const lt_ini_const *c, int enabled)
+{
+    const lt_theme *t = lt_ui_theme(ui);
+    lt_rect r, body;
+    char up[160];
+    size_t i, n = 0;
+    int tw;
+    if (lt_ui_cell_mode(ui)) { lt_ui_label(ui, label); return; }
+    r = lt_ui_layout_next(ui);
+    body = lt_ui_layout_body(ui);
+    lt_ui_draw_hline(ui, body.x, body.x + body.w - 1, r.y + r.h - 1, LT_RGBA(255, 255, 255, t->dark ? 16 : 0));
+    if (!t->dark) { lt_ui_draw_hline(ui, body.x, body.x + body.w - 1, r.y + r.h - 1, LT_RGBA(0, 0, 0, 20)); }
+    for (i = 0; label != NULL && label[i] != '\0' && n + 1 < sizeof(up); i++) {
+        char ch = label[i];
+        up[n++] = (ch >= 'a' && ch <= 'z') ? (char)(ch - 'a' + 'A') : ch;
+    }
+    up[n] = '\0';
+    lt_vk_text(ui, lt_rect_make(r.x + 4, r.y, r.w - (c != NULL && c->help != NULL ? 30 : 8), r.h),
+               (int)LT_FONT_SANS_SEMIBOLD, 11.0, up, enabled ? t->text2 : t->disabled, 0);
+    if (c != NULL && c->help != NULL) {
+        tw = lt_vk_text_w(ui, (int)LT_FONT_SANS_SEMIBOLD, 11.0, up);
+        if (tw > r.w - 34) { tw = r.w - 34; }
+        lt_vk_icon(ui, lt_rect_make(r.x + 4 + tw + 6, r.y, 14, r.h), LT_ICON_CIRCLE_HELP, 13, 2.0,
+                   enabled ? t->accent : t->disabled);
+    }
 }
 
 static str_slot *str_slot_get(ini_state *st, const lt_ini_const *c)
@@ -320,8 +351,16 @@ static void draw_comp(lt_app *app, ini_state *st, const lt_ini_dialog *dlg, size
     case LT_COMP_LABEL:
         lt_ui_layout_row(ui, 1, &w1, 0);
         if (label[0] == '#') {
-            lt_ui_layout_space(ui, 4);
-            lt_ui_heading(ui, label + 1);
+            if (lt_ui_cell_mode(ui)) {
+                lt_ui_layout_space(ui, 4);
+                lt_ui_heading(ui, label + 1);
+            } else {
+                lt_rect hr;
+                lt_ui_layout_row(ui, 1, &w1, 30);
+                hr = lt_ui_layout_next(ui);
+                lt_vk_caption(ui, lt_rect_make(hr.x + 4, hr.y + 6, hr.w - 8, hr.h - 6), label + 1, t->text2);
+                lt_ui_draw_hline(ui, hr.x, hr.x + hr.w - 1, hr.y + hr.h - 2, t->border_subtle);
+            }
         } else if (label[0] == '!') {
             lt_ui_label_wrap(ui, label + 1, t->warning);
         } else if (label[0] != '\0') {
@@ -347,7 +386,7 @@ static void draw_comp(lt_app *app, ini_state *st, const lt_ini_dialog *dlg, size
     case LT_COMP_FIELD:
     case LT_COMP_DISPLAYONLY:
         field_layout(ui, w3, &n);
-        lt_ui_label(ui, label);
+        field_label(ui, label, c, enabled);
         if (c != NULL && c->help != NULL) { lt_ui_tooltip(ui, c->help); }
         if (c != NULL) {
             value_widget(app, st, c, cm->kind == LT_COMP_DISPLAYONLY);
@@ -374,7 +413,7 @@ static void draw_comp(lt_app *app, ini_state *st, const lt_ini_dialog *dlg, size
         break;
     case LT_COMP_SLIDER:
         field_layout(ui, w3, &n);
-        lt_ui_label(ui, label);
+        field_label(ui, label, c, enabled);
         if (c != NULL && c->shape.kind == LT_SH_SCALAR && c->type != LT_DT_BITS && val_get(app, c, &v) == 0) {
             double lo = c->min, hi = c->max;
             if (!(hi > lo)) { lo = 0; hi = 100; }
@@ -388,7 +427,7 @@ static void draw_comp(lt_app *app, ini_state *st, const lt_ini_dialog *dlg, size
         int sel = -1, ch;
         size_t o, a;
         field_layout(ui, w3, &n);
-        lt_ui_label(ui, label);
+        field_label(ui, label, NULL, enabled);
         /* match: every assignment equals the current value */
         for (o = 0; o < cm->n_options; o++) {
             int all = cm->options[o].n_assigns > 0;
@@ -401,7 +440,7 @@ static void draw_comp(lt_app *app, ini_state *st, const lt_ini_dialog *dlg, size
             if (all) { sel = (int)o; break; }
         }
         {
-            const char *items[32];
+            const char *items[32] = { NULL };
             size_t m = cm->n_options < 32 ? cm->n_options : 32;
             for (o = 0; o < m; o++) { items[o] = cm->options[o].label != NULL ? cm->options[o].label : ""; }
             ch = lt_ui_combo(ui, "sel", &sel, items, (int)m);
@@ -416,7 +455,7 @@ static void draw_comp(lt_app *app, ini_state *st, const lt_ini_dialog *dlg, size
     case LT_COMP_RUNTIMEVALUE: {
         char b[64];
         field_layout(ui, w3, &n);
-        lt_ui_label(ui, label);
+        field_label(ui, label, NULL, enabled);
         if (cm->name != NULL && lt_app_channel(app, cm->name, &v)) { lt_fmt_double(b, sizeof(b), v, 2); }
         else { lt_strlcpy(b, "-", sizeof(b)); }
         lt_ui_label_ex(ui, b, t->accent, LT_UI_ALIGN_LEFT);
@@ -537,8 +576,28 @@ static void ini_dialog_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
     dlg = find_panel(app, tab->target);
     lt_ui_layout_row(ui, 1, &w1, -1);
     if (lt_ui_scroll_begin(ui, "inidlg")) {
+        if (lt_ui_cell_mode(ui)) {
+            lt_ui_layout_row(ui, 1, &w1, 0);
+            lt_ui_heading(ui, dlg != NULL && dlg->title != NULL ? dlg->title : tab->title);
+        } else {
+            lt_rect hr;
+            char ttl[200];
+            int tw;
+            lt_ui_layout_row(ui, 1, &w1, 50);
+            hr = lt_ui_layout_next(ui);
+            lt_snprintf(ttl, sizeof(ttl), "%s", dlg != NULL && dlg->title != NULL && dlg->title[0] != '\0'
+                                                    ? dlg->title : tab->title);
+            if (dlg != NULL && dlg->name != NULL && strcmp(dlg->name, ttl) != 0) {
+                size_t k = strlen(ttl);
+                lt_snprintf(ttl + k, sizeof(ttl) - k, " (%s)", dlg->name);
+            }
+            tw = lt_vk_text_w(ui, (int)LT_FONT_SANS_SEMIBOLD, 17.0, ttl);
+            if (tw > hr.w - 40) { tw = hr.w - 40; }
+            lt_vk_text(ui, lt_rect_make(hr.x + 20, hr.y + 6, hr.w - 40, 30), (int)LT_FONT_SANS_SEMIBOLD, 17.0,
+                       ttl, t->text, 1);
+            lt_ui_draw_hline(ui, hr.x + (hr.w - tw) / 2 - 4, hr.x + (hr.w + tw) / 2 + 4, hr.y + 38, t->border_strong);
+        }
         lt_ui_layout_row(ui, 1, &w1, 0);
-        lt_ui_heading(ui, dlg != NULL && dlg->title != NULL ? dlg->title : tab->title);
         if (dlg == NULL) {
             lt_ui_label_ex(ui, "This dialog is not defined in the loaded ECU definition.",
                            t->warning, LT_UI_ALIGN_LEFT);

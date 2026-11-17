@@ -12,6 +12,8 @@
 void lt_tabs_fmt(char *buf, size_t cap, double v, int digits);
 /* heat colour of v within [lo,hi] using the configured scheme, blended with the table bg */
 lt_color lt_tabs_heat(const lt_app *app, const lt_theme *t, double lo, double hi, double v);
+/* readable ink (near-black or white) for text on a heat-map cell colour */
+lt_color lt_tabs_heat_text(lt_color bg);
 /* number of decimals of an INI constant (default 0) and its value limits */
 int  lt_tabs_const_digits(const lt_ini *ini, const char *name);
 /* round to `digits` decimals */

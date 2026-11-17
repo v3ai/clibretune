@@ -7,19 +7,35 @@ on:
   workflow_dispatch:
 
 jobs:
-  test:
-    name: ${{ matrix.os }} / ${{ matrix.cc }} / ${{ matrix.std }}
-    runs-on: ${{ matrix.os }}
+  universal:
+    name: Universal C gate (linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Do not install gcc-multilib: it conflicts with the s390x cross compiler.
+      # 32-bit support comes from libc6-dev-i386 + lib32gcc-*-dev instead.
+      - name: Install toolchains
+        run: |
+          sudo dpkg --add-architecture i386 || true
+          sudo apt-get update
+          gcc_major=$(gcc -dumpversion | cut -d. -f1)
+          sudo apt-get install -y clang cppcheck python3 \
+            libc6-dev-i386 "lib32gcc-${gcc_major}-dev" \
+            mingw-w64 wine wine64 qemu-user \
+            gcc-s390x-linux-gnu libc6-dev-s390x-cross
+      - name: Full portability gate
+        env:
+          WINEDEBUG: "-all"
+        run: tools/check_universal.sh -v
+
+  linux:
+    name: linux / ${{ matrix.cc }} / ${{ matrix.std }}
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
         cc: [gcc, clang]
-        std: ["1", "23"]   # STRICT=1 -> -std=c89 -pedantic, STRICT=23 -> -std=c2x
-        include:
-          - os: macos-latest
-            cc: clang
-            std: "1"
+        std: ["1", "23"]   # STRICT=1 -> -std=c89, STRICT=23 -> -std=c2x
     steps:
       - uses: actions/checkout@v4
       - name: Build and test (strict, warnings are errors)
@@ -30,3 +46,61 @@ jobs:
           ./build.sh test
           ./build.sh app
           ./build/libretune --version
+
+  macos:
+    name: macos (cocoa backend)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The suite includes tests/test_macos_smoke.c, which exercises the Cocoa
+      # backend and reports "skipped" when no window-server session exists.
+      - name: Build and test (clang, strict)
+        env:
+          CC: clang
+          STRICT: "1"
+        run: |
+          ./build.sh test
+          ./build.sh app
+          ./build/libretune --version
+      - name: Cocoa smoke test
+        env:
+          CC: clang
+          STRICT: "1"
+          TESTS: test_macos_smoke test_cocoa_map
+        run: ./build.sh test
+
+  windows-msvc:
+    name: windows / MSVC
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+      - name: Build with build.bat
+        shell: cmd
+        run: build.bat
+      - name: Run
+        shell: cmd
+        run: build\libretune.exe --version
+
+  windows-mingw:
+    name: windows / MinGW (msys2)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: false
+          install: mingw-w64-x86_64-gcc make
+      - name: Build and test
+        env:
+          STRICT: "1"
+        run: |
+          ./build.sh test
+          ./build.sh app
+          ./build/libretune.exe --version

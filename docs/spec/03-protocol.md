@@ -1,7 +1,7 @@
 # 03 - Protocol (ECU communication) spec
 
 Source: `libretune-core/src/protocol/*`, `src/ecu/*`, plus `ini/types.rs` (`ProtocolSettings`, `AdaptiveTiming`, `EcuType`, `Endianness`) and `tests/calibration_protocol.rs`, `tests/protocol.rs`.
-Target: C89, libc/POSIX only (termios/select on unix, Win32 serial/winsock under cosmopolitan; abstract behind `lt_chan`).
+Target: C89, libc/POSIX only (termios/select on unix, Win32 serial/winsock via src/plat/win32; abstract behind `lt_chan`).
 
 OUT OF SCOPE: tracing/logging macros, serde, Tauri state, Arc/Mutex threading (use a single volatile int `cancel` flag), the in-process simulator ("demo mode" `connect_with_channel`, can be reused for tests), INI parsing itself (spec 01/02; this doc lists the fields consumed).
 

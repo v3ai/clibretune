@@ -212,7 +212,7 @@ lt_bool lt_preflight_has_blocker(const lt_finding *f, size_t n);
 /* ---- replay from logs (spec 8) ---- */
 typedef struct lt_replay_config {
     lt_at_settings settings; lt_at_filters filters; lt_at_authority authority;
-    lt_bool strict_lambda_match;   /* true */
+    lt_bool lambda_match_strict;   /* true */
     lt_bool validate;              /* true */
 } lt_replay_config;
 void lt_replay_config_default(lt_replay_config *c);
@@ -223,7 +223,7 @@ typedef struct lt_cell_result {
 typedef struct lt_validation { double gain_pct, worsened_pct; size_t scored; unsigned long folds; } lt_validation;
 typedef struct lt_replay_report {
     lt_cell_result *cells; size_t ncells;
-    unsigned long total_samples;
+    unsigned long samples_all;
     lt_at_reject *rejections; size_t n_rejections;     /* reason strings static; count desc */
     const char **verdicts;                             /* per log row: NULL accepted, else reason (static) */
     size_t n_verdicts;
@@ -300,7 +300,7 @@ typedef struct lt_region_health {
 typedef struct lt_health_report {
     unsigned overall_score; char grade; lt_region_health regions[8]; size_t n_regions;
     char recommendations[16][160]; size_t n_recommendations;
-    size_t total_cells, coverage_cells; double coverage_percent;
+    size_t cells_all, coverage_cells; double coverage_percent;
 } lt_health_report;
 void lt_health_score(const double *z, const unsigned *hits, size_t rows, size_t cols,
                      const double *xbins, const double *ybins, lt_health_report *out);

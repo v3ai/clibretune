@@ -351,8 +351,8 @@ struct lt_at_state {
     unsigned long buffer_max_age_ms;
     size_t ref_nx, ref_ny;
     double *ref_delay, *ref_target, *ref_ve;
-    lt_bool strict;
-    unsigned long total_samples;
+    lt_bool match_strict;
+    unsigned long samples_all;
     lt_vec reasons;        /* at_reason */
 };
 
@@ -363,7 +363,7 @@ lt_at_state *lt_at_new(void)
     lt_vec_init(&s->recs, sizeof(at_rec));
     lt_vec_init(&s->reasons, sizeof(at_reason));
     s->buffer_max_age_ms = 500UL;
-    s->strict = LT_TRUE;
+    s->match_strict = LT_TRUE;
     return s;
 }
 
@@ -406,7 +406,7 @@ void lt_at_start(lt_at_state *s)
     lt_vec_clear(&s->recs);
     lt_vec_clear(&s->reasons);
     s->buf_head = s->buf_cnt = 0;
-    s->total_samples = 0UL;
+    s->samples_all = 0UL;
 }
 
 void lt_at_stop(lt_at_state *s)
@@ -457,7 +457,7 @@ void lt_at_set_reference_tables(lt_at_state *s, const lt_at_reftables *r)
 
 void lt_at_set_strict_lambda_match(lt_at_state *s, lt_bool on)
 {
-    s->strict = on ? LT_TRUE : LT_FALSE;
+    s->match_strict = on ? LT_TRUE : LT_FALSE;
 }
 
 static long find_lock(const lt_at_state *s, unsigned x, unsigned y)
@@ -498,7 +498,7 @@ void lt_at_unlock_cell(lt_at_state *s, unsigned x, unsigned y)
 
 unsigned long lt_at_total_samples(const lt_at_state *s)
 {
-    return s->total_samples;
+    return s->samples_all;
 }
 
 /* ---------------------------------------------------------------- buffer */
@@ -932,7 +932,7 @@ void lt_at_add_data_point(lt_at_state *s, const lt_ve_point *pt, const double *x
         count_reason(s, reason);
         return;
     }
-    s->total_samples++;
+    s->samples_all++;
 
     cx = lt_at_find_bin(pt->rpm, xbins, nx);
     cy = lt_at_find_bin(pt->load, ybins, ny);
@@ -955,7 +955,7 @@ void lt_at_add_data_point(lt_at_state *s, const lt_ve_point *pt, const double *x
         hist = find_delayed(s, pt->timestamp_ms, delay);
     }
     if (!hist) {
-        if (s->strict) {
+        if (s->match_strict) {
             return;
         }
         cur = *pt;
@@ -1016,7 +1016,7 @@ void lt_at_add_data_point(lt_at_state *s, const lt_ve_point *pt, const double *x
     }
     rec->r.recommended_value = clamped;
     rec->r.target_afr = target;
-    idx = s->total_samples;
+    idx = s->samples_all;
     rec->r.hit_percentage = idx > 0 ? (double)rec->r.hit_count / (double)idx * 100.0 : 0.0;
 }
 

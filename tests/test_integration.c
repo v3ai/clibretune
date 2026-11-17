@@ -438,7 +438,7 @@ LT_TEST(replay_autotune)
     if (rc == 0) {
         size_t i;
 
-        fprintf(stderr, "  replay: samples=%lu cells=%lu rejections=%lu\n", rep.total_samples,
+        fprintf(stderr, "  replay: samples=%lu cells=%lu rejections=%lu\n", rep.samples_all,
                 (unsigned long)rep.ncells, (unsigned long)rep.n_rejections);
         for (i = 0; i < rep.n_rejections && i < 6; i++)
             fprintf(stderr, "    reject %lu x %s\n", rep.rejections[i].count,
@@ -447,7 +447,7 @@ LT_TEST(replay_autotune)
             unsigned long rej = 0;
 
             for (i = 0; i < rep.n_rejections; i++) rej += rep.rejections[i].count;
-            LT_CHECK(rep.total_samples + rej == (unsigned long)log.n);
+            LT_CHECK(rep.samples_all + rej == (unsigned long)log.n);
         }
         LT_CHECK(rep.ncells > 0);
         for (i = 0; i < rep.ncells; i++) {
@@ -615,7 +615,7 @@ static size_t check_template(const char *label, lt_dash_file *d, const lt_ini *i
         for (k = 0; k < ini->n_channels; k++) names[k] = ini->channels[k]->name;
         lt_dash_validate(d, (const char *const *)names, ini->n_channels, &rep);
         for (k = 0; k < rep.n; k++) {
-            if (rep.issues[k].kind == LT_DI_UNKNOWN_CHANNEL) unknown++;
+            if (rep.problems[k].kind == LT_DI_UNKNOWN_CHANNEL) unknown++;
         }
         LT_CHECK(unknown == bad);
         lt_dash_report_free(&rep);

@@ -546,7 +546,7 @@ void lt_health_score(const double *z, const unsigned *hits, size_t rows, size_t 
         csum += (unsigned long)out->regions[i].cell_count;
     }
     out->overall_score = csum ? (unsigned)(wsum / csum) : 0U;
-    out->total_cells = rows * cols;
+    out->cells_all = rows * cols;
     if (hits) {
         for (i = 0; i < rows * cols; i++) {
             if (hits[i] > 0) {
@@ -554,7 +554,7 @@ void lt_health_score(const double *z, const unsigned *hits, size_t rows, size_t 
             }
         }
     }
-    out->coverage_percent = (double)out->coverage_cells / (double)out->total_cells * 100.0;
+    out->coverage_percent = (double)out->coverage_cells / (double)out->cells_all * 100.0;
     out->grade = out->overall_score >= 90 ? 'A' : out->overall_score >= 80 ? 'B'
                : out->overall_score >= 70 ? 'C' : out->overall_score >= 60 ? 'D' : 'F';
     if (out->coverage_percent < 50.0) {

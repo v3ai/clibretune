@@ -51,6 +51,97 @@ void lt_free(void *p)
 }
 
 /* ------------------------------------------------------------------ */
+/* overflow-checked arithmetic and byte serialization (UNIVERSAL_C 5)  */
+/* ------------------------------------------------------------------ */
+
+lt_bool lt_add_int(int a, int b, int *out)
+{
+    if ((b > 0 && a > INT_MAX - b) || (b < 0 && a < INT_MIN - b)) return LT_FALSE;
+    *out = a + b;
+    return LT_TRUE;
+}
+
+lt_bool lt_mul_int(int a, int b, int *out)
+{
+    if (a > 0) {
+        if (b > 0) {
+            if (a > INT_MAX / b) return LT_FALSE;
+        } else {
+            if (b < INT_MIN / a) return LT_FALSE;
+        }
+    } else if (a < 0) {
+        if (b > 0) {
+            if (a < INT_MIN / b) return LT_FALSE;
+        } else {
+            if (b != 0 && a < INT_MAX / b) return LT_FALSE;
+        }
+    }
+    *out = a * b;
+    return LT_TRUE;
+}
+
+lt_bool lt_mul_size(size_t a, size_t b, size_t *out)
+{
+    if (a != 0 && b > LT_SIZE_MAX / a) return LT_FALSE;
+    *out = a * b;
+    return LT_TRUE;
+}
+
+lt_bool lt_add_size(size_t a, size_t b, size_t *out)
+{
+    if (b > LT_SIZE_MAX - a) return LT_FALSE;
+    *out = a + b;
+    return LT_TRUE;
+}
+
+void lt_store_u32le(lt_u8 *p, lt_u32 v)
+{
+    p[0] = (lt_u8)(v & 0xFFu);
+    p[1] = (lt_u8)((v >> 8) & 0xFFu);
+    p[2] = (lt_u8)((v >> 16) & 0xFFu);
+    p[3] = (lt_u8)((v >> 24) & 0xFFu);
+}
+
+lt_u32 lt_load_u32le(const lt_u8 *p)
+{
+    return (lt_u32)p[0] | ((lt_u32)p[1] << 8) | ((lt_u32)p[2] << 16) | ((lt_u32)p[3] << 24);
+}
+
+void lt_store_u32be(lt_u8 *p, lt_u32 v)
+{
+    p[0] = (lt_u8)((v >> 24) & 0xFFu);
+    p[1] = (lt_u8)((v >> 16) & 0xFFu);
+    p[2] = (lt_u8)((v >> 8) & 0xFFu);
+    p[3] = (lt_u8)(v & 0xFFu);
+}
+
+lt_u32 lt_load_u32be(const lt_u8 *p)
+{
+    return ((lt_u32)p[0] << 24) | ((lt_u32)p[1] << 16) | ((lt_u32)p[2] << 8) | (lt_u32)p[3];
+}
+
+lt_u32 lt_rotl32(lt_u32 x, unsigned n)
+{
+    n &= 31u;
+    return (lt_u32)(((x << n) | (x >> ((32u - n) & 31u))) & 0xFFFFFFFFUL);
+}
+
+#if LT_HAS_64
+char *lt_u64_to_dec(char *buf, lt_u64 v)
+{
+    char tmp[21];
+    int i = 0, j = 0;
+    do {
+        tmp[i++] = (char)('0' + (int)(v % 10u));
+        v /= 10u;
+    } while (v != 0);
+    while (i > 0) buf[j++] = tmp[--i];
+    buf[j] = '\0';
+    return buf;
+}
+#endif
+
+/* ------------------------------------------------------------------ */
 /* math helpers                                                        */
 /* ------------------------------------------------------------------ */
 
@@ -119,24 +210,38 @@ void lt_err_clear(void)
 /* formatting                                                          */
 /* ------------------------------------------------------------------ */
 
+/* Output sink: either a fixed char array (dst/cap) or a growing lt_buf.
+ * Formatting is single-pass so a va_list is never walked twice. */
 typedef struct lt_out {
-    char  *dst;
-    size_t cap;
-    size_t n;
+    char   *dst;
+    size_t  cap;
+    size_t  n;
+    lt_buf *buf;
 } lt_out;
+
+#if LT_HAS_64
+typedef lt_u64 fmt_umax;
+#else
+typedef unsigned long fmt_umax;
+#endif
 
 typedef struct lt_spec {
     int left, plus, space, zero, alt;
     int width;
     int prec; /* -1 = none */
-    int kind; /* 0 int, 1 long, 2 size_t */
+    int kind; /* 0 int, 1 long (no size_t: print sizes as %lu with a cast) */
 } lt_spec;
 
 #define FMT_MAXPREC 90
+#define FMT_MAXWIDTH 100000
 
 static void out_ch(lt_out *o, char c)
 {
-    if (o->dst && o->n + 1 < o->cap) o->dst[o->n] = c;
+    if (o->buf != NULL) {
+        lt_buf_putc(o->buf, (int)c);
+    } else if (o->dst != NULL && o->n + 1 < o->cap) {
+        o->dst[o->n] = c;
+    }
     o->n++;
 }
 
@@ -175,11 +280,11 @@ static void emit(lt_out *o, const lt_spec *sp, const char *prefix, size_t plen,
     }
 }
 
-static void do_int(lt_out *o, const lt_spec *sp, int conv, unsigned long mag, int neg)
+static void do_int(lt_out *o, const lt_spec *sp, int conv, fmt_umax mag, int neg)
 {
     char tmp[80];
     int pos = (int)sizeof tmp;
-    unsigned long base = 10;
+    fmt_umax base = 10;
     const char *digs = "0123456789abcdef";
     const char *prefix = "";
     size_t nzero = 0, len;
@@ -429,23 +534,22 @@ static void do_str(lt_out *o, const lt_spec *sp, const char *s)
     size_t len = 0;
     if (!s) s = "(null)";
     if (sp->prec >= 0) {
-        while (s[len] && len < (size_t)sp->prec) len++;
+        while (len < (size_t)sp->prec && s[len]) len++;
     } else {
         len = strlen(s);
     }
     emit(o, sp, "", 0, 0, s, len, 0);
 }
 
-int lt_vsnprintf(char *dst, size_t cap, const char *fmt, va_list ap)
+/* The one formatting engine: walks fmt once, writing to the sink in o. */
+static void fmt_run(lt_out *op, const char *fmt, va_list ap)
 {
     lt_out o;
     const char *p = fmt;
     lt_spec sp;
     int conv, v;
 
-    o.dst = dst;
-    o.cap = cap;
-    o.n = 0;
+    o = *op;
     while (*p) {
         if (*p != '%') {
             out_ch(&o, *p++);
@@ -466,27 +570,32 @@ int lt_vsnprintf(char *dst, size_t cap, const char *fmt, va_list ap)
             v = va_arg(ap, int);
             if (v < 0) {
                 sp.left = 1;
-                v = -v;
+                v = (v == INT_MIN) ? INT_MAX : -v;
             }
-            sp.width = v;
+            sp.width = v > FMT_MAXWIDTH ? FMT_MAXWIDTH : v;
             p++;
         } else {
-            while (*p >= '0' && *p <= '9') sp.width = sp.width * 10 + (*p++ - '0');
+            while (*p >= '0' && *p <= '9') {
+                if (sp.width < FMT_MAXWIDTH) sp.width = sp.width * 10 + (*p - '0');
+                p++;
+            }
         }
         if (*p == '.') {
             p++;
             if (*p == '*') {
                 v = va_arg(ap, int);
-                sp.prec = v < 0 ? -1 : v;
+                sp.prec = v < 0 ? -1 : (v > FMT_MAXWIDTH ? FMT_MAXWIDTH : v);
                 p++;
             } else {
                 sp.prec = 0;
-                while (*p >= '0' && *p <= '9') sp.prec = sp.prec * 10 + (*p++ - '0');
+                while (*p >= '0' && *p <= '9') {
+                    if (sp.prec < FMT_MAXWIDTH) sp.prec = sp.prec * 10 + (*p - '0');
+                    p++;
+                }
             }
         }
         for (;; p++) {
             if (*p == 'l') sp.kind = 1;
-            else if (*p == 'z') sp.kind = 2;
             else if (*p == 'h') continue;
             else break;
         }
@@ -509,8 +618,7 @@ int lt_vsnprintf(char *dst, size_t cap, const char *fmt, va_list ap)
         case 'd':
         case 'i': {
             long lv;
-            if (sp.kind == 2) lv = (long)va_arg(ap, size_t);
-            else if (sp.kind == 1) lv = va_arg(ap, long);
+            if (sp.kind == 1) lv = va_arg(ap, long);
             else lv = (long)va_arg(ap, int);
             do_int(&o, &sp, 'd', lv < 0 ? 0UL - (unsigned long)lv : (unsigned long)lv, lv < 0);
             break;
@@ -520,8 +628,7 @@ int lt_vsnprintf(char *dst, size_t cap, const char *fmt, va_list ap)
         case 'X':
         case 'o': {
             unsigned long uv;
-            if (sp.kind == 2) uv = (unsigned long)va_arg(ap, size_t);
-            else if (sp.kind == 1) uv = va_arg(ap, unsigned long);
+            if (sp.kind == 1) uv = va_arg(ap, unsigned long);
             else uv = (unsigned long)va_arg(ap, unsigned int);
             do_int(&o, &sp, conv, uv, 0);
             break;
@@ -529,7 +636,7 @@ int lt_vsnprintf(char *dst, size_t cap, const char *fmt, va_list ap)
         case 'p': {
             void *pv = va_arg(ap, void *);
             sp.alt = 1;
-            do_int(&o, &sp, 'x', (unsigned long)(size_t)pv, 0);
+            do_int(&o, &sp, 'x', (fmt_umax)(size_t)pv, 0);
             break;
         }
         case 'f': case 'F': case 'e': case 'E': case 'g': case 'G':
@@ -542,8 +649,20 @@ int lt_vsnprintf(char *dst, size_t cap, const char *fmt, va_list ap)
             break;
         }
     }
-    if (dst && cap > 0) dst[o.n < cap ? o.n : cap - 1] = '\0';
-    return (int)o.n;
+    *op = o;
+}
+
+int lt_vsnprintf(char *dst, size_t cap, const char *fmt, va_list ap)
+{
+    lt_out o;
+
+    o.dst = dst;
+    o.cap = cap;
+    o.n = 0;
+    o.buf = NULL;
+    fmt_run(&o, fmt, ap);
+    if (dst != NULL && cap > 0) dst[o.n < cap ? o.n : cap - 1] = '\0';
+    return o.n > (size_t)INT_MAX ? INT_MAX : (int)o.n;
 }
 
 int lt_snprintf(char *dst, size_t cap, const char *fmt, ...)
@@ -734,14 +853,6 @@ lt_bool lt_parse_long(const char *s, long *out)
 /* buffer                                                              */
 /* ------------------------------------------------------------------ */
 
-#if defined(va_copy)
-#define LT_VA_COPY(d, s) va_copy(d, s)
-#elif defined(__va_copy)
-#define LT_VA_COPY(d, s) __va_copy(d, s)
-#else
-#define LT_VA_COPY(d, s) ((d) = (s))
-#endif
-
 void lt_buf_init(lt_buf *b)
 {
     b->data = NULL;
@@ -763,10 +874,19 @@ void lt_buf_clear(lt_buf *b)
 
 void lt_buf_reserve(lt_buf *b, size_t extra)
 {
-    size_t need = b->len + extra + 1;
+    size_t need;
+    if (!lt_add_size(b->len, extra, &need) || !lt_add_size(need, 1, &need)) {
+        fputs("libretune: buffer size overflow\n", stderr);
+        abort();
+    }
     if (need > b->cap) {
         size_t nc = b->cap ? b->cap : 64;
-        while (nc < need) nc *= 2;
+        while (nc < need) {
+            if (!lt_mul_size(nc, 2, &nc)) {
+                nc = need;
+                break;
+            }
+        }
         b->data = (char *)lt_realloc(b->data, nc);
         b->cap = nc;
     }
@@ -787,23 +907,20 @@ void lt_buf_puts(lt_buf *b, const char *s)
 
 void lt_buf_putc(lt_buf *b, int c)
 {
-    char ch = (char)c;
+    unsigned char ch = (unsigned char)(c & 0xFF);
     lt_buf_append(b, &ch, 1);
 }
 
 void lt_buf_vprintf(lt_buf *b, const char *fmt, va_list ap)
 {
-    va_list ap2;
-    int n;
+    lt_out o;
 
-    LT_VA_COPY(ap2, ap);
-    lt_buf_reserve(b, 128);
-    n = lt_vsnprintf(b->data + b->len, b->cap - b->len, fmt, ap);
-    if (n >= 0 && (size_t)n >= b->cap - b->len) {
-        lt_buf_reserve(b, (size_t)n);
-        n = lt_vsnprintf(b->data + b->len, b->cap - b->len, fmt, ap2);
-    }
-    if (n > 0) b->len += (size_t)n;
+    o.dst = NULL;
+    o.cap = 0;
+    o.n = 0;
+    o.buf = b;
+    lt_buf_reserve(b, 0);
+    fmt_run(&o, fmt, ap);
     b->data[b->len] = '\0';
 }
 
@@ -847,8 +964,12 @@ void *lt_vec_push(lt_vec *v)
 {
     char *slot;
     if (v->len == v->cap) {
-        size_t nc = v->cap ? v->cap * 2 : 8;
-        v->data = lt_realloc(v->data, nc * v->elem);
+        size_t nc = v->cap ? v->cap : 4, bytes;
+        if (!lt_mul_size(nc, 2, &nc) || !lt_mul_size(nc, v->elem, &bytes)) {
+            fputs("libretune: vector size overflow\n", stderr);
+            abort();
+        }
+        v->data = lt_realloc(v->data, bytes);
         v->cap = nc;
     }
     slot = (char *)v->data + v->len * v->elem;

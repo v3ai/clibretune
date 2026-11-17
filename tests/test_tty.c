@@ -193,7 +193,7 @@ static void fill(lt_cell *c, int n)
 {
     int i;
     for (i = 0; i < n; i++) {
-        c[i].ch = 'a' + (i % 26);
+        c[i].ch = (lt_u32)('a' + (i % 26));
         c[i].fg = LT_RGB(200, 200, 200);
         c[i].bg = LT_RGB(0, 0, 0);
         c[i].attr = 0;

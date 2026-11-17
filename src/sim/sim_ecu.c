@@ -266,8 +266,26 @@ lt_ecusim *lt_ecusim_new(const lt_ini *ini)
         }
         {
             lt_pagesrc src = ram_src(s);
+            /* A blank page image disables everything gated on master enable
+             * bits (rusEFI/FOME/epicEFI greys out every fuel and ignition
+             * menu). Turn the common ones on so the demo behaves like a
+             * configured ECU; INIs without them are unaffected. */
+            static const char *const enables[] = {
+                "isInjectionEnabled", "isIgnitionEnabled"
+            };
+            lt_bool seeded = LT_FALSE;
+            size_t e;
 
+            for (e = 0; e < LT_COUNTOF(enables); e++) {
+                if (lt_ini_find_const(ini, enables[e]) != NULL &&
+                    lt_ini_set(ini, &src, enables[e], 1.0) == 0) {
+                    seeded = LT_TRUE;
+                }
+            }
             if (lt_sim_seed_ve_table(ini, &src)) {
+                seeded = LT_TRUE;
+            }
+            if (seeded) {
                 for (i = 0; i < s->n_pages; i++) {
                     memcpy(s->pages[i].flash, s->pages[i].ram, s->pages[i].size);
                 }

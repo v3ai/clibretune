@@ -4,6 +4,7 @@
 #include <string.h>
 #include <math.h>
 #include "tables_priv.h"
+#include "view_kit.h"
 
 typedef struct crv_tab {
     lt_tblview v;
@@ -89,46 +90,104 @@ static double clampy(const crv_tab *st, double v)
     return lt_tabs_round(v, st->ydig);
 }
 
-typedef struct plot_ctx { crv_tab *st; lt_rect r; lt_color line, grid, pt, sel, live, axis; int hot; } plot_ctx;
+typedef struct plot_ctx { crv_tab *st; lt_rect r; lt_color line, grid, pt, sel, live, axis, bg; int hot, cell; } plot_ctx;
+
+#define PL_L 54
+#define PL_R 20
+#define PL_T 18
+#define PL_B 38
 
 static double sx_of(const plot_ctx *p, double x)
 {
-    return p->r.x + 36 + (x - p->st->px0) / (p->st->px1 - p->st->px0) * (p->r.w - 46);
+    return p->r.x + PL_L + (x - p->st->px0) / (p->st->px1 - p->st->px0) * (p->r.w - PL_L - PL_R);
 }
 static double sy_of(const plot_ctx *p, double y)
 {
-    return p->r.y + p->r.h - 20 - (y - p->st->py0) / (p->st->py1 - p->st->py0) * (p->r.h - 30);
+    return p->r.y + p->r.h - PL_B - (y - p->st->py0) / (p->st->py1 - p->st->py0) * (p->r.h - PL_T - PL_B);
+}
+
+static void chip(lt_gfx *g, double cx, double ytop, const char *s, lt_color fg)
+{
+    lt_font *f = lt_font_get(LT_FONT_MONO_MEDIUM);
+    double tw = f != NULL ? lt_gfx_text_measure(f, 11.0, s) : (double)strlen(s) * 8.0;
+    lt_rect c = lt_rect_make((int)(cx - tw / 2.0) - 6, (int)ytop, (int)tw + 12, 18);
+    lt_gfx_fill_round_rect(g, c, 4, LT_RGBA(0, 0, 0, 215));
+    lt_gfx_rect(g, c, LT_RGBA(255, 255, 255, 40));
+    lt_gfx_text_bl(g, f, 11.0, (double)c.x + 6.0, c.y + 13, s, fg);
 }
 
 static void draw_plot(lt_gfx *g, lt_rect r, void *user)
 {
     plot_ctx *p = (plot_ctx *)user;
     crv_tab *st = p->st;
+    lt_font *fm = lt_font_get(LT_FONT_MONO), *fs = lt_font_get(LT_FONT_SANS_MEDIUM);
     size_t i;
-    int k;
-    char b[32];
+    int k, x0, x1, y0, y1;
+    char b[48];
+    x0 = (int)sx_of(p, st->px0); x1 = (int)sx_of(p, st->px1);
+    y0 = (int)sy_of(p, st->py0); y1 = (int)sy_of(p, st->py1);
+    /* plot area */
+    lt_gfx_fill_rect_vgrad(g, lt_rect_make(x0, y1, x1 - x0, y0 - y1), p->bg,
+                           lt_color_mix(p->bg, LT_RGB(0, 0, 0), 60));
     for (k = 0; k <= 4; k++) {
         double fy = st->py0 + (st->py1 - st->py0) * k / 4.0, fx = st->px0 + (st->px1 - st->px0) * k / 4.0;
         double yy = sy_of(p, fy), xx = sx_of(p, fx);
-        lt_gfx_hline(g, (int)sx_of(p, st->px0), (int)sx_of(p, st->px1), (int)yy, p->grid);
-        lt_gfx_vline(g, (int)xx, (int)sy_of(p, st->py1), (int)sy_of(p, st->py0), p->grid);
+        lt_gfx_hline(g, x0, x1, (int)yy, p->grid);
+        lt_gfx_vline(g, (int)xx, y1, y0, p->grid);
         lt_snprintf(b, sizeof(b), "%g", fy);
-        lt_gfx_text(g, r.x + 2, (int)yy - 7, b, p->axis, 1);
+        lt_gfx_text_bl(g, fm, 10.0, (double)x0 - 8.0 - (fm != NULL ? lt_gfx_text_measure(fm, 10.0, b) : 0.0),
+                       (int)yy + 4, b, p->axis);
         lt_snprintf(b, sizeof(b), "%g", fx);
-        lt_gfx_text(g, (int)xx - 12, r.y + r.h - 14, b, p->axis, 1);
+        lt_gfx_text_bl(g, fm, 10.0, xx - (fm != NULL ? lt_gfx_text_measure(fm, 10.0, b) / 2.0 : 0.0), y0 + 16, b, p->axis);
+    }
+    lt_gfx_rect(g, lt_rect_make(x0, y1, x1 - x0 + 1, y0 - y1 + 1), LT_RGBA(255, 255, 255, 45));
+    /* axis captions */
+    if (st->c->col_x != NULL) {
+        lt_gfx_text_bl(g, fs, 11.0, (double)(x0 + x1) / 2.0 - lt_gfx_text_measure(fs, 11.0, st->c->col_x) / 2.0,
+                       r.y + r.h - 6, st->c->col_x, p->axis);
+    }
+    if (st->c->col_y != NULL) {
+        lt_gfx_text_rot(g, fs, 11.0, r.x + 12, (double)(y0 + y1) / 2.0, st->c->col_y, -1.57079632679, 1, 2, p->axis);
+    }
+    if (st->v.cols >= 2 && st->v.cols <= 128 && !p->cell) {
+        double poly[2 * 132];
+        int n = 0;
+        for (i = 0; i < st->v.cols; i++) {
+            poly[n * 2] = sx_of(p, st->v.x[i]); poly[n * 2 + 1] = sy_of(p, st->v.z[i]); n++;
+        }
+        poly[n * 2] = sx_of(p, st->v.x[st->v.cols - 1]); poly[n * 2 + 1] = (double)y0; n++;
+        poly[n * 2] = sx_of(p, st->v.x[0]); poly[n * 2 + 1] = (double)y0; n++;
+        lt_gfx_fill_poly(g, poly, n, (p->line & 0x00FFFFFFUL) | 0x28000000UL);
     }
     for (i = 0; i + 1 < st->v.cols; i++) {
-        lt_gfx_line(g, sx_of(p, st->v.x[i]), sy_of(p, st->v.z[i]), sx_of(p, st->v.x[i + 1]),
-                    sy_of(p, st->v.z[i + 1]), 2.0, p->line);
+        double ax = sx_of(p, st->v.x[i]), ay = sy_of(p, st->v.z[i]);
+        double bx = sx_of(p, st->v.x[i + 1]), by = sy_of(p, st->v.z[i + 1]);
+        lt_gfx_line(g, ax, ay, bx, by, 6.0, (p->line & 0x00FFFFFFUL) | 0x30000000UL);
+        lt_gfx_line(g, ax, ay, bx, by, 2.2, p->line);
     }
     for (i = 0; i < st->v.cols; i++) {
-        lt_gfx_fill_circle(g, sx_of(p, st->v.x[i]), sy_of(p, st->v.z[i]), (int)i == p->hot ? 6.0 : 4.5,
-                           (int)i == p->hot ? p->sel : p->pt);
+        double px = sx_of(p, st->v.x[i]), py = sy_of(p, st->v.z[i]);
+        int hot = (int)i == p->hot;
+        if (hot) { lt_gfx_fill_circle(g, px, py, 11.0, (p->sel & 0x00FFFFFFUL) | 0x30000000UL); }
+        lt_gfx_fill_circle(g, px, py, hot ? 6.5 : 5.0, LT_RGBA(0, 0, 0, 120));
+        lt_gfx_fill_circle(g, px, py, hot ? 5.5 : 4.0, hot ? p->sel : p->pt);
+        lt_gfx_circle(g, px, py, hot ? 5.5 : 4.0, 1.2, LT_RGB(255, 255, 255));
+    }
+    if (p->hot >= 0 && (size_t)p->hot < st->v.cols) {
+        char vb[48];
+        lt_tabs_fmt(b, sizeof(b), st->v.x[p->hot], st->xdig);
+        lt_tabs_fmt(vb, sizeof(vb), st->v.z[p->hot], st->ydig);
+        lt_snprintf(b + strlen(b), sizeof(b) - strlen(b), ", %s", vb);
+        chip(g, sx_of(p, st->v.x[p->hot]), sy_of(p, st->v.z[p->hot]) - 30.0, b, LT_RGB(255, 255, 255));
     }
     if (st->live_ok) {
         double lx = sx_of(p, st->live_x), ly = sy_of(p, st->live_y);
-        lt_gfx_vline(g, (int)lx, (int)sy_of(p, st->py1), (int)sy_of(p, st->py0), p->live);
+        lt_gfx_line(g, lx, (double)y1, lx, (double)y0, 1.2, (p->live & 0x00FFFFFFUL) | 0x90000000UL);
+        lt_gfx_fill_circle(g, lx, ly, 10.0, (p->live & 0x00FFFFFFUL) | 0x30000000UL);
         lt_gfx_fill_circle(g, lx, ly, 5.0, p->live);
+        lt_gfx_circle(g, lx, ly, 5.5, 1.2, LT_RGB(255, 255, 255));
+        lt_tabs_fmt(b, sizeof(b), st->live_y, st->ydig);
+        chip(g, lx, ly + 12.0, b, p->live);
     }
 }
 
@@ -186,13 +245,38 @@ static void crv_draw(lt_app *app, lt_app_tab *tab, lt_rect rr)
             if (lt_tblview_redo(&st->v)) { crv_commit(app, tab, st); }
         }
     }
-    /* toolbar */
-    wt[0] = wt[1] = wt[2] = 0; wt[3] = 0;
-    lt_ui_layout_row(ui, 4, wt, 0);
-    if (lt_ui_button_ex(ui, "Undo", LT_UI_BTN_FLAT)) { if (lt_tblview_undo(&st->v)) { crv_commit(app, tab, st); } }
-    if (lt_ui_button_ex(ui, "Redo", LT_UI_BTN_FLAT)) { if (lt_tblview_redo(&st->v)) { crv_commit(app, tab, st); } }
-    if (lt_ui_button_ex(ui, "Burn", LT_UI_BTN_ACCENT | (lt_app_can_burn(app) ? 0 : LT_UI_BTN_DISABLED))) { lt_app_burn(app); tab->dirty = 0; }
-    lt_ui_label_ex(ui, "  Drag a point vertically; edit X values in the list", th->muted, LT_UI_ALIGN_LEFT);
+    /* header + toolbar */
+    if (lt_ui_cell_mode(ui)) {
+        wt[0] = wt[1] = wt[2] = 0; wt[3] = 0;
+        lt_ui_layout_row(ui, 4, wt, 0);
+        if (lt_ui_button_ex(ui, "Undo", LT_UI_BTN_FLAT)) { if (lt_tblview_undo(&st->v)) { crv_commit(app, tab, st); } }
+        if (lt_ui_button_ex(ui, "Redo", LT_UI_BTN_FLAT)) { if (lt_tblview_redo(&st->v)) { crv_commit(app, tab, st); } }
+        if (lt_ui_button_ex(ui, "Burn", LT_UI_BTN_ACCENT | (lt_app_can_burn(app) ? 0 : LT_UI_BTN_DISABLED))) { lt_app_burn(app); tab->dirty = 0; }
+        lt_ui_label_ex(ui, "  Drag a point vertically; edit X values in the list", th->muted, LT_UI_ALIGN_LEFT);
+    } else {
+        lt_vk_item it[6];
+        lt_rect hr;
+        int hit;
+        lt_ui_layout_row(ui, 1, &w1, 40);
+        hr = lt_ui_layout_next(ui);
+        lt_ui_draw_fill(ui, hr, th->bg_app);
+        lt_ui_draw_hline(ui, hr.x, hr.x + hr.w - 1, hr.y + hr.h - 1, th->border_subtle);
+        lt_vk_text(ui, lt_rect_make(hr.x + 14, hr.y, hr.w / 2, hr.h), (int)LT_FONT_SANS_SEMIBOLD, 14.0, tab->title, th->text, 0);
+        memset(it, 0, sizeof(it));
+        it[0].kind = LT_VK_SPACER;
+        it[1].kind = LT_VK_BTN; it[1].icon = LT_ICON_UNDO_2; it[1].label = "Undo"; it[1].tip = "Undo (Ctrl+Z)";
+        it[2].kind = LT_VK_BTN; it[2].icon = LT_ICON_REDO_2; it[2].label = "Redo"; it[2].tip = "Redo (Ctrl+Y)";
+        it[3].kind = LT_VK_SEP;
+        it[4].kind = LT_VK_BTN; it[4].icon = LT_ICON_FLAME; it[4].label = "Burn"; it[4].tip = "Write the changes to ECU flash";
+        it[4].accent = 1; it[4].disabled = lt_app_can_burn(app) ? 0 : 1;
+        it[5].kind = LT_VK_END;
+        hit = lt_vk_toolbar_in(ui, it, lt_rect_make(hr.x + hr.w / 2, hr.y + 5, hr.w / 2 - 12, 30));
+        if (hit == 1) { if (lt_tblview_undo(&st->v)) { crv_commit(app, tab, st); } }
+        else if (hit == 2) { if (lt_tblview_redo(&st->v)) { crv_commit(app, tab, st); } }
+        else if (hit == 4) { lt_app_burn(app); tab->dirty = 0; }
+        lt_ui_layout_row(ui, 1, &w1, 22);
+        lt_ui_label_ex(ui, "  Drag a point vertically; edit X values in the list", th->muted, LT_UI_ALIGN_LEFT);
+    }
     w2[0] = -3; w2[1] = -2;
     lt_ui_layout_row(ui, 2, w2, -1);
     pr = lt_ui_layout_next(ui);
@@ -201,8 +285,10 @@ static void crv_draw(lt_app *app, lt_app_tab *tab, lt_rect rr)
     down = lt_ui_mouse_down(ui, 0) ? 1 : 0;
     inside = m.x >= pr.x && m.x < pr.x + pr.w && m.y >= pr.y && m.y < pr.y + pr.h;
     pc.st = st; pc.r = pr;
-    pc.line = th->primary; pc.grid = lt_color_mix(th->border_subtle, th->table_bg, 128);
+    pc.line = th->primary_hover; pc.grid = LT_RGBA(255, 255, 255, th->dark ? 22 : 0);
+    if (!th->dark) { pc.grid = LT_RGBA(0, 0, 0, 28); }
     pc.pt = th->accent; pc.sel = th->warning; pc.live = th->cursor_live; pc.axis = th->text2;
+    pc.bg = th->table_bg; pc.cell = lt_ui_cell_mode(ui);
     pc.hot = st->drag;
     if (st->drag < 0) {
         double best = 100.0;
@@ -228,7 +314,7 @@ static void crv_draw(lt_app *app, lt_app_tab *tab, lt_rect rr)
         }
     }
     st->prev_down = down;
-    lt_ui_draw_box(ui, pr, th->table_bg, th->border, 0);
+    lt_ui_draw_box(ui, pr, th->table_bg, th->border_subtle, 0);
     lt_ui_draw_custom(ui, pr, draw_plot, &pc);
     /* value list */
     {

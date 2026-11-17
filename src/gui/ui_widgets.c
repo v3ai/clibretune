@@ -46,23 +46,25 @@ void lt_ui_labelf(lt_ui *ui, const char *fmt, ...)
 void lt_ui_heading(lt_ui *ui, const char *text)
 {
     lt_rect r = ui_next_full(ui, ui->theme.row_h);
-    ui_text_in(ui, r, text, ui->theme.text, 0);
+    ui_text_in_f(ui, r, text, ui->theme.text, 0, (int)LT_FONT_SANS_SEMIBOLD, LT_UI_FS_MD);
     if (!ui->cell) {
         lt_ui_draw_hline(ui, r.x, r.x + r.w - 1, r.y + r.h - 1, ui->theme.border_subtle);
     }
 }
 
-int ui_wrap_lines(const char *text, int maxc, const char **starts, int *lens, int cap)
+int ui_wrap_lines(const lt_ui *ui, const char *text, int maxw, const char **starts, int *lens, int cap)
 {
     const char *p = text;
     int n = 0;
     while (*p && n < cap) {
         const char *e = p;
         const char *brk = NULL;
-        int cnt = 0;
-        while (*e && *e != '\n' && cnt < maxc) {
+        while (*e && *e != '\n') {
+            const char *nx = e;
+            lt_utf8_next(&nx);
+            if (ui_prefix_w(ui, p, (int)(nx - p)) > maxw && e > p) { break; }
             if (*e == ' ') { brk = e; }
-            e++; cnt++;
+            e = nx;
         }
         if (*e && *e != '\n' && *e != ' ' && brk != NULL) { e = brk; }
         starts[n] = p;
@@ -78,21 +80,19 @@ int ui_wrap_lines(const char *text, int maxc, const char **starts, int *lens, in
 void lt_ui_label_wrap(lt_ui *ui, const char *text, lt_color color)
 {
     ui_layout *L = ui_lay(ui);
-    int sc = ui->cell ? 1 : ui->scale;
-    int maxc, nlines, i;
+    int lh = ui_line_h(ui);
+    int nlines, i;
     lt_rect r;
     const char *starts[64];
     int lens[64];
-    maxc = (L->body.w - L->indent) / (8 * sc);
-    if (maxc < 4) { maxc = 4; }
-    nlines = ui_wrap_lines(text, maxc, starts, lens, 64);
-    r = ui_next_full(ui, nlines * 16 * sc + (ui->cell ? 0 : 4));
+    nlines = ui_wrap_lines(ui, text, LT_MAX(32, L->body.w - L->indent), starts, lens, 64);
+    r = ui_next_full(ui, nlines * lh + (ui->cell ? 0 : 4));
     for (i = 0; i < nlines; i++) {
         char line[256];
         int n = lens[i] < 255 ? lens[i] : 255;
         memcpy(line, starts[i], (size_t)n);
         line[n] = '\0';
-        lt_ui_draw_text(ui, r.x, r.y + i * 16 * sc, line, color);
+        lt_ui_draw_text(ui, r.x, r.y + i * lh + (lh - 16 * (ui->cell ? 1 : ui->scale)) / 2, line, color);
     }
 }
 
@@ -134,8 +134,9 @@ static lt_bool button_impl(lt_ui *ui, const char *label, int icon, int flags)
     char buf[256];
     const char *vis = ui_label_visible(label, buf, sizeof(buf));
     lt_u32 id = lt_ui_id(ui, label);
-    int tw = lt_ui_text_width(ui, vis);
-    int pref = icon ? ui->theme.row_h : tw + 2 * PAD(ui) + (ui->cell ? 8 : 4);
+    int fid = (int)LT_FONT_SANS_MEDIUM;
+    int tw = ui_text_w(ui, vis, fid, 0);
+    int pref = icon ? 26 * ui->scale : tw + (ui->cell ? 20 : 24 * ui->scale);
     lt_rect r;
     int res, clicked = 0, dis = (flags & LT_UI_BTN_DISABLED) ? 1 : 0, focused;
     lt_color fill, border, fg;
@@ -151,7 +152,17 @@ static lt_bool button_impl(lt_ui *ui, const char *label, int icon, int flags)
         if (ui_key_take(ui, LT_KEY_ENTER, NULL)) { clicked = 1; }
     }
     /* colors */
-    if (flags & (LT_UI_BTN_PRIMARY | LT_UI_BTN_DEFAULT | LT_UI_BTN_SELECTED)) {
+    if (icon && (flags & LT_UI_BTN_FLAT) && !ui->cell) {
+        /* toolbar button: text2 glyph, hover/active wash, selected = primary glyph on active */
+        fill = (res & UI_ACTIVE) ? t->active : ((res & UI_HOVER) ? t->hover : 0);
+        border = 0;
+        fg = (flags & LT_UI_BTN_SELECTED) ? t->primary : ((res & UI_HOVER) ? t->text : t->text2);
+        if (flags & LT_UI_BTN_SELECTED) { fill = t->active; }
+        if (flags & LT_UI_BTN_DANGER) {
+            fg = t->error;
+            fill = (res & UI_HOVER) ? LT_RGBA(255, 80, 80, 38) : fill;
+        }
+    } else if (flags & (LT_UI_BTN_PRIMARY | LT_UI_BTN_DEFAULT | LT_UI_BTN_SELECTED)) {
         fill = (res & UI_ACTIVE) ? t->primary_active : ((res & UI_HOVER) ? t->primary_hover : t->primary);
         border = fill; fg = t->primary_text;
     } else if (flags & LT_UI_BTN_DANGER) {
@@ -165,7 +176,7 @@ static lt_bool button_impl(lt_ui *ui, const char *label, int icon, int flags)
         border = 0; fg = (res & UI_HOVER) ? t->text : t->text2;
     } else {
         fill = (res & UI_ACTIVE) ? t->active : ((res & UI_HOVER) ? t->hover : t->elevated);
-        border = (res & UI_HOVER) ? t->border : t->border_subtle; fg = t->text;
+        border = (res & UI_HOVER) ? t->border_strong : t->border; fg = t->text;
     }
     if (dis) {
         fill = (flags & LT_UI_BTN_FLAT) ? 0 : t->surface;
@@ -178,9 +189,13 @@ static lt_bool button_impl(lt_ui *ui, const char *label, int icon, int flags)
     }
     if (fill != 0 || border != 0) { lt_ui_draw_box(ui, r, fill, border, t->radius); }
     if (icon) {
-        lt_ui_draw_icon(ui, r, icon, fg);
+        if (icon >= 1000 && !ui->cell) {
+            lt_ui_draw_lucide(ui, r, icon - 1000, r.h >= 26 * ui->scale ? 18 : 14, 0.0, fg);
+        } else {
+            lt_ui_draw_icon(ui, r, icon, fg);
+        }
     } else {
-        ui_text_in(ui, r, vis, fg, 1);
+        ui_text_in_f(ui, r, vis, fg, 1, fid, 0);
     }
     if (dis) { ui->disabled--; }
     ui_set_last(ui, id, r);
@@ -214,7 +229,7 @@ lt_bool lt_ui_checkbox(lt_ui *ui, const char *label, int *v)
     const char *vis = ui_label_visible(label, buf, sizeof(buf));
     lt_u32 id = lt_ui_id(ui, label);
     const lt_theme *t = &ui->theme;
-    int bw = ui->cell ? 24 : 16, gap = ui->cell ? 8 : 8;
+    int bw = ui->cell ? 24 : 14 * ui->scale, gap = ui->cell ? 8 : 8;
     int tw = lt_ui_text_width(ui, vis);
     lt_rect r = ui_next(ui, bw + gap + tw + 2);
     lt_rect box;
@@ -230,7 +245,7 @@ lt_bool lt_ui_checkbox(lt_ui *ui, const char *label, int *v)
         lt_ui_draw_text(ui, box.x, box.y, on ? "[x]" : "[ ]", ui->disabled ? t->disabled : c);
     } else {
         lt_color fill, border;
-        box = lt_rect_make(r.x, r.y + (r.h - 16) / 2, 16, 16);
+        box = lt_rect_make(r.x, r.y + (r.h - bw) / 2, bw, bw);
         if (on) {
             fill = (res & UI_HOVER) ? t->primary_hover : t->primary; border = fill;
         } else {
@@ -238,8 +253,8 @@ lt_bool lt_ui_checkbox(lt_ui *ui, const char *label, int *v)
         }
         if (ui->disabled) { fill = t->surface; border = t->border_subtle; }
         if (ui->focus == id && ui->kbd_nav) { border = t->focus; }
-        lt_ui_draw_box(ui, box, fill, border, 3);
-        if (on) { lt_ui_draw_icon(ui, box, LT_UI_ICON_CHECK, ui->disabled ? t->disabled : t->primary_text); }
+        lt_ui_draw_box(ui, box, fill, border, 2 * ui->scale);
+        if (on) { lt_ui_draw_lucide(ui, box, LT_ICON_CHECK, 11, 3.0, ui->disabled ? t->disabled : t->primary_text); }
     }
     ui_text_in(ui, lt_rect_make(r.x + bw + gap, r.y, r.w - bw - gap, r.h), vis, fg, 0);
     ui_set_last(ui, id, r);
@@ -252,7 +267,7 @@ lt_bool lt_ui_radio(lt_ui *ui, const char *label, int *v, int value)
     const char *vis = ui_label_visible(label, buf, sizeof(buf));
     lt_u32 id = lt_ui_id(ui, label);
     const lt_theme *t = &ui->theme;
-    int bw = ui->cell ? 24 : 16, gap = 8;
+    int bw = ui->cell ? 24 : 14 * ui->scale, gap = 8;
     int tw = lt_ui_text_width(ui, vis);
     lt_rect r = ui_next(ui, bw + gap + tw + 2);
     int res = ui_interact(ui, id, r, UI_FOCUSABLE | UI_KIND(UI_K_BUTTON));
@@ -265,12 +280,12 @@ lt_bool lt_ui_radio(lt_ui *ui, const char *label, int *v, int value)
         if (ui->focus == id && ui->kbd_nav) { lt_ui_draw_fill(ui, r, t->hover); }
         lt_ui_draw_text(ui, r.x, r.y + (r.h - 16) / 2, on ? "(o)" : "( )", c);
     } else {
-        double cx = r.x + 8.0, cy = r.y + r.h / 2.0;
+        double cx = r.x + bw / 2.0, cy = r.y + r.h / 2.0, rr = bw / 2.0;
         lt_color border = (ui->focus == id && ui->kbd_nav) ? t->focus :
                           (on ? t->primary : ((res & UI_HOVER) ? t->text2 : t->border));
-        lt_ui_draw_circle_fill(ui, cx, cy, 8.0, border);
-        lt_ui_draw_circle_fill(ui, cx, cy, 7.0, ui->disabled ? t->surface : t->input);
-        if (on) { lt_ui_draw_circle_fill(ui, cx, cy, 4.0, ui->disabled ? t->disabled : t->primary); }
+        lt_ui_draw_circle_fill(ui, cx, cy, rr, border);
+        lt_ui_draw_circle_fill(ui, cx, cy, rr - 1.0, ui->disabled ? t->surface : t->input);
+        if (on) { lt_ui_draw_circle_fill(ui, cx, cy, rr * 0.45, ui->disabled ? t->disabled : t->primary); }
     }
     ui_text_in(ui, lt_rect_make(r.x + bw + gap, r.y, r.w - bw - gap, r.h), vis, fg, 0);
     ui_set_last(ui, id, r);
@@ -418,7 +433,7 @@ lt_bool lt_ui_color_swatch(lt_ui *ui, lt_color c)
     return (res & UI_CLICK) ? LT_TRUE : LT_FALSE;
 }
 
-void lt_ui_image(lt_ui *ui, const lt_u32 *px, int w, int h, int stride)
+void lt_ui_image(lt_ui *ui, const lt_u32 *px, int w, int h, int pitch)
 {
     lt_rect r = ui_next(ui, w);
     char lab[48];
@@ -430,7 +445,7 @@ void lt_ui_image(lt_ui *ui, const lt_u32 *px, int w, int h, int stride)
         return;
     }
     lt_ui_clip_push(ui, r);
-    lt_ui_draw_blit(ui, r.x, r.y, px, w, h, stride);
+    lt_ui_draw_blit(ui, r.x, r.y, px, w, h, pitch);
     lt_ui_clip_pop(ui);
 }
 
@@ -469,14 +484,23 @@ void lt_ui_statusbar_end(lt_ui *ui)
 
 void lt_ui_toolbar_begin(lt_ui *ui)
 {
-    int h = ui->theme.toolbar_h;
-    lt_rect r = lt_rect_make(0, ui->top_used, ui->sw, h);
-    ui->top_used += h;
-    bar_begin(ui, r, ui->theme.toolbar, 1);
+    int h = ui->theme.tbar_h;
+    lt_rect r = lt_rect_make(0, ui->used_top, ui->sw, h);
+    ui->used_top += h;
+    bar_begin(ui, r, ui->theme.bg_toolbar, 1);
+    if (!ui->cell) { ui_lay(ui)->sp_x = 2 * ui->scale; }
 }
 
 void lt_ui_toolbar_end(lt_ui *ui)
 {
     ui_layout_pop(ui);
     lt_ui_clip_pop(ui);
+}
+
+void lt_ui_toolbar_separator(lt_ui *ui)
+{
+    lt_rect r = ui_next(ui, ui->cell ? 8 : 9 * ui->scale);
+    if (!ui->cell) {
+        lt_ui_draw_vline(ui, r.x + r.w / 2, r.y + 3 * ui->scale, r.y + r.h - 3 * ui->scale - 1, ui->theme.border);
+    }
 }

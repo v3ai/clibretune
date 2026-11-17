@@ -42,7 +42,7 @@ void lt_engine_spec_default(lt_engine_spec *s)
     s->injector_size_cc = 440.0;
     s->fuel = LT_FUEL_GASOLINE;
     s->aspiration = LT_ASP_NA;
-    s->stroke = LT_STROKE_FOUR;
+    s->engine_stroke = LT_STROKE_FOUR;
     s->inj_mode = LT_INJ_SEQUENTIAL;
     s->ign_mode = LT_IGN_WASTED_SPARK;
     s->idle_rpm = 800;
@@ -114,7 +114,7 @@ double lt_engine_max_spark_advance(const lt_engine_spec *s)
             adv -= 2.0;
         }
     }
-    if (s->stroke == LT_STROKE_TWO) {
+    if (s->engine_stroke == LT_STROKE_TWO) {
         adv -= 6.0;
     }
     return bm_clamp(adv, 18.0, 42.0);

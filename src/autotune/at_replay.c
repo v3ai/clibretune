@@ -17,7 +17,7 @@ void lt_replay_config_default(lt_replay_config *c)
     lt_at_settings_default(&c->settings);
     lt_at_filters_default(&c->filters);
     lt_at_authority_default(&c->authority);
-    c->strict_lambda_match = LT_TRUE;
+    c->lambda_match_strict = LT_TRUE;
     c->validate = LT_TRUE;
 }
 
@@ -82,7 +82,7 @@ static lt_at_state *run(const rp_ctx *c, int fold, const char **verdicts, unsign
     long i;
     const char *reason;
     lt_at_set_reference_tables(s, c->ref);
-    lt_at_set_strict_lambda_match(s, c->cfg->strict_lambda_match);
+    lt_at_set_strict_lambda_match(s, c->cfg->lambda_match_strict);
     lt_at_start(s);
     for (i = 0; i < c->n; i++) {
         const lt_ve_point *p = &c->pts[i];
@@ -308,7 +308,7 @@ int lt_replay(const lt_log *log, const lt_at_channels *ch, const double *xbins, 
     afr_n = (unsigned *)lt_calloc(ncell ? ncell : 1, sizeof(unsigned));
     s = run(&c, -1, out->verdicts, out->coverage, afr_sum, afr_n);
 
-    out->total_samples = lt_at_total_samples(s);
+    out->samples_all = lt_at_total_samples(s);
     nrec = lt_at_recommendations(s, NULL, 0);
     recs = (lt_at_rec *)lt_malloc((nrec + 1) * sizeof *recs);
     lt_at_recommendations(s, recs, nrec);

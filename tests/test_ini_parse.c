@@ -103,13 +103,13 @@ LT_TEST(encoding_files)
     const char *u8 = "[MegaTune]\nsignature = \"Configura\xC3\xA7\xC3\xB5" "es de Igni\xC3\xA7\xC3\xA3o 90\xC2\xB0" "C\"\n";
     const char *bom = "\xEF\xBB\xBF[MegaTune]\nsignature=\"Mapa de Combust\xC3\xAD" "vel\"\n";
     const char *cp = "[MegaTune]\nsignature = \"Configura\xE7\xF5" "es de Igni\xE7\xE3o 90\xB0" "C\"\n";
-    ini = load_n(u8, NULL);
+    ini = load_n(u8, (const char *)NULL);
     LT_CHECK_STR(ini->signature, want);
     lt_ini_free(ini);
-    ini = load_n(bom, NULL);
+    ini = load_n(bom, (const char *)NULL);
     LT_CHECK_STR(ini->signature, "Mapa de Combust\xC3\xAD" "vel");
     lt_ini_free(ini);
-    ini = load_n(cp, NULL);
+    ini = load_n(cp, (const char *)NULL);
     LT_CHECK_STR(ini->signature, want);
     lt_ini_free(ini);
 }
@@ -118,7 +118,7 @@ LT_TEST(encoding_files)
 /* lexical layer                                                     */
 /* ---------------------------------------------------------------- */
 
-static char *strip(const char *line)
+static char *trim_text(const char *line)
 {
     char *r = lt_strndup(line, ini_comment_cut(line));
     return r;
@@ -127,40 +127,40 @@ static char *strip(const char *line)
 LT_TEST(strip_comment)
 {
     char *s;
-    s = strip("key = value ; comment");
+    s = trim_text("key = value ; comment");
     LT_CHECK_STR(lt_str_trim(s), "key = value");
     lt_free(s);
-    s = strip("key = \"value ; with semi\"");
+    s = trim_text("key = \"value ; with semi\"");
     LT_CHECK_STR(s, "key = \"value ; with semi\"");
     lt_free(s);
-    s = strip("# comment line");
+    s = trim_text("# comment line");
     LT_CHECK_STR(s, "# comment line");
     lt_free(s);
-    s = strip("fieldname;+help text = value");
+    s = trim_text("fieldname;+help text = value");
     LT_CHECK_STR(s, "fieldname;+help text = value");
     lt_free(s);
-    s = strip("fieldname;+help = value ; comment");
+    s = trim_text("fieldname;+help = value ; comment");
     LT_CHECK_STR(lt_str_trim(s), "fieldname;+help = value");
     lt_free(s);
-    s = strip("      ;fuelLoadBins = array, U08, 272, [ 16], \"kPa\", 2.0, 0.0, 0.0, 511.0, 0");
+    s = trim_text("      ;fuelLoadBins = array, U08, 272, [ 16], \"kPa\", 2.0, 0.0, 0.0, 511.0, 0");
     LT_CHECK_STR(s, "");
     lt_free(s);
-    s = strip("   ; keyword = referenceName, DisplayName");
+    s = trim_text("   ; keyword = referenceName, DisplayName");
     LT_CHECK_STR(s, "");
     lt_free(s);
-    s = strip(";settingOption = BOOSTPSI, \"PSI\"");
+    s = trim_text(";settingOption = BOOSTPSI, \"PSI\"");
     LT_CHECK_STR(s, "");
     lt_free(s);
-    s = strip("bias_resistor;+Pull-up resistor = 4700");
+    s = trim_text("bias_resistor;+Pull-up resistor = 4700");
     LT_CHECK_STR(s, "bias_resistor;+Pull-up resistor = 4700");
     lt_free(s);
-    s = strip("someField = 42 ; trailing note");
+    s = trim_text("someField = 42 ; trailing note");
     LT_CHECK_STR(lt_str_trim(s), "someField = 42");
     lt_free(s);
-    s = strip("[MegaTune] ; this is a comment");
+    s = trim_text("[MegaTune] ; this is a comment");
     LT_CHECK_STR(lt_str_trim(s), "[MegaTune]");
     lt_free(s);
-    s = strip("blockReadTimeout = 3000; Milliseconds");
+    s = trim_text("blockReadTimeout = 3000; Milliseconds");
     LT_CHECK_STR(s, "blockReadTimeout = 3000");
     lt_free(s);
 }
@@ -346,12 +346,12 @@ LT_TEST(preprocessor_basic)
     lt_ini *ini = load_syms(src, syms, 1);
     LT_CHECK(ini->proto.query_command.p[0] == 'r');
     lt_ini_free(ini);
-    ini = load_n(src, NULL);
+    ini = load_n(src, (const char *)NULL);
     LT_CHECK_STR(ini->proto.query_command.p, "Q");
     LT_CHECK(lt_ini_symbol_tested(ini, "CAN_COMMANDS"));
     LT_CHECK(!lt_ini_symbol_active(ini, "CAN_COMMANDS"));
     lt_ini_free(ini);
-    ini = load_n("#set CAN_COMMANDS\n[MegaTune]\n#if CAN_COMMANDS\nqueryCommand=\"r\"\n#else\nqueryCommand=\"Q\"\n#endif\n", NULL);
+    ini = load_n("#set CAN_COMMANDS\n[MegaTune]\n#if CAN_COMMANDS\nqueryCommand=\"r\"\n#else\nqueryCommand=\"Q\"\n#endif\n", (const char *)NULL);
     LT_CHECK_STR(ini->proto.query_command.p, "r");
     LT_CHECK(lt_ini_symbol_active(ini, "CAN_COMMANDS"));
     lt_ini_free(ini);
@@ -359,17 +359,17 @@ LT_TEST(preprocessor_basic)
 
 LT_TEST(preprocessor_set_unset)
 {
-    lt_ini *ini = load_n("[MegaTune]\n#set FEATURE\n#unset FEATURE\n#if FEATURE\nsignature=enabled\n#else\nsignature=disabled\n#endif\n", NULL);
+    lt_ini *ini = load_n("[MegaTune]\n#set FEATURE\n#unset FEATURE\n#if FEATURE\nsignature=enabled\n#else\nsignature=disabled\n#endif\n", (const char *)NULL);
     LT_CHECK_STR(ini->signature, "disabled");
     LT_CHECK(!lt_ini_symbol_active(ini, "FEATURE"));
     lt_ini_free(ini);
     /* set in a dead arm does not leak; unset in a dead arm does not clear */
-    ini = load_n("#set KEEPME\n#if NEVER_DEFINED\n#set LEAKED\n#unset KEEPME\n#endif\n", NULL);
+    ini = load_n("#set KEEPME\n#if NEVER_DEFINED\n#set LEAKED\n#unset KEEPME\n#endif\n", (const char *)NULL);
     LT_CHECK(!lt_ini_symbol_active(ini, "LEAKED"));
     LT_CHECK(lt_ini_symbol_active(ini, "KEEPME"));
     lt_ini_free(ini);
     /* '!X' is just an undefined symbol; #ifdef etc are skipped */
-    ini = load_n("[MegaTune]\n#if !X\nsignature=neg\n#endif\n", NULL);
+    ini = load_n("[MegaTune]\n#if !X\nsignature=neg\n#endif\n", (const char *)NULL);
     LT_CHECK_STR(ini->signature, "");
     lt_ini_free(ini);
 }
@@ -391,12 +391,12 @@ LT_TEST(preprocessor_seed_units)
     LT_CHECK(lt_ini_symbol_active(ini, "CELSIUS"));
     LT_CHECK(lt_ini_symbol_tested(ini, "CELSIUS"));
     lt_ini_free(ini);
-    ini = load_n(src, NULL);
+    ini = load_n(src, (const char *)NULL);
     c = lt_ini_find_const(ini, "tempTest");
     LT_CHECK_STR(c->units, "F");
     LT_CHECK_NEAR(c->scale, 1.8, 1e-12);
     lt_ini_free(ini);
-    ini = load_n("[Constants]\nx = scalar, U08, 0, \"\", 1, 0, 0, 1, 0\n", NULL);
+    ini = load_n("[Constants]\nx = scalar, U08, 0, \"\", 1, 0, 0, 1, 0\n", (const char *)NULL);
     LT_CHECK(!lt_ini_symbol_tested(ini, "CELSIUS"));
     lt_ini_free(ini);
 }
@@ -410,20 +410,20 @@ LT_TEST(conditional_headers)
     lt_ini *ini = load_syms(src, syms, 1);
     LT_CHECK_STR(ini->signature, "OverrideECU");
     lt_ini_free(ini);
-    ini = load_n(src, NULL);
+    ini = load_n(src, (const char *)NULL);
     LT_CHECK_STR(ini->signature, "BaseECU");
     lt_ini_free(ini);
-    ini = load_n("[MegaTune]\nsignature=\"Base\"\n[TunerStudio &!CAN_COMMANDS]\nsignature=\"NoCan\"\n", NULL);
+    ini = load_n("[MegaTune]\nsignature=\"Base\"\n[TunerStudio &!CAN_COMMANDS]\nsignature=\"NoCan\"\n", (const char *)NULL);
     LT_CHECK_STR(ini->signature, "NoCan");
     lt_ini_free(ini);
     /* a suppressed header silences following keys until the next header */
-    ini = load_n("[MegaTune]\nsignature=\"A\"\n[TunerStudio &NOPE]\nsignature=\"B\"\nversionInfo=\"V\"\n[MegaTune]\nqueryCommand=\"S\"\n", NULL);
+    ini = load_n("[MegaTune]\nsignature=\"A\"\n[TunerStudio &NOPE]\nsignature=\"B\"\nversionInfo=\"V\"\n[MegaTune]\nqueryCommand=\"S\"\n", (const char *)NULL);
     LT_CHECK_STR(ini->signature, "A");
     LT_CHECK_STR(ini->version_info, "");
     LT_CHECK_STR(ini->proto.query_command.p, "S");
     lt_ini_free(ini);
     /* [UiDialogs] aliases [UserDefined] */
-    ini = load_n("[UiDialogs]\ndialog = d1, \"One\"\n", NULL);
+    ini = load_n("[UiDialogs]\ndialog = d1, \"One\"\n", (const char *)NULL);
     LT_CHECK(lt_ini_find_dialog(ini, "d1") != NULL);
     lt_ini_free(ini);
 }
@@ -436,7 +436,7 @@ LT_TEST(define_lists)
         "[Constants]\npage = 1\n",
         "pin = bits, U08, 0, [0:7], $gpio_list, \"X\"\n",
         "pin2 = bits, U08, 1, [0:7], $more\n",
-        "pin3 = bits, U08, 2, [0:7], $nosuch\n", NULL);
+        "pin3 = bits, U08, 2, [0:7], $nosuch\n", (const char *)NULL);
     const lt_ini_const *c = lt_ini_find_const(ini, "pin");
     LT_CHECK(c != NULL);
     LT_CHECK_INT(c->n_bit_options, 5);
@@ -541,7 +541,7 @@ LT_TEST(protocol_keys)
         "interWriteDelay = 10\nblockReadTimeout = 3000\ndelayAfterPortOpen = 1000 ; settle\n",
         "tsWriteBlocks = on\nenable2ndByteCanID = false\nnoCommReadDelay = true;\n",
         "[OutputChannels]\nochGetCommand = \"O%2o%2c\"\nochBlockSize = 2268\n",
-        "[BurstMode]\ngetCommand = \"A\"\n", NULL);
+        "[BurstMode]\ngetCommand = \"A\"\n", (const char *)NULL);
     const lt_ini_protocol *p = &ini->proto;
     LT_CHECK_STR(ini->signature, "sig 1");
     LT_CHECK_STR(ini->signature_prefix, "sig");
@@ -581,7 +581,7 @@ LT_TEST(protocol_keys)
     lt_ini_free(ini);
 
     /* defaults */
-    ini = load_n("[MegaTune]\nsignature=\"x\"\n", NULL);
+    ini = load_n("[MegaTune]\nsignature=\"x\"\n", (const char *)NULL);
     LT_CHECK_STR(ini->proto.query_command.p, "Q");
     LT_CHECK_STR(ini->proto.burst_get_command.p, "A");
     LT_CHECK_INT(ini->proto.page_activation_delay, 500);
@@ -596,18 +596,18 @@ LT_TEST(protocol_keys)
     LT_CHECK_STR(ini->ini_spec_version, "3.64");
     lt_ini_free(ini);
     /* top-level key before any section is ignored (rusEFI) */
-    ini = load_n("enable2ndByteCanID = false\n[MegaTune]\nsignature=\"x\"\n", NULL);
+    ini = load_n("enable2ndByteCanID = false\n[MegaTune]\nsignature=\"x\"\n", (const char *)NULL);
     LT_CHECK_INT(ini->proto.enable_can_id, 1);
     lt_ini_free(ini);
     /* write blocks: only on/true/1 enable */
-    ini = load_n("[Constants]\nwriteBlocks = off\n", NULL);
+    ini = load_n("[Constants]\nwriteBlocks = off\n", (const char *)NULL);
     LT_CHECK_INT(ini->proto.write_blocks, 0);
     lt_ini_free(ini);
-    ini = load_n("[Constants]\nwriteBlocks = maybe\n", NULL);
+    ini = load_n("[Constants]\nwriteBlocks = maybe\n", (const char *)NULL);
     LT_CHECK_INT(ini->proto.write_blocks, 0);
     lt_ini_free(ini);
     /* protocol keys are also accepted in [TunerStudio] */
-    ini = load_n("[TunerStudio]\nnoCommReadDelay = 50\nuseLegacyFTempUnits = true\ndefaultRuntimeRecordPerSec = 20\n", NULL);
+    ini = load_n("[TunerStudio]\nnoCommReadDelay = 50\nuseLegacyFTempUnits = true\ndefaultRuntimeRecordPerSec = 20\n", (const char *)NULL);
     LT_CHECK_INT(ini->proto.no_comm_read_delay, 50);
     LT_CHECK_INT(ini->proto.use_legacy_f_temp_units, 1);
     LT_CHECK_INT(ini->proto.default_runtime_record_per_sec, 20);
@@ -618,7 +618,7 @@ LT_TEST(tscanid_substitution)
 {
     lt_ini *ini = load_n(
         "[PcVariables]\ntsCanId = bits, U08, [0:3], \"CAN ID 0\", \"CAN ID 1\", \"CAN ID 2\"\n",
-        "[Constants]\npageIdentifier = \"\\$tsCanId\\x04\", \"\\$tsCanId\\x05\"\n", NULL);
+        "[Constants]\npageIdentifier = \"\\$tsCanId\\x04\", \"\\$tsCanId\\x05\"\n", (const char *)NULL);
     const lt_ini_const *c = lt_ini_find_const(ini, "tsCanId");
     LT_CHECK(c != NULL);
     LT_CHECK(c->type == LT_DT_BITS && c->bit_pos == 0 && c->bit_size == 4 &&
@@ -635,7 +635,7 @@ LT_TEST(tscanid_substitution)
     ini = load_n(
         "[Constants]\npageIdentifier=\"\\x00$tsCanId\"\npageReadCommand=\"r$tsCanId%2o%2c\"\n",
         "[PcVariables]\ntsCanId = scalar, U08, \"\", 1, 0, 0, 15, 0\n",
-        "[Defaults]\ndefaultValue = tsCanId, 3\n", NULL);
+        "[Defaults]\ndefaultValue = tsCanId, 3\n", (const char *)NULL);
     LT_CHECK_INT(lt_ini_pcvar_byte(ini, "tsCanId"), 3);
     LT_CHECK(ini->proto.page_identifiers[0].n == 2 && ini->proto.page_identifiers[0].p[1] == 3);
     LT_CHECK(ini->proto.page_read_commands.v[0].p[0] == 'r' &&
@@ -646,14 +646,14 @@ LT_TEST(tscanid_substitution)
     /* query command: NUL after substitution, escapes stay text */
     ini = load_n(
         "[MegaTune]\nqueryCommand = \"r\\$tsCanId\\x0f\\x00\\x00\\x00\\x14\"\n",
-        "[PcVariables]\ntsCanId = bits, U08, [0:3], \"A\", \"B\"\n", NULL);
+        "[PcVariables]\ntsCanId = bits, U08, [0:3], \"A\", \"B\"\n", (const char *)NULL);
     LT_CHECK(ini->proto.query_command.p[0] == 'r' && ini->proto.query_command.p[1] == 0);
     LT_CHECK_STR(ini->proto.query_command.p + 2, "\\x0f\\x00\\x00\\x00\\x14");
     LT_CHECK_INT(ini->proto.query_command.n, 2 + 20);
     lt_ini_free(ini);
 
     /* unknown var stays literal */
-    ini = load_n("[Constants]\npageReadCommand=\"r$nope%2o\"\n", NULL);
+    ini = load_n("[Constants]\npageReadCommand=\"r$nope%2o\"\n", (const char *)NULL);
     LT_CHECK_STR(ini->proto.page_read_commands.v[0].p, "r$nope%2o");
     lt_ini_free(ini);
 }
@@ -674,7 +674,7 @@ LT_TEST(constant_lines)
         "page = 2\n",
         "p2const = scalar, S16, 10, \"x\", 2, 1, -5, 5, 0\n",
         "page = 0\n",
-        "p0const = scalar, U08, 0, \"\"\n", NULL);
+        "p0const = scalar, U08, 0, \"\"\n", (const char *)NULL);
     const lt_ini_const *c = lt_ini_find_const(ini, "reqFuel");
     LT_CHECK(c && c->type == LT_DT_U16 && c->offset == 0 && c->page == 0);
     LT_CHECK_NEAR(c->scale, 0.1, 1e-12);
@@ -717,7 +717,7 @@ LT_TEST(last_offset_overlays)
         "ego_min_afr = scalar, U08, 8, \"\", 1, 0, 0, 255, 0\n",
         "ego_min_lambda = scalar, U08, lastOffset, \"\", 1, 0, 0, 255, 0\n",
         "ego_max_afr = scalar, U08, 9, \"\", 1, 0, 0, 255, 0\n",
-        "ego_max_lambda = scalar, U08, lastOffset, \"\", 1, 0, 0, 255, 0\n", NULL);
+        "ego_max_lambda = scalar, U08, lastOffset, \"\", 1, 0, 0, 255, 0\n", (const char *)NULL);
     LT_CHECK_INT(lt_ini_find_const(ini, "afterBits")->offset, 100);
     LT_CHECK_INT(lt_ini_find_const(ini, "afrTable")->offset, 0);
     LT_CHECK_INT(lt_ini_find_const(ini, "rpmBinsAFR")->offset, 256);
@@ -741,7 +741,7 @@ LT_TEST(constant_bits_and_help)
         "pins = bits, U16, 10, [0:6], 0=\"DEFAULT\", 2=\"TWO\", 22=\"BMW\"\n",
         "be = scalar, BU16, 12, \"\", 1, 0, 0, 65535, 0\n",
         "str = string, ASCII, 20, 32\n",
-        "[SettingContextHelp]\nreqFuelX = \"nothing\"\nnCylinders = \"Number of cylinders\\nfoo\"\n", NULL);
+        "[SettingContextHelp]\nreqFuelX = \"nothing\"\nnCylinders = \"Number of cylinders\\nfoo\"\n", (const char *)NULL);
     const lt_ini_const *c = lt_ini_find_const(ini, "injectionMode");
     LT_CHECK(c && c->type == LT_DT_BITS && c->bit_pos == 0 && c->bit_size == 2);
     LT_CHECK_STR(c->help, "Pick the mode");
@@ -788,7 +788,7 @@ LT_TEST(raw_display_conversion)
     lt_ini *ini = load_n(
         "[Constants]\npage = 1\n",
         "x = scalar, U08, 0, \"\", 0.1, 0.0, 0, 25.5, 1\n",
-        "y = scalar, U08, 1, \"\", {sc}, 0, 0, {mx}, 1\n", NULL);
+        "y = scalar, U08, 1, \"\", {sc}, 0, 0, {mx}, 1\n", (const char *)NULL);
     const lt_ini_const *c = lt_ini_find_const(ini, "x");
     LT_CHECK_NEAR(lt_const_raw_to_display(c, 147), 14.7, 0.01);
     LT_CHECK_NEAR(lt_const_display_to_raw(c, 14.7), 147, 0.01);
@@ -813,7 +813,7 @@ LT_TEST(pc_variables)
         "wueAfrTargetOffset = array, S16, [ 16], \":1\", 0.1, 0.0, -3.0, 3.0, 1\n",
         "lim = scalar, U08, \"\", 1, 0, 0, { 10 - 2 }, 0\n",
         "tuneCrcPcVariable = continuousChannelValue, tuneCrc16\n",
-        "[Defaults]\ndefaultValue = rpmwarn, 6500\n", NULL);
+        "[Defaults]\ndefaultValue = rpmwarn, 6500\n", (const char *)NULL);
     const lt_ini_const *c = lt_ini_find_const(ini, "rpmwarn");
     LT_CHECK(c && c->page == 255 && c->is_pc_var && c->type == LT_DT_U16);
     LT_CHECK_STR(c->units, "rpm");
@@ -853,7 +853,7 @@ LT_TEST(output_channel_lines)
         "plain = bits, U08, 3\n",
         "scatteredGetEnabled = { 0 }\n",
         "broken = { 1 + \n",
-        "ochBlockSize = 40\n", NULL);
+        "ochBlockSize = 40\n", (const char *)NULL);
     const lt_ini_channel *c = lt_ini_find_channel(ini, "rpm");
     LT_CHECK(c && c->type == LT_DT_U16 && c->offset == 0);
     LT_CHECK_STR(c->units, "RPM");
@@ -900,7 +900,7 @@ LT_TEST(gauges)
         "tachometer = rpm, \"Engine Speed\", \"RPM\", 0, {rpmhigh}, 300, 600, {rpmwarn}, {rpmdang}, 0, 0\n",
         "gaugeCategory = \"Fuel\"\n",
         "gppwmOutput1 = gppwmOutput1, { bitStringValue(pwmAxisLabels, gppwm1_loadAxis) }, \"%\", 0, 100, 0, 0, 100, 100, 1\n",
-        "zones = rpm, \"Z\", \"RPM\", 0, 9000, 500, 800, 6500, 7000, 0\n", NULL);
+        "zones = rpm, \"Z\", \"RPM\", 0, 9000, 500, 800, 6500, 7000, 0\n", (const char *)NULL);
     const lt_ini_gauge *g = lt_ini_find_gauge(ini, "rpmGauge");
     LT_CHECK(g != NULL);
     LT_CHECK_STR(g->channel, "rpm");
@@ -945,7 +945,7 @@ LT_TEST(datalog_section)
         "entry = stagingActive, \"Fuel Staging\", int, \"onOff\", { stagingEnabled }\n",
         "entry = boostDuty, \"Boost Duty\", int, \"%d\", { bitStringValue(boostLabels, boostType) }\n",
         "entry = afr, \"AFR\"\n",
-        "[DatalogViews]\nview1 = \"Basic\", rpm, afr\n", NULL);
+        "[DatalogViews]\nview1 = \"Basic\", rpm, afr\n", (const char *)NULL);
     LT_CHECK_INT(ini->n_dl_entries, 5);
     LT_CHECK_STR(ini->dl_entries[0].channel, "rpm");
     LT_CHECK_STR(ini->dl_entries[0].type, "int");
@@ -972,7 +972,7 @@ LT_TEST(frontpage)
         "gauge4000000000 = bogus\ngauge0 = zero\n",
         "indicator = { (tps > tpsflood) && (rpm < crankRPM) }, \"FLOOD OFF\", \"FLOOD CLEAR\", white, black, red, black\n",
         "indicator = { running }, \"Not Running\", { isRunning ? \"On\" : \"Off\" }, white, black, green, black\n",
-        "indicator = { bad }, \"only\", \"three\"\n", NULL);
+        "indicator = { bad }, \"only\", \"three\"\n", (const char *)NULL);
     LT_CHECK(ini->frontpage != NULL);
     LT_CHECK_INT(ini->frontpage->n_gauges, 8);
     LT_CHECK_STR(ini->frontpage->gauges[0], "tachometer");
@@ -987,7 +987,7 @@ LT_TEST(frontpage)
     LT_CHECK_STR(ini->frontpage->inds[0].fg_off, "black");
     LT_CHECK_STR(ini->frontpage->inds[1].label_on, "{ isRunning ? \"On\" : \"Off\" }");
     lt_ini_free(ini);
-    ini = load_n("[MegaTune]\nsignature=\"x\"\n", NULL);
+    ini = load_n("[MegaTune]\nsignature=\"x\"\n", (const char *)NULL);
     LT_CHECK(ini->frontpage == NULL);
     lt_ini_free(ini);
 }
@@ -1036,7 +1036,7 @@ LT_TEST(menus)
         "subMenu = a2, \"A2\"\n",
         "[TableEditor]\ntable = veTable1Tbl, veMapName, \"VE Table\", 2\n",
         "[CurveEditor]\ncurve = warmCurve, \"Warmup\"\n",
-        "[UserDefined]\nhelp = helpTopic, \"Topic\"\ndialog = child1, \"C1\"\n", NULL);
+        "[UserDefined]\nhelp = helpTopic, \"Topic\"\ndialog = child1, \"C1\"\n", (const char *)NULL);
     const lt_ini_menu *m;
     LT_CHECK_INT(ini->n_menus, 2);
     m = &ini->menus[0];
@@ -1083,13 +1083,13 @@ LT_TEST(menus)
 LT_TEST(menu_after_group_goes_to_menu)
 {
     lt_ini *ini = load_n(
-        "[Menu]\nmenu = \"M\"\ngroupMenu = \"G\"\ngroupChildMenu = c, \"C\"\nsubMenu = s, \"S\"\n", NULL);
+        "[Menu]\nmenu = \"M\"\ngroupMenu = \"G\"\ngroupChildMenu = c, \"C\"\nsubMenu = s, \"S\"\n", (const char *)NULL);
     LT_CHECK_INT(ini->menus[0].n_items, 2);
     LT_CHECK_INT(ini->menus[0].items[0]->n_items, 1);
     LT_CHECK_STR(ini->menus[0].items[1]->label, "S");
     lt_ini_free(ini);
     /* items before any menu are dropped */
-    ini = load_n("[Menu]\nsubMenu = x, \"X\"\n", NULL);
+    ini = load_n("[Menu]\nsubMenu = x, \"X\"\n", (const char *)NULL);
     LT_CHECK_INT(ini->n_menus, 0);
     lt_ini_free(ini);
 }
@@ -1134,7 +1134,7 @@ LT_TEST(dialogs)
         "settingOption = \"GM 1-BAR\", EngineCylinder=10, EngineVolume=105\n",
         "field = \"After selector\", afterSel\n",
         "settingOption = \"dropped\", X=1\n",
-        "topicHelp = \"http://help/dialog\"\n", NULL);
+        "topicHelp = \"http://help/dialog\"\n", (const char *)NULL);
     const lt_ini_dialog *d;
     const lt_ini_comp *c;
     const lt_ini_indicator_panel *ip;
@@ -1170,7 +1170,7 @@ LT_TEST(dialogs)
     LT_CHECK_STR(d->comps[0].name, "fuelClosedLoopBank1");
     d = lt_ini_find_dialog(ini, "plainDialog");
     LT_CHECK(d->layout_hint == NULL);
-    LT_CHECK_STR(d->topic_help, "http://help/dialog");
+    LT_CHECK_STR(d->help_topic, "http://help/dialog");
     LT_CHECK_INT(d->n_comps, 20);
     c = &d->comps[0];
     LT_CHECK(c->kind == LT_COMP_CHECKBOX && c->en_cond && !c->vis_cond && !c->flip);
@@ -1254,7 +1254,7 @@ LT_TEST(help_and_readouts)
         "readout = rpm, \"Engine RPM\", \"rpm\", 0, 1\n",
         "readout = map, \"MAP\"\n",
         "readoutPanel = rp2\n",
-        "indicatorPanel = ip1, 4, { v2 }\n", NULL);
+        "indicatorPanel = ip1, 4, { v2 }\n", (const char *)NULL);
     const lt_ini_help *h = lt_ini_find_help(ini, "myTopic");
     LT_CHECK(h != NULL);
     LT_CHECK_STR(h->title, "My Topic");
@@ -1279,7 +1279,7 @@ LT_TEST(std_panels)
 {
     lt_ini *ini = load_n(
         "[Constants]\npage = 1\nalgorithm = bits, U08, 0, [0:1], \"A\", \"B\"\n",
-        "reqFuel = scalar, U08, 1, \"ms\", 1, 0, 0, 25, 1\n", NULL);
+        "reqFuel = scalar, U08, 1, \"ms\", 1, 0, 0, 25, 1\n", (const char *)NULL);
     const lt_ini_dialog *d = lt_ini_std_panel(ini, "std_injection");
     LT_CHECK(d != NULL);
     LT_CHECK_STR(d->title, "Injection Setup");
@@ -1315,7 +1315,7 @@ LT_TEST(tables_and_curves)
         "columnLabel = \"Coolant\", \"WUE\"\nxAxis = 0, 8000, 9\nyAxis = 50, 250, 5\n",
         "xBins = knockNoiseRpmBins, RPMValue\nyBins = wueRates\nyBins = wueRates2\n",
         "size = 10\ngauge = cltGauge\ntopicHelp = \"http://w\"\n",
-        "lineLabel = \"Current WUE\"\nlineLabel = \"Recommended WUE\"\n", NULL);
+        "lineLabel = \"Current WUE\"\nlineLabel = \"Recommended WUE\"\n", (const char *)NULL);
     const lt_ini_table *t = lt_ini_find_table(ini, "veTable1Tbl");
     const lt_ini_curve *c;
     LT_CHECK(t != NULL);
@@ -1378,7 +1378,7 @@ LT_TEST(dynamic_table_sizes)
         "[ConstantsExtensions]\ndefaultValue = veTableRows, 16\ndefaultValue = veTableCols, 16\n",
         "maximumElements = veTable, 256\nrequiresPowerCycle = veTableRows\n",
         "maintainConstantValue = veTableRows, { veTableCols * 2 }\n",
-        "[TableEditor]\ntable = veTbl, veMap, \"VE\", 1\nxBins = veRpmBins\nyBins = veLoadBins\nzBins = veTable\n", NULL);
+        "[TableEditor]\ntable = veTbl, veMap, \"VE\", 1\nxBins = veRpmBins\nyBins = veLoadBins\nzBins = veTable\n", (const char *)NULL);
     const lt_ini_const *c = lt_ini_find_const(ini, "veTable");
     const lt_ini_table *t = lt_ini_find_table(ini, "veTbl");
     LT_CHECK(c && c->shape.kind == LT_SH_2D);
@@ -1420,7 +1420,7 @@ LT_TEST(table_roles)
         "filter = commentFilter, \"C\", ch, |, 1, true ; adjustable\n",
         "filter = junk, two\n",
         "[WueAnalyze]\nwueAnalyzeMap = wueCurve, afrComp, afrTable2Tbl, lam, clt, wueCh, egoCh\n",
-        "wuePercentOffset = 5.5\n", NULL);
+        "wuePercentOffset = 5.5\n", (const char *)NULL);
     LT_CHECK(lt_ini_find_table(ini, "veTable1Tbl")->role == LT_ROLE_VE);
     LT_CHECK(lt_ini_find_table(ini, "veTable2Tbl")->role == LT_ROLE_VE);    /* digit sibling */
     LT_CHECK(lt_ini_find_table(ini, "afrTable1Tbl")->role == LT_ROLE_AFR_TARGET);
@@ -1465,7 +1465,7 @@ LT_TEST(setting_groups)
         "[SettingGroups]\n",
         "settingGroup = g1, \"Group One\"\nsettingOption = A, \"Option A\"\nsettingOption = B, \"Option B\"\n",
         ";  settingGroup = commented, \"X\"\n",
-        "settingGroup = g2, \"Group Two\"\nsettingOption = C, \"Option C\"\n", NULL);
+        "settingGroup = g2, \"Group Two\"\nsettingOption = C, \"Option C\"\n", (const char *)NULL);
     LT_CHECK_INT(ini->n_setting_groups, 2);
     LT_CHECK_STR(ini->setting_groups[0]->label, "Group One");
     LT_CHECK_INT(ini->setting_groups[0]->n_options, 2);
@@ -1483,7 +1483,7 @@ LT_TEST(controller_commands_and_misc)
         "cmd_chain = \"X\", cmd_a, \"Y\", { canEnabled }\n",
         "cmd_dfu = \"d\"\n",
         "[PortEditor]\nportA = \"Port A\", { en1 }\ntopicHelp = \"x\"\n",
-        "[KeyActions]\nshowPanel = Ctrl+G, gaugePanel\nCtrl+S = burn, \"Burn\", { online }\n", NULL);
+        "[KeyActions]\nshowPanel = Ctrl+G, gaugePanel\nCtrl+S = burn, \"Burn\", { online }\n", (const char *)NULL);
     const lt_ini_cmd *c = lt_ini_find_command(ini, "cmd_a");
     LT_CHECK(c != NULL && c->n_parts == 1 && !c->parts[0].is_ref);
     LT_CHECK_STR(c->parts[0].data.p, "Z\\x00\\x12\\x00\\x01");
@@ -1545,7 +1545,7 @@ LT_TEST(reference_tables)
         "solution = \"Linear\", { (a + b) / 2, 3 }\n",
         "solution = \"Empty\", { }\n",
         "solution = \"Gen\", linearGenerator\n",
-        "referenceTable = afr2, \"AFR\"\nadcCount = 1024\ntableIdentifier = 002, \"Wideband\"\n", NULL);
+        "referenceTable = afr2, \"AFR\"\nadcCount = 1024\ntableIdentifier = 002, \"Wideband\"\n", (const char *)NULL);
     const lt_ini_ref_table *t;
     LT_CHECK_INT(ini->proto.table_blocking_factor, 64);
     LT_CHECK_STR(ini->proto.table_write_command, "w\\$tsCanId%2i%2o%2c%v");
@@ -1553,7 +1553,7 @@ LT_TEST(reference_tables)
     t = lt_ini_find_ref_table(ini, "std_ms2gentherm");
     LT_CHECK(t != NULL);
     LT_CHECK_STR(t->label, "Calibrate Thermistor Tables.");
-    LT_CHECK_STR(t->topic_help, "http://wiki");
+    LT_CHECK_STR(t->help_topic, "http://wiki");
     LT_CHECK_INT(t->adc_count, 32);
     LT_CHECK_INT(t->bytes_per_adc, 2);
     LT_CHECK_NEAR(t->scale, 10, 0);
@@ -1588,25 +1588,25 @@ LT_TEST(reference_tables)
     LT_CHECK(lt_ini_find_ref_table(ini, "nope") == NULL);
     lt_ini_free(ini);
     /* sub-keys before any referenceTable do not create blocks */
-    ini = load_n("[ReferenceTables]\nadcCount = 5\nsolution = \"x\", { 1 }\n", NULL);
+    ini = load_n("[ReferenceTables]\nadcCount = 5\nsolution = \"x\", { 1 }\n", (const char *)NULL);
     LT_CHECK_INT(ini->n_ref_tables, 0);
     lt_ini_free(ini);
 }
 
 LT_TEST(settings_misc)
 {
-    lt_ini *ini = load_n("garbage with no sections\n=\n[Unknown]\nfoo = bar\n[TunerStudio]\nsignature = \"x\"\n", NULL);
+    lt_ini *ini = load_n("garbage with no sections\n=\n[Unknown]\nfoo = bar\n[TunerStudio]\nsignature = \"x\"\n", (const char *)NULL);
     LT_CHECK_STR(ini->signature, "x");
     lt_ini_free(ini);
-    ini = load_n("", NULL);
+    ini = load_n("", (const char *)NULL);
     LT_CHECK(ini != NULL && ini->n_constants == 0);
     lt_ini_free(ini);
-    ini = load_n("[Constants]\nline1 = scalar, U08, 0, \"a\", \\\n   1, 0, 0, 100, 0\n", NULL);
+    ini = load_n("[Constants]\nline1 = scalar, U08, 0, \"a\", \\\n   1, 0, 0, 100, 0\n", (const char *)NULL);
     LT_CHECK(lt_ini_find_const(ini, "line1") != NULL);
     LT_CHECK_NEAR(lt_ini_find_const(ini, "line1")->max, 100, 0);
     lt_ini_free(ini);
     /* duplicate constants: later definition wins, order stays */
-    ini = load_n("[Constants]\nd = scalar, U08, 0, \"a\", 1, 0, 0, 10, 0\nz = scalar, U08, 1\nd = scalar, U08, 5, \"b\", 1, 0, 0, 20, 0\n", NULL);
+    ini = load_n("[Constants]\nd = scalar, U08, 0, \"a\", 1, 0, 0, 10, 0\nz = scalar, U08, 1\nd = scalar, U08, 5, \"b\", 1, 0, 0, 20, 0\n", (const char *)NULL);
     LT_CHECK_INT(ini->n_constants, 2);
     LT_CHECK_STR(lt_ini_find_const(ini, "d")->units, "b");
     LT_CHECK_INT(lt_ini_find_const(ini, "d")->offset, 5);
@@ -1623,7 +1623,7 @@ LT_TEST(dynamic_scale_resolution)
         "plain = scalar, U08, 20, \"\", 1.0, 0, 0, 100, 0\n",
         "rng = scalar, U08, 21, \"\", 1.0, 0, 0, {algorithm * 10}, 0\n",
         "[OutputChannels]\n",
-        "fuelLoadRes = { ((algorithm == 0) || (algorithm == 2)) ? 2.000 : 0.500 }\n", NULL);
+        "fuelLoadRes = { ((algorithm == 0) || (algorithm == 2)) ? 2.000 : 0.500 }\n", (const char *)NULL);
     lt_map vars;
     double algo = 0.0;
     lt_expr_env env;
@@ -1651,15 +1651,35 @@ LT_TEST(dynamic_scale_resolution)
     lt_map_free(&vars);
     lt_ini_free(ini);
     /* literal / empty braces are not deferred */
-    ini = load_n("[Constants]\nl = scalar, U08, 0, \"\",  0.5 , 0, 0, 1, 0\ne = scalar, U08, 1, \"\", {}, 0, 0, 1, 0\n", NULL);
+    ini = load_n("[Constants]\nl = scalar, U08, 0, \"\",  0.5 , 0, 0, 1, 0\ne = scalar, U08, 1, \"\", {}, 0, 0, 1, 0\n", (const char *)NULL);
     LT_CHECK(lt_ini_find_const(ini, "l")->scale_expr == NULL);
     LT_CHECK_NEAR(lt_ini_find_const(ini, "l")->scale, 0.5, 0);
     LT_CHECK(lt_ini_find_const(ini, "e")->scale_expr == NULL);
     lt_ini_free(ini);
 }
 
+LT_TEST(field_missing_comma)
+{
+    lt_ini *ini = load_n("[UserDefined]\ndialog = dm, \"M\"\n",
+                         "field = \"Plain\"\t\tfa\n",
+                         "field = \"Cond\" fb, { fa }\n",
+                         "field = \"Ok\", fc\n", (const char *)NULL);
+    const lt_ini_dialog *d = lt_ini_find_dialog(ini, "dm");
+    LT_CHECK(d != NULL && d->n_comps == 3);
+    if (d != NULL && d->n_comps == 3) {
+        LT_CHECK(d->comps[0].kind == LT_COMP_FIELD);
+        LT_CHECK_STR(d->comps[0].label, "Plain");
+        LT_CHECK_STR(d->comps[0].name, "fa");
+        LT_CHECK_STR(d->comps[1].label, "Cond");
+        LT_CHECK_STR(d->comps[1].name, "fb");
+        LT_CHECK_STR(d->comps[2].name, "fc");
+    }
+    lt_ini_free(ini);
+}
+
 int main(void)
 {
+    LT_RUN(field_missing_comma);
     LT_RUN(encoding);
     LT_RUN(encoding_files);
     LT_RUN(strip_comment);

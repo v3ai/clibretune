@@ -180,7 +180,7 @@ typedef struct lt_tune_difference {
 typedef struct lt_tune_diff {
     lt_tune_difference *diffs; size_t n;    /* sorted by name */
     lt_bool signature_match; char *sig_a, *sig_b;
-    size_t total_a, total_b;
+    size_t sum_a, sum_b;
 } lt_tune_diff;
 lt_tune_diff *lt_tune_diff_compare(const lt_tune *a, const lt_tune *b);
 void          lt_tune_diff_free(lt_tune_diff *d);

@@ -125,7 +125,7 @@ static void wheel(int x, int y, int d)
     frame();
 }
 
-static lt_u32 px(int x, int y) { return H.cv.px[y * H.cv.stride + x] & 0xFFFFFFUL; }
+static lt_u32 px(int x, int y) { return H.cv.px[y * H.cv.pitch + x] & 0xFFFFFFUL; }
 
 static int cells_has_text(const char *s)
 {
@@ -152,7 +152,7 @@ static void write_ppm(lt_canvas *c, const char *path)
     fprintf(f, "P6\n%d %d\n255\n", c->w, c->h);
     for (y = 0; y < c->h; y++) {
         for (x = 0; x < c->w; x++) {
-            lt_u32 v = c->px[y * c->stride + x];
+            lt_u32 v = c->px[y * c->pitch + x];
             fputc((int)((v >> 16) & 255), f); fputc((int)((v >> 8) & 255), f);
             fputc((int)(v & 255), f);
         }
@@ -451,7 +451,7 @@ LT_TEST(test_text_editing)
     /* mouse caret placement: "abcdef", click after 3 chars */
     key_ex('a', LT_MOD_CTRL);
     type_str("abcdef");
-    click(R[0].x + 8 + 3 * 8 + 1, cy_of(R[0]));
+    click(R[0].x + lt_ui_theme(H.ui)->pad_x + lt_ui_text_width(H.ui, "abc") + 1, cy_of(R[0]));
     type_str("X");
     LT_CHECK_STR(s_buf, "abcXdef");
     /* Esc restores the text from focus time and drops focus */
@@ -775,6 +775,102 @@ static void scene_tabs(lt_ui *ui)
     R[2] = lt_ui_last_rect(ui);
     if (r & LT_UI_TAB_CLOSED) { s_n[2]++; }
     s_n[0] = lt_ui_tabbar_end(ui);
+}
+
+/* ------------------------------------------------------------------ */
+/* proportional text, styles, Lucide icons, stock themes, shell widgets  */
+static void scene_shell(lt_ui *ui)
+{
+    int w = -1, r;
+    static const char *const labs[3] = { "General", "Appearance", "Keys" };
+    lt_ui_layout_row(ui, 1, &w, 0);
+    lt_ui_layout_gap(ui, 0, 0);
+    s_n[3] += lt_ui_tabs_flat(ui, "flat", labs, 3, &s_active) ? 1 : 0;
+    R[0] = lt_ui_last_rect(ui);
+    lt_ui_layout_row(ui, 1, &w, 20);
+    r = lt_ui_tree_node_ex(ui, "Root", LT_UI_LUCIDE(LT_ICON_WRENCH), LT_RGB(255, 152, 0), 0);
+    R[1] = lt_ui_last_rect(ui);
+    memset(&R[2], 0, sizeof(R[2]));
+    if (r & LT_UI_TREE_OPEN) {
+        lt_ui_tree_node_ex(ui, "Leaf", LT_UI_LUCIDE(LT_ICON_GAUGE), LT_RGB(0, 200, 0), LT_UI_TREE_LEAF);
+        R[2] = lt_ui_last_rect(ui);
+        lt_ui_tree_end(ui);
+    }
+    lt_ui_layout_row(ui, 1, &w, 0);
+    if (lt_ui_icon_button(ui, LT_UI_LUCIDE(LT_ICON_SETTINGS), "Settings", 0)) { s_n[4]++; }
+    R[3] = lt_ui_last_rect(ui);
+}
+
+LT_TEST(test_shell_widgets)
+{
+    int w_i, w_w, w_style;
+    lt_theme t;
+    int i;
+    static const char *const names[9] = { "dark", "light", "midnight", "carbon", "synthwave",
+                                          "solarized", "nord", "dracula", "highcontrast" };
+    reset_state();
+    h_open(500, 300, 0);
+    H.scene = scene_shell;
+    frames(3);
+    /* proportional Plex: narrow letters are narrower, widths follow the style */
+    w_i = lt_ui_text_width(H.ui, "iiiiii");
+    w_w = lt_ui_text_width(H.ui, "WWWWWW");
+    LT_CHECK(w_i > 0 && w_i < w_w);
+    LT_CHECK(lt_ui_text_width_f(H.ui, "Hello", (int)LT_FONT_SANS, LT_UI_FS_BASE) == lt_ui_text_width(H.ui, "Hello"));
+    w_style = lt_ui_text_width_f(H.ui, "Hello", (int)LT_FONT_SANS_SEMIBOLD, LT_UI_FS_XL);
+    LT_CHECK(w_style > lt_ui_text_width(H.ui, "Hello"));
+    lt_ui_text_style(H.ui, (int)LT_FONT_SANS, LT_UI_FS_XL);
+    LT_CHECK(lt_ui_text_width(H.ui, "Hello") > w_w / 2);
+    lt_ui_text_style_reset(H.ui);
+    LT_CHECK(lt_ui_text_width(H.ui, "") == 0);
+    /* flat tabs: clicking a label selects it */
+    s_active = 0;
+    click(R[0].x + 5, cy_of(R[0]));               /* R[0] is the last label ("Keys") */
+    LT_CHECK_INT(s_active, 2);
+    LT_CHECK_INT(s_n[3], 1);
+    /* tree node with a Lucide icon opens on click; expand-all reaches closed nodes */
+    LT_CHECK(R[2].w == 0);
+    click_rect(R[1]);
+    LT_CHECK(R[2].w > 0);
+    click_rect(R[1]);
+    LT_CHECK(R[2].w == 0);
+    lt_ui_tree_set_all(H.ui, 1);
+    frames(10);
+    LT_CHECK(R[2].w > 0);
+    lt_ui_tree_set_all(H.ui, 0);
+    frames(10);
+    LT_CHECK(R[2].w == 0);
+    /* Lucide icon button is clickable and draws ink */
+    click_rect(R[3]);
+    LT_CHECK_INT(s_n[4], 1);
+    {
+        int ink = 0, x, y;
+        for (y = R[3].y; y < R[3].y + R[3].h; y++) {
+            for (x = R[3].x; x < R[3].x + R[3].w; x++) {
+                if (px(x, y) != px(R[3].x - 2, R[3].y)) { ink++; }
+            }
+        }
+        LT_CHECK(ink > 20);
+    }
+    h_close();
+    /* stock themes: every name resolves; values are the LibreTune tokens */
+    for (i = 0; i < 9; i++) {
+        LT_CHECK(lt_theme_preset(&t, names[i]) == 0);
+        LT_CHECK(strcmp(t.name, names[i]) == 0);
+        LT_CHECK(t.row_h == 24 && t.tree_row_h == 20);
+    }
+    LT_CHECK(lt_theme_preset(&t, "nope") == -1);
+    lt_theme_preset(&t, "light");
+    LT_CHECK((t.bg_app & 0xFFFFFFUL) == 0xF5F5F5UL && !t.dark);
+    lt_theme_preset(&t, "midnight");
+    LT_CHECK((t.primary & 0xFFFFFFUL) == 0x238636UL && t.dark);
+    LT_CHECK((t.bg_toolbar & 0xFFFFFFUL) == 0x0D1117UL);
+    /* cell mode keeps the 8x16 grid for widths */
+    h_open(400, 160, 1);
+    H.scene = scene_shell;
+    frames(2);
+    LT_CHECK(lt_ui_text_width(H.ui, "Hello") == 5 * 8);
+    h_close();
 }
 
 LT_TEST(test_tab_bar)
@@ -1192,10 +1288,10 @@ LT_TEST(test_layout)
     lt_ui_layout_row(H.ui, 2, w, 0);
     lt_ui_label(H.ui, "Hello");
     r0 = lt_ui_last_rect(H.ui);
-    LT_CHECK(r0.w == 5 * 8);
+    LT_CHECK(r0.w == lt_ui_text_width(H.ui, "Hello"));
     lt_ui_label(H.ui, "rest");
     r1 = lt_ui_last_rect(H.ui);
-    LT_CHECK(r1.x == 5 * 8 + sp && r1.x + r1.w == 800);
+    LT_CHECK(r1.x == r0.w + sp && r1.x + r1.w == 800);
     /* nested column */
     lt_ui_layout_row(H.ui, 2, (w[0] = 200, w[1] = -1, w), 100);
     lt_ui_layout_column_begin(H.ui);
@@ -1722,11 +1818,11 @@ LT_TEST(test_file_dialog)
     lt_ui_filedlg_open(&s_fd, LT_UI_FILE_OPEN, dir, "", "All files|*");
     s_res = 0; frames(5);
     LT_CHECK(s_fd.n_names == 5 && fd_has("b.txt"));
-    click(450, 236 + 24 + 12);
-    click(450, 236 + 24 + 12);
+    click(450, 252 + 24 + 12);
+    click(450, 252 + 24 + 12);
     LT_CHECK(lt_str_ends(s_fd.dir, "sub"));
     LT_CHECK(s_fd.n_names == 1 && fd_has(".."));
-    click(320 + 8 + 30, 170 + 30 + 8 + 12);     /* Up button */
+    click(320 + 16 + 30, 170 + 42 + 12 + 12);     /* Up button */
     LT_CHECK(lt_str_ends(s_fd.dir, "ui_fd_test"));
     key(LT_KEY_ESCAPE);
     /* hidden files toggle */
@@ -1991,6 +2087,7 @@ int main(void)
     LT_RUN(test_listbox);
     LT_RUN(test_tree_view);
     LT_RUN(test_tab_bar);
+    LT_RUN(test_shell_widgets);
     LT_RUN(test_menus);
     LT_RUN(test_context_menu);
     LT_RUN(test_modal);

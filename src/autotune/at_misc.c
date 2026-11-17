@@ -420,7 +420,7 @@ int lt_detect_delay(unsigned long anchor_ms, const lt_afr_sample *pre, size_t np
     }
     first_t = npost ? (double)post[0].t_ms : 0.0;
     last_t = npost ? (double)post[npost - 1].t_ms : 0.0;
-    tail_start = last_t - (last_t - first_t) * 0.30;
+    tail_start = last_t - (last_t - first_t) * 3.0 / 10.0;   /* exact for whole ms */
     ntail = 0;
     for (i = 0; i < npost; i++) {
         if ((double)post[i].t_ms >= tail_start) {

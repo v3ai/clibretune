@@ -1,7 +1,7 @@
 name: Release
 
-# Tag push (v*)    -> versioned release with the single portable binary
-# Push to main     -> rolling "nightly" pre-release, rebuilt on every commit
+# Tag push (v*) -> versioned release with native per-OS binaries.
+# Push to main  -> rolling "nightly" pre-release, rebuilt on every commit.
 on:
   push:
     branches: [main]
@@ -15,57 +15,112 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  COSMOCC_VERSION: "4.0.2"
-  COSMOCC_SHA256: "85b8c37a406d862e656ad4ec14be9f6ce474c1b436b9615e91a55208aced3f44"
-
 jobs:
-  release:
+  linux-x86_64:
+    # Oldest hosted runner: the binary links against its (older) glibc.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test
+        env:
+          CFLAGS: -O2
+        run: |
+          ./build.sh test
+          ./build.sh app
+          ./build/libretune --version
+          mkdir -p dist
+          cp build/libretune dist/libretune-linux-x86_64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libretune-linux-x86_64
+          path: dist/libretune-linux-x86_64
+
+  linux-aarch64:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test
+        run: |
+          ./build.sh test
+          ./build.sh app
+          ./build/libretune --version
+          mkdir -p dist
+          cp build/libretune dist/libretune-linux-aarch64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libretune-linux-aarch64
+          path: dist/libretune-linux-aarch64
+
+  windows-x86_64:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: false
+          install: mingw-w64-x86_64-gcc make
+      - name: Build and test
+        run: |
+          ./build.sh test
+          mkdir -p dist
+          # Console build: --help/--version print to the terminal.
+          LDFLAGS="-static" ./build.sh app
+          ./build/libretune.exe --version
+          cp build/libretune.exe dist/libretune-windows-x86_64.exe
+          # GUI-subsystem build: no console window when double-clicked.
+          rm -rf build/obj-*
+          LDFLAGS="-static -mwindows" ./build.sh app
+          cp build/libretune.exe dist/libretune-windows-x86_64-gui.exe
+          ./build/libretune.exe --version || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libretune-windows-x86_64
+          path: dist/*.exe
+
+  macos-universal:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test
+        run: ./build.sh test
+      - name: Build universal binary
+        run: |
+          mkdir -p dist
+          CFLAGS="-O2 -arch x86_64" LDFLAGS="-arch x86_64" ./build.sh app
+          cp build/libretune build/libretune-x86_64
+          CFLAGS="-O2 -arch arm64" LDFLAGS="-arch arm64" ./build.sh app
+          cp build/libretune build/libretune-arm64
+          lipo -create -output dist/libretune-macos-universal \
+            build/libretune-x86_64 build/libretune-arm64
+          codesign -s - --force dist/libretune-macos-universal
+          lipo -info dist/libretune-macos-universal
+          chmod +x dist/libretune-macos-universal
+          ./dist/libretune-macos-universal --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libretune-macos-universal
+          path: dist/libretune-macos-universal
+
+  publish:
+    needs: [linux-x86_64, linux-aarch64, windows-x86_64, macos-universal]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Cache cosmocc
-        id: cache
-        uses: actions/cache@v4
+      - uses: actions/download-artifact@v4
         with:
-          path: .toolchain/cosmocc
-          key: cosmocc-${{ env.COSMOCC_VERSION }}
-
-      - name: Download cosmocc
-        if: steps.cache.outputs.cache-hit != 'true'
+          path: dist
+          merge-multiple: true
+      - name: Collect files and checksums
         run: |
-          curl -fsSL -o cosmocc.zip \
-            "https://github.com/jart/cosmopolitan/releases/download/${COSMOCC_VERSION}/cosmocc-${COSMOCC_VERSION}.zip"
-          echo "${COSMOCC_SHA256}  cosmocc.zip" | sha256sum -c -
-          mkdir -p .toolchain/cosmocc
-          unzip -q cosmocc.zip -d .toolchain/cosmocc
-          rm cosmocc.zip
-
-      # GitHub runners register a binfmt handler for MZ executables (mono),
-      # which hijacks APE binaries. Register cosmo's APE loader instead.
-      - name: Register APE loader
-        run: |
-          sudo cp .toolchain/cosmocc/bin/ape-x86_64.elf /usr/bin/ape
-          sudo chmod +x /usr/bin/ape
-          sudo sh -c "echo ':APE:M::MZqFpD::/usr/bin/ape:' >/proc/sys/fs/binfmt_misc/register" || true
-          sudo sh -c "echo ':APE-jart:M::jartsr::/usr/bin/ape:' >/proc/sys/fs/binfmt_misc/register" || true
-
-      - name: Build portable binary
-        run: ./build_cosmo.sh
-
-      - name: Test with cosmocc
-        run: |
-          CC=.toolchain/cosmocc/bin/cosmocc ./build.sh test
-          ./build/libretune.com --version
-
-      - name: Package
-        run: |
-          mkdir -p dist
-          cp build/libretune.com dist/libretune.com
-          cp build/libretune.com dist/libretune.exe
           cp tests/fixtures/ini/demo.ini dist/demo.ini
-          cd dist && sha256sum libretune.com libretune.exe demo.ini > SHA256SUMS
+          chmod +x dist/libretune-linux-* dist/libretune-macos-universal
+          cd dist
+          sha256sum * > SHA256SUMS
+          ls -l
 
       - name: Publish tagged release
         if: startsWith(github.ref, 'refs/tags/v')
@@ -86,7 +141,7 @@ jobs:
           {
             cat .github/release-notes.md
             echo
-            echo "Nightly build of \`${GITHUB_SHA::7}\` — rebuilt on every push to main."
+            echo "Nightly build of \`${GITHUB_SHA::7}\`, rebuilt on every push to main."
           } > nightly-notes.md
           gh release create nightly dist/* \
             --prerelease \

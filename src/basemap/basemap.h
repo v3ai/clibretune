@@ -29,7 +29,7 @@ typedef struct lt_engine_spec {
     int cylinder_count;                 /* 4 */
     double displacement_cc;             /* 2000 */
     double injector_size_cc;            /* 440 cc/min */
-    lt_fuel_type fuel; lt_aspiration aspiration; lt_stroke stroke;
+    lt_fuel_type fuel; lt_aspiration aspiration; lt_stroke engine_stroke;
     lt_inj_mode inj_mode; lt_ign_mode ign_mode;
     unsigned idle_rpm, redline_rpm;     /* 800, 6500 */
     lt_bool has_boost; double boost_target_kpa;

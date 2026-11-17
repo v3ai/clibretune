@@ -56,6 +56,14 @@ void ini_free_ref_table(lt_ini_ref_table *t);
 void ini_free_analyze(lt_ini_analyze *a);
 void ini_free_logger(lt_ini_logger *l);
 void ini_free_gauge(lt_ini_gauge *g);
+/* void * adapters: callbacks must have the exact pointer type (no UB casts) */
+void ini_freev_const(void *p);
+void ini_freev_channel(void *p);
+void ini_freev_table(void *p);
+void ini_freev_curve(void *p);
+void ini_freev_dialog(void *p);
+void ini_freev_cmd(void *p);
+void ini_freev_gauge(void *p);
 void ini_free_cmdlist(lt_ini_cmdlist *l);
 void ini_free_blob_array(lt_ini_blob *v, size_t n);
 void ini_free_str_array(char **v, size_t n);

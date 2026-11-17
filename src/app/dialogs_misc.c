@@ -19,14 +19,14 @@ typedef struct bm_state {
     int have_map;
     int which;           /* 0 VE, 1 ignition, 2 AFR */
     int write_axes;
-    int fuel, asp, stroke, inj, ign, chamber;
+    int fuel, asp, cycle, inj, ign, chamber;
     double cyl, disp, inj_cc, idle, redline;
     char log[320];
 } bm_state;
 
 static const char *const fuels[] = { "Gasoline", "E85", "E100", "Methanol", "LPG" };
 static const char *const asps[] = { "Naturally aspirated", "Turbo", "Supercharged" };
-static const char *const strokes[] = { "4-stroke", "2-stroke" };
+static const char *const cycle_names[] = { "4-stroke", "2-stroke" };
 static const char *const injs[] = { "Simultaneous", "Batch", "Sequential", "Throttle body" };
 static const char *const igns[] = { "Wasted spark", "Coil on plug", "Distributor" };
 static const char *const chambers[] = { "Open", "Quench / 2-valve", "Swirl / multi-valve" };
@@ -39,7 +39,7 @@ static void bm_regen(bm_state *s)
     e->injector_size_cc = s->inj_cc;
     e->fuel = (lt_fuel_type)s->fuel;
     e->aspiration = (lt_aspiration)s->asp;
-    e->stroke = (lt_stroke)s->stroke;
+    e->engine_stroke = (lt_stroke)s->cycle;
     e->inj_mode = (lt_inj_mode)s->inj;
     e->ign_mode = (lt_ign_mode)s->ign;
     e->chamber = (lt_chamber)s->chamber;
@@ -150,7 +150,7 @@ static void bm_draw(lt_app *app, lt_app_dialog *d)
         lt_ui_label(ui, "Aspiration");
         if (lt_ui_combo(ui, "asp", &s->asp, asps, 3)) { changed = 1; }
         lt_ui_label(ui, "Stroke");
-        if (lt_ui_combo(ui, "stroke", &s->stroke, strokes, 2)) { changed = 1; }
+        if (lt_ui_combo(ui, "stroke", &s->cycle, cycle_names, 2)) { changed = 1; }
         lt_ui_label(ui, "Injection");
         if (lt_ui_combo(ui, "inj", &s->inj, injs, 4)) { changed = 1; }
         lt_ui_label(ui, "Ignition");

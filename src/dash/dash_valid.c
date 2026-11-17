@@ -8,8 +8,8 @@ static void add_issue(lt_dash_report *r, lt_dash_issue_kind k, lt_bool err, cons
                       const char *fmt, const char *a, const char *b)
 {
     lt_dash_issue *is;
-    r->issues = (lt_dash_issue *)lt_realloc(r->issues, (r->n + 1) * sizeof(lt_dash_issue));
-    is = &r->issues[r->n++];
+    r->problems = (lt_dash_issue *)lt_realloc(r->problems, (r->n + 1) * sizeof(lt_dash_issue));
+    is = &r->problems[r->n++];
     memset(is, 0, sizeof(*is));
     is->kind = k;
     is->is_error = err;
@@ -99,13 +99,13 @@ void lt_dash_validate(const lt_dash_file *d, const char *const *channels, size_t
     out->unique_channels = uniq.len;
     out->is_valid = LT_TRUE;
     for (i = 0; i < out->n; i++)
-        if (out->issues[i].is_error) out->is_valid = LT_FALSE;
+        if (out->problems[i].is_error) out->is_valid = LT_FALSE;
     lt_map_free(&uniq);
     lt_free((void *)gs);
 }
 
 void lt_dash_report_free(lt_dash_report *r)
 {
-    lt_free(r->issues);
+    lt_free(r->problems);
     memset(r, 0, sizeof(*r));
 }

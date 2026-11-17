@@ -8,9 +8,9 @@
 #include <float.h>
 #include "expr.h"
 
-#define EXPR_MAX_DEPTH 64
-#define EXPR_MAX_UNARY 256
-#define EXPR_MAX_TOKENS 20000
+#define LT_EXPR_MAX_DEPTH 64
+#define LT_EXPR_MAX_UNARY 256
+#define LT_EXPR_MAX_TOKENS 20000
 
 /* ------------------------------------------------------------------ */
 /* values                                                              */
@@ -220,21 +220,21 @@ void lt_expr_free(lt_expr *e)
 /* lexer                                                               */
 /* ------------------------------------------------------------------ */
 
-typedef enum tok_type {
+typedef enum lt_tok_kind {
     T_EOF = 0, T_NUM, T_STR, T_ID,
     T_LP, T_RP, T_COMMA, T_Q, T_COLON, T_PLUS, T_MINUS, T_STAR, T_SLASH, T_PCT, T_TILDE, T_CARET,
     T_NE, T_BANG, T_EQEQ, T_LE, T_SHL, T_LT, T_GE, T_SHR, T_GT, T_AMPAMP, T_AMP, T_PIPEPIPE,
     T_PIPE
-} tok_type;
+} lt_tok_kind;
 
-typedef struct token {
-    tok_type t;
+typedef struct lt_tok {
+    lt_tok_kind t;
     double num;
     char *s;
-} token;
+} lt_tok;
 
 typedef struct parser {
-    token *toks;
+    lt_tok *items;
     size_t n, pos;
     int depth;
     int udepth;
@@ -257,9 +257,9 @@ static void perr(parser *p, const char *fmt, const char *arg)
     lt_snprintf(p->err, sizeof p->err, fmt, arg ? arg : "");
 }
 
-static void tok_push(lt_vec *v, tok_type t, double num, char *s)
+static void lt_tok_add(lt_vec *v, lt_tok_kind t, double num, char *s)
 {
-    token *k = (token *)lt_vec_push(v);
+    lt_tok *k = (lt_tok *)lt_vec_push(v);
     k->t = t;
     k->num = num;
     k->s = s;
@@ -277,48 +277,48 @@ static int lex(const char *src, lt_vec *out, parser *p)
             i++;
             continue;
         }
-        if (out->len >= EXPR_MAX_TOKENS) {
+        if (out->len >= LT_EXPR_MAX_TOKENS) {
             perr(p, "Expression too long%s", "");
             return -1;
         }
         switch (c) {
-        case '(': tok_push(out, T_LP, 0, NULL); i++; continue;
-        case ')': tok_push(out, T_RP, 0, NULL); i++; continue;
-        case ',': tok_push(out, T_COMMA, 0, NULL); i++; continue;
-        case '?': tok_push(out, T_Q, 0, NULL); i++; continue;
-        case ':': tok_push(out, T_COLON, 0, NULL); i++; continue;
-        case '+': tok_push(out, T_PLUS, 0, NULL); i++; continue;
-        case '-': tok_push(out, T_MINUS, 0, NULL); i++; continue;
-        case '*': tok_push(out, T_STAR, 0, NULL); i++; continue;
-        case '/': tok_push(out, T_SLASH, 0, NULL); i++; continue;
-        case '%': tok_push(out, T_PCT, 0, NULL); i++; continue;
-        case '~': tok_push(out, T_TILDE, 0, NULL); i++; continue;
-        case '^': tok_push(out, T_CARET, 0, NULL); i++; continue;
+        case '(': lt_tok_add(out, T_LP, 0, NULL); i++; continue;
+        case ')': lt_tok_add(out, T_RP, 0, NULL); i++; continue;
+        case ',': lt_tok_add(out, T_COMMA, 0, NULL); i++; continue;
+        case '?': lt_tok_add(out, T_Q, 0, NULL); i++; continue;
+        case ':': lt_tok_add(out, T_COLON, 0, NULL); i++; continue;
+        case '+': lt_tok_add(out, T_PLUS, 0, NULL); i++; continue;
+        case '-': lt_tok_add(out, T_MINUS, 0, NULL); i++; continue;
+        case '*': lt_tok_add(out, T_STAR, 0, NULL); i++; continue;
+        case '/': lt_tok_add(out, T_SLASH, 0, NULL); i++; continue;
+        case '%': lt_tok_add(out, T_PCT, 0, NULL); i++; continue;
+        case '~': lt_tok_add(out, T_TILDE, 0, NULL); i++; continue;
+        case '^': lt_tok_add(out, T_CARET, 0, NULL); i++; continue;
         case '!':
-            if (d == '=') { tok_push(out, T_NE, 0, NULL); i += 2; }
-            else { tok_push(out, T_BANG, 0, NULL); i++; }
+            if (d == '=') { lt_tok_add(out, T_NE, 0, NULL); i += 2; }
+            else { lt_tok_add(out, T_BANG, 0, NULL); i++; }
             continue;
         case '=':
-            if (d == '=') { tok_push(out, T_EQEQ, 0, NULL); i += 2; continue; }
+            if (d == '=') { lt_tok_add(out, T_EQEQ, 0, NULL); i += 2; continue; }
             perr(p, "Unexpected '=' in expression (use '==' for comparison)%s", "");
             return -1;
         case '<':
-            if (d == '=') { tok_push(out, T_LE, 0, NULL); i += 2; }
-            else if (d == '<') { tok_push(out, T_SHL, 0, NULL); i += 2; }
-            else { tok_push(out, T_LT, 0, NULL); i++; }
+            if (d == '=') { lt_tok_add(out, T_LE, 0, NULL); i += 2; }
+            else if (d == '<') { lt_tok_add(out, T_SHL, 0, NULL); i += 2; }
+            else { lt_tok_add(out, T_LT, 0, NULL); i++; }
             continue;
         case '>':
-            if (d == '=') { tok_push(out, T_GE, 0, NULL); i += 2; }
-            else if (d == '>') { tok_push(out, T_SHR, 0, NULL); i += 2; }
-            else { tok_push(out, T_GT, 0, NULL); i++; }
+            if (d == '=') { lt_tok_add(out, T_GE, 0, NULL); i += 2; }
+            else if (d == '>') { lt_tok_add(out, T_SHR, 0, NULL); i += 2; }
+            else { lt_tok_add(out, T_GT, 0, NULL); i++; }
             continue;
         case '&':
-            if (d == '&') { tok_push(out, T_AMPAMP, 0, NULL); i += 2; }
-            else { tok_push(out, T_AMP, 0, NULL); i++; }
+            if (d == '&') { lt_tok_add(out, T_AMPAMP, 0, NULL); i += 2; }
+            else { lt_tok_add(out, T_AMP, 0, NULL); i++; }
             continue;
         case '|':
-            if (d == '|') { tok_push(out, T_PIPEPIPE, 0, NULL); i += 2; }
-            else { tok_push(out, T_PIPE, 0, NULL); i++; }
+            if (d == '|') { lt_tok_add(out, T_PIPEPIPE, 0, NULL); i += 2; }
+            else { lt_tok_add(out, T_PIPE, 0, NULL); i++; }
             continue;
         default:
             break;
@@ -326,7 +326,7 @@ static int lex(const char *src, lt_vec *out, parser *p)
         if (c == '"') {
             size_t st = i + 1, e = st;
             while (e < n && src[e] != '"') e++;
-            tok_push(out, T_STR, 0, lt_strndup(src + st, e - st));
+            lt_tok_add(out, T_STR, 0, lt_strndup(src + st, e - st));
             i = e < n ? e + 1 : e;
             continue;
         }
@@ -350,7 +350,7 @@ static int lex(const char *src, lt_vec *out, parser *p)
                 return -1;
             }
             lt_free(txt);
-            tok_push(out, T_NUM, v, NULL);
+            lt_tok_add(out, T_NUM, v, NULL);
             continue;
         }
         if (c == '$' || is_alpha_(c)) {
@@ -358,7 +358,7 @@ static int lex(const char *src, lt_vec *out, parser *p)
             i++;
             while (i < n && (is_alpha_((unsigned char)src[i]) || is_digit_((unsigned char)src[i])))
                 i++;
-            tok_push(out, T_ID, 0, lt_strndup(src + st, i - st));
+            lt_tok_add(out, T_ID, 0, lt_strndup(src + st, i - st));
             continue;
         }
         {
@@ -369,7 +369,7 @@ static int lex(const char *src, lt_vec *out, parser *p)
         }
         return -1;
     }
-    tok_push(out, T_EOF, 0, NULL);
+    lt_tok_add(out, T_EOF, 0, NULL);
     return 0;
 }
 
@@ -379,12 +379,12 @@ static int lex(const char *src, lt_vec *out, parser *p)
 
 static node *parse_expr(parser *p);
 
-static const token *peek(parser *p)
+static const lt_tok *peek(parser *p)
 {
-    return &p->toks[p->pos];
+    return &p->items[p->pos];
 }
 
-static int binop_info(tok_type t, int *level, int *op)
+static int binop_info(lt_tok_kind t, int *level, int *op)
 {
     switch (t) {
     case T_PIPEPIPE: *level = 0; *op = OP_OR; return 1;
@@ -433,7 +433,7 @@ static int fn_lookup(const char *name)
 
 static node *parse_primary(parser *p)
 {
-    const token *k = peek(p);
+    const lt_tok *k = peek(p);
     node *n;
 
     switch (k->t) {
@@ -515,11 +515,11 @@ static node *parse_primary(parser *p)
 
 static node *parse_unary(parser *p)
 {
-    tok_type t = peek(p)->t;
+    lt_tok_kind t = peek(p)->t;
     node *n, *inner;
 
     if (t == T_MINUS || t == T_BANG || t == T_TILDE) {
-        if (++p->udepth > EXPR_MAX_UNARY) {
+        if (++p->udepth > LT_EXPR_MAX_UNARY) {
             perr(p, "Expression nested too deeply%s", "");
             return NULL;
         }
@@ -563,7 +563,7 @@ static node *parse_expr(parser *p)
 {
     node *c, *a, *b, *n;
 
-    if (++p->depth > EXPR_MAX_DEPTH) {
+    if (++p->depth > LT_EXPR_MAX_DEPTH) {
         perr(p, "Expression nested deeper than 64 levels%s", "");
         p->depth--;
         return NULL;
@@ -605,18 +605,18 @@ static node *parse_expr(parser *p)
 lt_expr *lt_expr_compile(const char *src, char *err, size_t errlen)
 {
     parser p;
-    lt_vec toks;
+    lt_vec lexed;
     node *root = NULL;
     lt_expr *e = NULL;
     size_t i;
 
     memset(&p, 0, sizeof p);
-    lt_vec_init(&toks, sizeof(token));
+    lt_vec_init(&lexed, sizeof(lt_tok));
     if (err && errlen) err[0] = '\0';
     if (!src) src = "";
-    if (lex(src, &toks, &p) == 0) {
-        p.toks = (token *)toks.data;
-        p.n = toks.len;
+    if (lex(src, &lexed, &p) == 0) {
+        p.items = (lt_tok *)lexed.data;
+        p.n = lexed.len;
         root = parse_expr(&p);
         if (root && peek(&p)->t != T_EOF) {
             char nb[48];
@@ -626,13 +626,13 @@ lt_expr *lt_expr_compile(const char *src, char *err, size_t errlen)
             root = NULL;
         }
     }
-    for (i = 0; i < toks.len; i++) {
-        token *k = &LT_VEC_AT(&toks, token, i);
+    for (i = 0; i < lexed.len; i++) {
+        lt_tok *k = &LT_VEC_AT(&lexed, lt_tok, i);
         if (k->s) lt_free(k->s);
     }
-    lt_vec_free(&toks);
+    lt_vec_free(&lexed);
     if (!root) {
-        if (!p.err[0]) lt_strlcpy(p.err, "Unexpected token", sizeof p.err);
+        if (!p.err[0]) lt_strlcpy(p.err, "Unexpected lt_tok", sizeof p.err);
         if (err && errlen) lt_strlcpy(err, p.err, errlen);
         return NULL;
     }

@@ -7,6 +7,7 @@
 #include <string.h>
 #include <math.h>
 #include "dialogs.h"
+#include "view_kit.h"
 
 #define CH 8
 #define MAX_SEL 8
@@ -109,21 +110,25 @@ static void chart_draw(lt_ui *ui, lt_rect r, int ns, const char *const *names,
                        const double *cur_vals, double cursor_frac)
 {
     const lt_theme *t = lt_ui_theme(ui);
-    int k, i, g;
-    int top = 20;
+    int cell = lt_ui_cell_mode(ui);
+    int k, i, g, top = cell ? 20 : 30, lx = r.x + 10;
     lt_rect pr;
-    lt_ui_draw_box(ui, r, t->table_bg, t->border, 0);
-    pr.x = r.x + 4; pr.y = r.y + top; pr.w = r.w - 8; pr.h = r.h - top - 4;
+    lt_ui_draw_box(ui, r, t->table_bg, t->border_subtle, cell ? 0 : 6);
+    pr.x = r.x + 6; pr.y = r.y + top; pr.w = r.w - 12; pr.h = r.h - top - 8;
+    if (!cell) {
+        lt_ui_draw_vgrad(ui, pr, LT_RGBA(255, 255, 255, t->dark ? 6 : 0), LT_RGBA(0, 0, 0, t->dark ? 40 : 6));
+    }
     for (g = 1; g < 4; g++) {
-        lt_ui_draw_hline(ui, pr.x, pr.x + pr.w, pr.y + pr.h * g / 4, t->table_grid);
+        lt_ui_draw_hline(ui, pr.x, pr.x + pr.w, pr.y + pr.h * g / 4, cell ? t->table_grid : LT_RGBA(255, 255, 255, 22));
     }
     for (g = 1; g < 8; g++) {
-        lt_ui_draw_vline(ui, pr.x + pr.w * g / 8, pr.y, pr.y + pr.h, t->table_grid);
+        lt_ui_draw_vline(ui, pr.x + pr.w * g / 8, pr.y, pr.y + pr.h, cell ? t->table_grid : LT_RGBA(255, 255, 255, 14));
     }
     lt_ui_clip_push(ui, r);
     for (k = 0; k < ns; k++) {
         double lo = 1e300, hi = -1e300, x0 = 0, y0 = 0, x1, y1;
         char lab[96], vb[32];
+        lt_color col = palette[k];
         for (i = 0; i < npts; i++) {
             if (pts[k][i] < lo) { lo = pts[k][i]; }
             if (pts[k][i] > hi) { hi = pts[k][i]; }
@@ -133,16 +138,30 @@ static void chart_draw(lt_ui *ui, lt_rect r, int ns, const char *const *names,
         for (i = 0; i < npts; i++) {
             x1 = pr.x + (npts > 1 ? (double)i * (pr.w - 1) / (npts - 1) : 0);
             y1 = pr.y + pr.h - 1 - (pts[k][i] - lo) / (hi - lo) * (pr.h - 2);
-            if (i > 0) { lt_ui_draw_line(ui, x0, y0, x1, y1, 1.4, palette[k]); }
+            if (i > 0) {
+                if (!cell) { lt_ui_draw_line(ui, x0, y0, x1, y1, 4.0, (col & 0x00FFFFFFUL) | 0x28000000UL); }
+                lt_ui_draw_line(ui, x0, y0, x1, y1, 1.5, col);
+            }
             x0 = x1; y0 = y1;
         }
         lt_fmt_double(vb, sizeof(vb), cur_vals != NULL ? cur_vals[k] : 0.0, 2);
-        lt_snprintf(lab, sizeof(lab), "%s=%s %s", names[k], vb, units[k]);
-        lt_ui_draw_text(ui, r.x + 6 + (k % 4) * (r.w / 4), r.y + 2 + (k / 4) * 0, lab, palette[k]);
+        if (cell) {
+            lt_snprintf(lab, sizeof(lab), "%s=%s %s", names[k], vb, units[k]);
+            lt_ui_draw_text(ui, r.x + 6 + (k % 4) * (r.w / 4), r.y + 2, lab, col);
+        } else {
+            /* legend chip: dot, name, value */
+            int nw = lt_vk_text_w(ui, (int)LT_FONT_SANS_MEDIUM, 11.0, names[k]);
+            int vw = lt_vk_text_w(ui, (int)LT_FONT_MONO_MEDIUM, 11.0, vb);
+            lt_ui_draw_circle_fill(ui, (double)lx + 4.0, (double)(r.y + 15), 3.5, col);
+            lt_vk_text(ui, lt_rect_make(lx + 12, r.y + 4, nw + 4, 22), (int)LT_FONT_SANS_MEDIUM, 11.0, names[k], t->text2, 0);
+            lt_vk_text(ui, lt_rect_make(lx + 14 + nw, r.y + 4, vw + 4, 22), (int)LT_FONT_MONO_MEDIUM, 11.0, vb, col, 0);
+            lt_vk_text(ui, lt_rect_make(lx + 18 + nw + vw, r.y + 4, 60, 22), (int)LT_FONT_SANS, 10.0, units[k], t->muted, 0);
+            lx += 18 + nw + vw + 6 + lt_vk_text_w(ui, (int)LT_FONT_SANS, 10.0, units[k]) + 16;
+        }
     }
     if (cursor_frac >= 0.0 && cursor_frac <= 1.0) {
         int cx = pr.x + (int)(cursor_frac * (pr.w - 1));
-        lt_ui_draw_vline(ui, cx, pr.y, pr.y + pr.h, t->text);
+        lt_ui_draw_vline(ui, cx, pr.y, pr.y + pr.h, cell ? t->text : LT_RGBA(255, 255, 255, 150));
     }
     lt_ui_clip_pop(ui);
 }

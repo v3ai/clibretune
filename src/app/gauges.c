@@ -115,25 +115,45 @@ static void p_sector(gp *p, double cx, double cy, double r0, double r1, double a
 }
 static void p_poly(gp *p, const double *xy, int n, lt_color c)
 {
-    double tmp[64];
+    double tmp[64] = { 0.0 };
     int i;
     if (n > 32) { n = 32; }
     for (i = 0; i < n; i++) { tmp[2 * i] = p->r.x + xy[2 * i]; tmp[2 * i + 1] = p->r.y + xy[2 * i + 1]; }
     lt_gfx_fill_poly(p->g, tmp, n, c);
 }
 
-/* vector text; fitted into maxw when > 0 */
+/* text in Plex; h is the capital height in pixels; fitted into maxw when > 0.
+ * style 0 sans regular, 1 sans medium, 2 mono medium (digital values) */
+static double p_text_s(gp *p, double x, double y, const char *s, double h, int align, int style,
+                       lt_color c, double maxw)
+{
+    static const int fid[3] = { (int)LT_FONT_SANS, (int)LT_FONT_SANS_MEDIUM, (int)LT_FONT_MONO_MEDIUM };
+    lt_font *f;
+    double w, ratio, px;
+    if (s == NULL || s[0] == '\0' || h < 3.0) { return 0.0; }
+    h *= VS;
+    f = lt_font_get((lt_font_id)fid[style < 0 ? 0 : (style > 2 ? 2 : style)]);
+    if (f == NULL) { return 0.0; }
+    ratio = (double)lt_ttf_cap_height(f) / (double)lt_ttf_units_per_em(f);
+    px = style == 2 ? h * 1.12 : h / ratio;
+    w = lt_gfx_text_measure(f, px, s);
+    if (maxw > 0.0 && w > maxw) { px = px * maxw / w; w = maxw; if (px * ratio < 3.0) { return 0.0; } }
+    lt_gfx_text_rot(p->g, f, px, p->r.x + x, p->r.y + y, s, 0.0, align, 1, c);
+    return w;
+}
+
 static double p_text(gp *p, double x, double y, const char *s, double h, int align, int bold,
                      lt_color c, double maxw)
 {
-    double w;
-    if (s == NULL || s[0] == '\0' || h < 3.0) { return 0.0; }
-    h *= VS;
-    w = lt_gfx_vtext_width(s, h);
-    if (maxw > 0.0 && w > maxw) { h = h * maxw / w; w = maxw; if (h < 3.0) { return 0.0; } }
-    lt_gfx_vtext(p->g, p->r.x + x, p->r.y + y, s, h, 0.0, align, 1,
-                 bold ? (h / 7.0 > 1.2 ? h / 7.0 : 1.2) : (h / 11.0 > 1.0 ? h / 11.0 : 1.0), c);
-    return w;
+    return p_text_s(p, x, y, s, h, align, bold ? 1 : 0, c, maxw);
+}
+
+/* digital value: Plex Mono */
+static double p_val(gp *p, double x, double y, const char *s, double h, int align, int bold,
+                    lt_color c, double maxw)
+{
+    LT_UNUSED(bold);
+    return p_text_s(p, x, y, s, h, align, 2, c, maxw);
 }
 
 /* conic metallic ring between r0 and r1 over [a0,a1], light from upper-left */
@@ -244,11 +264,11 @@ static void paint_readout(gp *p)
         double tw = p_text(p, P + 4, p->H / 2, t, LT_MIN(ts, vh * 0.8), 0, 1, p->tc, p->W * 0.4);
         LT_UNUSED(tw);
         if (u[0]) { lt_snprintf(buf + strlen(buf), sizeof buf - strlen(buf), " %s", u); }
-        p_text(p, p->W - P - 4, p->H / 2, buf, vh, 2, 1, p->vc, p->W * 0.62 - P);
+        p_val(p, p->W - P - 4, p->H / 2, buf, vh, 2, 1, p->vc, p->W * 0.62 - P);
         return;
     }
     p_text(p, P + 5, P + 2 + ts * 0.5, t, ts, 0, 1, p->tc, p->W - 2 * P - 10);
-    p_text(p, p->W / 2, p->H / 2 + ts * 0.3, buf, vs, 1, 1, p->vc, p->W - 2 * P - 12);
+    p_val(p, p->W / 2, p->H / 2 + ts * 0.3, buf, vs, 1, 1, p->vc, p->W - 2 * P - 12);
     us = LT_MAX(8.0, m * 0.11);
     if (u[0]) { p_text(p, p->W / 2, p->H - P - us * 0.9, u, us, 1, 0, alpha(p->tc, 220), p->W - 2 * P); }
 }
@@ -263,7 +283,7 @@ static void bar_head(gp *p, double h)
     fmt_val(p, p->v, p->c->value_digits, v, sizeof v);
     lt_snprintf(buf, sizeof buf, "%s%s%s", v, u[0] ? " " : "", u);
     {
-        double vw = p_text(p, p->W - 6, 3 + h * 0.55, buf, h, 2, 1, p->vc, p->W * 0.55);
+        double vw = p_val(p, p->W - 6, 3 + h * 0.55, buf, h, 2, 1, p->vc, p->W * 0.55);
         p_text(p, 6, 3 + h * 0.55, t, h, 0, 1, p->tc, p->W - 12 - vw - 8);
     }
 }
@@ -330,7 +350,7 @@ static void paint_vbar(gp *p)
         }
     }
     fmt_val(p, p->v, p->c->value_digits, v, sizeof v);
-    p_text(p, p->W / 2, p->H - labelH * 0.8, v, LT_MAX(10.0, labelH * 0.85), 1, 1, p->vc, p->W - 6);
+    p_val(p, p->W / 2, p->H - labelH * 0.8, v, LT_MAX(10.0, labelH * 0.85), 1, 1, p->vc, p->W - 6);
 }
 
 static void paint_hline(gp *p)
@@ -382,7 +402,7 @@ static void paint_dashed(gp *p, int vertical)
                 p_round(p, P + i * segW + 1, barY + 1, segW - gap - 2, barH - 2, 2, c);
             }
         }
-        p_text(p, p->W / 2, p->H - valueH * 0.55, v, LT_MAX(10.0, valueH * 0.95), 1, 1, p->vc, p->W - 8);
+        p_val(p, p->W / 2, p->H - valueH * 0.55, v, LT_MAX(10.0, valueH * 0.95), 1, 1, p->vc, p->W - 8);
     } else {
         double labelH = th + 6, barW = p->W * 0.55, barH = p->H - 2 * labelH - 2 * P;
         double barX = (p->W - barW) / 2, barY = labelH + P, segH = barH / N;
@@ -397,7 +417,7 @@ static void paint_dashed(gp *p, int vertical)
             if (on) { p_hgrad(p, barX + 1, y + 1, barW - 2, segH - gap - 2, lighten(c, 25), darken(c, 12)); }
             else { p_round(p, barX + 1, y + 1, barW - 2, segH - gap - 2, 2, c); }
         }
-        p_text(p, p->W / 2, p->H - labelH * 0.5, v, LT_MAX(10.0, labelH * 0.8), 1, 1, p->vc, p->W - 6);
+        p_val(p, p->W / 2, p->H - labelH * 0.5, v, LT_MAX(10.0, labelH * 0.8), 1, 1, p->vc, p->W - 6);
     }
 }
 
@@ -432,7 +452,7 @@ static void paint_histogram(gp *p)
     }
     p_line(p, P + gw * pc, gy, P + gw * pc, gy + gh, 1.5, LT_RGB(255, 255, 255));
     fmt_val(p, p->v, p->c->value_digits, v, sizeof v);
-    p_text(p, p->W / 2, p->H - valueH * 0.5 - 4, v, LT_MAX(10.0, valueH * 0.9), 1, 1, p->vc, p->W - 8);
+    p_val(p, p->W / 2, p->H - valueH * 0.5 - 4, v, LT_MAX(10.0, valueH * 0.9), 1, 1, p->vc, p->W - 8);
 }
 
 static void paint_linegraph(gp *p)
@@ -449,7 +469,7 @@ static void paint_linegraph(gp *p)
     resolve_text(p->c->units, u, sizeof u);
     fmt_val(p, p->v, p->c->value_digits, v, sizeof v);
     lt_snprintf(buf, sizeof buf, "%s%s%s", v, u[0] ? " " : "", u);
-    p_text(p, p->W - P, 3 + titleH * 0.5, buf, LT_MAX(10.0, titleH * 0.9), 2, 1, p->vc, p->W * 0.5);
+    p_val(p, p->W - P, 3 + titleH * 0.5, buf, LT_MAX(10.0, titleH * 0.9), 2, 1, p->vc, p->W * 0.5);
     if (gh < 8 || gw < 8) { return; }
     graph_panel(p, P, gy, gw, gh);
     n = rg->n;
@@ -669,7 +689,7 @@ static void paint_dial(gp *p)
         if (bw > faceR * 0.75) { vh = vh * faceR * 0.75 / bw; bw = faceR * 0.75; }
         p_round(p, vx - bw / 2 - 5, vy - vh / 2 - 3, bw + 10, vh + 6, 4, alpha(LT_RGB(0, 0, 0), 110));
         lt_gfx_rect(g, lt_rect_make(p->r.x + ir(vx - bw / 2 - 5), p->r.y + ir(vy - vh / 2 - 3), ir(bw + 10), ir(vh + 6)), alpha(tc, 60));
-        p_text(p, vx, vy, buf, vh, 1, 1, p->vc, 0);
+        p_val(p, vx, vy, buf, vh, 1, 1, p->vc, 0);
     }
     /* peak */
     if (p->c->peak_hold && p->s->peak.peak > p->mn && range > 0.0) {
@@ -752,7 +772,7 @@ static void paint_sweep(gp *p)
     }
     resolve_text(p->c->title, t, sizeof t); resolve_text(p->c->units, u, sizeof u);
     fmt_val(p, p->v, p->c->value_digits, buf, sizeof buf);
-    p_text(p, cx, cy + radius * 0.08, buf, LT_MAX(14.0, radius * 0.42), 1, 1, p->vc, radius * 1.3);
+    p_val(p, cx, cy + radius * 0.08, buf, LT_MAX(14.0, radius * 0.42), 1, 1, p->vc, radius * 1.3);
     p_text(p, cx, cy + radius * 0.42, u, LT_MAX(8.0, radius * 0.14), 1, 0, p->tc, radius * 1.2);
     p_text(p, cx, LT_MAX(9.0, p->H * 0.08), t, LT_MAX(9.0, p->H * 0.11), 1, 1, p->tc, p->W - 10);
 }
@@ -803,7 +823,7 @@ static void paint_tach(gp *p)
     p_text(p, cx, cy + radius * 0.30, t, LT_MAX(8.0, radius * 0.11), 1, 1, p->tc, radius);
     fmt_val(p, p->v, p->c->value_digits, buf, sizeof buf);
     p_round(p, cx - radius * 0.34, cy + radius * 0.42, radius * 0.68, radius * 0.24, 4, LT_RGB(0, 0, 0));
-    p_text(p, cx, cy + radius * 0.54, buf, LT_MAX(10.0, radius * 0.17), 1, 1, p->vc, radius * 0.6);
+    p_val(p, cx, cy + radius * 0.54, buf, LT_MAX(10.0, radius * 0.17), 1, 1, p->vc, radius * 0.6);
     pc = clamp01((p->v - p->mn) / range);
     ang = sa + sw * pc;
     {
@@ -863,7 +883,7 @@ static void paint_round(gp *p, int dashed)
     }
     resolve_text(p->c->title, t, sizeof t); resolve_text(p->c->units, u, sizeof u);
     fmt_val(p, p->v, p->c->value_digits, buf, sizeof buf);
-    p_text(p, cx, cy, buf, LT_MAX(12.0, radius * 0.30), 1, 1, p->vc, radius * 1.0);
+    p_val(p, cx, cy, buf, LT_MAX(12.0, radius * 0.30), 1, 1, p->vc, radius * 1.0);
     p_text(p, cx, cy + radius * 0.30, u, LT_MAX(8.0, radius * 0.13), 1, 0, p->tc, radius);
     p_text(p, cx, cy - radius * 0.36, t, LT_MAX(8.0, radius * 0.12), 1, 1, p->tc, radius * 0.8);
 }
@@ -891,7 +911,7 @@ static void paint_analog_bar(gp *p)
     }
     resolve_text(p->c->title, t, sizeof t);
     fmt_val(p, p->v, p->c->value_digits, buf, sizeof buf);
-    p_text(p, cx, cy - radius * 0.28, buf, LT_MAX(12.0, radius * 0.30), 1, 1, p->vc, radius * 1.1);
+    p_val(p, cx, cy - radius * 0.28, buf, LT_MAX(12.0, radius * 0.30), 1, 1, p->vc, radius * 1.1);
     p_text(p, cx, cy - radius * 0.02, t, LT_MAX(8.0, radius * 0.12), 1, 1, p->tc, radius * 1.4);
 }
 
@@ -923,7 +943,7 @@ static void paint_moving_bar(gp *p)
     }
     resolve_text(p->c->title, t, sizeof t);
     fmt_val(p, p->v, p->c->value_digits, buf, sizeof buf);
-    p_text(p, cx, cy - radius * 0.25, buf, LT_MAX(12.0, radius * 0.26), 1, 1, p->vc, radius);
+    p_val(p, cx, cy - radius * 0.25, buf, LT_MAX(12.0, radius * 0.26), 1, 1, p->vc, radius);
     p_text(p, cx, LT_MAX(9.0, p->H * 0.07), t, LT_MAX(9.0, p->H * 0.1), 1, 1, p->tc, p->W - 10);
 }
 
@@ -949,7 +969,7 @@ static void paint_fuel(gp *p)
     p_text(p, cx + cos(a0 + sw - 0.05 * LT_PI) * radius * 0.52, cy + sin(a0 + sw - 0.05 * LT_PI) * radius * 0.52 + 2, "F", LT_MAX(9.0, radius * 0.15), 1, 1, LT_RGB(255, 255, 255), 0);
     fmt_val(p, p->v, p->c->value_digits, buf, sizeof buf);
     resolve_text(p->c->title, t, sizeof t);
-    p_text(p, cx, cy + radius * 0.05, buf, LT_MAX(11.0, radius * 0.24), 1, 1, p->vc, radius);
+    p_val(p, cx, cy + radius * 0.05, buf, LT_MAX(11.0, radius * 0.24), 1, 1, p->vc, radius);
     p_text(p, cx, cy + radius * 0.50, t, LT_MAX(8.0, radius * 0.11), 1, 1, p->tc, radius * 0.6);
 }
 
@@ -970,13 +990,13 @@ static void paint_stat(gp *p)
     if (compact) {
         if (u[0]) { lt_snprintf(buf + strlen(buf), sizeof buf - strlen(buf), " %s", u); }
         p_text(p, cx0, p->H / 2, t, LT_MAX(7.0, m * 0.30 * fs), 0, 1, p->tc, p->W * 0.4);
-        p_text(p, p->W - P, p->H / 2, buf, LT_MAX(9.0, m * 0.42 * fs), 2, 1, p->vc, p->W * 0.6 - P);
+        p_val(p, p->W - P, p->H / 2, buf, LT_MAX(9.0, m * 0.42 * fs), 2, 1, p->vc, p->W * 0.6 - P);
         return;
     }
     p_fill(p, 0, corner, accW, p->H - 2 * corner, p->nc);
     p_text(p, cx0, P * 0.55 + m * 0.07, t, LT_MAX(9.0, m * 0.15 * fs), 0, 1, p->tc, p->W - cx0 - P);
     {
-        double vs = LT_MAX(14.0, m * 0.42 * fs), vw = p_text(p, cx0, p->H * 0.52, buf, vs, 0, 1, p->vc, p->W - cx0 - P - 4);
+        double vs = LT_MAX(14.0, m * 0.42 * fs), vw = p_val(p, cx0, p->H * 0.52, buf, vs, 0, 1, p->vc, p->W - cx0 - P - 4);
         if (u[0]) { p_text(p, cx0 + vw + 4, p->H * 0.52 + vs * 0.18, u, LT_MAX(8.0, m * 0.13), 0, 1, p->tc, p->W - cx0 - vw - P - 6); }
     }
     {

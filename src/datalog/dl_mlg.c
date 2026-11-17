@@ -20,7 +20,7 @@ static int type_width(int t)
     return (t >= 0 && t < 8) ? w[t] : 0;
 }
 
-static double decode_raw(int type, const lt_u8 *p)
+static double decode_raw(lt_mlg_type type, const lt_u8 *p)
 {
     lt_u32 u;
     switch (type) {

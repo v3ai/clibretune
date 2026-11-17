@@ -446,7 +446,7 @@ static void link_free(lt_app *app)
         app->proto = NULL;
     }
     if (app->sim != NULL) { lt_ecusim_free(app->sim); app->sim = NULL; }
-    app->stream = NULL;
+    app->link_stream = NULL;
     if (app->mem != NULL) { lt_ecu_mem_free(app->mem); app->mem = NULL; }
 }
 
@@ -542,7 +542,7 @@ int lt_app_connect_serial(lt_app *app, const char *port, long baud)
         s = lt_serial_open(port, baud);
     }
     if (s == NULL) { lt_app_toast(app, 3, "Cannot open %s: %s", port, lt_err_get()); return -1; }
-    app->stream = s;
+    app->link_stream = s;
     io = lt_proto_io_from_stream(s, LT_TRUE);
     rc = connect_io(app, &io, port, baud);
     if (rc < 0) { return rc; }

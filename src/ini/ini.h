@@ -318,7 +318,7 @@ typedef struct lt_ini_comp {
 typedef struct lt_ini_dialog {
     char *name, *title;
     char *layout_hint;             /* "xAxis", "border" or NULL */
-    char *topic_help;              /* help url / topic or NULL */
+    char *help_topic;              /* help url / topic or NULL */
     lt_ini_comp *comps; size_t n_comps;      /* in order */
 } lt_ini_dialog;
 
@@ -430,7 +430,7 @@ typedef struct lt_ini_generator {
     lt_bool has_bounds; double x_lo, x_hi, y_lo, y_hi;
 } lt_ini_generator;
 typedef struct lt_ini_ref_table {
-    char *name, *label, *topic_help, *solutions_label;
+    char *name, *label, *help_topic, *solutions_label;
     lt_ini_ref_ident *idents; size_t n_idents;
     size_t adc_count; unsigned bytes_per_adc; double scale;
     lt_ini_generator *generators; size_t n_generators;

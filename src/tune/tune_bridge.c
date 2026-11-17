@@ -330,10 +330,11 @@ int lt_tune_from_mem(lt_tune *t, const struct lt_ecu_mem *mem)
 /* ---------------------------------------------------------------------- */
 /* variable environment                                                    */
 /* ---------------------------------------------------------------------- */
+/* both environments carry the owning lt_varenv as their user data */
 static lt_varenv *venv_of(void *ud, int with_ch)
 {
-    return with_ch ? (lt_varenv *)((char *)ud - offsetof(lt_varenv, env))
-                   : (lt_varenv *)((char *)ud - offsetof(lt_varenv, consts));
+    (void)with_ch;
+    return (lt_varenv *)ud;
 }
 
 static lt_bool tv_scalar(const lt_tune_value *v, double *out)
@@ -499,7 +500,7 @@ void lt_varenv_init(lt_varenv *v, const lt_ini *ini, const lt_pagesrc *pages, lt
     v->t0_ms = now_s() * 1000.0;
     lt_expr_env_init(&v->env);
     lt_expr_env_init(&v->consts);
-    v->env.ud = &v->env;
+    v->env.ud = v;
     v->env.get_var = cb_get_var;
     v->env.get_string = cb_get_string;
     v->env.get_bit_options = cb_bit_opts;
@@ -508,7 +509,7 @@ void lt_varenv_init(lt_varenv *v, const lt_ini *ini, const lt_pagesrc *pages, lt
     v->env.is_online = cb_online;
     v->env.get_dir = cb_dir;
     v->env.time_now = cb_time;
-    v->consts.ud = &v->consts;
+    v->consts.ud = v;
     v->consts.get_var = cb_get_var_c;
     v->consts.get_string = cb_get_string_c;
     v->consts.get_bit_options = cb_bit_opts_c;

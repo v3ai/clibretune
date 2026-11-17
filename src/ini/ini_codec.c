@@ -294,7 +294,7 @@ int lt_bits_get(const lt_u8 *data, size_t len, size_t off, int bit_pos, int bit_
         int lo = i == 0 ? bit_in : 0;
         int hi = (i == (int)need - 1) ? bit_in + bit_size - 8 * i : 8;
         int nb = hi - lo;
-        lt_u32 bits = ((lt_u32)data[boff + (size_t)i] >> lo) & ((1UL << nb) - 1UL);
+        lt_u32 bits = ((lt_u32)data[boff + (size_t)i] >> lo) & (((lt_u32)1 << nb) - (lt_u32)1);
         v |= bits << got;
         got += nb;
     }
@@ -318,7 +318,7 @@ int lt_bits_set(lt_u8 *data, size_t len, size_t off, int bit_pos, int bit_size, 
         int lo = i == 0 ? bit_in : 0;
         int hi = (i == (int)need - 1) ? bit_in + bit_size - 8 * i : 8;
         int nb = hi - lo;
-        lt_u32 m = ((1UL << nb) - 1UL);
+        lt_u32 m = (((lt_u32)1 << nb) - (lt_u32)1);
         lt_u32 bits = (value >> got) & m;
         lt_u8 *p = data + boff + (size_t)i;
         *p = (lt_u8)((*p & ~(m << lo)) | (bits << lo));
@@ -444,7 +444,7 @@ int lt_ini_const_set_raw(const lt_ini *ini, const lt_ini_const *c, lt_pagesrc *s
         int pos = c->bit_pos < 0 ? 0 : c->bit_pos, size = c->bit_size < 0 ? 8 : c->bit_size;
         size_t boff = (size_t)c->offset + (size_t)(pos / 8);
         size_t need = (size_t)((pos % 8 + size + 7) / 8);
-        lt_u32 mask = size >= 32 ? LT_U32_MASK : ((1UL << size) - 1UL);
+        lt_u32 mask = size >= 32 ? (lt_u32)LT_U32_MASK : (((lt_u32)1 << size) - (lt_u32)1);
         lt_u32 v;
         if (lt_isnan(raw) || raw < 0) raw = 0;
         v = raw > (double)mask ? mask : (lt_u32)raw;
@@ -747,9 +747,12 @@ int lt_ini_channel_decode(const lt_ini_channel *ch, lt_endian e, const lt_u8 *bl
         rc = lt_dtype_read(ch->bit_storage, block, len, ch->offset, e, &raw);
         if (rc) return rc;
         /* two's complement word (sign kept by masking); bits beyond 32 read as 0 */
+        if (!(raw == raw)) raw = 0.0;
+        if (raw > 4294967295.0) raw = 4294967295.0;
+        if (raw < -2147483648.0) raw = -2147483648.0;
         word = raw < 0 ? (lt_u32)(raw + 4294967296.0) : (lt_u32)raw;
-        mask = count >= 32 ? LT_U32_MASK : ((1UL << count) - 1UL);
-        v = ch->bit_pos >= 32 ? 0UL : ((word >> ch->bit_pos) & mask);
+        mask = count >= 32 ? (lt_u32)LT_U32_MASK : (((lt_u32)1 << count) - (lt_u32)1);
+        v = ch->bit_pos >= 32 ? (lt_u32)0 : ((word >> ch->bit_pos) & mask);
         *out = (double)v * ch->scale + ch->translate;
         return 0;
     }

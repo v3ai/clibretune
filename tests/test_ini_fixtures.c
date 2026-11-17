@@ -340,7 +340,7 @@ LT_TEST(speeduino_reference_tables)
         LT_CHECK(th->idents[0].has_limits && th->idents[0].lim_min == -40 &&
                  th->idents[0].lim_max == 350 && th->idents[0].lim_default == 180);
         LT_CHECK(th->idents[1].has_limits && th->idents[1].lim_default == 70);
-        LT_CHECK(th->topic_help != NULL && strstr(th->topic_help, "wiki") != NULL);
+        LT_CHECK(th->help_topic != NULL && strstr(th->help_topic, "wiki") != NULL);
         LT_CHECK_INT(th->n_therm_opts, 12);
         for (i = 0; i < th->n_therm_opts; i++) {
             const lt_ini_therm_opt *o = &th->therm_opts[i];

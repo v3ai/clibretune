@@ -101,7 +101,7 @@ static int exact_digits(double a, char *digits, int *ex)
     unsigned long l[BN_MAX];
     int n = 0, e2, k, i, len = 0;
     double fr, mant;
-    char tmp[BN_MAX * 4 + 8];
+    char tmp[BN_MAX * 4 + 8] = { 0 };
 
     fr = frexp(a, &e2);
     mant = ldexp(fr, 53);
@@ -322,7 +322,7 @@ lt_bool lt_tune_parse_u8(const char *s, int *out)
 /* ---------------------------------------------------------------------- */
 /* parse_value (spec 1.3)                                                  */
 /* ---------------------------------------------------------------------- */
-typedef struct tok { const char *p; size_t n; } tok;
+typedef struct vtok { const char *p; size_t n; } vtok;
 
 static int is_sep(char c)
 {
@@ -334,12 +334,12 @@ static void split_tokens(const char *s, lt_vec *out)
     size_t i = 0;
     while (s[i]) {
         size_t st;
-        tok *t;
+        vtok *t;
         while (s[i] && is_sep(s[i])) i++;
         if (!s[i]) break;
         st = i;
         while (s[i] && !is_sep(s[i])) i++;
-        t = (tok *)lt_vec_push(out);
+        t = (vtok *)lt_vec_push(out);
         t->p = s + st;
         t->n = i - st;
     }
@@ -394,11 +394,11 @@ void lt_tune_value_parse(lt_tune_value *out, const char *text)
         while (a < b && s[a] == '[') a++;
         while (b > a && s[b - 1] == ']') b--;
         stripped = lt_strndup(s + a, b - a);
-        lt_vec_init(&toks, sizeof(tok));
+        lt_vec_init(&toks, sizeof(vtok));
         lt_vec_init(&vals, sizeof(double));
         split_tokens(stripped, &toks);
         for (i = 0; i < toks.len; i++) {
-            tok *k = &LT_VEC_AT(&toks, tok, i);
+            vtok *k = &LT_VEC_AT(&toks, vtok, i);
             if (lt_tune_parse_num(k->p, k->n, &d)) *(double *)lt_vec_push(&vals) = d;
         }
         if (vals.len > 1) set_array_from(out, (const double *)vals.data, vals.len);
@@ -413,11 +413,11 @@ void lt_tune_value_parse(lt_tune_value *out, const char *text)
     if (strchr(t, ' ') || strchr(t, '\n') || strchr(t, '\t') || strchr(t, '\r')) {
         lt_vec toks, vals;
         int all = 1;
-        lt_vec_init(&toks, sizeof(tok));
+        lt_vec_init(&toks, sizeof(vtok));
         lt_vec_init(&vals, sizeof(double));
         split_tokens(t, &toks);
         for (i = 0; i < toks.len; i++) {
-            tok *k = &LT_VEC_AT(&toks, tok, i);
+            vtok *k = &LT_VEC_AT(&toks, vtok, i);
             if (lt_tune_parse_num(k->p, k->n, &d)) {
                 *(double *)lt_vec_push(&vals) = d;
             } else {

@@ -26,8 +26,8 @@ lt_tune_diff *lt_tune_diff_compare(const lt_tune *a, const lt_tune *b)
     d->signature_match = strcmp(a->signature ? a->signature : "", b->signature ? b->signature : "") == 0;
     d->sig_a = lt_strdup(a->signature ? a->signature : "");
     d->sig_b = lt_strdup(b->signature ? b->signature : "");
-    d->total_a = na;
-    d->total_b = nb;
+    d->sum_a = na;
+    d->sum_b = nb;
     while (ia < na || ib < nb) {
         const char *ka = ia < na ? lt_tune_constant_name(a, ia) : NULL;
         const char *kb = ib < nb ? lt_tune_constant_name(b, ib) : NULL;
@@ -129,7 +129,7 @@ static void change_clear(lt_constant_change *c)
     lt_free(c->description);
 }
 
-static void strs_free(char **a, size_t n)
+static void td_strs_free(char **a, size_t n)
 {
     size_t i;
     for (i = 0; i < n; i++) lt_free(a[i]);
@@ -139,8 +139,8 @@ static void strs_free(char **a, size_t n)
 void lt_migration_clear(lt_migration_report *r)
 {
     size_t i;
-    strs_free(r->missing_in_tune, r->n_missing_in_tune);
-    strs_free(r->missing_in_ini, r->n_missing_in_ini);
+    td_strs_free(r->missing_in_tune, r->n_missing_in_tune);
+    td_strs_free(r->missing_in_ini, r->n_missing_in_ini);
     for (i = 0; i < r->n_type; i++) change_clear(&r->type_changed[i]);
     for (i = 0; i < r->n_scale; i++) change_clear(&r->scale_changed[i]);
     for (i = 0; i < r->n_loc; i++) change_clear(&r->location_changed[i]);

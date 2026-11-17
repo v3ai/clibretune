@@ -115,7 +115,7 @@ typedef struct web_conn {
 typedef struct web {
     int req_port, port, w, h;
     lt_server *srv;
-    char token[40];
+    char auth_key[40];
     char title[128];
     lt_buf page;
     lt_u32 *prev;          /* last presented canvas, tightly packed, 24-bit */
@@ -172,20 +172,15 @@ static void rle_encode(lt_buf *b, const lt_u32 *p, int n)
     }
 }
 
-static void make_token(web *w)
+static void make_auth_key(web *w)
 {
     static const char hex[] = "0123456789abcdef";
     unsigned char r[16];
     lt_u32 h[4], x;
     int i, got = 0;
-    FILE *f;
     void *probe = lt_malloc(8);
 
-    f = fopen("/dev/urandom", "rb");
-    if (f != NULL) {
-        got = (fread(r, 1, 16, f) == 16);
-        fclose(f);
-    }
+    got = (lt_plat_random(r, sizeof(r)) == 0);
     if (!got) {
         h[0] = (lt_u32)time(NULL) & LT_U32_MASK;
         h[1] = (lt_u32)clock() & LT_U32_MASK;
@@ -203,10 +198,10 @@ static void make_token(web *w)
     }
     lt_free(probe);
     for (i = 0; i < 16; i++) {
-        w->token[i * 2] = hex[r[i] >> 4];
-        w->token[i * 2 + 1] = hex[r[i] & 15];
+        w->auth_key[i * 2] = hex[r[i] >> 4];
+        w->auth_key[i * 2 + 1] = hex[r[i] & 15];
     }
-    w->token[32] = '\0';
+    w->auth_key[32] = '\0';
 }
 
 /* ---- event queue ---- */
@@ -316,7 +311,7 @@ static void web_update(web *w, const lt_canvas *c)
             tw = LT_MIN(WEB_TILE, w->cw - tx * WEB_TILE);
             th = LT_MIN(WEB_TILE, w->ch - ty * WEB_TILE);
             for (y = 0; y < th; y++) {
-                const lt_u32 *src = c->px + (size_t)(ty * WEB_TILE + y) * (size_t)c->stride +
+                const lt_u32 *src = c->px + (size_t)(ty * WEB_TILE + y) * (size_t)c->pitch +
                                     (size_t)(tx * WEB_TILE);
                 lt_u32 *dst = w->prev + (size_t)(ty * WEB_TILE + y) * (size_t)w->cw +
                               (size_t)(tx * WEB_TILE);
@@ -441,10 +436,10 @@ static int query_get(const char *q, const char *name, char *out, size_t cap)
 
 static int cookie_ok(const web *w, const char *cookie)
 {
-    size_t tl = strlen(w->token);
+    size_t tl = strlen(w->auth_key);
     const char *p = cookie;
     while ((p = strstr(p, "lt=")) != NULL) {
-        if ((p == cookie || p[-1] == ' ' || p[-1] == ';') && strncmp(p + 3, w->token, tl) == 0 &&
+        if ((p == cookie || p[-1] == ' ' || p[-1] == ';') && strncmp(p + 3, w->auth_key, tl) == 0 &&
             (p[3 + tl] == '\0' || p[3 + tl] == ';' || p[3 + tl] == ' '))
             return 1;
         p += 3;
@@ -500,7 +495,7 @@ static void handle_request(web *w, web_conn *c, const char *hdrs, const char *me
     header_get(hdrs, "Cookie", cookie, sizeof(cookie));
     authed = cookie_ok(w, cookie);
     if (is_get && strcmp(target, "/") == 0) {
-        if (!authed && !(query_get(query, "t", val, sizeof(val)) && strcmp(val, w->token) == 0)) {
+        if (!authed && !(query_get(query, "t", val, sizeof(val)) && strcmp(val, w->auth_key) == 0)) {
             respond_text(c, 403, "Forbidden");
             return;
         }
@@ -508,7 +503,7 @@ static void handle_request(web *w, web_conn *c, const char *hdrs, const char *me
             char extra[400];
             lt_snprintf(extra, sizeof(extra), "Set-Cookie: lt=%s; Path=/; HttpOnly; "
                         "SameSite=Strict\r\nContent-Security-Policy: default-src 'self'; "
-                        "script-src 'unsafe-inline'; style-src 'unsafe-inline'\r\n", w->token);
+                        "script-src 'unsafe-inline'; style-src 'unsafe-inline'\r\n", w->auth_key);
             respond(c, 200, "OK", "text/html; charset=utf-8", extra, w->page.data, w->page.len);
         }
         return;
@@ -684,7 +679,7 @@ static int web_open(lt_backend *b, const char *title, int width, int height)
     w->h = height > 0 ? height : 768;
     lt_buf_clear(&w->page);
     for (p = web_page_chunks; *p != NULL; p++) lt_buf_puts(&w->page, *p);
-    make_token(w);
+    make_auth_key(w);
     base = w->req_port > 0 ? w->req_port : WEB_DEFAULT_PORT;
     for (i = 0; i < WEB_PORT_TRIES && base + i < 65536; i++) {
         w->srv = lt_server_listen(base + i);
@@ -699,7 +694,7 @@ static int web_open(lt_backend *b, const char *title, int width, int height)
         lt_err_set("web: cannot listen on ports %d..%d", base, base + WEB_PORT_TRIES - 1);
         return -1;
     }
-    lt_snprintf(url, sizeof(url), "http://127.0.0.1:%d/?t=%s", w->port, w->token);
+    lt_snprintf(url, sizeof(url), "http://127.0.0.1:%d/?t=%s", w->port, w->auth_key);
     fprintf(stderr, "LibreTune UI: %s\n", url);
     nb = lt_plat_getenv("LT_NO_BROWSER");
     if (nb == NULL) lt_plat_open_url(url);

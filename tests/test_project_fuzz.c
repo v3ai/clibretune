@@ -62,7 +62,7 @@ LT_TEST(fuzz_seeds)
 {
     size_t i;
     FILE *f;
-    static char buf[65536];
+    static char buf[4096];
     size_t got;
     for (i = 0; i < sizeof SEEDS / sizeof SEEDS[0]; i++) fuzz_text(SEEDS[i]);
     f = fopen("tests/fixtures/project/mini.ini", "rb");
@@ -72,7 +72,7 @@ LT_TEST(fuzz_seeds)
 
 LT_TEST(fuzz_random_bytes)
 {
-    char b[200];
+    char b[200] = { 0 };
     int k, i;
     for (k = 0; k < 3000; k++) {
         size_t n = rnd() % 200;

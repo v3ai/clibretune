@@ -5,6 +5,7 @@
 #include <string.h>
 #include <math.h>
 #include "tables_priv.h"
+#include "view_kit.h"
 
 #define TRAIL_N 20
 
@@ -32,9 +33,17 @@ typedef struct tbl_tab {
     int drag3d, lmx, lmy, prev_down;
     int frame;
     lt_color *cellcol;            /* rows*cols colours for the 3D view */
-    lt_color col_edge, col_live, col_cur, col_text;
+    lt_color col_edge, col_live, col_cur, col_text, col_trail;
+    double zoom;
+    int dark3d;
+    const lt_app *app_;
     lt_rect r3d;
     char xlab[48], ylab[48];
+    /* overlay (live cell, trail) positions recorded while the grid is declared */
+    double ov_xy[TRAIL_N][2];
+    int ov_n, ov_live, ov_have_cur;
+    lt_rect ov_live_r, ov_cur_r;
+    lt_color ov_trail, ov_live_c;
 } tbl_tab;
 
 static int drow(const tbl_tab *st, int dr)
@@ -371,93 +380,293 @@ static void rebin_apply(lt_app *app, lt_app_tab *tab, tbl_tab *st)
     lt_app_toast(app, 1, "Table re-binned");
 }
 
-/* ---- 3D ---- */
-static void proj(const tbl_tab *st, double x, double y, double z, lt_rect r, double *sx,
-                 double *sy, double *depth)
+/* ---- 3D ----
+ * Perspective orbit camera around the table centre; the surface is drawn far
+ * to near (painter's order for a height field), shaded by a directional
+ * light, over a floor grid and a faint bounding box with axis captions. */
+#define W3_SIZE 10.0
+#define W3_H 5.0
+
+typedef struct cam3 {
+    double ex, ey, ez;            /* eye */
+    double rx, ry, rz, ux, uy, uz, fx, fy, fz;   /* right, up, forward */
+    double f, cx, cy;             /* focal length in px, screen centre */
+} cam3;
+
+static void cam3_setup(const tbl_tab *st, lt_rect r, cam3 *c)
 {
-    double cy_ = cos(st->yaw), sy_ = sin(st->yaw), cp = cos(st->pitch), sp = sin(st->pitch);
-    double x1 = x * cy_ - y * sy_, y1 = x * sy_ + y * cy_;
-    double d = y1 * cp - z * sp, z2 = y1 * sp + z * cp;
-    double s = (double)(r.w < r.h ? r.w : r.h) * 0.62;
-    *sx = r.x + r.w * 0.5 + x1 * s;
-    *sy = r.y + r.h * 0.52 - z2 * s;
-    *depth = d;
+    double tx = W3_SIZE * 0.5, ty = W3_H * 0.35, tz = W3_SIZE * 0.5;
+    double dist = 19.0 * (st->zoom > 0.2 ? st->zoom : 1.0);
+    double cp = cos(st->pitch), sp = sin(st->pitch), cyw = cos(st->yaw), syw = sin(st->yaw);
+    double fl, rl;
+    c->ex = tx + dist * cp * syw; c->ey = ty + dist * sp; c->ez = tz + dist * cp * cyw;
+    c->fx = tx - c->ex; c->fy = ty - c->ey; c->fz = tz - c->ez;
+    fl = sqrt(c->fx * c->fx + c->fy * c->fy + c->fz * c->fz);
+    c->fx /= fl; c->fy /= fl; c->fz /= fl;
+    /* right = forward x worldUp(0,1,0) */
+    c->rx = c->fy * 0.0 - c->fz * 1.0; c->ry = c->fz * 0.0 - c->fx * 0.0; c->rz = c->fx * 1.0 - c->fy * 0.0;
+    rl = sqrt(c->rx * c->rx + c->ry * c->ry + c->rz * c->rz);
+    if (rl < 1e-9) { c->rx = 1.0; c->ry = 0.0; c->rz = 0.0; rl = 1.0; }
+    c->rx /= rl; c->ry /= rl; c->rz /= rl;
+    /* up = right x forward */
+    c->ux = c->ry * c->fz - c->rz * c->fy;
+    c->uy = c->rz * c->fx - c->rx * c->fz;
+    c->uz = c->rx * c->fy - c->ry * c->fx;
+    c->f = (double)(r.h < r.w ? r.h : r.w) * 1.0;
+    c->cx = (double)r.x + (double)r.w * 0.5;
+    c->cy = (double)r.y + (double)r.h * 0.5;
+}
+
+/* world -> screen; returns the depth along the view direction */
+static double cam3_proj(const cam3 *c, double x, double y, double z, double *sx, double *sy)
+{
+    double vx = x - c->ex, vy = y - c->ey, vz = z - c->ez;
+    double xc = vx * c->rx + vy * c->ry + vz * c->rz;
+    double yc = vx * c->ux + vy * c->uy + vz * c->uz;
+    double zc = vx * c->fx + vy * c->fy + vz * c->fz;
+    if (zc < 0.1) { zc = 0.1; }
+    *sx = c->cx + c->f * xc / zc;
+    *sy = c->cy - c->f * yc / zc;
+    return zc;
+}
+
+static void w3_line(lt_gfx *g, const cam3 *c, double x0, double y0, double z0, double x1, double y1,
+                    double z1, double w, lt_color col)
+{
+    double ax, ay, bx, by;
+    cam3_proj(c, x0, y0, z0, &ax, &ay);
+    cam3_proj(c, x1, y1, z1, &bx, &by);
+    lt_gfx_line(g, ax, ay, bx, by, w, col);
+}
+
+static void w3_label(lt_gfx *g, const cam3 *c, double x, double y, double z, const char *s,
+                     lt_color col, int align)
+{
+    double sx, sy;
+    lt_font *f = lt_font_get(LT_FONT_SANS_MEDIUM);
+    cam3_proj(c, x, y, z, &sx, &sy);
+    if (f == NULL) { lt_gfx_text(g, (int)sx, (int)sy - 8, s, col, 1); return; }
+    {
+        double w = lt_gfx_text_measure(f, 11.0, s);
+        double xx = align == 1 ? sx - w * 0.5 : (align == 2 ? sx - w : sx);
+        lt_gfx_text_bl(g, f, 11.0, xx, (int)(sy + 4.0), s, col);
+    }
+}
+
+static double st_wx(const tbl_tab *st, int c)
+{
+    LT_UNUSED(st);
+    return W3_SIZE * (double)c;
 }
 
 static void draw3d(lt_gfx *g, lt_rect r, void *user)
 {
     tbl_tab *st = (tbl_tab *)user;
-    int rows = (int)st->v.rows, cols = (int)st->v.cols, i0, j0, di, dj, qi, qj;
-    double span, dmax = -1e30, cdep, px, py;
-    int ci, cj;
+    int rows = (int)st->v.rows, cols = (int)st->v.cols, i, j, k;
+    double zlo = 1e300, zhi = -1e300, span, rr, cc;
+    cam3 cam;
+    size_t n;
+    int ri_first, ri_step, ci_first, ci_step, qi, qj;
+    double lx = 0.50, ly = 0.78, lz = 0.37;   /* light direction (normalised below) */
+    double ll = sqrt(lx * lx + ly * ly + lz * lz);
+    lt_color bgtop = LT_RGB(0x18, 0x1B, 0x22), bgbot = LT_RGB(0x0C, 0x0E, 0x12);
+    char b[64];
     if (rows < 2 || cols < 2) { return; }
+    st->r3d = r;
+    lt_gfx_fill_rect_vgrad(g, r, st->dark3d ? bgtop : LT_RGB(0xF4, 0xF5, 0xF8),
+                           st->dark3d ? bgbot : LT_RGB(0xD9, 0xDC, 0xE3));
+    lx /= ll; ly /= ll; lz /= ll;
+    for (n = 0; n < st->v.rows * st->v.cols; n++) {
+        if (st->v.z[n] < zlo) { zlo = st->v.z[n]; }
+        if (st->v.z[n] > zhi) { zhi = st->v.z[n]; }
+    }
+    span = zhi > zlo ? zhi - zlo : 1.0;
+    cam3_setup(st, r, &cam);
+
+    /* floor grid + bounding box */
     {
-        double zlo = 1e300, zhi = -1e300;
-        size_t k;
-        for (k = 0; k < st->v.rows * st->v.cols; k++) {
-            if (st->v.z[k] < zlo) { zlo = st->v.z[k]; }
-            if (st->v.z[k] > zhi) { zhi = st->v.z[k]; }
+        lt_color gl = st->dark3d ? LT_RGBA(255, 255, 255, 26) : LT_RGBA(0, 0, 0, 30);
+        lt_color bx = st->dark3d ? LT_RGBA(255, 255, 255, 70) : LT_RGBA(0, 0, 0, 80);
+        for (i = 0; i <= 10; i++) {
+            double t = (double)i;
+            w3_line(g, &cam, t, 0.0, 0.0, t, 0.0, W3_SIZE, 1.0, gl);
+            w3_line(g, &cam, 0.0, 0.0, t, W3_SIZE, 0.0, t, 1.0, gl);
         }
-        st->r3d = r;
-        /* use data range for the height so small variations are visible */
-        span = zhi > zlo ? zhi - zlo : 1.0;
-        /* far corner */
-        i0 = 0; j0 = 0;
-        for (ci = 0; ci < 2; ci++) {
-            for (cj = 0; cj < 2; cj++) {
-                double sx, sy;
-                proj(st, (double)cj - 0.5, (double)ci - 0.5, 0.0, r, &sx, &sy, &cdep);
-                if (cdep > dmax) { dmax = cdep; i0 = ci ? rows - 1 : 0; j0 = cj ? cols - 1 : 0; }
+        w3_line(g, &cam, 0.0, 0.0, 0.0, W3_SIZE, 0.0, 0.0, 1.0, bx);
+        w3_line(g, &cam, W3_SIZE, 0.0, 0.0, W3_SIZE, 0.0, W3_SIZE, 1.0, bx);
+        w3_line(g, &cam, W3_SIZE, 0.0, W3_SIZE, 0.0, 0.0, W3_SIZE, 1.0, bx);
+        w3_line(g, &cam, 0.0, 0.0, W3_SIZE, 0.0, 0.0, 0.0, 1.0, bx);
+        /* back verticals: the two corners farthest from the eye */
+        for (i = 0; i < 2; i++) {
+            for (j = 0; j < 2; j++) {
+                double x = i ? W3_SIZE : 0.0, z = j ? W3_SIZE : 0.0;
+                double dx = x - cam.ex, dz = z - cam.ez;
+                if (dx * dx + dz * dz > (W3_SIZE * 0.5 + 8.0) * (W3_SIZE * 0.5 + 8.0) * 0.98) {
+                    w3_line(g, &cam, x, 0.0, z, x, W3_H, z, 1.0, bx);
+                }
             }
         }
-        di = i0 == 0 ? 1 : -1;
-        dj = j0 == 0 ? 1 : -1;
-        for (qi = 0; qi < rows - 1; qi++) {
-            for (qj = 0; qj < cols - 1; qj++) {
-                double xy[8], dd;
-                int ri = i0 == 0 ? qi : rows - 2 - qi, rj = j0 == 0 ? qj : cols - 2 - qj;
-                int cc[4][2];
-                lt_color col;
-                int k;
-                double avg = 0.0;
-                cc[0][0] = ri; cc[0][1] = rj; cc[1][0] = ri; cc[1][1] = rj + 1;
-                cc[2][0] = ri + 1; cc[2][1] = rj + 1; cc[3][0] = ri + 1; cc[3][1] = rj;
-                for (k = 0; k < 4; k++) {
-                    double v = st->v.z[(size_t)cc[k][0] * (size_t)cols + (size_t)cc[k][1]];
-                    double zz = (v - zlo) / span * 0.75 - 0.35;
-                    avg += v;
-                    proj(st, (double)cc[k][1] / (double)(cols - 1) - 0.5,
-                         (double)cc[k][0] / (double)(rows - 1) - 0.5, zz, r, &xy[k * 2],
-                         &xy[k * 2 + 1], &dd);
-                }
-                col = st->cellcol[(size_t)ri * (size_t)cols + (size_t)rj];
-                lt_gfx_fill_poly(g, xy, 4, col);
+    }
+
+    /* far-to-near order of rows/columns */
+    ci_first = cam.ex > W3_SIZE * 0.5 ? 0 : cols - 2; ci_step = ci_first == 0 ? 1 : -1;
+    {
+        /* world z of row index: ybottom puts the lowest Y bin nearest the eye */
+        int zflip = st->ybottom ? 1 : 0;
+        int low_row_far = (cam.ez > W3_SIZE * 0.5) ? (zflip ? 0 : 1) : (zflip ? 1 : 0);
+        /* low_row_far == 1: row 0 is the farthest row from the eye */
+        ri_first = low_row_far ? 0 : rows - 2; ri_step = low_row_far ? 1 : -1;
+    }
+    for (qi = 0, i = ri_first; qi < rows - 1; qi++, i += ri_step) {
+        for (qj = 0, j = ci_first; qj < cols - 1; qj++, j += ci_step) {
+            double px[4], py[4], poly[8], wx[4], wy[4], wz[4], nx, ny, nz, nl, lam, avg = 0.0;
+            int cr[4], ccn[4];
+            lt_color base, col;
+            cr[0] = i; cr[1] = i; cr[2] = i + 1; cr[3] = i + 1;
+            ccn[0] = j; ccn[1] = j + 1; ccn[2] = j + 1; ccn[3] = j;
+            for (k = 0; k < 4; k++) {
+                double v = st->v.z[(size_t)cr[k] * (size_t)cols + (size_t)ccn[k]];
+                rr = (double)cr[k] / (double)(rows - 1);
+                cc = (double)ccn[k] / (double)(cols - 1);
+                wx[k] = st_wx(st, 0) + cc * W3_SIZE;
+                wz[k] = st->ybottom ? (1.0 - rr) * W3_SIZE : rr * W3_SIZE;
+                wy[k] = (v - zlo) / span * W3_H;
+                avg += v;
+                cam3_proj(&cam, wx[k], wy[k], wz[k], &px[k], &py[k]);
+                poly[k * 2] = px[k]; poly[k * 2 + 1] = py[k];
+            }
+            /* normal from the two diagonals */
+            {
+                double ax = wx[2] - wx[0], ay = wy[2] - wy[0], az = wz[2] - wz[0];
+                double bx2 = wx[3] - wx[1], by2 = wy[3] - wy[1], bz2 = wz[3] - wz[1];
+                nx = ay * bz2 - az * by2; ny = az * bx2 - ax * bz2; nz = ax * by2 - ay * bx2;
+                nl = sqrt(nx * nx + ny * ny + nz * nz);
+                if (nl < 1e-12) { nl = 1.0; ny = 1.0; }
+                if (ny < 0.0) { nx = -nx; ny = -ny; nz = -nz; }
+                lam = (nx * lx + ny * ly + nz * lz) / nl;
+                if (lam < 0.0) { lam = 0.0; }
+            }
+            base = st->cellcol[(size_t)i * (size_t)cols + (size_t)j];
+            col = lt_color_mix(LT_RGB(0, 0, 0), base, (int)((0.50 + 0.50 * lam) * 256.0));
+            if (!st->dark3d) { col = lt_color_mix(base, LT_RGB(255, 255, 255), (int)((1.0 - lam) * 40.0)); }
+            lt_gfx_fill_poly(g, poly, 4, col);
+            if (rows * cols <= 1300) {
+                lt_color el = st->dark3d ? LT_RGBA(255, 255, 255, 60) : LT_RGBA(0, 0, 0, 55);
                 for (k = 0; k < 4; k++) {
                     int n2 = (k + 1) & 3;
-                    lt_gfx_line(g, xy[k * 2], xy[k * 2 + 1], xy[n2 * 2], xy[n2 * 2 + 1], 1.0, st->col_edge);
+                    lt_gfx_line(g, px[k], py[k], px[n2], py[n2], 1.0, el);
                 }
-                (void)avg;
             }
+            (void)avg;
         }
-        (void)di; (void)dj;
-        /* cursor and live markers */
-        for (k = 0; k < 2; k++) {
-            int mr = k ? st->live_r : st->cur_r, mc = k ? st->live_c : st->cur_c;
-            if ((k == 1 && !st->live_ok) || mr < 0 || mc < 0 || mr >= rows || mc >= cols) { continue; }
+    }
+
+    /* axis captions */
+    {
+        lt_color cx_ = LT_RGB(0xFF, 0x88, 0x88), cy_ = LT_RGB(0x88, 0xFF, 0x88), cz_ = LT_RGB(0x88, 0x99, 0xFF);
+        double near_z = (cam.ez > W3_SIZE * 0.5) ? W3_SIZE + 0.9 : -0.9;
+        double near_x = (cam.ex > W3_SIZE * 0.5) ? W3_SIZE + 0.9 : -0.9;
+        lt_color dim = st->dark3d ? LT_RGB(0x9A, 0xA0, 0xAC) : LT_RGB(0x55, 0x5B, 0x66);
+        w3_label(g, &cam, W3_SIZE * 0.5, -0.2, near_z + (near_z > 0 ? 0.8 : -0.8),
+                 st->xlab[0] ? st->xlab : "X", cx_, 1);
+        w3_label(g, &cam, near_x + (near_x > 0 ? 0.8 : -0.8), -0.2, W3_SIZE * 0.5,
+                 st->ylab[0] ? st->ylab : "Y", cy_, 1);
+        w3_label(g, &cam, (cam.ex > W3_SIZE * 0.5 ? 0.0 : W3_SIZE) - 0.1, W3_H * 0.5,
+                 (cam.ez > W3_SIZE * 0.5 ? 0.0 : W3_SIZE) - 0.1, "Z", cz_, 1);
+        lt_tabs_fmt(b, sizeof(b), st->v.x[0], st->xdig);
+        w3_label(g, &cam, 0.0, -0.1, near_z, b, dim, 1);
+        lt_tabs_fmt(b, sizeof(b), st->v.x[cols - 1], st->xdig);
+        w3_label(g, &cam, W3_SIZE, -0.1, near_z, b, dim, 1);
+        if (st->v.y != NULL) {
+            lt_tabs_fmt(b, sizeof(b), st->v.y[0], st->ydig);
+            w3_label(g, &cam, near_x, -0.1, st->ybottom ? W3_SIZE : 0.0, b, dim, 1);
+            lt_tabs_fmt(b, sizeof(b), st->v.y[rows - 1], st->ydig);
+            w3_label(g, &cam, near_x, -0.1, st->ybottom ? 0.0 : W3_SIZE, b, dim, 1);
+        }
+        lt_tabs_fmt(b, sizeof(b), zlo, st->zdig);
+        w3_label(g, &cam, (cam.ex > W3_SIZE * 0.5 ? 0.0 : W3_SIZE) - 0.1, 0.0,
+                 (cam.ez > W3_SIZE * 0.5 ? 0.0 : W3_SIZE) - 0.1, b, dim, 2);
+        lt_tabs_fmt(b, sizeof(b), zhi, st->zdig);
+        w3_label(g, &cam, (cam.ex > W3_SIZE * 0.5 ? 0.0 : W3_SIZE) - 0.1, W3_H,
+                 (cam.ez > W3_SIZE * 0.5 ? 0.0 : W3_SIZE) - 0.1, b, dim, 2);
+    }
+
+    /* markers: cursor cell, trail, live position */
+    for (k = 0; k < 2; k++) {
+        int mr = k ? st->live_r : st->cur_r, mc = k ? st->live_c : st->cur_c;
+        double v, sx, sy, fx0, fz0, h;
+        if ((k == 1 && !st->live_ok) || mr < 0 || mc < 0 || mr >= rows || mc >= cols) { continue; }
+        v = st->v.z[(size_t)mr * (size_t)cols + (size_t)mc];
+        rr = (double)mr / (double)(rows - 1); cc = (double)mc / (double)(cols - 1);
+        fx0 = cc * W3_SIZE; fz0 = st->ybottom ? (1.0 - rr) * W3_SIZE : rr * W3_SIZE;
+        h = (v - zlo) / span * W3_H;
+        cam3_proj(&cam, fx0, h + 0.12, fz0, &sx, &sy);
+        if (k) {
+            lt_color gc = st->col_live;
+            w3_line(g, &cam, fx0, 0.0, fz0, fx0, h + 0.12, fz0, 1.5, (gc & 0x00FFFFFFUL) | 0x90000000UL);
+            lt_gfx_fill_circle(g, sx, sy, 9.0, (gc & 0x00FFFFFFUL) | 0x30000000UL);
+            lt_gfx_fill_circle(g, sx, sy, 5.0, gc);
+            lt_gfx_circle(g, sx, sy, 5.5, 1.2, LT_RGB(255, 255, 255));
+            lt_tabs_fmt(b, sizeof(b), v, st->zdig);
             {
-                double v = st->v.z[(size_t)mr * (size_t)cols + (size_t)mc], dd;
-                proj(st, (double)mc / (double)(cols - 1) - 0.5, (double)mr / (double)(rows - 1) - 0.5,
-                     (v - zlo) / span * 0.75 - 0.35, r, &px, &py, &dd);
-                lt_gfx_fill_circle(g, px, py, 4.0, k ? st->col_live : st->col_cur);
+                lt_font *f = lt_font_get(LT_FONT_MONO_MEDIUM);
+                if (f != NULL) {
+                    double tw = lt_gfx_text_measure(f, 11.0, b);
+                    lt_rect chip = lt_rect_make((int)(sx - tw * 0.5) - 5, (int)sy - 28, (int)tw + 10, 18);
+                    lt_gfx_fill_round_rect(g, chip, 4, LT_RGBA(0, 0, 0, 200));
+                    lt_gfx_text_bl(g, f, 11.0, sx - tw * 0.5, (int)sy - 15, b, gc);
+                }
+            }
+        } else {
+            lt_gfx_fill_circle(g, sx, sy, 4.5, LT_RGBA(0, 0, 0, 120));
+            lt_gfx_fill_circle(g, sx, sy, 3.5, st->col_cur);
+            lt_gfx_circle(g, sx, sy, 4.5, 1.0, LT_RGB(255, 255, 255));
+        }
+    }
+    {
+        double pxo = 0.0, pyo = 0.0;
+        int have = 0;
+        for (k = 0; k < st->ntrail; k++) {
+            int mr = st->trail_r[k], mc = st->trail_c[k];
+            double v, sx, sy;
+            if (mr < 0 || mc < 0 || mr >= rows || mc >= cols) { continue; }
+            v = st->v.z[(size_t)mr * (size_t)cols + (size_t)mc];
+            rr = (double)mr / (double)(rows - 1); cc = (double)mc / (double)(cols - 1);
+            cam3_proj(&cam, cc * W3_SIZE, (v - zlo) / span * W3_H + 0.1,
+                      st->ybottom ? (1.0 - rr) * W3_SIZE : rr * W3_SIZE, &sx, &sy);
+            if (have) {
+                int a = 220 - k * 170 / TRAIL_N;
+                lt_gfx_line(g, pxo, pyo, sx, sy, 2.0, (st->col_trail & 0x00FFFFFFUL) | ((lt_u32)(a > 40 ? a : 40) << 24));
+            }
+            pxo = sx; pyo = sy; have = 1;
+        }
+    }
+
+    /* legend: vertical heat bar with the value range */
+    {
+        lt_rect lg = lt_rect_make(r.x + r.w - 26, r.y + 40, 10, r.h > 220 ? 120 : r.h / 3);
+        int steps = lg.h, q;
+        for (q = 0; q < steps; q++) {
+            double t = 1.0 - (double)q / (double)(steps > 1 ? steps - 1 : 1);
+            lt_gfx_fill_rect(g, lt_rect_make(lg.x, lg.y + q, lg.w, 1), lt_tabs_heat(st->app_, NULL, 0.0, 1.0, t));
+        }
+        lt_gfx_rect(g, lg, st->dark3d ? LT_RGBA(255, 255, 255, 80) : LT_RGBA(0, 0, 0, 80));
+        {
+            lt_font *f = lt_font_get(LT_FONT_MONO);
+            lt_color dim = st->dark3d ? LT_RGB(0xB8, 0xBE, 0xC9) : LT_RGB(0x44, 0x4A, 0x55);
+            if (f != NULL) {
+                lt_tabs_fmt(b, sizeof(b), zhi, st->zdig);
+                lt_gfx_text_bl(g, f, 10.0, (double)lg.x - lt_gfx_text_measure(f, 10.0, b) - 4.0, lg.y + 8, b, dim);
+                lt_tabs_fmt(b, sizeof(b), zlo, st->zdig);
+                lt_gfx_text_bl(g, f, 10.0, (double)lg.x - lt_gfx_text_measure(f, 10.0, b) - 4.0, lg.y + lg.h, b, dim);
             }
         }
-        {
-            char b[64];
-            lt_snprintf(b, sizeof(b), "Z %g..%g", zlo, zhi);
-            lt_gfx_text(g, r.x + 4, r.y + r.h - 16, b, st->col_text, 1);
-            lt_gfx_text(g, r.x + 4, r.y + 2, st->xlab[0] ? st->xlab : "X", st->col_text, 1);
-            lt_snprintf(b, sizeof(b), "Y: %s", st->ylab[0] ? st->ylab : "Y");
-            lt_gfx_text(g, r.x + 4, r.y + 18, b, st->col_text, 1);
+    }
+    {
+        lt_font *f = lt_font_get(LT_FONT_SANS);
+        if (f != NULL) {
+            lt_gfx_text_bl(g, f, 11.0, (double)r.x + 10.0, r.y + r.h - 9,
+                           "Drag to rotate", st->dark3d ? LT_RGB(0x78, 0x7E, 0x8A) : LT_RGB(0x70, 0x76, 0x80));
         }
     }
 }
@@ -524,45 +733,92 @@ static void tbl_keys(lt_app *app, lt_app_tab *tab, tbl_tab *st)
 }
 
 /* ---- UI pieces ---- */
-static int tb(lt_ui *ui, const char *label, const char *tip, int on)
+enum { TB_EQ, TB_UP, TB_DOWN, TB_SCALE, TB_INTERP, TB_SMOOTH, TB_REBIN, TB_COPY, TB_PASTE,
+       TB_UNDO, TB_REDO, TB_REVERT, TB_FILLR, TB_FILLD, TB_LIVE, TB_FOLLOW, TB_SHADE, TB_YBOT,
+       TB_3D, TB_RESET3D, TB_BURN, TB_N };
+
+static void tb_item(lt_vk_item *it, int kind, int icon, const char *label, const char *key,
+                    const char *tip)
 {
-    int fl = LT_UI_BTN_FLAT | (on ? LT_UI_BTN_SELECTED : 0);
-    int hit = lt_ui_button_ex(ui, label, fl);
-    if (tip != NULL) { lt_ui_tooltip(ui, tip); }
-    return hit;
+    memset(it, 0, sizeof(*it));
+    it->kind = kind; it->icon = icon; it->label = label; it->key = key; it->tip = tip;
 }
 
 static void tbl_toolbar(lt_app *app, lt_app_tab *tab, tbl_tab *st)
 {
     lt_ui *ui = app->ui;
-    int w[24], i;
-    for (i = 0; i < 24; i++) { w[i] = 0; }
-    lt_ui_layout_row(ui, 8, w, 0);
-    if (tb(ui, "Set=", "Set selected cells to their average (=)", 0)) { tbl_op(app, tab, st, OP_EQUAL, 0); }
-    if (tb(ui, "+", "Increase by 1 (+); > also, q = small step", 0)) { tbl_op(app, tab, st, OP_ADD, 1.0); }
-    if (tb(ui, "-", "Decrease by 1 (-); < also, w = small step", 0)) { tbl_op(app, tab, st, OP_ADD, -1.0); }
-    if (tb(ui, "Scale", "Multiply or add (*)", 0)) { st->scale_open = 1; }
-    if (tb(ui, "Interp", "Interpolate between selection corners (/); h/v = horizontal/vertical", 0)) { tbl_op(app, tab, st, OP_INTERP, 0); }
-    if (tb(ui, "Smooth", "Smooth selection (s)", 0)) { tbl_op(app, tab, st, OP_SMOOTH, 0); }
-    if (tb(ui, "Fill>", "Fill right from the first selected column (Ctrl+R)", 0)) { tbl_op(app, tab, st, OP_FILL_R, 0); }
-    if (tb(ui, "FillV", "Fill down from the top selected row (Ctrl+D)", 0)) { tbl_op(app, tab, st, OP_FILL_D, 0); }
-    lt_ui_layout_row(ui, 13, w, 0);
-    if (tb(ui, "Rebin", "Re-bin: set new axis values and resample", 0)) { rebin_prefill(st); st->rebin_open = 1; }
-    if (tb(ui, "Copy", "Copy (Ctrl+C), tab separated", 0)) { tbl_copy(app, st); }
-    if (tb(ui, "Paste", "Paste at selection (Ctrl+V)", 0)) { tbl_paste(app, tab, st); }
-    if (tb(ui, "Undo", "Undo (Ctrl+Z)", 0)) { tbl_undo_redo(app, tab, st, 0); }
-    if (tb(ui, "Redo", "Redo (Ctrl+Y)", 0)) { tbl_undo_redo(app, tab, st, 1); }
-    if (tb(ui, "Revert", "Undo all edits made in this tab", 0)) { tbl_revert(app, tab, st); }
-    if (tb(ui, "Follow", "Follow the live cell (f)", st->follow)) { st->follow = !st->follow; }
-    if (tb(ui, "Live", "Jump to the live cell (g)", 0)) { st->goto_live = 1; }
-    if (tb(ui, "Shade", "Colour shading", st->shading)) { st->shading = !st->shading; }
-    if (tb(ui, "Y-bot", "Y axis zero at bottom", st->ybottom)) { st->ybottom = !st->ybottom; }
-    if (tb(ui, "3D", "Toggle 3D view", st->show3d)) { st->show3d = !st->show3d; }
-    if (st->show3d) {
-        if (tb(ui, "Reset3D", "Reset the 3D view", 0)) { st->yaw = 0.6; st->pitch = 0.55; }
-    } else { lt_ui_label(ui, ""); }
-    if (lt_ui_button_ex(ui, "Burn", LT_UI_BTN_ACCENT | (lt_app_can_burn(app) ? 0 : LT_UI_BTN_DISABLED))) { lt_app_burn(app); tab->dirty = 0; }
-    lt_ui_tooltip(ui, "Write the changes to ECU flash");
+    lt_vk_item it[40];
+    int n = 0, hit, ids[40], cell = lt_ui_cell_mode(ui);
+    /* ids[i] maps the item index to a TB_ command (-1 for separators) */
+#define TB_ADD(cmd, icon, label, key, tip) \
+    do { tb_item(&it[n], LT_VK_BTN, icon, label, key, tip); ids[n] = cmd; n++; } while (0)
+#define TB_SEP() do { tb_item(&it[n], LT_VK_SEP, 0, NULL, NULL, NULL); ids[n] = -1; n++; } while (0)
+#define TB_GAP() do { tb_item(&it[n], LT_VK_SPACER, 0, NULL, NULL, NULL); ids[n] = -1; n++; } while (0)
+    TB_ADD(TB_EQ, LT_ICON_EQUAL, cell ? "Set=" : NULL, "=", "Set selected cells to their average (=)");
+    TB_ADD(TB_UP, LT_ICON_PLUS, cell ? "+" : NULL, ">", "Increase by 1 (+ or >); q = small step");
+    TB_ADD(TB_DOWN, LT_ICON_MINUS, cell ? "-" : NULL, "<", "Decrease by 1 (- or <); w = small step");
+    TB_SEP();
+    TB_ADD(TB_SCALE, LT_ICON_X, cell ? "Scale" : NULL, "*", "Multiply or add an amount (*)");
+    TB_ADD(TB_INTERP, LT_ICON_TRENDING_UP, cell ? "Interp" : NULL, "/",
+           "Interpolate between selection corners (/); h/v = horizontal/vertical");
+    TB_ADD(TB_SMOOTH, LT_ICON_SPARKLES, cell ? "Smooth" : NULL, "s", "Smooth selected cells (s)");
+    TB_ADD(TB_FILLR, LT_ICON_CHEVRONS_RIGHT, cell ? "Fill>" : NULL, NULL, "Fill right from the first selected column (Ctrl+R)");
+    TB_ADD(TB_FILLD, LT_ICON_CHEVRONS_DOWN, cell ? "FillV" : NULL, NULL, "Fill down from the top selected row (Ctrl+D)");
+    TB_ADD(TB_REBIN, LT_ICON_GRID_3X3, cell ? "Rebin" : NULL, NULL, "Re-bin: set new axis values and resample");
+    TB_SEP();
+    TB_ADD(TB_COPY, LT_ICON_COPY, cell ? "Copy" : NULL, NULL, "Copy selected cells (Ctrl+C), tab separated");
+    TB_ADD(TB_PASTE, LT_ICON_CLIPBOARD_PASTE, cell ? "Paste" : NULL, NULL, "Paste at the selection (Ctrl+V)");
+    TB_ADD(TB_UNDO, LT_ICON_UNDO_2, cell ? "Undo" : NULL, NULL, "Undo (Ctrl+Z)");
+    TB_ADD(TB_REDO, LT_ICON_REDO_2, cell ? "Redo" : NULL, NULL, "Redo (Ctrl+Y)");
+    TB_ADD(TB_REVERT, LT_ICON_ROTATE_CCW, cell ? "Revert" : NULL, NULL, "Undo every edit made in this tab");
+    TB_SEP();
+    TB_ADD(TB_LIVE, LT_ICON_MAP_PIN, cell ? "Live" : NULL, "g", "Jump to the live cell (g)");
+    TB_ADD(TB_FOLLOW, LT_ICON_CROSSHAIR, cell ? "Follow" : NULL, "f", "Follow the live ECU position (f)");
+    it[n - 1].on = st->follow;
+    TB_GAP();
+    TB_ADD(TB_SHADE, LT_ICON_PALETTE, cell ? "Shade" : NULL, NULL, "Colour shading: show the value heat map");
+    it[n - 1].on = st->shading;
+    TB_ADD(TB_YBOT, LT_ICON_ARROW_UP_DOWN, cell ? "Y-bot" : NULL, NULL,
+           st->ybottom ? "Y axis: zero at the bottom (click for zero at the top)"
+                       : "Y axis: zero at the top (click for zero at the bottom)");
+    it[n - 1].on = st->ybottom;
+    TB_ADD(TB_3D, LT_ICON_BOX, cell ? "3D" : NULL, NULL, "Toggle the 3D view");
+    it[n - 1].on = st->show3d;
+    if (st->show3d) { TB_ADD(TB_RESET3D, LT_ICON_ROTATE_CW, cell ? "Reset3D" : NULL, NULL, "Reset the 3D camera"); }
+    TB_SEP();
+    TB_ADD(TB_BURN, LT_ICON_FLAME, "Burn", NULL, "Write the changes to ECU flash");
+    it[n - 1].accent = 1;
+    it[n - 1].disabled = lt_app_can_burn(app) ? 0 : 1;
+    tb_item(&it[n], LT_VK_END, 0, NULL, NULL, NULL);
+#undef TB_ADD
+#undef TB_SEP
+#undef TB_GAP
+    hit = lt_vk_toolbar(ui, it, cell ? 0 : 32);
+    if (hit < 0) { return; }
+    switch (ids[hit]) {
+    case TB_EQ: tbl_op(app, tab, st, OP_EQUAL, 0); break;
+    case TB_UP: tbl_op(app, tab, st, OP_ADD, 1.0); break;
+    case TB_DOWN: tbl_op(app, tab, st, OP_ADD, -1.0); break;
+    case TB_SCALE: st->scale_open = 1; break;
+    case TB_INTERP: tbl_op(app, tab, st, OP_INTERP, 0); break;
+    case TB_SMOOTH: tbl_op(app, tab, st, OP_SMOOTH, 0); break;
+    case TB_FILLR: tbl_op(app, tab, st, OP_FILL_R, 0); break;
+    case TB_FILLD: tbl_op(app, tab, st, OP_FILL_D, 0); break;
+    case TB_REBIN: rebin_prefill(st); st->rebin_open = 1; break;
+    case TB_COPY: tbl_copy(app, st); break;
+    case TB_PASTE: tbl_paste(app, tab, st); break;
+    case TB_UNDO: tbl_undo_redo(app, tab, st, 0); break;
+    case TB_REDO: tbl_undo_redo(app, tab, st, 1); break;
+    case TB_REVERT: tbl_revert(app, tab, st); break;
+    case TB_LIVE: st->goto_live = 1; break;
+    case TB_FOLLOW: st->follow = !st->follow; break;
+    case TB_SHADE: st->shading = !st->shading; break;
+    case TB_YBOT: st->ybottom = !st->ybottom; break;
+    case TB_3D: st->show3d = !st->show3d; break;
+    case TB_RESET3D: st->yaw = 0.6; st->pitch = 0.55; break;
+    case TB_BURN: lt_app_burn(app); tab->dirty = 0; break;
+    default: break;
+    }
 }
 
 static void tbl_dialogs(lt_app *app, lt_app_tab *tab, tbl_tab *st)
@@ -606,6 +862,65 @@ static void tbl_dialogs(lt_app *app, lt_app_tab *tab, tbl_tab *st)
     }
 }
 
+/* live cell, trail line and dots drawn over the cells (pixel mode) */
+static void ov_draw(lt_gfx *g, lt_rect r, void *user)
+{
+    const tbl_tab *st = (const tbl_tab *)user;
+    int k;
+    LT_UNUSED(r);
+    for (k = st->ov_n - 1; k > 0; k--) {
+        int a = 215 - k * 150 / TRAIL_N;
+        lt_color c = (st->ov_trail & 0x00FFFFFFUL) | ((lt_u32)a << 24);
+        lt_gfx_line(g, st->ov_xy[k][0], st->ov_xy[k][1], st->ov_xy[k - 1][0], st->ov_xy[k - 1][1], 2.5, c);
+    }
+    for (k = st->ov_n - 1; k >= 1; k--) {
+        int a = 235 - k * 150 / TRAIL_N;
+        lt_color c = (st->ov_trail & 0x00FFFFFFUL) | ((lt_u32)a << 24);
+        lt_gfx_fill_circle(g, st->ov_xy[k][0], st->ov_xy[k][1], 3.5, c);
+    }
+    if (st->ov_live) {
+        lt_rect c = st->ov_live_r;
+        lt_color tint = (st->ov_live_c & 0x00FFFFFFUL) | 0x33000000UL;
+        lt_gfx_fill_rect(g, c, tint);
+        lt_gfx_rect(g, c, st->ov_live_c);
+        lt_gfx_rect(g, lt_rect_inset(c, 1, 1), st->ov_live_c);
+        {
+            /* marker in the corner so the cell value stays readable */
+            double mx = (double)c.x + (double)c.w - 7.0, my = (double)c.y + 7.0;
+            lt_gfx_fill_circle(g, mx, my, 4.5, LT_RGBA(0, 0, 0, 90));
+            lt_gfx_fill_circle(g, mx, my, 3.5, st->ov_trail);
+            lt_gfx_circle(g, mx, my, 4.0, 1.0, LT_RGB(255, 255, 255));
+        }
+    }
+}
+
+static void tbl_overlay_record(lt_ui *ui, tbl_tab *st, const lt_theme *th, int rows)
+{
+    int k, n = 0;
+    st->ov_trail = th->cursor_trail;
+    st->ov_live_c = th->cursor_live;
+    if (st->live_ok) {
+        int lr = st->ybottom ? rows - 1 - st->live_r : st->live_r;
+        lt_rect c = lt_ui_grid_cell_rect(ui, lr, st->live_c);
+        st->ov_live_r = c;
+        st->ov_live = 1;
+        st->ov_xy[n][0] = (double)c.x + (double)c.w * 0.5;
+        st->ov_xy[n][1] = (double)c.y + (double)c.h * 0.5;
+        n++;
+    }
+    for (k = 0; k < st->ntrail && n < TRAIL_N; k++) {
+        int dr2 = st->ybottom ? rows - 1 - st->trail_r[k] : st->trail_r[k];
+        lt_rect c;
+        if (k == 0 && st->live_ok) { continue; }
+        c = lt_ui_grid_cell_rect(ui, dr2, st->trail_c[k]);
+        st->ov_xy[n][0] = (double)c.x + (double)c.w * 0.5;
+        st->ov_xy[n][1] = (double)c.y + (double)c.h * 0.5;
+        n++;
+    }
+    st->ov_n = n;
+    if (n > 0 || st->ov_live) { lt_ui_draw_custom(ui, lt_ui_clip_get(ui), ov_draw, st); }
+}
+
 static void tbl_grid(lt_app *app, lt_app_tab *tab, tbl_tab *st, int vh)
 {
     lt_ui *ui = app->ui;
@@ -623,6 +938,12 @@ static void tbl_grid(lt_app *app, lt_app_tab *tab, tbl_tab *st, int vh)
     chars += 1;
     cw = chars * 8 + (cell ? 8 : 12);
     if (cw < 48) { cw = 48; }
+    if (!cell && !st->show3d && cols > 0) {
+        /* stretch the columns to the viewport like the stock "fit" mode (not for tiny tables) */
+        int avail = lt_ui_layout_width(ui) - rhw - lt_ui_theme(ui)->scrollbar_w - 2;
+        int fit = avail / cols;
+        if (cols >= 12 && fit > cw) { cw = fit > 96 ? 96 : fit; }
+    }
     for (k = 0; k < st->v.rows * st->v.cols; k++) {
         if (st->v.z[k] < zlo) { zlo = st->v.z[k]; }
         if (st->v.z[k] > zhi) { zhi = st->v.z[k]; }
@@ -646,20 +967,25 @@ static void tbl_grid(lt_app *app, lt_app_tab *tab, tbl_tab *st, int vh)
                 lt_color bg = st->shading ? lt_tabs_heat(app, th, zlo, zhi, v) : th->table_cell;
                 if (lt_tblview_cell_dirty(&st->v, dr, (size_t)c)) { bg = lt_color_mix(bg, th->warning, 60); }
                 lt_tabs_fmt(b, sizeof(b), v, st->zdig);
-                lt_ui_grid_cell(ui, r, c, b, bg, st->shading ? lt_color_contrast(bg) : th->text);
+                lt_ui_grid_cell(ui, r, c, b, bg, st->shading ? lt_tabs_heat_text(bg) : th->text);
             }
         }
         /* live trail and cursor */
-        for (k = (size_t)st->ntrail; k-- > 1;) {
-            int dr2 = st->ybottom ? rows - 1 - st->trail_r[k] : st->trail_r[k];
-            lt_color tc = th->cursor_trail;
-            lt_u32 a = (lt_u32)(200 - (int)k * 200 / TRAIL_N);
-            tc = (tc & 0x00FFFFFFUL) | (a << 24);
-            lt_ui_grid_mark(ui, dr2, st->trail_c[k], tc, 1);
-        }
-        if (st->live_ok) {
-            lt_ui_grid_mark(ui, st->ybottom ? rows - 1 - st->live_r : st->live_r, st->live_c,
-                            th->cursor_live, 2);
+        st->ov_n = 0; st->ov_live = 0; st->ov_have_cur = 0;
+        if (cell) {
+            for (k = (size_t)st->ntrail; k-- > 1;) {
+                int dr2 = st->ybottom ? rows - 1 - st->trail_r[k] : st->trail_r[k];
+                lt_color tc = th->cursor_trail;
+                lt_u32 a = (lt_u32)(200 - (int)k * 200 / TRAIL_N);
+                tc = (tc & 0x00FFFFFFUL) | (a << 24);
+                lt_ui_grid_mark(ui, dr2, st->trail_c[k], tc, 1);
+            }
+            if (st->live_ok) {
+                lt_ui_grid_mark(ui, st->ybottom ? rows - 1 - st->live_r : st->live_r, st->live_c,
+                                th->cursor_live, 2);
+            }
+        } else {
+            tbl_overlay_record(ui, st, th, rows);
         }
         if (st->goto_live || st->follow) {
             if (st->live_ok) {
@@ -707,6 +1033,83 @@ static void tbl_grid(lt_app *app, lt_app_tab *tab, tbl_tab *st, int vh)
         st->col_live = th->cursor_live;
         st->col_cur = th->cursor_selected;
         st->col_text = th->text2;
+        st->col_trail = th->cursor_trail;
+        st->dark3d = th->dark;
+        st->app_ = app;
+    }
+}
+
+/* title strip above the toolbar: table title, size and dirty marker */
+static void tbl_header(lt_app *app, lt_app_tab *tab, tbl_tab *st)
+{
+    lt_ui *ui = app->ui;
+    const lt_theme *th = lt_ui_theme(ui);
+    int w1 = -1, tw;
+    lt_rect r;
+    char b[96];
+    if (lt_ui_cell_mode(ui)) { return; }
+    lt_ui_layout_row(ui, 1, &w1, 30);
+    r = lt_ui_layout_next(ui);
+    lt_ui_draw_fill(ui, r, th->bg_app);
+    lt_ui_draw_hline(ui, r.x, r.x + r.w - 1, r.y + r.h - 1, th->border_subtle);
+    tw = lt_vk_text_w(ui, (int)LT_FONT_SANS_SEMIBOLD, 13.0, tab->title);
+    lt_vk_text(ui, lt_rect_make(r.x + 12, r.y, r.w - 160, r.h), (int)LT_FONT_SANS_SEMIBOLD, 13.0,
+               tab->title, th->text, 0);
+    lt_snprintf(b, sizeof(b), "%d x %d", (int)st->v.cols, (int)st->v.rows);
+    lt_vk_text(ui, lt_rect_make(r.x + 12 + tw + 10, r.y, 80, r.h), (int)LT_FONT_MONO, 11.0, b, th->muted, 0);
+    if (lt_tblview_is_dirty(&st->v)) {
+        lt_vk_pill(ui, lt_rect_make(r.x + r.w - 86, r.y + 7, 74, 16), th->warning_bg, th->warning);
+        lt_vk_text(ui, lt_rect_make(r.x + r.w - 86, r.y + 7, 74, 16), (int)LT_FONT_SANS_SEMIBOLD, 10.0,
+                   "MODIFIED", lt_color_contrast(th->warning_bg), 1);
+    }
+}
+
+/* status strip: cursor cell, selection, range and live position */
+static void tbl_status(lt_app *app, lt_app_tab *tab, tbl_tab *st)
+{
+    lt_ui *ui = app->ui;
+    const lt_theme *th = lt_ui_theme(ui);
+    int w1 = -1, cr = st->cur_r, cc = st->cur_c, cols = (int)st->v.cols, x;
+    char b[200], xs[32], ys[32], vs[32];
+    double cv = (cr >= 0 && cc >= 0 && (size_t)cr < st->v.rows && cc < cols)
+                    ? st->v.z[(size_t)cr * (size_t)cols + (size_t)cc] : 0.0;
+    lt_rect r;
+    lt_tabs_fmt(vs, sizeof(vs), cv, st->zdig);
+    lt_tabs_fmt(xs, sizeof(xs), st->v.x[cc < cols ? cc : 0], st->xdig);
+    lt_tabs_fmt(ys, sizeof(ys), st->v.y != NULL ? st->v.y[cr < (int)st->v.rows ? cr : 0] : 0.0, st->ydig);
+    if (lt_ui_cell_mode(ui)) {
+        lt_ui_layout_row(ui, 1, &w1, 0);
+        lt_snprintf(b, sizeof(b), "%s | cell [%s, %s] = %s | %d selected | range %g..%g%s", tab->title,
+                    xs, ys, vs, st->nsel, st->lo, st->hi, lt_tblview_is_dirty(&st->v) ? " | modified" : "");
+        if (st->live_ok) {
+            char l[80];
+            lt_snprintf(l, sizeof(l), " | live x=%g", st->live_x);
+            if (strlen(b) + strlen(l) < sizeof(b)) { strcat(b, l); }
+        }
+        lt_ui_label_ex(ui, b, th->text2, LT_UI_ALIGN_LEFT);
+        return;
+    }
+    lt_ui_layout_row(ui, 1, &w1, 26);
+    r = lt_ui_layout_next(ui);
+    lt_ui_draw_fill(ui, r, th->statusbar);
+    lt_ui_draw_hline(ui, r.x, r.x + r.w - 1, r.y, th->border_subtle);
+    x = r.x + 12;
+    lt_snprintf(b, sizeof(b), "[%s, %s]", xs, ys);
+    lt_vk_text(ui, lt_rect_make(x, r.y, 160, r.h), (int)LT_FONT_MONO, 11.0, b, th->text2, 0);
+    x += lt_vk_text_w(ui, (int)LT_FONT_MONO, 11.0, b) + 10;
+    lt_vk_text(ui, lt_rect_make(x, r.y, 90, r.h), (int)LT_FONT_MONO_MEDIUM, 12.0, vs, th->text, 0);
+    x += lt_vk_text_w(ui, (int)LT_FONT_MONO_MEDIUM, 12.0, vs) + 18;
+    lt_snprintf(b, sizeof(b), "%d selected", st->nsel);
+    lt_vk_text(ui, lt_rect_make(x, r.y, 120, r.h), (int)LT_FONT_SANS, 11.0, b, th->muted, 0);
+    x += lt_vk_text_w(ui, (int)LT_FONT_SANS, 11.0, b) + 18;
+    lt_snprintf(b, sizeof(b), "range %g .. %g", st->lo, st->hi);
+    lt_vk_text(ui, lt_rect_make(x, r.y, 200, r.h), (int)LT_FONT_SANS, 11.0, b, th->muted, 0);
+    if (st->live_ok) {
+        const char *ch = st->t->x_channel != NULL ? st->t->x_channel : "live";
+        lt_snprintf(b, sizeof(b), "%s = %g", ch, st->live_x);
+        lt_vk_text(ui, lt_rect_make(r.x + r.w - 220, r.y, 208, r.h), (int)LT_FONT_MONO, 11.0, b,
+                   th->cursor_live, 2);
+        lt_ui_draw_circle_fill(ui, (double)(r.x + r.w - 226), (double)(r.y + r.h / 2), 3.0, th->cursor_live);
     }
 }
 
@@ -716,7 +1119,6 @@ static void tbl_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
     lt_ui *ui = app->ui;
     const lt_theme *th = lt_ui_theme(ui);
     int w1 = -1, w2[2];
-    char b[200], xs[32], ys[32], vs[32];
     LT_UNUSED(r);
     if (st == NULL) {
         st = (tbl_tab *)lt_calloc(1, sizeof(*st));
@@ -736,15 +1138,16 @@ static void tbl_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
     if (!st->loaded) { return; }
     tbl_live(app, st);
     tbl_keys(app, tab, st);
+    tbl_header(app, tab, st);
     tbl_toolbar(app, tab, st);
     if (st->show3d && !lt_ui_cell_mode(ui)) {
         w2[0] = -3; w2[1] = -2;
-        lt_ui_layout_row(ui, 2, w2, -(lt_ui_row_height(ui) + 8));
+        lt_ui_layout_row(ui, 2, w2, -28);
     } else if (st->show3d) {
         w2[0] = -1; w2[1] = -1;
         lt_ui_layout_row(ui, 2, w2, -(lt_ui_row_height(ui) + 2));
     } else {
-        lt_ui_layout_row(ui, 1, &w1, -(lt_ui_row_height(ui) + 8));
+        lt_ui_layout_row(ui, 1, &w1, lt_ui_cell_mode(ui) ? -(lt_ui_row_height(ui) + 8) : -28);
     }
     tbl_grid(app, tab, st, 0);
     if (st->show3d) {
@@ -755,37 +1158,20 @@ static void tbl_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
         if (down && !st->prev_down && inside) { st->drag3d = 1; }
         if (!down) { st->drag3d = 0; }
         if (st->drag3d) {
-            st->yaw += (double)(m.x - st->lmx) * 0.01;
+            st->yaw -= (double)(m.x - st->lmx) * 0.01;
             st->pitch += (double)(m.y - st->lmy) * 0.01;
-            if (st->pitch < 0.05) { st->pitch = 0.05; }
-            if (st->pitch > 1.5) { st->pitch = 1.5; }
+            if (st->pitch < 0.08) { st->pitch = 0.08; }
+            if (st->pitch > 1.45) { st->pitch = 1.45; }
         }
         st->lmx = m.x; st->lmy = m.y; st->prev_down = down;
-        lt_ui_draw_box(ui, r3, th->table_bg, th->border, 0);
+        lt_ui_draw_box(ui, r3, th->table_bg, th->border_subtle, 0);
         if (lt_ui_cell_mode(ui)) {
             lt_ui_draw_text_in(ui, r3, "3D view needs pixel mode", th->muted, 1);
         } else {
             lt_ui_draw_custom(ui, r3, draw3d, st);
         }
     }
-    /* status line */
-    lt_ui_layout_row(ui, 1, &w1, 0);
-    {
-        int cr = st->cur_r, cc = st->cur_c, cols = (int)st->v.cols;
-        double cv = (cr >= 0 && cc >= 0 && (size_t)cr < st->v.rows && cc < cols)
-                        ? st->v.z[(size_t)cr * (size_t)cols + (size_t)cc] : 0.0;
-        lt_tabs_fmt(vs, sizeof(vs), cv, st->zdig);
-        lt_tabs_fmt(xs, sizeof(xs), st->v.x[cc < cols ? cc : 0], st->xdig);
-        lt_tabs_fmt(ys, sizeof(ys), st->v.y != NULL ? st->v.y[cr < (int)st->v.rows ? cr : 0] : 0.0, st->ydig);
-        lt_snprintf(b, sizeof(b), "%s | cell [%s, %s] = %s | %d selected | range %g..%g%s", tab->title,
-                    xs, ys, vs, st->nsel, st->lo, st->hi, lt_tblview_is_dirty(&st->v) ? " | modified" : "");
-        if (st->live_ok) {
-            char l[80];
-            lt_snprintf(l, sizeof(l), " | live x=%g%s", st->live_x, "");
-            if (strlen(b) + strlen(l) < sizeof(b)) { strcat(b, l); }
-        }
-        lt_ui_label_ex(ui, b, th->text2, LT_UI_ALIGN_LEFT);
-    }
+    tbl_status(app, tab, st);
     tbl_dialogs(app, tab, st);
 }
 

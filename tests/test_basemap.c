@@ -101,11 +101,11 @@ LT_TEST(spark_advance)
     s.chamber = LT_CH_SWIRL_MULTI_VALVE;
     LT_CHECK_NEAR(lt_engine_max_spark_advance(&s), 32.0, 1e-9);
     s.chamber = LT_CH_QUENCH_TWO_VALVE;
-    s.stroke = LT_STROKE_TWO;
+    s.engine_stroke = LT_STROKE_TWO;
     LT_CHECK_NEAR(lt_engine_max_spark_advance(&s), 28.0, 1e-9);
     s.has_octane = LT_TRUE; s.octane = 50.0; s.has_cr = LT_TRUE; s.compression_ratio = 20.0;
     LT_CHECK_NEAR(lt_engine_max_spark_advance(&s), 18.0, 1e-9); /* clamp low */
-    s.stroke = LT_STROKE_FOUR; s.octane = 130.0; s.compression_ratio = 5.0;
+    s.engine_stroke = LT_STROKE_FOUR; s.octane = 130.0; s.compression_ratio = 5.0;
     LT_CHECK_NEAR(lt_engine_max_spark_advance(&s), 42.0, 1e-9); /* clamp high */
 }
 

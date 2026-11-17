@@ -166,7 +166,7 @@ int  lt_snap_diff(const char *proj, const char *from, const char *to /*NULL=work
 int  lt_snap_restore(const char *proj, const char *id, int force); /* if !force and has_changes -> LT_EBUSY; copies files back byte-exact (binary mode, no EOL conversion); removes included files absent in snapshot */
 int  lt_snap_prune(const char *proj, size_t keep);
 ```
-Unique id: if collision, rehash with counter. Copy files in binary mode ("rb"/"wb") - critical for Windows/cosmopolitan. Test cases to port (from Rust tests): init+commit then has_changes false; modify a file then has_changes true; restore returns exact bytes (incl. CRLF content) and can be repeated; history lists commit messages newest first; format_commit_message("msg", Some("  note ")) == "msg\n\nLT-Note: note", with None/"  " -> "msg".
+Unique id: if collision, rehash with counter. Copy files in binary mode ("rb"/"wb") - critical for Windows. Test cases to port (from Rust tests): init+commit then has_changes false; modify a file then has_changes true; restore returns exact bytes (incl. CRLF content) and can be repeated; history lists commit messages newest first; format_commit_message("msg", Some("  note ")) == "msg\n\nLT-Note: note", with None/"  " -> "msg".
 
 ---
 ## 6. Calibration (sensor curves)

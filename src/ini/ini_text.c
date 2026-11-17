@@ -655,7 +655,7 @@ lt_bool lt_ini_parse_color(const char *s, lt_u32 *argb)
             ok = LT_TRUE;
         } else if (good && n == 4) {
             lt_u32 r = (v >> 8) & 0xF, g = (v >> 4) & 0xF, b = v & 0xF;
-            if (argb) *argb = 0xFF000000UL | (r * 17UL << 16) | (g * 17UL << 8) | (b * 17UL);
+            if (argb) *argb = (lt_u32)0xFF000000UL | (r * 17U << 16) | (g * 17U << 8) | (b * 17U);
             ok = LT_TRUE;
         }
     } else {

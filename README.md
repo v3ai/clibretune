@@ -7,25 +7,39 @@ This is a from-scratch rewrite in strictly portable C89 with no third-party depe
 
 ## Build
 
-Any C compiler (C89 or newer, tested with `-std=c89 -pedantic` and `-std=c2x`):
+Separate native builds per operating system; any C compiler (C89 or newer). Nothing to install
+beyond a compiler. The code follows the [Universal C](docs/UNIVERSAL_C.md) standard and builds
+warning-free with gcc and clang for `-std=c89` through `-std=c2x`.
 
-    ./build.sh app            # -> build/libretune
-    ./build.sh test           # all test programs
-    STRICT=1 ./build.sh app   # C89 pedantic, -Werror     (STRICT=23: C2x)
-    cc -O2 -Isrc -o libretune src/main.c $(find src -name '*.c' ! -path src/main.c) -lm
+| OS | Command | Output |
+|---|---|---|
+| Linux / BSD | `./build.sh app` | `build/libretune` (x11 window) |
+| macOS | `./build.sh app` | `build/libretune` (cocoa window; links Cocoa/CoreGraphics) |
+| Windows, MSVC | `build.bat` (from a Developer Command Prompt) | `build\libretune.exe` |
+| Windows, MinGW | `TARGET=windows CC=x86_64-w64-mingw32-gcc ./build.sh app` | `build/libretune.exe` |
 
-Single portable binary (Actually Portable Executable, runs on Linux/macOS/Windows/BSD):
+    ./build.sh test           # build and run all test programs
+    STRICT=1 ./build.sh test  # -std=c89 plus the full Universal C warning set, as errors
+    tools/check_universal.sh  # full portability gate: gcc+clang over c89..c2x, sanitizers, 32-bit,
+                              # big-endian (qemu), Windows (wine), cppcheck, name audit
 
-    ./build_cosmo.sh          # needs .toolchain/cosmocc -> build/libretune.com (~2.7 MB)
+`TARGET` is `linux`, `macos`, `windows` or `bsd` and is detected from `uname`; it selects the
+per-OS source files (`src/plat/<posix|win32>/`, `src/gui/os/<unix|macos|win32>/`) in
+`tools/target.sh`, never through `#ifdef`. See `docs/CONVENTIONS.md`. Prebuilt binaries for
+Linux (x86-64, ARM64), Windows and macOS (universal) are attached to each release.
 
 ## Running
 
     libretune [--backend NAME] [--demo] [--ini FILE] [--project DIR]
 
 - `--demo --ini tests/fixtures/ini/demo.ini` starts the simulated ECU, no hardware needed.
-- Backends (`LT_BACKEND` or `--backend`): `auto`, `x11`, `win32`, `web`, `tty`.
+- Backends (`LT_BACKEND` or `--backend`): `auto`, `x11` (Linux/BSD), `cocoa` (macOS), `win32` (Windows),
+  `web` and `tty` (everywhere). `x11`, `cocoa` and `win32` are native windows; `auto` picks them first.
   - `web` serves the UI on 127.0.0.1 and prints a tokenised URL (`LT_NO_BROWSER=1` to not open a browser).
   - `tty` renders in a terminal.
+  - `win32` (Windows) and `cocoa` (macOS) are the native window backends; `auto` picks them first on
+    their OS. On Windows `./build.sh app` (MinGW) or `build.bat` (MSVC) gives `build/libretune.exe`
+    (console subsystem; add `-mwindows` to `LDFLAGS` for a console-less release build).
 - Screenshot harness: `LT_SCREENSHOT=out.ppm [LT_SHOT_SIZE=WxH LT_SHOT_FRAMES=N LT_SHOT_OPEN=target LT_SHOT_CLICK=x,y LT_SHOT_THEME=..]`.
 
 ## Keyboard shortcuts
@@ -50,5 +64,8 @@ Ctrl+R/D fill, Ctrl+Z/Y undo/redo, `f` follow, `g` go to live cell. AutoTune: Sp
 ## License and credits
 
 GPL-2.0-or-later (see `LICENSE`). Based on the original LibreTune project
-(https://github.com/RallyPat/LibreTune). Bitmap text uses GNU Unifont (GPL-2.0-or-later with
-the font embedding exception); the vector font uses Hershey fonts data.
+(https://github.com/RallyPat/LibreTune). UI text is IBM Plex Sans / IBM Plex Mono
+(SIL OFL 1.1, `assets/fonts/OFL.txt`), rasterized by our own TrueType renderer (`src/gui/ttf.c`);
+icons are from Lucide (ISC, `assets/icons/LICENSE`). The 8x16 bitmap font used by the terminal
+backend is GNU Unifont-derived (GPL-2.0-or-later with the font embedding exception); the legacy
+vector font uses Hershey fonts data.

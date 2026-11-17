@@ -181,7 +181,7 @@ void   lt_player_apply_to_rt(const lt_player *p, const lt_ini *ini, lt_ini_rt *r
 typedef struct lt_dyno_point {
     double rpm;
     lt_bool has_hp, has_tq, has_afr, has_boost, has_time;
-    double hp, torque, afr, boost, time;
+    double hp, tq_val, afr, boost, time;
 } lt_dyno_point;
 typedef struct lt_dyno_run {
     char *name; char *source_file; char color[16];            /* default "#4fc3f7" */
@@ -199,7 +199,7 @@ int  lt_dyno_from_csv(const char *path, const char *name, lt_dyno_run *out);
 int  lt_dyno_csv_headers(const char *path, char ***headers, size_t *n);
 void lt_dyno_compute_peaks(lt_dyno_run *r);
 typedef struct lt_dyno_cell {
-    size_t row, col; lt_bool has_hp, has_tq, has_afr; double hp, torque, afr; size_t samples;
+    size_t row, col; lt_bool has_hp, has_tq, has_afr; double hp, tq_val, afr; size_t samples;
 } lt_dyno_cell;
 /* Project dyno points onto a (rpm x load) table grid: cells with data returned in row-major order. */
 size_t lt_dyno_map_to_table(const lt_dyno_run *r, const double *x_bins, size_t nx,
@@ -207,7 +207,7 @@ size_t lt_dyno_map_to_table(const lt_dyno_run *r, const double *x_bins, size_t n
                             lt_dyno_cell *out, size_t cap);
 typedef struct lt_dyno_cmp {
     double *hp_diff, *tq_diff; size_t n_hp, n_tq;             /* pairs (rpm, diff) flattened: 2*n doubles */
-    lt_bool has_total_hp, has_total_tq; double total_hp_change, total_tq_change;
+    lt_bool has_total_hp, has_total_tq; double hp_change_sum, tq_change_sum;
 } lt_dyno_cmp;
 int  lt_dyno_compare(const lt_dyno_run *a, const lt_dyno_run *b, lt_dyno_cmp *out);
 void lt_dyno_cmp_free(lt_dyno_cmp *c);

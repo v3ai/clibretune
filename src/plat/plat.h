@@ -1,14 +1,15 @@
-/* plat.h - OS abstraction. The ONLY module allowed to include OS headers.
+/* plat.h - OS abstraction: the universal interface to everything that C89
+ * cannot do (serial ports, sockets, directories, raw terminal, clocks).
  *
- * Implementations:
- *   plat_posix.c  - any POSIX.1-1990+ system (termios, BSD sockets, select,
- *                   opendir). Also used by Cosmopolitan builds on every OS
- *                   (cosmo's libc maps POSIX to NT on Windows), with
- *                   Windows-only bits (COM ports, GUI) handled via
- *                   runtime IsWindows() checks under __COSMOPOLITAN__.
- *   plat_win32.c  - native Win32 builds (MSVC/MinGW, _WIN32 && !__COSMOPOLITAN__).
- * Exactly one is compiled into a given build (guarded by #if inside each).
+ * The interface is universal; the implementations are per-platform files
+ * chosen by the BUILD SYSTEM (tools/target.sh), never by #ifdef:
+ *   src/plat/plat_common.c   universal parts shared by every platform
+ *   src/plat/posix/          Linux / BSD / macOS (termios, BSD sockets, select)
+ *     os_linux.c os_bsd.c os_macos.c  - exactly one is built (OS identity,
+ *                                       config dirs, exe path, device names)
+ *   src/plat/win32/          Windows (Win32 serial, winsock, console)
  * Single-threaded design: everything is polled with timeouts.
+ * See docs/UNIVERSAL_C.md section 11.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 #ifndef LT_PLAT_H
@@ -16,7 +17,9 @@
 
 #include "../lt.h"
 
-/* ---- OS identity (runtime; a Cosmopolitan binary answers per host) ---- */
+LT_BEGIN_DECLS
+
+/* ---- OS identity (fixed per build) ---- */
 typedef enum lt_os { LT_OS_UNIX = 0, LT_OS_LINUX, LT_OS_MACOS, LT_OS_BSD, LT_OS_WINDOWS } lt_os;
 lt_os lt_plat_os(void);
 const char *lt_plat_os_name(void);
@@ -45,6 +48,13 @@ char *lt_plat_config_dir(void);
 /* user documents dir for projects (e.g. ~/LibreTune Projects); malloc'd */
 char *lt_plat_projects_dir(void);
 char *lt_plat_getenv(const char *name);    /* malloc'd copy or NULL */
+/* set an environment variable for this process (value copied); 0 ok */
+int   lt_plat_setenv(const char *name, const char *value);
+/* user home directory (never NULL; falls back to "."); malloc'd */
+char *lt_plat_home_dir(void);
+/* fill buf with n bytes from the operating system's secure random source
+ * (/dev/urandom, RtlGenRandom); 0 ok, -1 if unavailable */
+int   lt_plat_random(void *buf, size_t n);
 /* path to the running executable or NULL */
 char *lt_plat_exe_path(void);
 
@@ -101,5 +111,7 @@ lt_bool lt_term_resized(void);  /* SIGWINCH latch; clears on read */
 /* ---- misc ---- */
 /* open URL in the default browser (xdg-open / open / start). 0 ok */
 int  lt_plat_open_url(const char *url);
+
+LT_END_DECLS
 
 #endif /* LT_PLAT_H */

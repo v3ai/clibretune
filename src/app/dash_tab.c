@@ -9,6 +9,7 @@
 #include "app.h"
 #include "../plat/plat.h"
 #include "dash_gauges.h"
+#include "view_kit.h"
 #include "../dash/dash_priv.h"
 
 #define FD_OPEN_DASH (LT_APP_FD_USER0 + 40)
@@ -384,15 +385,22 @@ static int hit_handle(const lt_rect *c, int x, int y)
     return x >= c->x + c->w - 14 && y >= c->y + c->h - 14;
 }
 
-static void toolbar(lt_app *app, dash_state *st)
+enum { DT_OPEN, DT_DESIGN, DT_ADDG, DT_ADDI, DT_DEL, DT_SAVE, DT_SAVEAS };
+
+static void dt_item(lt_vk_item *it, int kind, int icon, const char *label, const char *tip)
+{
+    memset(it, 0, sizeof(*it));
+    it->kind = kind; it->icon = icon; it->label = label; it->tip = tip;
+}
+
+static void dash_toolbar(lt_app *app, dash_state *st)
 {
     lt_ui *ui = app->ui;
-    int w[9], n = 0, want_as = 0;
-    int src = st->src;
-    int d = st->designer;
-    w[n++] = 190; w[n++] = 120; w[n++] = 120;
-    if (st->designer) { w[n++] = 110; w[n++] = 120; w[n++] = 80; w[n++] = 70; w[n++] = 70; w[n++] = 70; }
-    lt_ui_layout_row(ui, n, w, 0);
+    int w2[2], want_as = 0, src = st->src, hit, n = 0, ids[12];
+    lt_vk_item it[12];
+    lt_rect rr;
+    w2[0] = 190; w2[1] = -1;
+    lt_ui_layout_row(ui, 2, w2, lt_ui_cell_mode(ui) ? 0 : 32);
     if (lt_ui_combo(ui, "dash_src", &src, src_names, N_SRC) && src != st->src) {
         if (src == SRC_FILE) {
             char *dir = dashboards_dir(app);
@@ -400,28 +408,49 @@ static void toolbar(lt_app *app, dash_state *st)
             lt_free(dir);
         } else { load_source(app, st, src); }
     }
-    if (lt_ui_button(ui, "Open .dash...")) {
-        char *dir = dashboards_dir(app);
-        lt_app_file_dialog(app, FD_OPEN_DASH, LT_UI_FILE_OPEN, dir, "", "Dashboards|*.dash|All files|*");
-        lt_free(dir);
-    }
-    if (lt_ui_toggle(ui, "Designer", &d)) { st->designer = d; if (!d) { st->sel = -1; st->mode = M_NONE; } }
+    rr = lt_ui_layout_next(ui);
+    dt_item(&it[n], LT_VK_BTN, LT_ICON_FOLDER_OPEN, "Open .dash...", "Open a dashboard file"); ids[n++] = DT_OPEN;
+    dt_item(&it[n], LT_VK_BTN, LT_ICON_PENCIL, "Designer", "Edit the layout: drag, resize, add and remove gauges");
+    it[n].on = st->designer; ids[n++] = DT_DESIGN;
     if (st->designer) {
-        if (lt_ui_button(ui, "Add gauge")) { add_gauge(app, st, 0.5, 0.5, LT_GP_ANALOG); }
-        if (lt_ui_button(ui, "Add indicator")) { add_indicator(app, st, 0.5, 0.5); }
-        if (lt_ui_button(ui, "Delete")) { remove_comp(st, st->sel); }
-        if (lt_ui_button(ui, "Save")) {
+        dt_item(&it[n], LT_VK_SEP, 0, NULL, NULL); ids[n++] = -1;
+        dt_item(&it[n], LT_VK_BTN, LT_ICON_GAUGE, "Add gauge", "Add a gauge"); ids[n++] = DT_ADDG;
+        dt_item(&it[n], LT_VK_BTN, LT_ICON_CIRCLE_DOT, "Add indicator", "Add an indicator"); ids[n++] = DT_ADDI;
+        dt_item(&it[n], LT_VK_BTN, LT_ICON_TRASH_2, "Delete", "Delete the selected component"); ids[n++] = DT_DEL;
+        dt_item(&it[n], LT_VK_SEP, 0, NULL, NULL); ids[n++] = -1;
+        dt_item(&it[n], LT_VK_BTN, LT_ICON_SAVE, "Save", "Save the dashboard"); ids[n++] = DT_SAVE;
+        dt_item(&it[n], LT_VK_BTN, LT_ICON_FILE_DOWN, "Save as...", "Save under a new name"); ids[n++] = DT_SAVEAS;
+    }
+    dt_item(&it[n], LT_VK_END, 0, NULL, NULL);
+    hit = lt_vk_toolbar_in(ui, it, rr);
+    if (hit >= 0) {
+        switch (ids[hit]) {
+        case DT_OPEN: {
+            char *dir = dashboards_dir(app);
+            lt_app_file_dialog(app, FD_OPEN_DASH, LT_UI_FILE_OPEN, dir, "", "Dashboards|*.dash|All files|*");
+            lt_free(dir);
+            break; }
+        case DT_DESIGN:
+            st->designer = !st->designer;
+            if (!st->designer) { st->sel = -1; st->mode = M_NONE; }
+            break;
+        case DT_ADDG: add_gauge(app, st, 0.5, 0.5, LT_GP_ANALOG); break;
+        case DT_ADDI: add_indicator(app, st, 0.5, 0.5); break;
+        case DT_DEL: remove_comp(st, st->sel); break;
+        case DT_SAVE:
             if (st->path[0]) {
                 if (lt_dash_save(st->file, st->path) == 0) { st->dirty = 0; lt_app_toast(app, 1, "Saved %s", lt_path_base(st->path)); }
                 else { lt_app_toast(app, 3, "Save failed: %s", lt_err_get()); }
             } else { want_as = 1; }
+            break;
+        case DT_SAVEAS: want_as = 1; break;
+        default: break;
         }
-        if (lt_ui_button(ui, "Save as...") || want_as) {
-            char *dir = dashboards_dir(app);
-            lt_app_file_dialog(app, FD_SAVE_DASH, LT_UI_FILE_SAVE, dir, "dashboard.dash", "Dashboards|*.dash|All files|*");
-            lt_free(dir);
-        }
-        lt_ui_label_ex(ui, st->dirty ? "modified" : "", lt_ui_theme(ui)->warning, LT_UI_ALIGN_LEFT);
+    }
+    if (want_as) {
+        char *dir = dashboards_dir(app);
+        lt_app_file_dialog(app, FD_SAVE_DASH, LT_UI_FILE_SAVE, dir, "dashboard.dash", "Dashboards|*.dash|All files|*");
+        lt_free(dir);
     }
 }
 
@@ -479,7 +508,7 @@ static void dash_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
         st->rebuild = 0;
     }
 
-    toolbar(app, st);
+    dash_toolbar(app, st);
     area = lt_rect_make(r.x, lt_ui_layout_body(ui).y, r.w, 0);
     {
         lt_rect lr = lt_ui_last_rect(ui);

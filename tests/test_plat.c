@@ -1,18 +1,5 @@
-/* test_plat.c - tests for src/plat. Uses POSIX pty only when available. */
-#if !defined(_WIN32) || defined(__COSMOPOLITAN__)
-#ifndef _XOPEN_SOURCE
-#define _XOPEN_SOURCE 600
-#endif
-#ifndef _POSIX_C_SOURCE
-#define _POSIX_C_SOURCE 200112L
-#endif
-#define LT_TEST_HAVE_PTY 1
-#include <stdlib.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <termios.h>
-#endif
-
+/* test_plat.c - tests for src/plat (portable parts; the POSIX pty serial
+ * test lives in tests/os/posix/test_plat_pty.c). */
 #include "lt_test.h"
 #include "../src/plat/plat.h"
 #include <stdlib.h>
@@ -121,42 +108,6 @@ LT_TEST(test_tcp_echo)
     LT_CHECK(lt_tcp_connect("127.0.0.1", port, 500) == NULL);
 }
 
-#ifdef LT_TEST_HAVE_PTY
-LT_TEST(test_serial_pty)
-{
-#if defined(__linux__) || defined(__APPLE__) || defined(__FreeBSD__)
-    int m = posix_openpt(O_RDWR | O_NOCTTY);
-    char *name;
-    lt_stream *s;
-    char buf[16];
-    if (m < 0) return;
-    if (grantpt(m) != 0 || unlockpt(m) != 0 || (name = ptsname(m)) == NULL) {
-        close(m);
-        return;
-    }
-    s = lt_serial_open(name, 115200);
-    LT_CHECK(s != NULL);
-    if (s != NULL) {
-        LT_CHECK(lt_serial_set_baud(s, 9600) == 0);
-        LT_CHECK(lt_serial_set_baud(s, 115200) == 0);
-        LT_CHECK(lt_serial_set_baud(s, 12345) < 0);
-        LT_CHECK(write(m, "\x01\r\n\xff", 4) == 4);
-        LT_CHECK(lt_stream_read_full(s, buf, 4, 1000) == 4);
-        LT_CHECK(memcmp(buf, "\x01\r\n\xff", 4) == 0);
-        LT_CHECK(lt_stream_write(s, "ab\n", 3) == 3);
-        {
-            int got = 0, r;
-            while (got < 3 && (r = (int)read(m, buf + got, (size_t)(3 - got))) > 0) got += r;
-            LT_CHECK(got == 3 && memcmp(buf, "ab\n", 3) == 0);
-        }
-        LT_CHECK(lt_stream_read(s, buf, 4, 0) == 0);
-        lt_stream_close(s);
-    }
-    close(m);
-#endif
-}
-#endif
-
 LT_TEST(test_serial_list)
 {
     char **names = NULL;
@@ -178,9 +129,6 @@ int main(void)
     LT_RUN(test_fs);
     LT_RUN(test_dirs);
     LT_RUN(test_tcp_echo);
-#ifdef LT_TEST_HAVE_PTY
-    LT_RUN(test_serial_pty);
-#endif
     LT_RUN(test_serial_list);
     lt_plat_remove(tmp_root);
     LT_TEST_MAIN_END

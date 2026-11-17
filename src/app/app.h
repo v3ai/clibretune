@@ -115,7 +115,7 @@ struct lt_app {
     lt_app_conn conn;
     lt_ecusim  *sim;                 /* demo mode */
     lt_proto   *proto;
-    lt_stream  *stream;
+    lt_stream  *link_stream;
     lt_ecu_mem *mem;                 /* ECU shadow (online/demo) */
     lt_ini_rt  *rt;                  /* latest realtime values (NULL w/o ini) */
     lt_varenv   varenv;              /* expression env: ini + pages + rt + pcvars */
@@ -147,6 +147,8 @@ struct lt_app {
     int         about_open, burn_open, quit_open, shortcuts_open, close_proj_open;
     int         confirm_delete;      /* recent index awaiting a second click, -1 */
     int         theme_idx;
+    int         settings_tab;        /* active tab of the Settings dialog */
+    int         tree_expanded;       /* sidebar expand/collapse-all toggle */
     int         fd_ready;            /* purpose of a finished user file dialog, path in fd.path */
     char        title[160];
 };

@@ -598,7 +598,7 @@ LT_TEST(fuzz_mutations)
 
 LT_TEST(fuzz_random_bytes)
 {
-    char buf[200];
+    char buf[200] = {0};
     int iter, i;
     for (iter = 0; iter < 3000; iter++) {
         size_t len = rnd() % sizeof buf;

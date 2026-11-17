@@ -44,7 +44,7 @@ LT_TEST(envelope_roundtrip_be)
     LT_CHECK(lt_env_decode(LT_ENV_BIG, LT_FALSE, bytes_of(&f), f.len, &pl, &pn, &used) == 0);
     LT_CHECK(pn == 1 && pl[0] == 0x51 && used == 7);
     /* flipped byte -> error */
-    bytes_of(&f)[2] ^= 0x01;
+    { lt_u8 *fb = bytes_of(&f); fb[2] ^= 0x01; }
     LT_CHECK(lt_env_decode(LT_ENV_BIG, LT_FALSE, bytes_of(&f), f.len, &pl, &pn, &used) ==
              LT_ECRC);
     LT_CHECK(strstr(lt_err_get(), "CRC mismatch: expected 0x") != NULL);

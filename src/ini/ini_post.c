@@ -106,7 +106,7 @@ void ini_free_dialog(lt_ini_dialog *d)
 {
     size_t i;
     if (!d) return;
-    fr(d->name); fr(d->title); fr(d->layout_hint); fr(d->topic_help);
+    fr(d->name); fr(d->title); fr(d->layout_hint); fr(d->help_topic);
     for (i = 0; i < d->n_comps; i++) free_comp(&d->comps[i]);
     if (d->comps) lt_free(d->comps);
     lt_free(d);
@@ -149,11 +149,20 @@ void ini_free_gauge(lt_ini_gauge *g)
     lt_free(g);
 }
 
+/* void * adapters for ini_put() free callbacks */
+void ini_freev_const(void *p) { ini_free_const((lt_ini_const *)p); }
+void ini_freev_channel(void *p) { ini_free_channel((lt_ini_channel *)p); }
+void ini_freev_table(void *p) { ini_free_table((lt_ini_table *)p); }
+void ini_freev_curve(void *p) { ini_free_curve((lt_ini_curve *)p); }
+void ini_freev_dialog(void *p) { ini_free_dialog((lt_ini_dialog *)p); }
+void ini_freev_cmd(void *p) { ini_free_cmd((lt_ini_cmd *)p); }
+void ini_freev_gauge(void *p) { ini_free_gauge((lt_ini_gauge *)p); }
+
 void ini_free_ref_table(lt_ini_ref_table *t)
 {
     size_t i;
     if (!t) return;
-    fr(t->name); fr(t->label); fr(t->topic_help); fr(t->solutions_label);
+    fr(t->name); fr(t->label); fr(t->help_topic); fr(t->solutions_label);
     for (i = 0; i < t->n_idents; i++) fr(t->idents[i].label);
     if (t->idents) lt_free(t->idents);
     for (i = 0; i < t->n_generators; i++) {

@@ -121,6 +121,25 @@ static lt_bool parse_bool(const char *s, int *out)
     return LT_FALSE;
 }
 
+/* typed field access through memcpy (no misaligned/aliasing casts) */
+static void put_str_at(char *base, size_t off, const char *v)
+{
+    char *cur;
+    memcpy(&cur, base + off, sizeof cur);
+    dash_set_str(&cur, v);
+    memcpy(base + off, &cur, sizeof cur);
+}
+
+static void put_dbl_at(char *base, size_t off, double v)
+{
+    memcpy(base + off, &v, sizeof v);
+}
+
+static void put_int_at(char *base, size_t off, int v)
+{
+    memcpy(base + off, &v, sizeof v);
+}
+
 /* returns 1 when `name` is in the table (value applied) */
 static int apply_prop(void *obj, const dash_prop *tbl, size_t n, const char *name, const char *val)
 {
@@ -131,36 +150,36 @@ static int apply_prop(void *obj, const dash_prop *tbl, size_t n, const char *nam
         if (strcmp(p->name, name) != 0) continue;
         switch (p->kind) {
         case K_STR:
-            dash_set_str((char **)(base + p->off), val);
+            put_str_at(base, p->off, val);
             break;
         case K_OSTR:
-            dash_set_str((char **)(base + p->off), val[0] ? val : NULL);
+            put_str_at(base, p->off, val[0] ? val : NULL);
             break;
         case K_ONULL:
-            dash_set_str((char **)(base + p->off), (val[0] && strcmp(val, "null") != 0) ? val : NULL);
+            put_str_at(base, p->off, (val[0] && strcmp(val, "null") != 0) ? val : NULL);
             break;
         case K_DBL: {
             double d;
-            *(double *)(base + p->off) = lt_parse_double(val, &d) ? d : p->dflt;
+            put_dbl_at(base, p->off, lt_parse_double(val, &d) ? d : p->dflt);
             break;
         }
         case K_INT: {
             long l;
-            *(int *)(base + p->off) = dash_parse_i32(val, &l) ? (int)l : (int)p->dflt;
+            put_int_at(base, p->off, dash_parse_i32(val, &l) ? (int)l : (int)p->dflt);
             break;
         }
         case K_BOOL: {
             int b;
-            *(int *)(base + p->off) = parse_bool(val, &b) ? b : (int)p->dflt;
+            put_int_at(base, p->off, parse_bool(val, &b) ? b : (int)p->dflt);
             break;
         }
         case K_ODBL: {
             double d;
             if (lt_parse_double(val, &d)) {
-                *(double *)(base + p->off) = d;
-                *(int *)(base + p->off2) = 1;
+                put_dbl_at(base, p->off, d);
+                put_int_at(base, p->off2, 1);
             } else {
-                *(int *)(base + p->off2) = 0;
+                put_int_at(base, p->off2, 0);
             }
             break;
         }

@@ -5,7 +5,6 @@
  *                       the expected input events have arrived.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
-#define _XOPEN_SOURCE 600
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -17,14 +16,13 @@
 #define CH 100
 
 static lt_rect r0 = { 0, 0, CW, CH };
-static char putenv_buf[] = "LT_NO_BROWSER=1";
 
 static void fill_canvas(lt_canvas *c)
 {
     int x, y;
     c->w = CW;
     c->h = CH;
-    c->stride = CW;
+    c->pitch = CW;
     c->px = (lt_u32 *)lt_calloc((size_t)(CW * CH), sizeof(lt_u32));
     for (y = 0; y < CH; y++)
         for (x = 0; x < CW; x++) {
@@ -85,7 +83,7 @@ LT_TEST(offline)
 
     /* find the port by trying the backend; token comes from stderr print, so
      * instead read it from the page by cookie-less 403 / token-less checks */
-    putenv(putenv_buf);
+    lt_plat_setenv("LT_NO_BROWSER", "1");
     probe = lt_server_listen(18700);
     sock = probe != NULL;
     if (probe != NULL) lt_server_close(probe);
@@ -130,7 +128,7 @@ static int serve(int port)
     double t0;
 
     LT_UNUSED(got);
-    putenv(putenv_buf);
+    lt_plat_setenv("LT_NO_BROWSER", "1");
     b = lt_backend_web_create(port);
     if (b == NULL || b->open(b, "Serve Title", 640, 480) != 0) return 2;
     fill_canvas(&c);

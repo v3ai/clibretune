@@ -15,21 +15,6 @@ static int cp_count(const char *s)
     return n;
 }
 
-static int byte_of_cp(const char *s, int cp)
-{
-    const char *p = s;
-    while (cp > 0 && *p) { lt_utf8_next(&p); cp--; }
-    return (int)(p - s);
-}
-
-static int cp_of_byte(const char *s, int byte)
-{
-    int n = 0;
-    const char *p = s;
-    while ((int)(p - s) < byte && *p) { lt_utf8_next(&p); n++; }
-    return n;
-}
-
 static int prev_char(const char *s, int pos)
 {
     if (pos <= 0) { return 0; }
@@ -170,12 +155,18 @@ static void select_word(ui_edit *e)
 static int cursor_from_mouse(lt_ui *ui, lt_rect r, int px)
 {
     ui_edit *e = &ui->edit;
-    int cw = 8 * (ui->cell ? 1 : ui->scale);
-    int n = cp_count(e->buf);
-    int cp = (px - (r.x + ui->theme.pad_x - e->scroll) + cw / 2) / cw;
-    if (px < r.x + ui->theme.pad_x - e->scroll) { cp = 0; }
-    cp = LT_CLAMP(cp, 0, n);
-    return byte_of_cp(e->buf, cp);
+    int x0 = r.x + ui->theme.pad_x - e->scroll;
+    int best = 0, bestd = 1 << 30, pos = 0;
+    const char *p = e->buf;
+    if (px <= x0) { return 0; }
+    for (;;) {
+        int d = abs(px - (x0 + ui_prefix_w(ui, e->buf, pos)));
+        if (d < bestd) { bestd = d; best = pos; }
+        if (*p == '\0') { break; }
+        lt_utf8_next(&p);
+        pos = (int)(p - e->buf);
+    }
+    return best;
 }
 
 /* process queued keyboard events for the active edit; returns flags */
@@ -314,7 +305,7 @@ int ui_edit_widget(lt_ui *ui, lt_u32 id, lt_rect r, char *buf, size_t cap, int f
 {
     const lt_theme *t = &ui->theme;
     ui_edit *e = &ui->edit;
-    int res = 0, ir, focused, cw = 8 * (ui->cell ? 1 : ui->scale);
+    int res = 0, ir, focused;
     int padx = t->pad_x;
     lt_rect inner;
     int caret_on;
@@ -364,7 +355,7 @@ int ui_edit_widget(lt_ui *ui, lt_u32 id, lt_rect r, char *buf, size_t cap, int f
     bg = ui->disabled ? t->surface : t->input;
     border = focused ? t->focus : ((ir & UI_HOVER) ? t->border_strong : t->border);
     if (ui->cell && focused) { bg = lt_color_mix(t->input, t->primary, 70); }
-    if (draw_box) { lt_ui_draw_box(ui, r, bg, border, t->radius); }
+    if (draw_box) { ui_field_box(ui, r, bg, border, focused && ui->kbd_nav); }
     inner = lt_rect_make(r.x + padx - (ui->cell ? 0 : 2), r.y, r.w - 2 * padx + (ui->cell ? 0 : 4), r.h);
     if (flags & LT_UI_TEXT_PASSWORD) {
         size_t i, n = (size_t)cp_count(buf);
@@ -380,8 +371,9 @@ int ui_edit_widget(lt_ui *ui, lt_u32 id, lt_rect r, char *buf, size_t cap, int f
         int scroll = (focused && e->id == id) ? e->scroll : 0;
         if (ui->cell) { dy = (dy / 16) * 16; }
         if (focused && e->id == id) {
-            int cx = cp_of_byte(show, e->cursor) * cw;
+            int cx = ui_prefix_w(ui, show, e->cursor);
             int vis = r.w - 2 * padx;
+            int cw = ui->cell ? 8 : 2 * ui->scale;
             if (cx - scroll > vis - cw) { scroll = cx - vis + cw; }
             if (cx - scroll < 0) { scroll = cx; }
             if (scroll < 0) { scroll = 0; }
@@ -390,8 +382,8 @@ int ui_edit_widget(lt_ui *ui, lt_u32 id, lt_rect r, char *buf, size_t cap, int f
         tx = r.x + padx - scroll;
         ty = r.y + dy;
         if (focused && e->id == id && sel_hi(e) > sel_lo(e)) {
-            int a = cp_of_byte(show, sel_lo(e)) * cw, b = cp_of_byte(show, sel_hi(e)) * cw;
-            lt_ui_draw_fill(ui, lt_rect_make(tx + a, ty - (ui->cell ? 0 : 1), b - a, th + (ui->cell ? 0 : 2)),
+            int a = ui_prefix_w(ui, show, sel_lo(e)), b = ui_prefix_w(ui, show, sel_hi(e));
+            lt_ui_draw_fill(ui, lt_rect_make(tx + a, ty + (ui->cell ? 0 : 1), b - a, th - (ui->cell ? 0 : 2)),
                             ui->cell ? t->primary_active : t->selected);
         }
         lt_ui_draw_text(ui, tx, ty, show, ui->disabled ? t->disabled : t->text);
@@ -401,7 +393,7 @@ int ui_edit_widget(lt_ui *ui, lt_u32 id, lt_rect r, char *buf, size_t cap, int f
             caret_on = ph < 530.0;
             ui_animate(ui, (int)(caret_on ? 530.0 - ph : 1000.0 - ph) + 1);
             if (caret_on && sel_hi(e) == sel_lo(e)) {
-                int cx = tx + cp_of_byte(show, e->cursor) * cw;
+                int cx = tx + ui_prefix_w(ui, show, e->cursor);
                 if (ui->cell) {
                     char ch[8];
                     const char *p = show + e->cursor;
@@ -416,7 +408,10 @@ int ui_edit_widget(lt_ui *ui, lt_u32 id, lt_rect r, char *buf, size_t cap, int f
                         lt_ui_draw_text(ui, cx, ty, ch, t->input);
                     }
                 } else {
-                    lt_ui_draw_fill(ui, lt_rect_make(cx, ty, 1 * ui->scale, th), t->text);
+                    {
+                    int cph = ui_font_px(ui, 0) * 5 / 4 + 1;
+                    lt_ui_draw_fill(ui, lt_rect_make(cx, ty + (th - cph) / 2, ui->scale, cph), t->text);
+                }
                 }
             }
         }

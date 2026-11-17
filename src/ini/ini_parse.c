@@ -56,7 +56,7 @@ void *ini_put(void ***arr, size_t *n, lt_map *idx, const char *name, void *elem,
     return elem;
 }
 
-static void strlist_free(ini_strlist *l)
+static void lt_slist_free(ini_strlist *l)
 {
     if (!l) return;
     ini_strv_free(l->v, l->n);
@@ -477,7 +477,7 @@ static void add_constant(lt_ini *ini, lt_ini_const *c)
 {
     lt_ini_const *old = (lt_ini_const *)lt_map_get(&ini->constant_idx, c->name);
     ini_put((void ***)&ini->constants, &ini->n_constants, &ini->constant_idx, c->name, c,
-            (void (*)(void *))ini_free_const);
+            ini_freev_const);
     (void)old;
 }
 
@@ -851,7 +851,7 @@ static void add_channel(lt_ini *ini, lt_ini_channel *ch)
         ch->ast = lt_expr_compile(ch->expression, err, sizeof err);
     }
     ini_put((void ***)&ini->channels, &ini->n_channels, &ini->channel_idx, ch->name, ch,
-            (void (*)(void *))ini_free_channel);
+            ini_freev_channel);
 }
 
 static void handle_outch(lt_ini *ini, const char *key, const char *value)
@@ -919,10 +919,10 @@ static void do_define(ini_ctx *cx, const char *rest)
     ini_strv_free(parts, n);
     if (name[0] && l->n > 0) {
         ini_strlist *old = (ini_strlist *)lt_map_get(&cx->defines, name);
-        if (old) strlist_free(old);
+        if (old) lt_slist_free(old);
         lt_map_put(&cx->defines, name, l);
     } else {
-        strlist_free(l);
+        lt_slist_free(l);
     }
     lt_free(name);
     lt_free(vals);

@@ -35,7 +35,7 @@ static void fill_pattern(const lt_ini *ini, lt_tune *t)
         }
         if (c->type == LT_DT_BITS) {
             int sz = c->bit_size < 0 ? 8 : c->bit_size;
-            lt_u32 mask = sz >= 32 ? LT_U32_MASK : ((1UL << sz) - 1UL);
+            lt_u32 mask = sz >= 32 ? LT_U32_MASK : (lt_u32)((1UL << sz) - 1UL);
             lt_ini_const_set_raw(ini, c, &ps, 0, (double)((i * 7 + 1) & mask));
             continue;
         }
@@ -401,7 +401,7 @@ LT_TEST(apply_short_array_and_bad_values)
 }
 
 /* ---- varenv ---- */
-static const char *ENV_INI =
+static const char *TUNE_ENV_INI =
     "[MegaTune]\n signature = \"env\"\n[Constants]\n pageSize = 32\n page = 1\n"
     " mode = bits, U08, 0, [0:1], \"SD\", \"AlphaN\", \"MAF\"\n"
     " gain = scalar, U08, 1, \"x\", 0.5, 0.0, 0, 100, 1\n"
@@ -415,7 +415,7 @@ static const char *ENV_INI =
 
 LT_TEST(varenv_layers)
 {
-    lt_ini *ini = lt_ini_load_string(ENV_INI, strlen(ENV_INI), NULL, NULL);
+    lt_ini *ini = lt_ini_load_string(TUNE_ENV_INI, strlen(TUNE_ENV_INI), NULL, NULL);
     lt_tune *t, *pc;
     lt_pagesrc ps;
     lt_varenv env;

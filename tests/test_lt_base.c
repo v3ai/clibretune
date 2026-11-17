@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <float.h>
+#include <limits.h>
 #include "lt.h"
 #include "lt_test.h"
 
@@ -29,7 +30,7 @@ LT_TEST(fmt_ints)
     LT_CHECK_STR(out, "-123456789 3000000000 deadbeef");
     lt_snprintf(out, sizeof out, "%ld", LONG_MIN);
     LT_CHECK(strncmp(out, "-", 1) == 0 && strlen(out) >= 11);
-    lt_snprintf(out, sizeof out, "%zu", (size_t)12345);
+    lt_snprintf(out, sizeof out, "%lu", (unsigned long)(size_t)12345);
     LT_CHECK_STR(out, "12345");
     lt_snprintf(out, sizeof out, "[%*d][%-*d][%.*d]", 6, 1, 6, 2, 3, 4);
     LT_CHECK_STR(out, "[     1][2     ][004]");
@@ -458,7 +459,7 @@ LT_TEST(map_icase)
 LT_TEST(map_growth)
 {
     lt_map m;
-    static int vals[10000];
+    int *vals = (int *)lt_malloc(10000 * sizeof(int));
     char key[32];
     int i, found = 0;
     size_t used = 0, s;
@@ -481,6 +482,7 @@ LT_TEST(map_growth)
     }
     LT_CHECK_INT(used, 10000);
     lt_map_free(&m);
+    lt_free(vals);
     LT_CHECK(m.slots == NULL && m.len == 0);
 }
 
@@ -635,8 +637,97 @@ LT_TEST(memory)
     lt_free(p);
 }
 
+LT_TEST(portability_types)
+{
+    LT_CHECK(sizeof(lt_u8) == 1 && sizeof(lt_u16) == 2 && sizeof(lt_u32) == 4);
+    LT_CHECK((lt_u32)0xFFFFFFFFUL + 1u == 0u);
+    LT_CHECK(LT_TRUE == 1 && LT_FALSE == 0);
+    LT_CHECK(LT_COUNTOF(out) == 1024);
+    LT_CHECK(LT_STDC >= 198900L);
+#if LT_HAS_64
+    {
+        lt_u64 big = LT_U64_C(0xFFFFFFFFFFFFFFFF);
+        char dec[24];
+        LT_CHECK(sizeof(lt_u64) == 8 && big + 1u == 0u);
+        LT_CHECK_STR(lt_u64_to_dec(dec, big), "18446744073709551615");
+        LT_CHECK_STR(lt_u64_to_dec(dec, 0u), "0");
+    }
+#endif
+}
+
+LT_TEST(checked_arith)
+{
+    int r = 0;
+    size_t sz = 0;
+    LT_CHECK(lt_add_int(2, 3, &r) && r == 5);
+    LT_CHECK(lt_add_int(INT_MAX, 0, &r) && r == INT_MAX);
+    LT_CHECK(!lt_add_int(INT_MAX, 1, &r) && r == INT_MAX);
+    LT_CHECK(!lt_add_int(INT_MIN, -1, &r));
+    LT_CHECK(lt_add_int(INT_MIN, INT_MAX, &r) && r == -1);
+    LT_CHECK(lt_mul_int(-4, 5, &r) && r == -20);
+    LT_CHECK(lt_mul_int(0, INT_MIN, &r) && r == 0);
+    LT_CHECK(!lt_mul_int(INT_MAX, 2, &r));
+    LT_CHECK(!lt_mul_int(INT_MIN, -1, &r));
+    LT_CHECK(!lt_mul_int(-1, INT_MIN, &r));
+    LT_CHECK(lt_mul_int(-1, INT_MAX, &r) && r == -INT_MAX);
+    LT_CHECK(!lt_mul_int(INT_MIN, 2, &r));
+    LT_CHECK(lt_mul_size(1000u, 1000u, &sz) && sz == 1000000u);
+    LT_CHECK(lt_mul_size(0u, LT_SIZE_MAX, &sz) && sz == 0u);
+    LT_CHECK(!lt_mul_size(LT_SIZE_MAX, 2u, &sz));
+    LT_CHECK(lt_add_size(1u, 2u, &sz) && sz == 3u);
+    LT_CHECK(!lt_add_size(LT_SIZE_MAX, 1u, &sz));
+}
+
+LT_TEST(u32_serialization)
+{
+    lt_u8 b[4];
+    lt_store_u32le(b, 0x89ABCDEFUL);
+    LT_CHECK(b[0] == 0xEF && b[1] == 0xCD && b[2] == 0xAB && b[3] == 0x89);
+    LT_CHECK(lt_load_u32le(b) == 0x89ABCDEFUL);
+    lt_store_u32be(b, 0x89ABCDEFUL);
+    LT_CHECK(b[0] == 0x89 && b[1] == 0xAB && b[2] == 0xCD && b[3] == 0xEF);
+    LT_CHECK(lt_load_u32be(b) == 0x89ABCDEFUL);
+    LT_CHECK(lt_rotl32(0x80000001UL, 1) == 3UL);
+    LT_CHECK(lt_rotl32(0x12345678UL, 0) == 0x12345678UL);
+    LT_CHECK(lt_rotl32(0x12345678UL, 32) == 0x12345678UL);
+    LT_CHECK(lt_rotl32(0x12345678UL, 8) == 0x34567812UL);
+}
+
+LT_TEST(buf_printf_single_pass)
+{
+    lt_buf b;
+    int i;
+    lt_buf_init(&b);
+    /* far larger than the initial capacity: growth happens mid-format */
+    for (i = 0; i < 300; i++) lt_buf_printf(&b, "%d:%s;", i, "abcdefghij");
+    LT_CHECK(b.len > 4000);
+    LT_CHECK(strncmp(b.data, "0:abcdefghij;1:abcdefghij;", 26) == 0);
+    LT_CHECK(b.data[b.len] == '\0');
+    lt_buf_clear(&b);
+    lt_buf_printf(&b, "%*d|%-*s|%.*f", 6, 42, 5, "ab", 2, 3.14159);
+    LT_CHECK_STR(b.data, "    42|ab   |3.14");
+    lt_buf_clear(&b);
+    lt_buf_printf(&b, "%200s", "x");
+    LT_CHECK(b.len == 200 && b.data[199] == 'x' && b.data[0] == ' ');
+    lt_buf_free(&b);
+}
+
+LT_TEST(fmt_hostile_widths)
+{
+    /* INT_MIN '*' width and absurd digit runs must not overflow */
+    LT_CHECK(lt_snprintf(out, 8, "%*d", INT_MIN, 1) > 0);
+    LT_CHECK(lt_snprintf(out, 8, "%99999999999999999999d", 1) > 0);
+    LT_CHECK(lt_snprintf(out, 8, "%.99999999999999999999s", "abc") == 3);
+    LT_CHECK(lt_snprintf(out, sizeof out, "%p", (void *)0) > 0);
+}
+
 int main(void)
 {
+    LT_RUN(portability_types);
+    LT_RUN(checked_arith);
+    LT_RUN(u32_serialization);
+    LT_RUN(buf_printf_single_pass);
+    LT_RUN(fmt_hostile_widths);
     LT_RUN(fmt_ints);
     LT_RUN(fmt_strings);
     LT_RUN(fmt_truncation);

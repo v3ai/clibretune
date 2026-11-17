@@ -204,6 +204,27 @@ static lt_ini_comp *comp_add(lt_ini_dialog *d, lt_comp_kind k)
 }
 
 /* collect braced parts from index `from` (inner trimmed); returns count */
+/* Some INIs omit the comma after the quoted caption of a "field" line
+ * (field = "Caption"<tab>name).  Returns a copy of value with the comma
+ * inserted, or NULL when the line is already well formed. */
+static char *fix_field_comma(const char *value)
+{
+    const char *q, *r;
+    lt_buf b;
+
+    if (value[0] != '"') return NULL;
+    q = strchr(value + 1, '"');
+    if (!q) return NULL;
+    r = q + 1;
+    while (*r == ' ' || *r == '\t') r++;
+    if (*r == '\0' || *r == ',' || *r == '{') return NULL;
+    lt_buf_init(&b);
+    lt_buf_append(&b, value, (size_t)(q + 1 - value));
+    lt_buf_putc(&b, ',');
+    lt_buf_puts(&b, r);
+    return lt_buf_take(&b);
+}
+
 static size_t braces_from(char **p, size_t n, size_t from, char ***out)
 {
     size_t i, cnt = 0;
@@ -245,7 +266,7 @@ static void handle_userdefined(lt_ini *ini, ini_pstate *st, const char *lk, cons
         h->title = n > 1 ? ini_dequote(p[1]) : lt_strdup(p[0]);
         ini_strv_free(p, n);
         st->help = (lt_ini_help *)ini_put((void ***)&ini->helps, &ini->n_helps, &ini->help_idx,
-                                          h->name, h, (void (*)(void *))ini_free_help);
+                                          h->name, h, ini_free_help);
         return;
     }
     if (strcmp(lk, "webhelp") == 0) {
@@ -270,13 +291,13 @@ static void handle_userdefined(lt_ini *ini, ini_pstate *st, const char *lk, cons
         ini_strv_free(p, n);
         st->dialog = (lt_ini_dialog *)ini_put((void ***)&ini->dialogs, &ini->n_dialogs,
                                               &ini->dialog_idx, nd->name, nd,
-                                              (void (*)(void *))ini_free_dialog);
+                                              ini_freev_dialog);
         st->ipanel = NULL;
         st->rpanel = NULL;
         return;
     }
     if (strcmp(lk, "topichelp") == 0) {
-        if (d) ini_set_str(&d->topic_help, ini_dequote(value));
+        if (d) ini_set_str(&d->help_topic, ini_dequote(value));
         return;
     }
     if (strcmp(lk, "indicatorpanel") == 0) {
@@ -422,7 +443,9 @@ static void handle_userdefined(lt_ini *ini, ini_pstate *st, const char *lk, cons
         }
         ini_strv_free(p, n);
     } else if (strcmp(lk, "field") == 0) {
-        n = ini_split(value, &p);
+        char *fixed = fix_field_comma(value);
+        n = ini_split(fixed ? fixed : value, &p);
+        lt_free(fixed);
         if (n >= 2) {
             lt_ini_comp *c = comp_add(d, LT_COMP_FIELD);
             char **b;
@@ -664,7 +687,7 @@ static void handle_table(lt_ini *ini, ini_pstate *st, const char *lk, const char
             nt->y_size = 1;
             st->table = (lt_ini_table *)ini_put((void ***)&ini->tables, &ini->n_tables,
                                                 &ini->table_idx, nt->name, nt,
-                                                (void (*)(void *))ini_free_table);
+                                                ini_freev_table);
             lt_map_put(&ini->table_idx, nt->map_name, nt);
         }
         ini_strv_free(p, n);
@@ -727,7 +750,7 @@ static void handle_curve(lt_ini *ini, ini_pstate *st, const char *lk, const char
         ini_strv_free(p, n);
         st->curve = (lt_ini_curve *)ini_put((void ***)&ini->curves, &ini->n_curves,
                                             &ini->curve_idx, nc->name, nc,
-                                            (void (*)(void *))ini_free_curve);
+                                            ini_freev_curve);
         return;
     }
     if (!c) return;
@@ -832,7 +855,7 @@ static void handle_reftable(lt_ini *ini, ini_pstate *st, const char *lk, const c
     }
     if (!t) return;
     if (strcmp(lk, "topichelp") == 0) {
-        ini_set_str(&t->topic_help, ini_dequote(value));
+        ini_set_str(&t->help_topic, ini_dequote(value));
     } else if (strcmp(lk, "tableidentifier") == 0) {
         n = ini_split(value, &p);
         for (i = 0; i + 1 < n + 1; i += 2) {
@@ -1154,7 +1177,7 @@ static void handle_commands(lt_ini *ini, const char *key, const char *value)
     }
     ini_strv_free(p, n);
     ini_put((void ***)&ini->commands, &ini->n_commands, &ini->command_idx, c->name, c,
-            (void (*)(void *))ini_free_cmd);
+            ini_freev_cmd);
 }
 
 void ini_section_line(lt_ini *ini, ini_ctx *cx, ini_pstate *st, const char *key,
@@ -1174,7 +1197,7 @@ void ini_section_line(lt_ini *ini, ini_ctx *cx, ini_pstate *st, const char *key,
             if (g) {
                 g->category = dup_or_null(st->category);
                 ini_put((void ***)&ini->gauges, &ini->n_gauges, &ini->gauge_idx, g->name, g,
-                        (void (*)(void *))ini_free_gauge);
+                        ini_freev_gauge);
             }
         }
     } else if (strcmp(s, "settinggroups") == 0) {

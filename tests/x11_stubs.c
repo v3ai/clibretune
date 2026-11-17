@@ -11,7 +11,7 @@ lt_rect lt_rect_intersect(lt_rect a, lt_rect b) {
     return lt_rect_make(x0, y0, x1 - x0, y1 - y0);
 }
 void lt_canvas_init(lt_canvas *c, int w, int h) {
-    c->w = w; c->h = h; c->stride = w;
+    c->w = w; c->h = h; c->pitch = w;
     c->px = (lt_u32 *)calloc((size_t)w * (size_t)h, sizeof(lt_u32));
 }
 void lt_canvas_free(lt_canvas *c) { free(c->px); c->px = NULL; }

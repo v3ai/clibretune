@@ -4,6 +4,7 @@
 #include <string.h>
 #include <math.h>
 #include "tables_priv.h"
+#include "view_kit.h"
 
 #define AT_FD_REPLAY (LT_APP_FD_USER0 + 20)
 
@@ -24,6 +25,10 @@ typedef struct at_tab {
     int running, replay, ybottom, hw_sel, cur_r, cur_c;
     double t0_ms;
     int params_dirty;
+    lt_health_report hr;           /* table health card */
+    int hr_valid, ptab;            /* ptab: 0 health, 1 settings */
+    unsigned long hr_stamp;
+    int frame;
 } at_tab;
 
 static at_tab *g_at = NULL;
@@ -239,7 +244,7 @@ static void at_replay(lt_app *app, at_tab *st, const char *path)
         }
         st->replay = 1;
         lt_snprintf(st->info, sizeof(st->info), "Replay %s: %d samples, %d cells proposed%s", lt_path_base(path),
-                    (int)rep.total_samples, (int)rep.ncells,
+                    (int)rep.samples_all, (int)rep.ncells,
                     rep.has_validation ? " (validated)" : "");
         lt_app_toast(app, 1, "Replay: %d cells proposed", (int)rep.ncells);
     }
@@ -270,6 +275,16 @@ static void at_grid(lt_app *app, at_tab *st)
     int rows = (int)st->ve.rows, cols = (int)st->ve.cols, cell = lt_ui_cell_mode(ui);
     int cw = cell ? 64 : 66, ch = cell ? 16 : 24, rhw = cell ? 64 : 72, chh = cell ? 16 : 24;
     char b[48];
+    double zlo = 1e300, zhi = -1e300;
+    size_t k;
+    for (k = 0; k < st->ve.rows * st->ve.cols; k++) {
+        if (st->ve.z[k] < zlo) { zlo = st->ve.z[k]; }
+        if (st->ve.z[k] > zhi) { zhi = st->ve.z[k]; }
+    }
+    if (!cell && cols > 0) {
+        int avail = lt_ui_layout_width(ui) - 360 - rhw - th->scrollbar_w - th->spacing_x - 2, fit = avail / cols;
+        if (fit > cw) { cw = fit > 80 ? 80 : fit; }
+    }
     if (!lt_ui_grid_begin(ui, "atgrid", rows, cols, cw, ch, rhw, chh)) { return; }
     {
         int r0, r1, c0, c1, r, c;
@@ -288,7 +303,7 @@ static void at_grid(lt_app *app, at_tab *st)
             for (c = c0; c <= c1; c++) {
                 int dr = st->ybottom ? rows - 1 - r : r, ri = rec_index(st, (size_t)dr, (size_t)c);
                 double cur = st->ve.z[(size_t)dr * (size_t)cols + (size_t)c];
-                lt_color bg = th->table_cell, fg = th->text2;
+                lt_color bg = lt_tabs_heat(app, th, zlo, zhi, cur), fg = lt_tabs_heat_text(bg);
                 int locked = lt_at_is_cell_locked(st->at, (unsigned)c, (unsigned)dr);
                 lt_rect cr;
                 if (ri >= 0) {
@@ -297,9 +312,9 @@ static void at_grid(lt_app *app, at_tab *st)
                     double a = fabs(d) * 10.0;
                     int t256;
                     if (a > 1.0) { a = 1.0; }
-                    t256 = (int)(a * 200.0) + 30;
-                    bg = lt_color_mix(th->table_cell, d >= 0.0 ? th->change_richer : th->change_leaner, t256);
-                    fg = lt_color_contrast(bg);
+                    t256 = (int)(a * 170.0) + 70;
+                    bg = lt_color_mix(bg, d >= 0.0 ? th->change_richer : th->change_leaner, t256);
+                    fg = lt_tabs_heat_text(bg);
                     lt_tabs_fmt(b, sizeof(b), rc->recommended_value, st->zdig);
                 } else {
                     lt_tabs_fmt(b, sizeof(b), cur, st->zdig);
@@ -336,6 +351,9 @@ static void numrow(lt_ui *ui, const char *label, const char *id, double *v, doub
     if (lt_ui_number(ui, id, v, lo, hi, step, digits) & LT_UI_CHANGED) { *changed = 1; }
 }
 
+static void at_health_card(lt_app *app, at_tab *st);
+static void ati(lt_vk_item *it, int kind, int icon, const char *label, const char *tip);
+
 static void at_panel(lt_app *app, at_tab *st)
 {
     lt_ui *ui = app->ui;
@@ -344,7 +362,20 @@ static void at_panel(lt_app *app, at_tab *st)
     char b[160];
     static const char *const hws[4] = { "Uniform", "Cell proximity", "Proximity squared", "Cell centre only" };
     if (!lt_ui_scroll_begin(ui, "atpanel")) { return; }
-    if (lt_ui_group_begin(ui, "Statistics", 0)) {
+    if (!lt_ui_cell_mode(ui)) {
+        lt_vk_item pt[3];
+        lt_rect tr;
+        int h2;
+        lt_ui_layout_row(ui, 1, &w1, 32);
+        tr = lt_ui_layout_next(ui);
+        ati(&pt[0], LT_VK_BTN, LT_ICON_ACTIVITY, "Health", "Tune health and region scores"); pt[0].on = st->ptab == 0;
+        ati(&pt[1], LT_VK_BTN, LT_ICON_SLIDERS_HORIZONTAL, "Settings", "Targets, filters and authority limits"); pt[1].on = st->ptab == 1;
+        ati(&pt[2], LT_VK_END, 0, NULL, NULL);
+        h2 = lt_vk_toolbar_in(ui, pt, lt_rect_make(tr.x, tr.y + 2, tr.w, 28));
+        if (h2 == 0) { st->ptab = 0; } else if (h2 == 1) { st->ptab = 1; }
+        if (st->ptab == 0) { at_health_card(app, st); }
+    }
+    if ((lt_ui_cell_mode(ui) || st->ptab == 0) && lt_ui_group_begin(ui, "Statistics", 0)) {
         lt_at_reject rj[8];
         size_t nrj = lt_at_rejections(st->at, rj, 8), i, rejected = 0, locks = 0, y, x;
         lt_ui_layout_row(ui, 1, &w1, 0);
@@ -359,7 +390,7 @@ static void at_panel(lt_app *app, at_tab *st)
         if (st->info[0] != '\0') { lt_ui_label_wrap(ui, st->info, th->text2); }
         lt_ui_group_end(ui);
     }
-    if (lt_ui_group_begin(ui, "Target / weighting", 0)) {
+    if ((lt_ui_cell_mode(ui) || st->ptab == 1) && lt_ui_group_begin(ui, "Target / weighting", 0)) {
         numrow(ui, "Target AFR", "tafr", &st->set.target_afr, 8.0, 25.0, 0.1, 2, &ch);
         w2[0] = 130; w2[1] = -1;
         lt_ui_layout_row(ui, 2, w2, 0);
@@ -371,7 +402,7 @@ static void at_panel(lt_app *app, at_tab *st)
         numrow(ui, "Delay ms (0=auto)", "dl", &st->set.lambda_delay_ms, 0.0, 1000.0, 5.0, 0, &ch);
         lt_ui_group_end(ui);
     }
-    if (lt_ui_group_begin(ui, "Filters", 0)) {
+    if ((lt_ui_cell_mode(ui) || st->ptab == 1) && lt_ui_group_begin(ui, "Filters", 0)) {
         int ex = st->f.exclude_accel_enrich ? 1 : 0;
         numrow(ui, "Min RPM", "fmin", &st->f.min_rpm, 0.0, 20000.0, 100.0, 0, &ch);
         numrow(ui, "Max RPM", "fmax", &st->f.max_rpm, 0.0, 20000.0, 100.0, 0, &ch);
@@ -387,7 +418,7 @@ static void at_panel(lt_app *app, at_tab *st)
         }
         lt_ui_group_end(ui);
     }
-    if (lt_ui_group_begin(ui, "Authority limits", 0)) {
+    if ((lt_ui_cell_mode(ui) || st->ptab == 1) && lt_ui_group_begin(ui, "Authority limits", 0)) {
         numrow(ui, "Max change", "amc", &st->auth.max_cell_value_change, 0.0, 255.0, 1.0, 1, &ch);
         numrow(ui, "Max change %", "amp", &st->auth.max_cell_percentage_change, 0.0, 100.0, 1.0, 1, &ch);
         numrow(ui, "Min cell value", "amn", &st->auth.min_cell_value, 0.0, 255.0, 1.0, 0, &ch);
@@ -396,6 +427,215 @@ static void at_panel(lt_app *app, at_tab *st)
     }
     lt_ui_scroll_end(ui);
     (void)ch;
+}
+
+/* ---- health card ---- */
+static void at_health(at_tab *st)
+{
+    size_t n = st->ve.rows * st->ve.cols, i;
+    unsigned *hits;
+    if (!st->loaded || n == 0 || st->ve.y == NULL) { st->hr_valid = 0; return; }
+    hits = (unsigned *)lt_calloc(n + 1, sizeof(unsigned));
+    for (i = 0; i < st->nrecs; i++) {
+        size_t k = st->recs[i].cell_y * st->ve.cols + st->recs[i].cell_x;
+        if (k < n) { hits[k] = st->recs[i].hit_count; }
+    }
+    memset(&st->hr, 0, sizeof(st->hr));
+    lt_health_score(st->ve.z, hits, st->ve.rows, st->ve.cols, st->ve.x, st->ve.y, &st->hr);
+    st->hr_valid = 1;
+    lt_free(hits);
+}
+
+static lt_color grade_color(char g)
+{
+    switch (g) {
+    case 'A': return LT_RGB(0x4C, 0xAF, 0x50);
+    case 'B': return LT_RGB(0x8B, 0xC3, 0x4A);
+    case 'C': return LT_RGB(0xFF, 0xC1, 0x07);
+    case 'D': return LT_RGB(0xFF, 0x98, 0x00);
+    default: return LT_RGB(0xF4, 0x43, 0x36);
+    }
+}
+
+static void score_row(lt_ui *ui, lt_rect r, const char *label, unsigned score)
+{
+    const lt_theme *th = lt_ui_theme(ui);
+    char b[16];
+    int bw = r.w - 168;
+    lt_vk_text(ui, lt_rect_make(r.x, r.y, 96, r.h), (int)LT_FONT_SANS, 11.0, label, th->text2, 0);
+    lt_vk_bar(ui, lt_rect_make(r.x + 100, r.y + r.h / 2 - 2, bw, 4), (double)score / 100.0,
+              lt_vk_score_color((int)score), th->dark ? LT_RGBA(255, 255, 255, 26) : LT_RGBA(0, 0, 0, 24));
+    lt_snprintf(b, sizeof(b), "%u", score);
+    lt_vk_text(ui, lt_rect_make(r.x + r.w - 56, r.y, 56, r.h), (int)LT_FONT_MONO_MEDIUM, 11.0, b, th->text, 2);
+}
+
+static void at_health_card(lt_app *app, at_tab *st)
+{
+    lt_ui *ui = app->ui;
+    const lt_theme *th = lt_ui_theme(ui);
+    int w1 = -1, i;
+    lt_rect r;
+    char b[96];
+    if (!st->hr_valid) { return; }
+    lt_ui_layout_row(ui, 1, &w1, 96);
+    r = lt_ui_layout_next(ui);
+    lt_vk_card(ui, r, th->surface, th->border_subtle, 10);
+    {
+        double cx = (double)r.x + 46.0, cy = (double)r.y + 48.0;
+        lt_color gc = grade_color(st->hr.grade);
+        char gl[2];
+        lt_ui_draw_circle_fill(ui, cx, cy, 30.0, LT_RGBA(0, 0, 0, 70));
+        lt_vk_ring(ui, cx, cy, 29.0, 3.0, (double)st->hr.overall_score / 100.0, gc, th->dark ? LT_RGBA(255, 255, 255, 30) : LT_RGBA(0, 0, 0, 30));
+        gl[0] = st->hr.grade != '\0' ? st->hr.grade : '?'; gl[1] = '\0';
+        lt_vk_text(ui, lt_rect_make((int)cx - 24, (int)cy - 20, 48, 26), (int)LT_FONT_SANS_SEMIBOLD, 24.0, gl, gc, 1);
+        lt_snprintf(b, sizeof(b), "%u/100", st->hr.overall_score);
+        lt_vk_text(ui, lt_rect_make((int)cx - 24, (int)cy + 8, 48, 14), (int)LT_FONT_MONO, 10.0, b, th->text2, 1);
+    }
+    lt_vk_text(ui, lt_rect_make(r.x + 92, r.y + 12, r.w - 104, 20), (int)LT_FONT_SANS_SEMIBOLD, 15.0, "Tune Health", th->text, 0);
+    lt_snprintf(b, sizeof(b), "%u/%u cells covered (%.0f%%)", (unsigned)st->hr.coverage_cells,
+                (unsigned)st->hr.cells_all, st->hr.coverage_percent);
+    lt_vk_text(ui, lt_rect_make(r.x + 92, r.y + 34, r.w - 104, 16), (int)LT_FONT_SANS, 12.0, b, th->text2, 0);
+    {
+        lt_rect p1 = lt_rect_make(r.x + 92, r.y + 58, 92, 22), p2 = lt_rect_make(r.x + 190, r.y + 58, 100, 22);
+        lt_vk_pill(ui, p1, LT_RGBA(0xF4, 0x43, 0x36, 50), LT_RGBA(0xF4, 0x43, 0x36, 90));
+        lt_snprintf(b, sizeof(b), "%u recs", (unsigned)st->hr.n_recommendations);
+        lt_vk_text(ui, p1, (int)LT_FONT_SANS, 11.0, b, th->error, 1);
+        lt_vk_pill(ui, p2, LT_RGBA(0x21, 0x96, 0xF3, 50), LT_RGBA(0x21, 0x96, 0xF3, 90));
+        lt_snprintf(b, sizeof(b), "%d changes", (int)st->nrecs);
+        lt_vk_text(ui, p2, (int)LT_FONT_SANS, 11.0, b, th->info, 1);
+    }
+    for (i = 0; i < (int)st->hr.n_regions; i++) {
+        const lt_region_health *rg = &st->hr.regions[i];
+        lt_rect cr, row;
+        lt_ui_layout_row(ui, 1, &w1, 98);
+        cr = lt_ui_layout_next(ui);
+        lt_vk_card(ui, cr, th->surface, th->border_subtle, 8);
+        lt_vk_text(ui, lt_rect_make(cr.x + 12, cr.y + 8, cr.w - 80, 20), (int)LT_FONT_SANS_SEMIBOLD, 13.0, rg->name, th->text, 0);
+        lt_snprintf(b, sizeof(b), "%u", rg->score);
+        lt_vk_text(ui, lt_rect_make(cr.x + cr.w - 62, cr.y + 8, 50, 20), (int)LT_FONT_SANS_SEMIBOLD, 15.0, b,
+                   lt_vk_score_color((int)rg->score), 2);
+        row = lt_rect_make(cr.x + 12, cr.y + 30, cr.w - 24, 18);
+        score_row(ui, row, "Coverage", rg->coverage_score);
+        row.y += 17; score_row(ui, row, "Smoothness", rg->smoothness_score);
+        row.y += 17; score_row(ui, row, "Monotonicity", rg->monotonicity_score);
+        lt_snprintf(b, sizeof(b), "%u cells", (unsigned)rg->cell_count);
+        lt_vk_text(ui, lt_rect_make(cr.x + 12, cr.y + 80, cr.w - 24, 14), (int)LT_FONT_SANS, 10.0, b, th->muted, 0);
+    }
+    for (i = 0; i < (int)st->hr.n_recommendations && i < 4; i++) {
+        lt_ui_layout_row(ui, 1, &w1, 0);
+        lt_ui_label_wrap(ui, st->hr.recommendations[i], th->text2);
+    }
+}
+
+/* ---- header / heat-map strip (pixel mode) ---- */
+enum { AT_REPLAY, AT_RESET, AT_START, AT_APPLY, AT_BURN, AT_LOCK, AT_UNLOCK, AT_FLIP, AT_TAB_H, AT_TAB_S };
+
+static void ati(lt_vk_item *it, int kind, int icon, const char *label, const char *tip)
+{
+    memset(it, 0, sizeof(*it));
+    it->kind = kind; it->icon = icon; it->label = label; it->tip = tip;
+}
+
+static int at_header(lt_app *app, at_tab *st, int *combo_sel)
+{
+    lt_ui *ui = app->ui;
+    const lt_theme *th = lt_ui_theme(ui);
+    int w1 = -1, hit, n = 0, ids[10], res = -1;
+    lt_vk_item it[10];
+    lt_rect hr, rr;
+    /* band behind the header */
+    lt_ui_layout_row(ui, 1, &w1, 54);
+    hr = lt_ui_layout_next(ui);
+    lt_ui_draw_fill(ui, hr, th->elevated);
+    lt_ui_draw_hline(ui, hr.x, hr.x + hr.w - 1, hr.y + hr.h - 1, th->border_subtle);
+    lt_vk_text(ui, lt_rect_make(hr.x + 14, hr.y, 90, hr.h), (int)LT_FONT_SANS_SEMIBOLD, 16.0, "AutoTune", th->text, 0);
+    if (st->running) {
+        lt_rect bdg = lt_rect_make(hr.x + 100, hr.y + 18, 62, 18);
+        lt_vk_pill(ui, bdg, LT_RGBA(0x4C, 0xAF, 0x50, 60), th->success);
+        lt_vk_text(ui, bdg, (int)LT_FONT_SANS_SEMIBOLD, 10.0, "RUNNING", th->success, 1);
+    }
+    /* table selector laid out over the band */
+    lt_vk_text(ui, lt_rect_make(hr.x + 176, hr.y + 11, 52, 32), (int)LT_FONT_SANS, 12.0, "Table", th->muted, 0);
+    *combo_sel = st->tsel;
+    lt_ui_layout_set_rect(ui, lt_rect_make(hr.x + 224, hr.y + 11, 216, 32));
+    if (st->ntables > 0) { lt_ui_combo(ui, "tsel", combo_sel, (const char *const *)st->names, (int)st->ntables); }
+    ati(&it[n], LT_VK_SPACER, 0, NULL, NULL); ids[n++] = -1;
+    ati(&it[n], LT_VK_BTN, LT_ICON_FOLDER_OPEN, "Replay log", "Replay a data log offline and propose changes"); ids[n++] = AT_REPLAY;
+    ati(&it[n], LT_VK_BTN, LT_ICON_ROTATE_CCW, "Reset", "Discard collected data"); ids[n++] = AT_RESET;
+    ati(&it[n], LT_VK_BTN, st->running ? LT_ICON_CIRCLE_STOP : LT_ICON_PLAY, st->running ? "Stop" : "Start",
+        "Start/stop collecting (Space)");
+    it[n].fill = st->running ? LT_RGB(0xD3, 0x2F, 0x2F) : LT_RGB(0x2E, 0xA0, 0x43);
+    ids[n++] = AT_START;
+    ati(&it[n], LT_VK_BTN, LT_ICON_UPLOAD, "Send to ECU", "Write the recommendations (except locked cells) to the table");
+    it[n].disabled = st->nrecs == 0 ? 1 : 0; ids[n++] = AT_APPLY;
+    ati(&it[n], LT_VK_BTN, LT_ICON_FLAME, "Burn", "Write the changes to ECU flash");
+    it[n].accent = 1; it[n].disabled = lt_app_can_burn(app) ? 0 : 1; ids[n++] = AT_BURN;
+    ati(&it[n], LT_VK_END, 0, NULL, NULL);
+    rr = lt_rect_make(hr.x + 450, hr.y + 8, hr.w - 450 - 12, 38);
+    hit = lt_vk_toolbar_in(ui, it, rr);
+    if (hit >= 0) { res = ids[hit]; }
+    return res;
+}
+
+static int at_heat_strip(lt_app *app, at_tab *st)
+{
+    lt_ui *ui = app->ui;
+    const lt_theme *th = lt_ui_theme(ui);
+    lt_vk_item it[8];
+    int n = 0, ids[8], hit, w1 = -1;
+    lt_rect r;
+    lt_ui_layout_row(ui, 1, &w1, 40);
+    r = lt_ui_layout_next(ui);
+    lt_ui_draw_fill(ui, r, th->bg_toolbar);
+    lt_vk_text(ui, lt_rect_make(r.x + 14, r.y, 200, r.h), (int)LT_FONT_SANS_MEDIUM, 12.0,
+               st->replay ? "Replay recommendations" : "Recommendations", th->text2, 0);
+    ati(&it[n], LT_VK_SPACER, 0, NULL, NULL); ids[n++] = -1;
+    ati(&it[n], LT_VK_BTN, LT_ICON_ARROW_UP_DOWN, NULL, "Y axis: zero at the bottom"); it[n].on = st->ybottom; ids[n++] = AT_FLIP;
+    ati(&it[n], LT_VK_BTN, LT_ICON_LOCK, "Lock", "Toggle lock on the selected cells (L); locked cells are not changed"); ids[n++] = AT_LOCK;
+    ati(&it[n], LT_VK_BTN, LT_ICON_LOCK_OPEN, "Unlock", "Unlock every cell"); ids[n++] = AT_UNLOCK;
+    ati(&it[n], LT_VK_END, 0, NULL, NULL);
+    hit = lt_vk_toolbar_in(ui, it, lt_rect_make(r.x + 200, r.y + 5, r.w - 212, 30));
+    return hit >= 0 ? ids[hit] : -1;
+}
+
+static void at_legend(lt_ui *ui, const lt_theme *th)
+{
+    int w1 = -1, i;
+    lt_rect r;
+    lt_ui_layout_row(ui, 1, &w1, 26);
+    r = lt_ui_layout_next(ui);
+    lt_ui_draw_fill(ui, r, th->bg_toolbar);
+    lt_ui_draw_hline(ui, r.x, r.x + r.w - 1, r.y, th->border_subtle);
+    {
+        int bw = 140, bx = r.x + (r.w - bw) / 2;
+        lt_vk_text(ui, lt_rect_make(bx - 60, r.y, 54, r.h), (int)LT_FONT_SANS, 10.0, "Richer", th->muted, 2);
+        for (i = 0; i < bw; i++) {
+            double t = (double)i / (double)(bw - 1);
+            lt_color c = t < 0.5 ? lt_color_mix(th->change_richer, th->surface, (int)(t * 512.0))
+                                 : lt_color_mix(th->surface, th->change_leaner, (int)((t - 0.5) * 512.0));
+            lt_ui_draw_fill(ui, lt_rect_make(bx + i, r.y + 9, 1, 8), c);
+        }
+        lt_vk_text(ui, lt_rect_make(bx + bw + 6, r.y, 60, r.h), (int)LT_FONT_SANS, 10.0, "Leaner", th->muted, 0);
+    }
+}
+
+static void at_cmd(lt_app *app, at_tab *st, int cmd)
+{
+    switch (cmd) {
+    case AT_REPLAY: lt_app_file_dialog(app, AT_FD_REPLAY, LT_UI_FILE_OPEN, NULL, "", "Logs|*.mlg;*.csv;*.msl|All files|*"); break;
+    case AT_RESET: {
+        int was = st->running;
+        lt_at_start(st->at); st->running = was; st->nrecs = 0; st->replay = 0; st->info[0] = '\0';
+        if (!was) { lt_at_stop(st->at); }
+        break; }
+    case AT_START: if (st->running) { at_stop(st); } else { at_start(app, st); } break;
+    case AT_APPLY: at_apply(app, st); break;
+    case AT_BURN: lt_app_burn(app); break;
+    case AT_LOCK: at_sel_cells(st, 2, 0); break;
+    case AT_UNLOCK: at_sel_cells(st, 0, 1); break;
+    case AT_FLIP: st->ybottom = !st->ybottom; break;
+    default: break;
+    }
 }
 
 static void at_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
@@ -436,42 +676,45 @@ static void at_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
     if (picked != NULL) { at_replay(app, st, picked); }
     if (lt_ui_key_pressed(ui, ' ', 0)) { if (st->running) { at_stop(st); } else { at_start(app, st); } }
     if (lt_ui_key_pressed(ui, 'l', 0)) { at_sel_cells(st, 2, 0); }
-    /* toolbar */
-    for (i = 0; i < 10; i++) { wt[i] = 0; }
-    wt[0] = 90; wt[1] = 220;
-    lt_ui_layout_row(ui, 10, wt, 0);
-    lt_ui_label(ui, "VE table");
-    combo_sel = st->tsel;
-    if (st->ntables > 0 && lt_ui_combo(ui, "tsel", &combo_sel, (const char *const *)st->names, (int)st->ntables)) { }
-    if (st->running) {
-        if (lt_ui_button_ex(ui, "Stop", LT_UI_BTN_DANGER)) { at_stop(st); }
-    } else if (lt_ui_button_ex(ui, "Start", LT_UI_BTN_PRIMARY)) { at_start(app, st); }
-    lt_ui_tooltip(ui, "Start/stop collecting (Space)");
-    if (lt_ui_button_ex(ui, "Apply", LT_UI_BTN_ACCENT | (st->nrecs == 0 ? LT_UI_BTN_DISABLED : 0))) { at_apply(app, st); }
-    lt_ui_tooltip(ui, "Write the recommendations (except locked cells) to the table");
-    if (lt_ui_button_ex(ui, "Reset", LT_UI_BTN_FLAT)) {
-        int was = st->running;
-        lt_at_start(st->at); st->running = was; st->nrecs = 0; st->replay = 0; st->info[0] = '\0';
-        if (!was) { lt_at_stop(st->at); }
+    st->frame++;
+    if (!st->hr_valid || st->frame % 20 == 0 || st->hr_stamp != lt_at_total_samples(st->at)) {
+        st->hr_stamp = lt_at_total_samples(st->at);
+        at_health(st);
     }
-    if (lt_ui_button_ex(ui, "Replay log...", LT_UI_BTN_FLAT)) {
-        lt_app_file_dialog(app, AT_FD_REPLAY, LT_UI_FILE_OPEN, NULL, "", "Logs|*.mlg;*.csv;*.msl|All files|*");
+    if (lt_ui_cell_mode(ui)) {
+        /* toolbar */
+        for (i = 0; i < 10; i++) { wt[i] = 0; }
+        wt[0] = 90; wt[1] = 220;
+        lt_ui_layout_row(ui, 10, wt, 0);
+        lt_ui_label(ui, "VE table");
+        combo_sel = st->tsel;
+        if (st->ntables > 0 && lt_ui_combo(ui, "tsel", &combo_sel, (const char *const *)st->names, (int)st->ntables)) { }
+        if (st->running) {
+            if (lt_ui_button_ex(ui, "Stop", LT_UI_BTN_DANGER)) { at_stop(st); }
+        } else if (lt_ui_button_ex(ui, "Start", LT_UI_BTN_PRIMARY)) { at_start(app, st); }
+        if (lt_ui_button_ex(ui, "Apply", LT_UI_BTN_ACCENT | (st->nrecs == 0 ? LT_UI_BTN_DISABLED : 0))) { at_apply(app, st); }
+        if (lt_ui_button_ex(ui, "Reset", LT_UI_BTN_FLAT)) { at_cmd(app, st, AT_RESET); }
+        if (lt_ui_button_ex(ui, "Replay log...", LT_UI_BTN_FLAT)) { at_cmd(app, st, AT_REPLAY); }
+        if (lt_ui_button_ex(ui, "Lock", LT_UI_BTN_FLAT)) { at_cmd(app, st, AT_LOCK); }
+        if (lt_ui_button_ex(ui, "Unlock all", LT_UI_BTN_FLAT)) { at_cmd(app, st, AT_UNLOCK); }
+        if (lt_ui_button_ex(ui, "Y-bot", LT_UI_BTN_FLAT | (st->ybottom ? LT_UI_BTN_SELECTED : 0))) { at_cmd(app, st, AT_FLIP); }
+        if (lt_ui_button_ex(ui, "Burn", LT_UI_BTN_ACCENT | (lt_app_can_burn(app) ? 0 : LT_UI_BTN_DISABLED))) { at_cmd(app, st, AT_BURN); }
+    } else {
+        int cmd = at_header(app, st, &combo_sel);
+        if (cmd < 0) { cmd = at_heat_strip(app, st); } else { (void)at_heat_strip(app, st); }
+        if (cmd >= 0) { at_cmd(app, st, cmd); }
     }
-    if (lt_ui_button_ex(ui, "Lock", LT_UI_BTN_FLAT)) { at_sel_cells(st, 2, 0); }
-    lt_ui_tooltip(ui, "Toggle lock on the selected cells (L); locked cells are not changed");
-    if (lt_ui_button_ex(ui, "Unlock all", LT_UI_BTN_FLAT)) { at_sel_cells(st, 0, 1); }
-    if (lt_ui_button_ex(ui, "Y-bot", LT_UI_BTN_FLAT | (st->ybottom ? LT_UI_BTN_SELECTED : 0))) { st->ybottom = !st->ybottom; }
-    if (lt_ui_button_ex(ui, "Burn", LT_UI_BTN_ACCENT | (lt_app_can_burn(app) ? 0 : LT_UI_BTN_DISABLED))) { lt_app_burn(app); }
     if (combo_sel != st->tsel && st->ntables > 0) {
         st->tsel = combo_sel;
         at_stop(st);
         at_load(app, st);
         return;
     }
-    wm[0] = -1; wm[1] = 320;
-    lt_ui_layout_row(ui, 2, wm, -1);
+    wm[0] = -1; wm[1] = 360;
+    lt_ui_layout_row(ui, 2, wm, lt_ui_cell_mode(ui) ? -1 : -27);
     at_grid(app, st);
     at_panel(app, st);
+    if (!lt_ui_cell_mode(ui)) { at_legend(ui, th); }
     tab->dirty = st->running ? 1 : 0;
 }
 

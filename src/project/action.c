@@ -175,7 +175,7 @@ void lt_action_set_free(lt_action_set *s)
     memset(s, 0, sizeof *s);
 }
 
-static lt_json *strs_to_json(char *const *v, size_t n)
+static lt_json *act_strs_to_json(char *const *v, size_t n)
 {
     lt_json *a = lt_json_arr();
     size_t i;
@@ -271,9 +271,9 @@ char *lt_action_set_serialize(const lt_action_set *s, char *err, size_t errlen)
     lt_json_obj_set(meta, "created_at", lt_json_str(s->meta.created_at ? s->meta.created_at : ""));
     lt_json_obj_set(meta, "modified_at",
                     lt_json_str(s->meta.modified_at ? s->meta.modified_at : ""));
-    lt_json_obj_set(meta, "tags", strs_to_json(s->meta.tags, s->meta.ntags));
+    lt_json_obj_set(meta, "tags", act_strs_to_json(s->meta.tags, s->meta.ntags));
     lt_json_obj_set(meta, "compatible_ecus",
-                    strs_to_json(s->meta.compatible_ecus, s->meta.necus));
+                    act_strs_to_json(s->meta.compatible_ecus, s->meta.necus));
     lt_json_obj_set(o, "metadata", meta);
     if (bad != NULL) {
         lt_json_free(o);
@@ -528,22 +528,21 @@ static void make_uuid(char out[37])
 {
     unsigned char b[16];
     static unsigned long counter = 0;
-    FILE *f = fopen("/dev/urandom", "rb");
-    size_t got = 0, i;
-    if (f != NULL) {
-        got = fread(b, 1, 16, f);
-        fclose(f);
-    }
-    if (got != 16) {
-        lt_u32 h = lt_crc32(0, &counter, sizeof counter);
-        unsigned long t = lt_proj_secs_now();
-        double ms = lt_plat_now_ms();
-        for (i = 0; i < 16; i++) {
-            h = lt_crc32(h, &t, sizeof t);
-            h = lt_crc32(h, &ms, sizeof ms);
-            h = lt_crc32(h, &i, sizeof i);
-            b[i] = (unsigned char)(h >> 8);
-        }
+    /* universal C has no entropy source: mix clocks, a counter and a stack
+       address so ids differ between calls and between processes */
+    lt_u32 h = lt_crc32(0, &counter, sizeof counter);
+    unsigned long t = lt_proj_secs_now();
+    double ms = lt_plat_now_ms();
+    unsigned char addr[sizeof(void *)];
+    const void *sp = (const void *)b;
+    size_t i;
+    memcpy(addr, &sp, sizeof addr);
+    for (i = 0; i < 16; i++) {
+        h = lt_crc32(h, &t, sizeof t);
+        h = lt_crc32(h, &ms, sizeof ms);
+        h = lt_crc32(h, addr, sizeof addr);
+        h = lt_crc32(h, &i, sizeof i);
+        b[i] = (unsigned char)(h >> 8);
     }
     counter++;
     b[6] = (unsigned char)((b[6] & 0x0F) | 0x40);

@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "ui_priv.h"
+#include "icons.h"
 
 /* ------------------------------------------------------------------ */
 /* create / destroy                                                    */
@@ -73,7 +74,7 @@ lt_rect lt_ui_surface(const lt_ui *ui) { return lt_rect_make(0, 0, ui->sw, ui->s
 
 lt_rect lt_ui_client_rect(const lt_ui *ui)
 {
-    return lt_rect_make(0, ui->top_used, ui->sw, LT_MAX(0, ui->sh - ui->top_used - ui->bottom_used));
+    return lt_rect_make(0, ui->used_top, ui->sw, LT_MAX(0, ui->sh - ui->used_top - ui->bottom_used));
 }
 
 /* ------------------------------------------------------------------ */
@@ -393,7 +394,7 @@ ui_layer *ui_layer_begin(lt_ui *ui, lt_u32 id, int kind, int z, lt_rect rect)
     L = &ui->layers[idx];
     L->id = id; L->kind = kind; L->z = z; L->seq = idx; L->rect = rect;
     L->bg_cmd = -1;
-    L->blocked = (ui->top_modal_z > 0 && z < ui->top_modal_z) ? 1 : 0;
+    L->blocked = (ui->modal_z_top > 0 && z < ui->modal_z_top) ? 1 : 0;
     lt_vec_clear(&L->cmds);
     ui->lstack[ui->nlstack++] = idx;
     /* each layer starts with an independent clip */
@@ -548,29 +549,75 @@ void lt_ui_draw_vgrad(lt_ui *ui, lt_rect r, lt_color top, lt_color bottom)
     k->r = r; k->c = top; k->c2 = bottom;
 }
 
-void lt_ui_draw_blit(lt_ui *ui, int x, int y, const lt_u32 *px, int w, int h, int stride)
+void lt_ui_draw_blit(lt_ui *ui, int x, int y, const lt_u32 *px, int w, int h, int pitch)
 {
     ui_cmd *k = ui_cmd_push(ui, UC_BLIT);
     k->r = lt_rect_make(x, y, w, h);
-    k->px = px; k->i[0] = stride;
+    k->px = px; k->i[0] = pitch;
 }
 
-int lt_ui_text_width(const lt_ui *ui, const char *s)
+/* ---- text: proportional IBM Plex in pixel mode, 8x16 cells in cell mode ---- */
+static lt_font *ui_ttf(const lt_ui *ui, int font)
 {
-    return lt_gfx_text_width(s, ui->cell ? 1 : ui->scale);
+    if (ui->cell || (ui->g != NULL && (ui->g->bitmap_text || ui->g->cells != NULL))) { return NULL; }
+    return lt_font_get((lt_font_id)font);
 }
 
-int lt_ui_draw_text(lt_ui *ui, int x, int y, const char *s, lt_color c)
+int ui_font_px(const lt_ui *ui, int px)
+{
+    if (px <= 0) { px = ui->tpx > 0 ? ui->tpx : LT_UI_FS_BASE; }
+    return px * ui->scale;
+}
+
+int ui_line_h(const lt_ui *ui)
+{
+    if (ui->cell) { return 16; }
+    return (ui_font_px(ui, 0) * 7 + 2) / 5;      /* 1.4 line height */
+}
+
+int ui_text_w(const lt_ui *ui, const char *s, int font, int px)
+{
+    lt_font *f;
+    if (s == NULL || s[0] == '\0') { return 0; }
+    f = ui_ttf(ui, font);
+    if (f == NULL) { return lt_gfx_text_width(s, ui->cell ? 1 : ui->scale); }
+    return (int)ceil(lt_gfx_text_measure(f, (double)ui_font_px(ui, px), s));
+}
+
+int ui_prefix_w(const lt_ui *ui, const char *s, int nbytes)
+{
+    char tmp[512];
+    if (nbytes <= 0) { return 0; }
+    if ((size_t)nbytes >= sizeof(tmp)) { nbytes = (int)sizeof(tmp) - 1; }
+    memcpy(tmp, s, (size_t)nbytes);
+    tmp[nbytes] = '\0';
+    if (ui_ttf(ui, ui->tfont) == NULL) { return lt_gfx_text_width(tmp, ui->cell ? 1 : ui->scale); }
+    return (int)floor(lt_gfx_text_measure(ui_ttf(ui, ui->tfont), (double)ui_font_px(ui, 0), tmp) + 0.5);
+}
+
+int lt_ui_text_width(const lt_ui *ui, const char *s) { return ui_text_w(ui, s, ui->tfont, 0); }
+int lt_ui_text_width_f(const lt_ui *ui, const char *s, int font, int px) { return ui_text_w(ui, s, font, px); }
+
+void lt_ui_text_style(lt_ui *ui, int font, int px) { ui->tfont = font; ui->tpx = px; }
+void lt_ui_text_style_reset(lt_ui *ui) { ui->tfont = (int)LT_FONT_SANS; ui->tpx = 0; }
+
+int lt_ui_draw_text_f(lt_ui *ui, int x, int y, const char *s, lt_color c, int font, int px)
 {
     ui_cmd *k;
     int sc = ui->cell ? 1 : ui->scale;
-    int w = lt_gfx_text_width(s, sc);
+    int w = ui_text_w(ui, s, font, px);
     if (LT_COLOR_A(c) == 0 || s[0] == '\0') { return w; }
     if (!rect_vis(ui, lt_rect_make(x, y, w, 16 * sc))) { return w; }
     k = ui_cmd_push(ui, UC_TEXT);
     k->r = lt_rect_make(x, y, w, 16 * sc);
-    k->c = c; k->i[0] = sc; k->off = arena_text(ui, s);
+    k->c = c; k->i[0] = sc; k->i[1] = font; k->i[2] = ui_font_px(ui, px);
+    k->off = arena_text(ui, s);
     return w;
+}
+
+int lt_ui_draw_text(lt_ui *ui, int x, int y, const char *s, lt_color c)
+{
+    return lt_ui_draw_text_f(ui, x, y, s, c, ui->tfont, 0);
 }
 
 void lt_ui_draw_vtext(lt_ui *ui, double x, double y, const char *s, double height,
@@ -590,48 +637,79 @@ void lt_ui_draw_custom(lt_ui *ui, lt_rect r, lt_ui_draw_fn fn, void *user)
 }
 
 /* truncate with an ellipsis so the result fits in maxw pixels */
-int ui_fit_text(const char *s, int maxw, char *out, size_t cap)
+int ui_fit_text(const lt_ui *ui, const char *s, int maxw, char *out, size_t cap, int font, int px)
 {
-    int fw = 8;
-    int n = 0, fit;
-    const char *p = s;
-    size_t o = 0;
-    while (lt_utf8_next(&p) != 0) { n++; }
-    if (n * fw <= maxw) { lt_strlcpy(out, s, cap); return 0; }
-    fit = maxw / fw - 1;
-    if (fit < 0) { fit = 0; }
-    p = s;
-    while (fit > 0 && o + 5 < cap) {
-        const char *q = p;
-        lt_u32 cp = lt_utf8_next(&p);
-        if (cp == 0) { break; }
-        while (q < p && o + 5 < cap) { out[o++] = *q++; }
-        fit--;
+    lt_font *f = ui_ttf(ui, font);
+    size_t o;
+    if (cap == 0) { return 0; }
+    if (f != NULL) {
+        double fpx = (double)ui_font_px(ui, px);
+        double ell = lt_gfx_text_measure(f, fpx, "\xE2\x80\xA6");
+        size_t n;
+        if (lt_gfx_text_measure(f, fpx, s) <= (double)maxw) { lt_strlcpy(out, s, cap); return 0; }
+        n = lt_gfx_text_fit(f, fpx, s, (double)maxw - ell);
+        if (n + 4 > cap) { n = cap > 4 ? cap - 4 : 0; }
+        while (n > 0 && (((unsigned char)s[n]) & 0xC0) == 0x80) { n--; }
+        memcpy(out, s, n);
+        o = n;
+        if (maxw >= (int)ell && o + 4 <= cap) {
+            out[o++] = (char)0xE2; out[o++] = (char)0x80; out[o++] = (char)0xA6;
+        }
+        out[o] = '\0';
+        return 1;
     }
-    if (maxw >= 2 * fw && o + 4 <= cap) {
-        out[o++] = (char)0xE2; out[o++] = (char)0x80; out[o++] = (char)0xA6;
+    {
+        int fw = 8;
+        int n = 0, fit;
+        const char *p = s;
+        o = 0;
+        while (lt_utf8_next(&p) != 0) { n++; }
+        if (n * fw <= maxw) { lt_strlcpy(out, s, cap); return 0; }
+        fit = maxw / fw - 1;
+        if (fit < 0) { fit = 0; }
+        p = s;
+        while (fit > 0 && o + 5 < cap) {
+            const char *q = p;
+            lt_u32 cp = lt_utf8_next(&p);
+            if (cp == 0) { break; }
+            while (q < p && o + 5 < cap) { out[o++] = *q++; }
+            fit--;
+        }
+        if (maxw >= 2 * fw && o + 4 <= cap) {
+            out[o++] = (char)0xE2; out[o++] = (char)0x80; out[o++] = (char)0xA6;
+        }
+        out[o] = '\0';
     }
-    out[o] = '\0';
     return 1;
 }
 
-void ui_text_in(lt_ui *ui, lt_rect r, const char *s, lt_color c, int align)
+void ui_text_in_f(lt_ui *ui, lt_rect r, const char *s, lt_color c, int align, int font, int px)
 {
     char tmp[256];
     int sc = ui->cell ? 1 : ui->scale;
     int tw, th = 16 * sc, x, y, dy;
     if (s == NULL || s[0] == '\0') { return; }
-    tw = lt_gfx_text_width(s, sc);
+    tw = ui_text_w(ui, s, font, px);
     if (tw > r.w) {
-        ui_fit_text(s, r.w / sc, tmp, sizeof(tmp));
+        ui_fit_text(ui, s, ui->cell ? r.w / sc : r.w, tmp, sizeof(tmp), font, px);
         s = tmp;
-        tw = lt_gfx_text_width(s, sc);
+        tw = ui_text_w(ui, s, font, px);
     }
     x = align == 1 ? r.x + (r.w - tw) / 2 : (align == 2 ? r.x + r.w - tw : r.x);
     dy = (r.h - th) / 2;
     if (ui->cell) { dy = (dy / 16) * 16; }
     y = r.y + dy;
-    lt_ui_draw_text(ui, x, y, s, c);
+    lt_ui_draw_text_f(ui, x, y, s, c, font, px);
+}
+
+void ui_text_in(lt_ui *ui, lt_rect r, const char *s, lt_color c, int align)
+{
+    ui_text_in_f(ui, r, s, c, align, ui->tfont, 0);
+}
+
+void lt_ui_draw_text_in_f(lt_ui *ui, lt_rect r, const char *s, lt_color c, int align, int font, int px)
+{
+    ui_text_in_f(ui, r, s, c, align, font, px);
 }
 
 void lt_ui_draw_text_in(lt_ui *ui, lt_rect r, const char *s, lt_color c, int align)
@@ -654,13 +732,87 @@ void lt_ui_draw_box(lt_ui *ui, lt_rect r, lt_color fill, lt_color border, int ra
     }
 }
 
+void lt_ui_draw_shadow(lt_ui *ui, lt_rect r, int radius, int spread, int alpha)
+{
+    int i, n;
+    if (ui->cell || spread <= 0 || alpha <= 0) { return; }
+    n = spread;
+    for (i = n; i >= 1; i--) {
+        /* quadratic falloff: outermost rings nearly transparent */
+        int a = alpha * (n - i + 1) * (n - i + 1) / (n * n * 3 / 2 + 1);
+        lt_rect q = lt_rect_make(r.x - i, r.y - i + n / 2, r.w + 2 * i, r.h + 2 * i);
+        if (a < 1) { a = 1; }
+        lt_ui_draw_round(ui, q, radius + i, LT_RGBA(0, 0, 0, a));
+    }
+}
+
+/* input-like box: fill + border, with the stock 2px translucent focus ring */
+void ui_field_box(lt_ui *ui, lt_rect r, lt_color fill, lt_color border, int focused)
+{
+    if (focused && !ui->cell) {
+        lt_color rc = (ui->theme.primary & 0x00FFFFFFUL) | 0x44000000UL;
+        lt_ui_draw_round(ui, lt_rect_inset(r, -2, -2), ui->theme.radius + 2, rc);
+    }
+    lt_ui_draw_box(ui, r, fill, border, ui->theme.radius);
+}
+
 /* ------------------------------------------------------------------ */
 /* icons                                                               */
+void lt_ui_draw_lucide(lt_ui *ui, lt_rect r, int lucide_id, int px, double stroke, lt_color c)
+{
+    ui_cmd *k;
+    if (ui->cell) {
+        ui_text_in_f(ui, r, "*", c, 1, ui->tfont, 0);
+        return;
+    }
+    if (lucide_id <= 0 || LT_COLOR_A(c) == 0 || !rect_vis(ui, r)) { return; }
+    k = ui_cmd_push(ui, UC_ICON);
+    k->r = r; k->c = c; k->i[0] = lucide_id;
+    k->d[0] = (double)(px > 0 ? px : 14) * (double)ui->scale;
+    k->d[1] = stroke > 0.0 ? stroke * (double)ui->scale : 0.0;
+}
+
+/* legacy glyph ids -> lucide */
+static int legacy_lucide(int icon)
+{
+    switch (icon) {
+    case LT_UI_ICON_CHECK: return LT_ICON_CHECK;
+    case LT_UI_ICON_CLOSE: return LT_ICON_X;
+    case LT_UI_ICON_FOLDER: return LT_ICON_FOLDER;
+    case LT_UI_ICON_FILE: return LT_ICON_FILE;
+    case LT_UI_ICON_PLUS: return LT_ICON_PLUS;
+    case LT_UI_ICON_MINUS: return LT_ICON_MINUS;
+    case LT_UI_ICON_MENU: return LT_ICON_MENU;
+    case LT_UI_ICON_PLAY: return LT_ICON_PLAY;
+    case LT_UI_ICON_STOP: return LT_ICON_SQUARE;
+    case LT_UI_ICON_WARN: return LT_ICON_TRIANGLE_ALERT;
+    case LT_UI_ICON_INFO: return LT_ICON_INFO;
+    case LT_UI_ICON_SEARCH: return LT_ICON_SEARCH;
+    case LT_UI_ICON_TABLE: return LT_ICON_TABLE_2;
+    case LT_UI_ICON_GAUGE: return LT_ICON_GAUGE;
+    default: return 0;
+    }
+}
+
 void lt_ui_draw_icon(lt_ui *ui, lt_rect r, int icon, lt_color c)
 {
     double cx = r.x + r.w / 2.0, cy = r.y + r.h / 2.0;
     double k = (double)LT_MIN(r.w, r.h) / 16.0;
     double pts[16];
+    if (icon >= 1000) {
+        int px = LT_MIN(LT_MIN(r.w, r.h) - 2, 14 * ui->scale) / ui->scale;
+        lt_ui_draw_lucide(ui, r, icon - 1000, px, 0.0, c);
+        return;
+    }
+    if (!ui->cell) {
+        int lid = legacy_lucide(icon);
+        if (lid != 0) {
+            int sz = LT_MIN(LT_MIN(r.w, r.h) - 2, 14 * ui->scale);
+            double sw = (icon == LT_UI_ICON_CHECK) ? 2.6 : 2.0;
+            lt_ui_draw_lucide(ui, r, lid, sz / ui->scale, sw, c);
+            return;
+        }
+    }
     if (ui->cell) {
         char ch[4];
         ch[1] = '\0';
@@ -710,77 +862,8 @@ void lt_ui_draw_icon(lt_ui *ui, lt_rect r, int icon, lt_color c)
         pts[4] = cx + 2.5 * k; pts[5] = cy + 4.5 * k;
         lt_ui_draw_poly(ui, pts, 3, c);
         break;
-    case LT_UI_ICON_CHECK:
-        lt_ui_draw_line(ui, cx - 4.5 * k, cy + 0.2 * k, cx - 1.5 * k, cy + 3.2 * k, 2.0 * k, c);
-        lt_ui_draw_line(ui, cx - 1.5 * k, cy + 3.2 * k, cx + 4.5 * k, cy - 3.5 * k, 2.0 * k, c);
-        break;
-    case LT_UI_ICON_CLOSE:
-        lt_ui_draw_line(ui, cx - 3.5 * k, cy - 3.5 * k, cx + 3.5 * k, cy + 3.5 * k, 1.6 * k, c);
-        lt_ui_draw_line(ui, cx + 3.5 * k, cy - 3.5 * k, cx - 3.5 * k, cy + 3.5 * k, 1.6 * k, c);
-        break;
-    case LT_UI_ICON_PLUS:
-        lt_ui_draw_line(ui, cx - 4.5 * k, cy, cx + 4.5 * k, cy, 1.8 * k, c);
-        lt_ui_draw_line(ui, cx, cy - 4.5 * k, cx, cy + 4.5 * k, 1.8 * k, c);
-        break;
-    case LT_UI_ICON_MINUS:
-        lt_ui_draw_line(ui, cx - 4.5 * k, cy, cx + 4.5 * k, cy, 1.8 * k, c);
-        break;
     case LT_UI_ICON_DOT:
         lt_ui_draw_circle_fill(ui, cx, cy, 2.5 * k, c);
-        break;
-    case LT_UI_ICON_MENU:
-        lt_ui_draw_line(ui, cx - 5 * k, cy - 4 * k, cx + 5 * k, cy - 4 * k, 1.6 * k, c);
-        lt_ui_draw_line(ui, cx - 5 * k, cy, cx + 5 * k, cy, 1.6 * k, c);
-        lt_ui_draw_line(ui, cx - 5 * k, cy + 4 * k, cx + 5 * k, cy + 4 * k, 1.6 * k, c);
-        break;
-    case LT_UI_ICON_PLAY:
-        pts[0] = cx - 3.5 * k; pts[1] = cy - 5.0 * k; pts[2] = cx + 5.0 * k; pts[3] = cy;
-        pts[4] = cx - 3.5 * k; pts[5] = cy + 5.0 * k;
-        lt_ui_draw_poly(ui, pts, 3, c);
-        break;
-    case LT_UI_ICON_STOP:
-        lt_ui_draw_fill(ui, lt_rect_make((int)(cx - 4 * k), (int)(cy - 4 * k), (int)(8 * k),
-                                         (int)(8 * k)), c);
-        break;
-    case LT_UI_ICON_FOLDER:
-        lt_ui_draw_round(ui, lt_rect_make((int)(cx - 6.5 * k), (int)(cy - 4.5 * k), (int)(5 * k),
-                                          (int)(3 * k)), 1, c);
-        lt_ui_draw_round(ui, lt_rect_make((int)(cx - 6.5 * k), (int)(cy - 3 * k), (int)(13 * k),
-                                          (int)(8.5 * k)), 2, c);
-        break;
-    case LT_UI_ICON_FILE:
-        lt_ui_draw_round(ui, lt_rect_make((int)(cx - 4.5 * k), (int)(cy - 6 * k), (int)(9 * k),
-                                          (int)(12 * k)), 1, c);
-        lt_ui_draw_hline(ui, (int)(cx - 2.5 * k), (int)(cx + 2.5 * k), (int)(cy - 1 * k),
-                         ui->theme.surface);
-        lt_ui_draw_hline(ui, (int)(cx - 2.5 * k), (int)(cx + 2.5 * k), (int)(cy + 2 * k),
-                         ui->theme.surface);
-        break;
-    case LT_UI_ICON_WARN:
-        pts[0] = cx; pts[1] = cy - 6 * k; pts[2] = cx + 6.5 * k; pts[3] = cy + 5 * k;
-        pts[4] = cx - 6.5 * k; pts[5] = cy + 5 * k;
-        lt_ui_draw_poly(ui, pts, 3, c);
-        lt_ui_draw_line(ui, cx, cy - 2 * k, cx, cy + 1.5 * k, 1.5 * k, ui->theme.surface);
-        lt_ui_draw_circle_fill(ui, cx, cy + 3.3 * k, 0.9 * k, ui->theme.surface);
-        break;
-    case LT_UI_ICON_INFO:
-        lt_ui_draw_circle_fill(ui, cx, cy, 6.5 * k, c);
-        lt_ui_draw_line(ui, cx, cy - 0.5 * k, cx, cy + 3.5 * k, 1.6 * k, ui->theme.surface);
-        lt_ui_draw_circle_fill(ui, cx, cy - 3 * k, 1.0 * k, ui->theme.surface);
-        break;
-    case LT_UI_ICON_SEARCH:
-        lt_ui_draw_circle(ui, cx - 1.5 * k, cy - 1.5 * k, 4.2 * k, 1.5 * k, c);
-        lt_ui_draw_line(ui, cx + 1.5 * k, cy + 1.5 * k, cx + 6 * k, cy + 6 * k, 1.8 * k, c);
-        break;
-    case LT_UI_ICON_TABLE:
-        lt_ui_draw_rect(ui, lt_rect_make((int)(cx - 6 * k), (int)(cy - 5 * k), (int)(12 * k),
-                                         (int)(10 * k)), c);
-        lt_ui_draw_hline(ui, (int)(cx - 6 * k), (int)(cx + 6 * k), (int)cy, c);
-        lt_ui_draw_vline(ui, (int)cx, (int)(cy - 5 * k), (int)(cy + 5 * k), c);
-        break;
-    case LT_UI_ICON_GAUGE:
-        lt_ui_draw_arc(ui, cx, cy + 1 * k, 5.5 * k, LT_PI * 0.85, LT_PI * 2.15, 1.5 * k, c);
-        lt_ui_draw_line(ui, cx, cy + 1 * k, cx + 3 * k, cy - 3 * k, 1.5 * k, c);
         break;
     default: break;
     }
@@ -1076,6 +1159,19 @@ static void sort_layers(lt_ui *ui, int *order)
     }
 }
 
+static void replay_text(lt_ui *ui, lt_gfx *g, const ui_cmd *c)
+{
+    const char *s = ui->tbuf.data + c->off;
+    lt_font *f = (g->cells != NULL || g->bitmap_text) ? NULL : lt_font_get((lt_font_id)c->i[1]);
+    if (f == NULL) {
+        lt_gfx_text(g, c->r.x, c->r.y, s, c->c, c->i[0]);
+    } else {
+        double px = (double)c->i[2];
+        int base = c->r.y + (c->r.h + (int)floor(lt_font_cap_height(f, px) + 0.5)) / 2;
+        lt_gfx_text_bl(g, f, px, (double)c->r.x, base, s, c->c);
+    }
+}
+
 static void replay_layer(lt_ui *ui, ui_layer *L)
 {
     lt_gfx *g = ui->g;
@@ -1093,7 +1189,7 @@ static void replay_layer(lt_ui *ui, ui_layer *L)
         case UC_HLINE: lt_gfx_hline(g, c->i[0], c->i[1], c->i[2], c->c); break;
         case UC_VLINE: lt_gfx_vline(g, c->i[0], c->i[1], c->i[2], c->c); break;
         case UC_LINE: lt_gfx_line(g, c->d[0], c->d[1], c->d[2], c->d[3], c->d[4], c->c); break;
-        case UC_TEXT: lt_gfx_text(g, c->r.x, c->r.y, ui->tbuf.data + c->off, c->c, c->i[0]); break;
+        case UC_TEXT: replay_text(ui, g, c); break;
         case UC_VTEXT:
             lt_gfx_vtext(g, c->d[0], c->d[1], ui->tbuf.data + c->off, c->d[2], c->d[3], c->i[0],
                          c->i[1], c->d[4], c->c);
@@ -1107,6 +1203,12 @@ static void replay_layer(lt_ui *ui, ui_layer *L)
             lt_gfx_fill_poly(g, (const double *)ui->dpool.data + c->off, c->i[0], c->c);
             break;
         case UC_VGRAD: lt_gfx_fill_rect_vgrad(g, c->r, c->c, c->c2); break;
+        case UC_ICON: {
+            double sz = c->d[0];
+            lt_gfx_icon(g, c->i[0], (double)c->r.x + ((double)c->r.w - sz) / 2.0,
+                        (double)c->r.y + ((double)c->r.h - sz) / 2.0, sz, c->d[1], c->c);
+            break;
+        }
         case UC_BLIT:
             if (g->cells == NULL) {
                 lt_gfx_blit(g, c->r.x, c->r.y, c->px, c->r.w, c->r.h, c->i[0]);
@@ -1155,11 +1257,11 @@ void lt_ui_begin(lt_ui *ui, lt_gfx *g, double now_ms)
     ui->hover_layer = 1;
     {
         int bestz = -1, bests = -1;
-        ui->top_modal_z = 0;
+        ui->modal_z_top = 0;
         for (i = 0; i < ui->nprev; i++) {
             const ui_prev_layer *p = &ui->prev[i];
             if (p->kind == UL_TIP) { continue; }
-            if (p->kind == UL_MODAL && p->z > ui->top_modal_z) { ui->top_modal_z = p->z; }
+            if (p->kind == UL_MODAL && p->z > ui->modal_z_top) { ui->modal_z_top = p->z; }
             if (lt_rect_contains(p->rect, ui->mx, ui->my) &&
                 (p->z > bestz || (p->z == bestz && p->seq > bests))) {
                 bestz = p->z; bests = p->seq; ui->hover_layer = p->id;
@@ -1194,11 +1296,12 @@ void lt_ui_begin(lt_ui *ui, lt_gfx *g, double now_ms)
     ui->menu_close_req = 0;
     ui->menu_activate = 0;
     ui->in_bar = 0;
-    ui->top_used = ui->bottom_used = 0;
+    ui->used_top = ui->bottom_used = 0;
     ui->modal_seq = 0;
     ui->popup_seq = 0;
     ui->modal_depth = 0;
     ui->tree_depth = 0;
+    if (ui->tree_cmd_left > 0) { ui->tree_cmd_left--; ui_request(ui); if (ui->tree_cmd_left == 0) { ui->tree_cmd = 0; } }
     ui->tab_id = 0;
     lt_buf_clear(&ui->tbuf);
     lt_vec_clear(&ui->dpool);
@@ -1228,7 +1331,7 @@ static void draw_tooltip(lt_ui *ui)
         if (!e) { break; }
         p = e + 1;
     }
-    w = maxw + 2 * ui->theme.pad_x; h = lines * 16 * (ui->cell ? 1 : ui->scale) + (ui->cell ? 0 : 8);
+    w = maxw + 2 * ui->theme.pad_x; h = lines * ui_line_h(ui) + (ui->cell ? 0 : 2 * ui->theme.padding);
     x = ui->mx + (ui->cell ? 8 : 12);
     y = ui->my + (ui->cell ? 16 : 20);
     if (x + w > ui->sw) { x = ui->sw - w; }
@@ -1246,7 +1349,7 @@ static void draw_tooltip(lt_ui *ui)
         size_t n = e ? (size_t)(e - p) : strlen(p);
         if (n >= sizeof(line)) { n = sizeof(line) - 1; }
         memcpy(line, p, n); line[n] = '\0';
-        lt_ui_draw_text(ui, r.x + ui->theme.pad_x, r.y + (ui->cell ? 0 : 4) + i * 16 * (ui->cell ? 1 : ui->scale),
+        lt_ui_draw_text(ui, r.x + ui->theme.pad_x, r.y + (ui->cell ? 0 : ui->theme.padding) + i * ui_line_h(ui),
                         line, ui->theme.text);
         i++;
         if (!e) { break; }
@@ -1260,16 +1363,16 @@ static void draw_toasts(lt_ui *ui)
     int i, y, keep = 0;
     ui_toast tmp[UI_MAX_TOASTS];
     for (i = 0; i < ui->ntoasts; i++) {
-        if (ui->now - ui->toasts[i].t0 < UI_TOAST_MS) { tmp[keep++] = ui->toasts[i]; }
+        if (ui->now - ui->msg_q[i].t0 < UI_TOAST_MS) { tmp[keep++] = ui->msg_q[i]; }
     }
-    for (i = 0; i < keep; i++) { ui->toasts[i] = tmp[i]; }
+    for (i = 0; i < keep; i++) { ui->msg_q[i] = tmp[i]; }
     ui->ntoasts = keep;
     if (keep == 0) { return; }
     ui_layer_begin(ui, 0x7002, UL_TIP, 5001, lt_rect_make(0, 0, 0, 0));
     y = ui->sh - ui->theme.statusbar_h - ui->theme.padding;
     if (ui->cell) { y = ui->sh - 16; }
     for (i = keep - 1; i >= 0; i--) {
-        const ui_toast *t = &ui->toasts[i];
+        const ui_toast *t = &ui->msg_q[i];
         lt_color bg, fg;
         int tw = lt_ui_text_width(ui, t->text), w, h = ui->theme.row_h + (ui->cell ? 0 : 8);
         double age = ui->now - t->t0;
@@ -1303,10 +1406,10 @@ void lt_ui_toast(lt_ui *ui, int kind, const char *text)
 {
     ui_toast *t;
     if (ui->ntoasts >= UI_MAX_TOASTS) {
-        memmove(&ui->toasts[0], &ui->toasts[1], sizeof(ui_toast) * (UI_MAX_TOASTS - 1));
+        memmove(&ui->msg_q[0], &ui->msg_q[1], sizeof(ui_toast) * (UI_MAX_TOASTS - 1));
         ui->ntoasts = UI_MAX_TOASTS - 1;
     }
-    t = &ui->toasts[ui->ntoasts++];
+    t = &ui->msg_q[ui->ntoasts++];
     t->kind = kind;
     t->t0 = ui->now;
     lt_strlcpy(t->text, text, sizeof(t->text));

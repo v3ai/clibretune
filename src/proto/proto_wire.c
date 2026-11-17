@@ -393,8 +393,8 @@ char *lt_parse_rusefi_text_output(const char *raw)
     }
     len = strlen(raw);
     /* split on backtick */
-    starts = (const char **)lt_malloc((len + 2) * sizeof(char *));
-    lens = (size_t *)lt_malloc((len + 2) * sizeof(size_t));
+    starts = (const char **)lt_calloc(len + 2, sizeof(char *));
+    lens = (size_t *)lt_calloc(len + 2, sizeof(size_t));
     p = raw;
     for (;;) {
         q = strchr(p, '`');

@@ -168,9 +168,9 @@ typedef enum lt_dash_issue_kind {
 } lt_dash_issue_kind;
 typedef struct lt_dash_issue { lt_dash_issue_kind kind; lt_bool is_error; char gauge_id[64]; char message[160]; } lt_dash_issue;
 typedef struct lt_dash_report {
-    lt_dash_issue *issues; size_t n;
+    lt_dash_issue *problems; size_t n;
     size_t gauge_count, indicator_count, unique_channels, embedded_image_count; lt_bool has_embedded_fonts;
-    lt_bool is_valid;                    /* no error issues */
+    lt_bool is_valid;                    /* no error problems */
 } lt_dash_report;
 /* channels: INI output channel names to check against, or NULL to skip that check. */
 void lt_dash_validate(const lt_dash_file *d, const char *const *channels, size_t n_channels,

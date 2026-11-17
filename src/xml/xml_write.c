@@ -22,7 +22,7 @@ void lt_xmlw_free(lt_xmlw *w)
     w->pending = 0;
 }
 
-static lt_xmlw_lvl *top(lt_xmlw *w)
+static lt_xmlw_lvl *cur_lvl(lt_xmlw *w)
 {
     return w->stack.len ? (lt_xmlw_lvl *)lt_vec_at(&w->stack, w->stack.len - 1) : NULL;
 }
@@ -49,7 +49,7 @@ static void begin_child(lt_xmlw *w)
 {
     lt_xmlw_lvl *t;
     end_start_tag(w);
-    t = top(w);
+    t = cur_lvl(w);
     if (t) {
         t->has_kids = 1;
         if (!t->has_text) newline_indent(w, w->stack.len);
@@ -122,7 +122,7 @@ int lt_xmlw_attr_f(lt_xmlw *w, const char *name, double v, int max_decimals)
 
 static int content_ok(lt_xmlw *w)
 {
-    lt_xmlw_lvl *t = top(w);
+    lt_xmlw_lvl *t = cur_lvl(w);
     if (t == NULL) { w->misuse = 1; return 0; }
     end_start_tag(w);
     t->has_text = 1;
@@ -160,7 +160,7 @@ void lt_xmlw_cdata(lt_xmlw *w, const char *s)
 
 int lt_xmlw_close(lt_xmlw *w)
 {
-    lt_xmlw_lvl *t = top(w);
+    lt_xmlw_lvl *t = cur_lvl(w);
     if (t == NULL) { w->misuse = 1; return -1; }
     if (w->pending) {
         lt_buf_puts(w->out, (w->flags & LT_XMLW_SPACE_SLASH) ? " />" : "/>");

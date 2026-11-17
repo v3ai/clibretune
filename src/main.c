@@ -14,7 +14,7 @@ static void usage(void)
 {
     puts("LibreTune 0.1.0 - open source ECU tuning software\n"
          "usage: libretune [options]\n"
-         "  --backend NAME   GUI backend: auto x11 win32 web tty\n"
+         "  --backend NAME   GUI backend: auto x11 win32 cocoa web tty\n"
          "  --demo           start in demo mode (simulated ECU)\n"
          "  --project DIR    open a project directory\n"
          "  --ini FILE       open an ECU definition offline (or demo with --demo)\n"

@@ -5,7 +5,7 @@
 #include "tableops/tableops.h"
 #include "lt_test.h"
 
-#define EPS 0.01
+#define TOPS_EPS 0.01
 
 static void same(const double *a, const double *b, size_t n)
 {
@@ -29,17 +29,17 @@ LT_TEST(units_temp)
 
 LT_TEST(units_pressure)
 {
-    LT_CHECK_NEAR(lt_kpa_to_psi(100.0), 14.504, EPS);
-    LT_CHECK_NEAR(lt_psi_to_kpa(14.504), 100.0, EPS);
-    LT_CHECK_NEAR(lt_kpa_to_psi(101.325), 14.696, EPS);
+    LT_CHECK_NEAR(lt_kpa_to_psi(100.0), 14.504, TOPS_EPS);
+    LT_CHECK_NEAR(lt_psi_to_kpa(14.504), 100.0, TOPS_EPS);
+    LT_CHECK_NEAR(lt_kpa_to_psi(101.325), 14.696, TOPS_EPS);
     LT_CHECK_NEAR(lt_psi_to_bar(lt_bar_to_psi(1.7)), 1.7, 1e-12);
     LT_CHECK_NEAR(lt_bar_to_psi(1.0), 14.503773773020923, 1e-12);
 }
 
 LT_TEST(units_misc)
 {
-    LT_CHECK_NEAR(lt_kmh_to_mph(100.0), 62.14, EPS);
-    LT_CHECK_NEAR(lt_mph_to_kmh(62.14), 100.0, EPS);
+    LT_CHECK_NEAR(lt_kmh_to_mph(100.0), 62.14, TOPS_EPS);
+    LT_CHECK_NEAR(lt_mph_to_kmh(62.14), 100.0, TOPS_EPS);
     LT_CHECK_NEAR(lt_l_to_gal_us(3.78541), 1.0, 1e-4);
     LT_CHECK_NEAR(lt_gal_us_to_l(1.0), 3.78541, 1e-4);
     LT_CHECK_NEAR(lt_l_to_gal_imp(4.54609), 1.0, 1e-4);
@@ -48,8 +48,8 @@ LT_TEST(units_misc)
     LT_CHECK_NEAR(lt_l_to_gal(4.54609, LT_TRUE), 1.0, 1e-4);
     LT_CHECK_NEAR(lt_gal_to_l(1.0, LT_FALSE), 3.78541, 1e-4);
     LT_CHECK_NEAR(lt_gal_to_l(1.0, 1), 4.54609, 1e-4);
-    LT_CHECK_NEAR(lt_lbs_to_kg(100.0), 45.36, EPS);
-    LT_CHECK_NEAR(lt_kg_to_lbs(45.36), 100.0, EPS);
+    LT_CHECK_NEAR(lt_lbs_to_kg(100.0), 45.36, TOPS_EPS);
+    LT_CHECK_NEAR(lt_kg_to_lbs(45.36), 100.0, TOPS_EPS);
 }
 
 LT_TEST(units_afr)
@@ -403,9 +403,9 @@ LT_TEST(rebin_same_and_shrink)
     size_t i;
     for (i = 0; i < 16; i++) z[i] = (double)i * 3.0;
     LT_CHECK(lt_tbl_rebin(xb, 4, yb, 4, z, xb, 4, yb, 4, LT_TRUE, out) == 0);
-    for (i = 0; i < 16; i++) LT_CHECK_NEAR(out[i], z[i], EPS);
+    for (i = 0; i < 16; i++) LT_CHECK_NEAR(out[i], z[i], TOPS_EPS);
     LT_CHECK(lt_tbl_rebin(xb, 4, yb, 4, z, nx, 2, ny, 2, LT_TRUE, out) == 0);
-    LT_CHECK_NEAR(out[0], z[0], EPS);
+    LT_CHECK_NEAR(out[0], z[0], TOPS_EPS);
     LT_CHECK_NEAR(out[1], lt_tbl_bilinear(3000, 20, xb, 4, yb, 4, z), 1e-9);
     LT_CHECK_NEAR(out[3], lt_tbl_bilinear(3000, 80, xb, 4, yb, 4, z), 1e-9);
 }

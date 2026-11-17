@@ -261,7 +261,7 @@ static int is_name_stop(int c)
     return is_ws(c) || c == '/' || c == '>' || c == '=' || c == '<' || c == '"' || c == '\'';
 }
 
-static char *strip_prefix(const char *a, size_t n, unsigned flags)
+static char *xml_drop_prefix(const char *a, size_t n, unsigned flags)
 {
     size_t k, start = 0;
     if (flags & LT_XML_STRIP_NS) {
@@ -282,7 +282,7 @@ static size_t find_sub(const char *s, size_t n, size_t from, const char *sub, si
     return n;
 }
 
-static frame *top_frame(parser *p)
+static frame *xml_cur_frame(parser *p)
 {
     if (p->frames.len == 0) return NULL;
     return (frame *)lt_vec_at(&p->frames, p->frames.len - 1);
@@ -291,7 +291,7 @@ static frame *top_frame(parser *p)
 /* Finalize the top frame into its node and pop it. */
 static void pop_frame(parser *p)
 {
-    frame *f = top_frame(p);
+    frame *f = xml_cur_frame(p);
     lt_xml_node *nd;
     if (f == NULL) return;
     nd = f->node;
@@ -308,7 +308,7 @@ static void pop_frame(parser *p)
 
 static void add_text(parser *p, const char *s, size_t n, int decode, int cdata)
 {
-    frame *f = top_frame(p);
+    frame *f = xml_cur_frame(p);
     if (f == NULL || n == 0) return;
     lt_buf_append(&f->raw, s, n);
     if (decode && !cdata) decode_into(s, n, &f->text, 0);
@@ -363,7 +363,7 @@ static void parse_start_tag(parser *p)
 
     ns = i;
     while (i < n && !is_name_stop((unsigned char)s[i])) i++;
-    name = strip_prefix(s + ns, i - ns, p->flags);
+    name = xml_drop_prefix(s + ns, i - ns, p->flags);
     lt_vec_init(&attrs, sizeof(lt_xml_attr));
 
     for (;;) {
@@ -394,7 +394,7 @@ static void parse_start_tag(parser *p)
         {
             lt_xml_attr *at;
             lt_buf v;
-            char *an = strip_prefix(s + as, ae - as, p->flags);
+            char *an = xml_drop_prefix(s + as, ae - as, p->flags);
             int drop = 0;
             lt_buf_init(&v);
             while (i < n && is_ws((unsigned char)s[i])) i++;
@@ -477,7 +477,7 @@ static void parse_start_tag(parser *p)
     }
     lt_vec_free(&attrs);
 
-    par = top_frame(p);
+    par = xml_cur_frame(p);
     if (par) {
         lt_xml_node **slot = (lt_xml_node **)lt_vec_push(&par->kids);
         *slot = nd;
@@ -503,7 +503,7 @@ static void parse_end_tag(parser *p)
     char *name;
     size_t gt;
     while (i < n && !is_name_stop((unsigned char)s[i])) i++;
-    name = strip_prefix(s + ns, i - ns, p->flags);
+    name = xml_drop_prefix(s + ns, i - ns, p->flags);
     gt = i;
     while (gt < n && s[gt] != '>') gt++;
     if (gt >= n) {
@@ -514,7 +514,7 @@ static void parse_end_tag(parser *p)
     }
     p->i = gt + 1;
     {
-        frame *f = top_frame(p);
+        frame *f = xml_cur_frame(p);
         if (f && strcmp(f->node->name, name) == 0) {
             pop_frame(p);
         } else if (p->flags & LT_XML_LENIENT) {

@@ -720,7 +720,7 @@ LT_TEST(diff_basic)
     LT_CHECK(d->diffs[0].has_numeric && d->diffs[0].has_percent);
     LT_CHECK_NEAR(d->diffs[0].numeric_diff, 2.0, 1e-12);
     LT_CHECK_NEAR(d->diffs[0].percent_diff, 20.0, 1e-9);
-    LT_CHECK_INT(d->total_a, 1);
+    LT_CHECK_INT(d->sum_a, 1);
     lt_tune_diff_free(d);
     lt_tune_free(a); lt_tune_free(b);
 }
