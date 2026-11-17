@@ -1,0 +1,6 @@
+# Byte-identical checkouts on every OS: tests compare file contents exactly.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.ttf binary
+*.png binary
+*.mlg binary
