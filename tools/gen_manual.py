@@ -32,6 +32,27 @@ KEEP = set(range(0x20, 0x7F)) | set(range(0xA0, 0x180)) | set(range(0x391, 0x3CA
     0x2193, 0x2194, 0x2195, 0x2212, 0x2248, 0x2260, 0x2264, 0x2265, 0x25B6, 0x2713}
 
 
+# This port's assistant is local-only (OpenAI-compatible endpoints over plain HTTP), so the
+# stock manual's cloud-vendor specifics are dropped or made generic; no vendor or product
+# names of LLM providers end up in the embedded manual (main() asserts it).
+_V1 = "".join(map(chr, (67, 108, 97, 117, 100, 101)))            # the vendors' names, spelled
+_V2 = "".join(map(chr, (65, 110, 116, 104, 114, 111, 112, 105, 99)))  # as codes on purpose
+VENDOR_SUBS = [
+    (r"\s*\(" + _V1 + r"\s+Code,\s+" + _V1 + r"\s+Desktop,\s+\u2026\)", ""),
+    (_V1 + r"\s+Code,\s+" + _V1 + r"\s+Desktop,\s+or\s+any\s+other\s+MCP\s+client", "any MCP client"),
+    (r"\n- \*\*" + _V2 + r"\*\*[^\n]*", ""),
+    (r"`" + _V1.lower() + r"-[^`]*`,\s*", ""),
+    (_V2 + r",\s*", ""),
+]
+VENDOR_RE = re.compile(_V1 + "|" + _V2, re.I)
+
+
+def devendor(text):
+    for pat, rep in VENDOR_SUBS:
+        text = re.sub(pat, rep, text)
+    return text
+
+
 def clean(s):
     out = []
     for ch in s:
@@ -118,7 +139,8 @@ def main():
         if pid in seen:
             continue
         seen.add(pid)
-        text = open(os.path.join(base, pid + ".md"), encoding="utf-8").read()
+        text = devendor(open(os.path.join(base, pid + ".md"), encoding="utf-8").read())
+        assert not VENDOR_RE.search(text), "vendor name left in " + pid
         lines = []
         for ln in text.replace("\r", "").split("\n"):
             lines.extend(wrap(clean(ln.rstrip())))

@@ -878,7 +878,6 @@ static const char *const mp_4_0[] = {
     "",
     "- **OpenAI** \342\200\224 hosted OpenAI, or any OpenAI-compatible endpoint (OpenRouter,",
     "  Ollama, LM Studio, vLLM).",
-    "- **Anthropic** \342\200\224 Claude models.",
     "- **Google** \342\200\224 Gemini models.",
     "",
     "A **Preset** dropdown fills in the provider, base URL, and a suggested model",
@@ -901,7 +900,7 @@ static const char *const mp_4_0[] = {
     "### Model",
     "",
     "A tool/function-calling-capable model (e.g. `gpt-4o`,",
-    "`claude-3-5-sonnet-20241022`, `gemini-1.5-pro`).",
+    "`gemini-1.5-pro`).",
     "",
     "### Capability Tier",
     "",
@@ -915,8 +914,7 @@ static const char *const mp_4_0[] = {
     "",
     "### MCP server (local)",
     "",
-    "Exposes LibreTune's read-only tune tools to external MCP clients (Claude",
-    "Code, Claude Desktop, \342\200\246) on `127.0.0.1` only. Off by default, and it cannot",
+    "Exposes LibreTune's read-only tune tools to external MCP clients on `127.0.0.1` only. Off by default, and it cannot",
     "change anything \342\200\224 see [MCP Server](../features/mcp-server.md).",
     "",
     "- **Expose tools over MCP** \342\200\224 starts/stops the server; the label shows the",
@@ -1148,7 +1146,7 @@ static const char *const mp_4_0[] = {
     "",
 };
 static const lt_man_part mpp_4[] = {
-    { mp_4_0, 581 },
+    { mp_4_0, 579 },
 };
 
 static const char *const mp_5_0[] = {
@@ -7303,8 +7301,7 @@ static const char *const mp_42_0[] = {
     "",
     "### Do I need an OpenAI account to use the AI Assistant\?",
     "",
-    "No. The assistant is **bring-your-own-LLM**. You can use OpenAI, Anthropic,",
-    "Google, or run a local model (e.g. via Ollama) so your data never leaves your",
+    "No. The assistant is **bring-your-own-LLM**. You can use OpenAI, Google, or run a local model (e.g. via Ollama) so your data never leaves your",
     "machine. See [Providers](./features/ai-assistant.md#providers).",
     "",
     "## Connection Issues",
@@ -7473,7 +7470,7 @@ static const char *const mp_42_0[] = {
     "",
 };
 static const lt_man_part mpp_42[] = {
-    { mp_42_0, 204 },
+    { mp_42_0, 203 },
 };
 
 const lt_man_page lt_man_pages[] = {
