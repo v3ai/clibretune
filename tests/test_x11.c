@@ -55,6 +55,15 @@ int main(void) {
     CHECK(lt_x11_pick_scale(0.0, 0.0, 0, 0.0, 0.0, 2880, 344) > 1.99);   /* 14" 2880 px: 213 dpi */
     CHECK(lt_x11_pick_scale(0.0, 0.0, 0, 0.0, 0.0, 1920, 508) < 1.01);   /* ordinary 96 dpi */
     CHECK(lt_x11_pick_scale(0.0, 0.0, 0, 0.0, 0.0, 0, 0) < 1.01);
+    /* physical density per monitor (RandR) */
+    CHECK(lt_x11_dpi_scale(2880, 1800, 302, 189) > 1.99 && lt_x11_dpi_scale(2880, 1800, 302, 189) < 2.01);
+    CHECK(lt_x11_dpi_scale(2560, 1600, 286, 179) > 1.99 && lt_x11_dpi_scale(2560, 1600, 286, 179) < 2.01);
+    CHECK(lt_x11_dpi_scale(1800, 2880, 189, 302) > 1.99);                    /* rotated */
+    CHECK(lt_x11_dpi_scale(1920, 1200, 301, 188) > 1.24 && lt_x11_dpi_scale(1920, 1200, 301, 188) < 1.26);
+    CHECK(lt_x11_dpi_scale(1920, 1080, 531, 299) > 0.99 && lt_x11_dpi_scale(1920, 1080, 531, 299) < 1.01);
+    CHECK(lt_x11_dpi_scale(2560, 1440, 597, 336) > 0.99 && lt_x11_dpi_scale(2560, 1440, 597, 336) < 1.01);
+    CHECK(lt_x11_dpi_scale(1920, 1080, 0, 0) == 0.0);                        /* no EDID */
+    CHECK(lt_x11_dpi_scale(1920, 1080, 16, 9) == 0.0);                       /* bogus size */
     if (!mock) { printf("test_x11: LT_X11_MOCK unset, skipped\n"); return 0; }
     b = lt_backend_x11_create();
     CHECK(b != NULL);

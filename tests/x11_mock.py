@@ -62,6 +62,8 @@ try:
             atoms[name] = next_atom
             conn.sendall(struct.pack("<BBHII20x", 1, 0, seq, 0, next_atom))
             next_atom += 1
+        elif op == 98:       # QueryExtension: no extensions
+            conn.sendall(struct.pack("<BBHI24x", 1, 0, seq, 0))
         elif op == 23:       # GetSelectionOwner: we own _XSETTINGS_S0 with window 0x55
             sel = struct.unpack("<I", rest[0:4])[0]
             owner = 0x55 if sel == atoms.get(b"_XSETTINGS_S0") else 0

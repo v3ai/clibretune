@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include <ctype.h>
 #include "gui.h"
 #include "../plat/plat.h"
@@ -31,6 +32,8 @@ typedef struct x11 {
     double xs_dpi;           /* XSETTINGS Xft/DPI, 0 = none */
     int xs_wscale;           /* XSETTINGS Gdk/WindowScalingFactor, 0 = none */
     int mm_w;                /* root screen width in millimetres (0 = unknown) */
+    int n_mon;               /* RandR monitors (connected outputs with a CRTC) */
+    struct { int x, y, w, h, mm_w, mm_h, primary; } mon[8];
     int minw, minh;          /* WM_NORMAL_HINTS minimum, 0 = none */
     int init_x, init_y, init_flags;
     int min_kc, kpk, nkc;
@@ -742,6 +745,91 @@ static void fetch_xsettings(x11 *x, lt_buf *b) {
     }
 }
 
+/* Physical scale of a monitor from its pixel and millimetre size (EDID via RandR).
+ * Laptop and desktop panels are designed around roughly 120 dpi at their viewing
+ * distance, so the factor is dpi / 120 rounded to a 25% step; 0 when the size is
+ * missing or implausible (projectors and some docks report 0 or tiny values), 1.0
+ * for ordinary-density screens. Uses the diagonal so rotation does not matter. */
+double lt_x11_dpi_scale(int px_w, int px_h, int mm_w, int mm_h) {
+    double dpx, dmm, dpi, s;
+    if (px_w <= 0 || px_h <= 0 || mm_w < 100 || mm_h < 60) return 0.0;
+    dpx = sqrt((double)px_w * (double)px_w + (double)px_h * (double)px_h);
+    dmm = sqrt((double)mm_w * (double)mm_w + (double)mm_h * (double)mm_h);
+    dpi = dpx * 25.4 / dmm;
+    if (dpi < 60.0 || dpi > 700.0) return 0.0;
+    s = dpi / 120.0;
+    if (s < 1.15) return 1.0;
+    s = (double)(int)(s * 4.0 + 0.5) / 4.0;
+    return s > 3.0 ? 3.0 : s;
+}
+
+/* RandR 1.3: every connected output with a CRTC -> position, pixels, millimetres */
+static void fetch_randr(x11 *x, lt_buf *b) {
+    static const char name[] = "RANDR";
+    int major, i, nout, ncrtc;
+    lt_u32 outs[16], ctime, primary = 0;
+    req_begin(b, 98, 0);                                    /* QueryExtension */
+    p16(x, b, 5); p16(x, b, 0);
+    lt_buf_append(b, name, 5); lt_buf_append(b, "\0\0\0", 3);
+    if (req_end(x, b) < 0) return;
+    if (wait_reply(x, x->seq, 5000) < 0) { drop_reply(x); return; }
+    major = x->reply[8] ? x->reply[9] : 0;
+    drop_reply(x);
+    if (major == 0) return;
+    req_begin(b, major, 0);                                 /* RRQueryVersion 1.3 */
+    p32(x, b, 1); p32(x, b, 3);
+    if (req_end(x, b) < 0) return;
+    if (wait_reply(x, x->seq, 5000) < 0) { drop_reply(x); return; }
+    i = (int)r32(x, x->reply + 8) * 100 + (int)r32(x, x->reply + 12);
+    drop_reply(x);
+    if (i < 103) return;
+    req_begin(b, major, 31);                                /* RRGetOutputPrimary */
+    p32(x, b, x->root);
+    if (req_end(x, b) == 0 && wait_reply(x, x->seq, 5000) == 0) primary = r32(x, x->reply + 8);
+    drop_reply(x);
+    req_begin(b, major, 25);                                /* RRGetScreenResourcesCurrent */
+    p32(x, b, x->root);
+    if (req_end(x, b) < 0) return;
+    if (wait_reply(x, x->seq, 5000) < 0) { drop_reply(x); return; }
+    ctime = r32(x, x->reply + 12);
+    ncrtc = (int)r16(x, x->reply + 16);
+    nout = (int)r16(x, x->reply + 18);
+    if ((size_t)(32 + 4 * (ncrtc + nout)) > x->reply_len) { drop_reply(x); return; }
+    if (nout > 16) nout = 16;
+    for (i = 0; i < nout; i++) outs[i] = r32(x, x->reply + 32 + 4 * (size_t)ncrtc + 4 * (size_t)i);
+    drop_reply(x);
+    for (i = 0; i < nout && x->n_mon < 8; i++) {
+        lt_u32 crtc = 0;
+        int mmw = 0, mmh = 0, connected = 0;
+        req_begin(b, major, 9);                             /* RRGetOutputInfo */
+        p32(x, b, outs[i]); p32(x, b, ctime);
+        if (req_end(x, b) < 0) return;
+        if (wait_reply(x, x->seq, 5000) == 0 && x->reply_len >= 36) {
+            crtc = r32(x, x->reply + 12);
+            mmw = (int)r32(x, x->reply + 16);
+            mmh = (int)r32(x, x->reply + 20);
+            connected = x->reply[24] == 0;
+        }
+        drop_reply(x);
+        if (!connected || crtc == 0) continue;
+        req_begin(b, major, 20);                            /* RRGetCrtcInfo */
+        p32(x, b, crtc); p32(x, b, ctime);
+        if (req_end(x, b) < 0) return;
+        if (wait_reply(x, x->seq, 5000) == 0 && x->reply_len >= 32) {
+            int k = x->n_mon;
+            x->mon[k].x = (int)(lt_s16)r16(x, x->reply + 12);
+            x->mon[k].y = (int)(lt_s16)r16(x, x->reply + 14);
+            x->mon[k].w = (int)r16(x, x->reply + 16);
+            x->mon[k].h = (int)r16(x, x->reply + 18);
+            x->mon[k].mm_w = mmw;
+            x->mon[k].mm_h = mmh;
+            x->mon[k].primary = outs[i] == primary;
+            if (x->mon[k].w > 0 && x->mon[k].h > 0) x->n_mon++;
+        }
+        drop_reply(x);
+    }
+}
+
 static void fetch_resources(x11 *x, lt_buf *b) {
     if (get_prop(x, b, x->root, 23) == 0) {
         if (x->reply[1] == 8) {
@@ -776,16 +864,54 @@ double lt_x11_pick_scale(double xft_dpi, double xs_dpi, int xs_wscale, double gd
     return s > 0.0 ? s : 1.0;
 }
 
+/* the monitor the window opens on: the one holding the requested position, else the
+ * primary output, else the first; -1 when RandR gave nothing */
+static int pick_monitor(const x11 *x) {
+    int i;
+    if (x->init_flags & LT_GEOM_POS) {
+        for (i = 0; i < x->n_mon; i++) {
+            if (x->init_x >= x->mon[i].x && x->init_x < x->mon[i].x + x->mon[i].w &&
+                x->init_y >= x->mon[i].y && x->init_y < x->mon[i].y + x->mon[i].h) return i;
+        }
+    }
+    for (i = 0; i < x->n_mon; i++) {
+        if (x->mon[i].primary) return i;
+    }
+    return x->n_mon > 0 ? 0 : -1;
+}
+
 static double x_scale_hint(lt_backend *be) {
     x11 *x = (x11 *)be->impl;
     const char *e;
-    double gdk = 0.0, qt = 0.0;
+    double gdk = 0.0, qt = 0.0, desk, phys = 0.0, s;
+    int m;
     if (!x) return 1.0;
     e = getenv("GDK_SCALE");
     if (e) gdk = atof(e);
     e = getenv("QT_SCALE_FACTOR");
     if (e) qt = atof(e);
-    return lt_x11_pick_scale(x->xft_dpi, x->xs_dpi, x->xs_wscale, gdk, qt, x->root_w, x->mm_w);
+    /* what the desktop asks for (no physical fallback here) */
+    desk = lt_x11_pick_scale(x->xft_dpi, x->xs_dpi, x->xs_wscale, gdk, qt, 0, 0);
+    m = pick_monitor(x);
+    if (m >= 0) phys = lt_x11_dpi_scale(x->mon[m].w, x->mon[m].h, x->mon[m].mm_w, x->mon[m].mm_h);
+    /* An explicit desktop setting above 100% wins. Otherwise (nothing set, or the
+     * common 96 dpi default that many desktops write regardless of the panel) the
+     * monitor's measured density decides; the core-protocol size is a last resort. */
+    if (desk > 1.01) s = desk;
+    else if (phys > 0.0) s = phys;
+    else s = lt_x11_pick_scale(0.0, 0.0, 0, 0.0, 0.0, x->root_w, x->mm_w);
+    if (getenv("LT_SCALE_DEBUG") != NULL) {
+        fprintf(stderr, "x11 scale: Xft.dpi=%.0f xsettings dpi=%.0f window-scale=%d GDK_SCALE=%.2f "
+                "QT_SCALE_FACTOR=%.2f -> desktop %.2f\n", x->xft_dpi, x->xs_dpi, x->xs_wscale, gdk, qt, desk);
+        for (m = 0; m < x->n_mon; m++) {
+            fprintf(stderr, "x11 scale: monitor %d%s %dx%d+%d+%d %dx%d mm -> %.2f\n", m,
+                    x->mon[m].primary ? " (primary)" : "", x->mon[m].w, x->mon[m].h, x->mon[m].x,
+                    x->mon[m].y, x->mon[m].mm_w, x->mon[m].mm_h,
+                    lt_x11_dpi_scale(x->mon[m].w, x->mon[m].h, x->mon[m].mm_w, x->mon[m].mm_h));
+        }
+        fprintf(stderr, "x11 scale: chosen %.2f\n", s);
+    }
+    return s;
 }
 
 static void send_size_hints(x11 *x, lt_buf *b) {
@@ -1107,6 +1233,7 @@ lt_backend *lt_backend_x11_create(void) {
     }
     fetch_resources(x, &b);
     fetch_xsettings(x, &b);
+    fetch_randr(x, &b);
     lt_buf_free(&b);
     if (x->dead) { x_free(x); return NULL; }
     be = (lt_backend *)lt_calloc(1, sizeof *be);

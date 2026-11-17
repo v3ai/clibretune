@@ -343,6 +343,8 @@ int    lt_backend_set_fullscreen(lt_backend *b, int on);
 double lt_x11_parse_xft_dpi(const char *resources);
 /* XSETTINGS blob -> Xft/DPI (dpi) and Gdk/WindowScalingFactor; 0 ok, -1 malformed */
 int lt_x11_parse_xsettings(const unsigned char *d, size_t n, double *dpi, int *wscale);
+/* scale of a monitor from pixels and millimetres (dpi/120 in 25% steps; 0 = unknown) */
+double lt_x11_dpi_scale(int px_w, int px_h, int mm_w, int mm_h);
 /* display scale from every X11 source (largest wins; physical DPI as a last resort) */
 double lt_x11_pick_scale(double xft_dpi, double xs_dpi, int xs_wscale, double gdk, double qt,
                          int root_w, int mm_w);
