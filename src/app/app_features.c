@@ -9,4 +9,6 @@ void lt_app_features_register(lt_app_ext *reg)
     lt_feat_core_register(reg);
     lt_feat_help_register(reg);
     lt_feat_calib_register(reg);
+    lt_feat_sync_register(reg);
+    lt_feat_reconnect_register(reg);
 }

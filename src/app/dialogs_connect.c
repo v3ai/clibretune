@@ -118,10 +118,6 @@ static void connect_draw(lt_app *app, lt_app_dialog *d)
         if (lt_ui_button_ex(ui, "Connect", (s->n_ports > 0 && !s->scanning) ? LT_UI_BTN_PRIMARY : LT_UI_BTN_DISABLED)
             && s->n_ports > 0 && !s->scanning) {
             if (lt_app_connect_serial(app, s->ports[s->sel], atol(bauds[s->baud_sel])) == 0) {
-                if (sig_mismatch(app, app->signature)) {
-                    lt_app_toast(app, 2, "ECU signature '%s' differs from the loaded definition '%s'",
-                                 app->signature, app->ini->signature);
-                }
                 open = 0;
             }
         }

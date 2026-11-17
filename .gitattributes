@@ -4,3 +4,6 @@
 *.ttf binary
 *.png binary
 *.mlg binary
+# one registration line per feature: concurrent additions merge cleanly
+src/app/app_features.c merge=union
+src/app/feat.h merge=union

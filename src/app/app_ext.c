@@ -22,6 +22,8 @@ struct lt_app_ext {
     ext_page *pages; int n_pages, cap_pages;
     ext_hook *ticks; int n_ticks, cap_ticks;
     ext_hook *overlays; int n_overlays, cap_overlays;
+    ext_hook *connects; int n_connects, cap_connects;
+    ext_hook *losts; int n_losts, cap_losts;
     ext_state *states; int n_states, cap_states;
 };
 
@@ -64,6 +66,7 @@ void lt_ext_free(lt_app *app)
         lt_free(e->states[i].data);
     }
     lt_free(e->targets); lt_free(e->items); lt_free(e->keys); lt_free(e->pages);
+    lt_free(e->connects); lt_free(e->losts);
     lt_free(e->ticks); lt_free(e->overlays); lt_free(e->states);
     lt_free(e);
     app->ext = NULL;
@@ -222,6 +225,35 @@ void lt_ext_overlays(lt_app *app)
     int i;
     if (app->ext == NULL) { return; }
     for (i = 0; i < app->ext->n_overlays; i++) { app->ext->overlays[i].fn(app); }
+}
+
+/* ---- connection hooks ---- */
+void lt_ext_add_on_connect(lt_app_ext *reg, lt_ext_draw_fn fn)
+{
+    ext_hook *h = (ext_hook *)ext_push((void **)&reg->connects, &reg->n_connects,
+                                       &reg->cap_connects, sizeof(ext_hook));
+    h->fn = fn;
+}
+
+void lt_ext_add_on_link_lost(lt_app_ext *reg, lt_ext_draw_fn fn)
+{
+    ext_hook *h = (ext_hook *)ext_push((void **)&reg->losts, &reg->n_losts, &reg->cap_losts,
+                                       sizeof(ext_hook));
+    h->fn = fn;
+}
+
+void lt_ext_on_connect(lt_app *app)
+{
+    int i;
+    if (app->ext == NULL) { return; }
+    for (i = 0; i < app->ext->n_connects; i++) { app->ext->connects[i].fn(app); }
+}
+
+void lt_ext_on_link_lost(lt_app *app)
+{
+    int i;
+    if (app->ext == NULL) { return; }
+    for (i = 0; i < app->ext->n_losts; i++) { app->ext->losts[i].fn(app); }
 }
 
 void lt_ext_add_dialog_kind(lt_app_ext *reg, const lt_app_dialog_kind *k)
