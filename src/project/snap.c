@@ -65,17 +65,29 @@ static void collect(const char *base, char ***v, size_t *n)
     if (*n > 1) qsort(*v, *n, sizeof(char *), lt_proj_cmp_str);
 }
 
-/* Byte comparison that ignores the values of writeDate="..." attributes: every save
- * stamps the time, so two saves of identical content a second apart must still count
- * as unchanged (no empty history commits). */
+/* Byte comparison that ignores the values of the save-time stamps (writeDate="..." on
+ * <bibliography>, savedAt="..." on <iniMetadata>): every save rewrites them, so two saves
+ * of identical content a second apart must still count as unchanged (no empty history
+ * commits). */
+static size_t stamp_key(const char *d, size_t n)
+{
+    static const char *const keys[] = { "writeDate=\"", "savedAt=\"" };
+    size_t k, kl;
+    for (k = 0; k < LT_COUNTOF(keys); k++) {
+        kl = strlen(keys[k]);
+        if (n >= kl && memcmp(d, keys[k], kl) == 0) return kl;
+    }
+    return 0;
+}
+
 int lt_snap_content_equal(const char *da, size_t la, const char *db, size_t lb)
 {
-    static const char key[] = "writeDate=\"";
-    size_t i = 0, j = 0, kl = sizeof(key) - 1;
+    size_t i = 0, j = 0, ka, kb;
     while (i < la && j < lb) {
-        if (la - i >= kl && lb - j >= kl && memcmp(da + i, key, kl) == 0 &&
-            memcmp(db + j, key, kl) == 0) {
-            i += kl; j += kl;
+        ka = stamp_key(da + i, la - i);
+        kb = stamp_key(db + j, lb - j);
+        if (ka != 0 && ka == kb && memcmp(da + i, db + j, ka) == 0) {
+            i += ka; j += kb;
             while (i < la && da[i] != '"') i++;
             while (j < lb && db[j] != '"') j++;
             continue;

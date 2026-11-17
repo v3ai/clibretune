@@ -62,6 +62,13 @@ LT_TEST(content_equal_ignores_write_date)
     LT_CHECK(lt_snap_content_equal(a, strlen(a), c, strlen(c)) == 0);
     LT_CHECK(lt_snap_content_equal(a, strlen(a), a, strlen(a) - 1) == 0);
     LT_CHECK(lt_snap_content_equal("", 0, "", 0) == 1);
+    {
+        static const char m1[] = "<iniMetadata name=\"d.ini\" savedAt=\"2026-11-17T23:46:57+00:00\"/>";
+        static const char m2[] = "<iniMetadata name=\"d.ini\" savedAt=\"2026-11-17T23:46:58+00:00\"/>";
+        static const char m3[] = "<iniMetadata name=\"e.ini\" savedAt=\"2026-11-17T23:46:58+00:00\"/>";
+        LT_CHECK(lt_snap_content_equal(m1, strlen(m1), m2, strlen(m2)) == 1);
+        LT_CHECK(lt_snap_content_equal(m1, strlen(m1), m3, strlen(m3)) == 0);
+    }
 }
 
 LT_TEST(branches)
@@ -332,6 +339,7 @@ LT_TEST(app_history)
     app->settings.auto_commit = 1;
     LT_CHECK(lt_app_save_tune(app) == 0);                      /* the pending change is committed */
     LT_CHECK(hist_ids(app->project.path, ids) == 3);
+    lt_plat_sleep_ms(1100);                     /* the re-save gets new time stamps */
     LT_CHECK(lt_app_save_tune(app) == 0);                      /* nothing changed since: no empty commit */
     LT_CHECK(hist_ids(app->project.path, ids) == 3);
     LT_CHECK(lt_ini_const_set(app->ini, c, &ps, 0, v1) == 0);
