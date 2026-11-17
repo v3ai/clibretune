@@ -270,7 +270,7 @@ static void props_window(lt_app *app, dash_state *st)
     if (st->props_idx < 0 || (size_t)st->props_idx >= st->file->cluster.n_comps) { st->props_open = 0; return; }
     c = &st->file->cluster.comps[st->props_idx];
     lt_snprintf(title, sizeof title, "%s Properties", c->gauge ? "Gauge" : "Indicator");
-    if (st->props_rect.w == 0) { st->props_rect = lt_rect_make(80, 80, 420, 520); }
+    if (st->props_rect.w == 0) { st->props_rect = lt_rect_make(lt_ui_px(ui, 80), lt_ui_px(ui, 80), lt_ui_px(ui, 420), lt_ui_px(ui, 520)); }
     w1[0] = 120; w1[1] = -1;
     if (!lt_ui_window_begin(ui, title, &st->props_rect, &st->props_open, LT_UI_WIN_RESIZE)) { return; }
     if (c->gauge != NULL) {

@@ -135,6 +135,21 @@ void lt_gfx_init_canvas(lt_gfx *g, lt_canvas *c)
     g->bitmap_text = 0;
 }
 
+int lt_gfx_px(const lt_gfx *g, int px)
+{
+    int pct = g->ui_pct;
+    lt_s64 v;
+    if (pct <= 0 || g->cells != NULL) { return px; }
+    v = (lt_s64)px * pct;
+    return (int)(v >= 0 ? (v + 50) / 100 : -((-v + 50) / 100));
+}
+
+double lt_gfx_fpx(const lt_gfx *g, double px)
+{
+    if (g->ui_pct <= 0 || g->cells != NULL) { return px; }
+    return px * (double)g->ui_pct / 100.0;
+}
+
 void lt_gfx_init_cells(lt_gfx *g, lt_cells *cells)
 {
     g->canvas = NULL;

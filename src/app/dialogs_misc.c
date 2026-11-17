@@ -55,7 +55,7 @@ static void bm_preview(lt_app *app, bm_state *s, int w, int h)
 {
     lt_ui *ui = app->ui;
     const lt_theme *t = lt_ui_theme(ui);
-    int w1 = -1, i, j, cw, chh = 16, hw = 40, hh = 16;
+    int w1 = -1, i, j, cw, chh = lt_ui_px(ui, 16), hw = lt_ui_px(ui, 40), hh = lt_ui_px(ui, 16);
     lt_rect r;
     double lo = 1e300, hi = -1e300;
     double (*tab)[LT_BASEMAP_N];
@@ -68,10 +68,10 @@ static void bm_preview(lt_app *app, bm_state *s, int w, int h)
         }
     }
     if (hi - lo < 1e-9) { hi = lo + 1.0; }
-    lt_ui_layout_row(ui, 1, &w1, hh + chh * LT_BASEMAP_N + 4);
+    lt_ui_layout_row_px(ui, 1, &w1, hh + chh * LT_BASEMAP_N + lt_ui_px(ui, 4));
     r = lt_ui_layout_next(ui);
-    cw = (w - hw - 4) / LT_BASEMAP_N;
-    if (cw > 44) { cw = 44; }
+    cw = (w - hw - lt_ui_px(ui, 4)) / LT_BASEMAP_N;
+    if (cw > lt_ui_px(ui, 44)) { cw = lt_ui_px(ui, 44); }
     LT_UNUSED(h);
     for (j = 0; j < LT_BASEMAP_N; j++) {
         lt_rect q;
@@ -83,7 +83,7 @@ static void bm_preview(lt_app *app, bm_state *s, int w, int h)
         lt_rect q;
         /* row 0 = lowest load; draw highest load on top like the table editor */
         int row = LT_BASEMAP_N - 1 - i;
-        q.x = r.x; q.y = r.y + hh + i * chh; q.w = hw - 2; q.h = chh;
+        q.x = r.x; q.y = r.y + hh + i * chh; q.w = hw - lt_ui_px(ui, 2); q.h = chh;
         lt_fmt_double(b, sizeof(b), s->map.load_bins[row], 0);
         lt_ui_draw_text_in(ui, q, b, t->muted, LT_UI_ALIGN_RIGHT);
         for (j = 0; j < LT_BASEMAP_N; j++) {

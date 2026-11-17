@@ -1924,6 +1924,55 @@ LT_TEST(test_scale_image_wrap)
     h_close();
 }
 
+/* ---- fractional UI scale ------------------------------------------ */
+LT_TEST(test_fractional_scale)
+{
+    lt_ui *ui = lt_ui_create();
+    /* rounding: (px * pct + 50) / 100, half away from zero */
+    LT_CHECK(lt_ui_px_pct(10, 100) == 10);
+    LT_CHECK(lt_ui_px_pct(10, 125) == 13);      /* 12.5 -> 13 */
+    LT_CHECK(lt_ui_px_pct(10, 150) == 15);
+    LT_CHECK(lt_ui_px_pct(3, 150) == 5);        /* 4.5 -> 5 */
+    LT_CHECK(lt_ui_px_pct(1, 125) == 1);        /* 1.25 -> 1 */
+    LT_CHECK(lt_ui_px_pct(1, 175) == 2);        /* 1.75 -> 2 */
+    LT_CHECK(lt_ui_px_pct(0, 300) == 0);
+    LT_CHECK(lt_ui_px_pct(-3, 150) == -5);      /* symmetric */
+    LT_CHECK(lt_ui_px_pct(24, 125) == 30);
+    LT_CHECK(lt_ui_px_pct(2000000000, 300) == 2147483647);   /* saturates, no overflow */
+    LT_CHECK(lt_ui_px_pct(-2000000000, 300) == -2147483647);
+    LT_CHECK(lt_ui_px_pct(7, 0) == 7);          /* bad percent = 100 */
+    /* context API */
+    LT_CHECK(lt_ui_scale_pct(ui) == 100 && lt_ui_px(ui, 24) == 24);
+    lt_ui_set_scale_pct(ui, 150);
+    LT_CHECK(lt_ui_scale_pct(ui) == 150 && lt_ui_px(ui, 24) == 36 && lt_ui_px(ui, 3) == 5);
+    LT_CHECK(lt_ui_unpx(ui, 36) == 24);
+    lt_ui_set_scale_pct(ui, 125);
+    LT_CHECK(lt_ui_row_height(ui) == 30 && lt_ui_theme(ui)->padding == 10);
+    lt_ui_set_scale_pct(ui, 50);
+    LT_CHECK(lt_ui_scale_pct(ui) == 100);        /* clamped to 100..300 */
+    lt_ui_set_scale_pct(ui, 900);
+    LT_CHECK(lt_ui_scale_pct(ui) == 300);
+    lt_ui_set_scale(ui, 2);                      /* integer wrapper */
+    LT_CHECK(lt_ui_scale_pct(ui) == 200);
+    lt_ui_destroy(ui);
+    /* cell mode ignores the scale entirely */
+    reset_state();
+    h_open(40, 10, 1);
+    lt_ui_set_scale_pct(H.ui, 200);
+    H.scene = scene_image;
+    frames(3);
+    LT_CHECK(lt_ui_px(H.ui, 24) == 24 && lt_ui_row_height(H.ui) == 16);
+    h_close();
+    /* layout parameters are scaled by the toolkit: a 100 px wide cell is 150 px at 150% */
+    reset_state();
+    h_open(400, 200, 0);
+    lt_ui_set_scale_pct(H.ui, 150);
+    H.scene = scene_image;
+    frames(3);
+    LT_CHECK(R[0].w == 90 && R[0].h == 3);
+    h_close();
+}
+
 /* ---- random input must never crash ----------------------------------- */
 static unsigned long fz_state = 12345UL;
 /* ---- review regressions ------------------------------------------- */
@@ -2108,6 +2157,7 @@ int main(void)
     LT_RUN(test_file_dialog);
     LT_RUN(test_cell_mode_overlays);
     LT_RUN(test_scale_image_wrap);
+    LT_RUN(test_fractional_scale);
     LT_RUN(test_review_fixes);
     LT_RUN(test_fuzz_gallery);
     LT_RUN(test_backend_select);

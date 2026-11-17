@@ -111,10 +111,10 @@ static void chart_draw(lt_ui *ui, lt_rect r, int ns, const char *const *names,
 {
     const lt_theme *t = lt_ui_theme(ui);
     int cell = lt_ui_cell_mode(ui);
-    int k, i, g, top = cell ? 20 : 30, lx = r.x + 10;
+    int k, i, g, top = cell ? 20 : lt_ui_px(ui, 30), lx = r.x + (cell ? 10 : lt_ui_px(ui, 10));
     lt_rect pr;
-    lt_ui_draw_box(ui, r, t->table_bg, t->border_subtle, cell ? 0 : 6);
-    pr.x = r.x + 6; pr.y = r.y + top; pr.w = r.w - 12; pr.h = r.h - top - 8;
+    lt_ui_draw_box(ui, r, t->table_bg, t->border_subtle, cell ? 0 : lt_ui_px(ui, 6));
+    pr.x = r.x + (cell ? 6 : lt_ui_px(ui, 6)); pr.y = r.y + top; pr.w = r.w - 2 * (cell ? 6 : lt_ui_px(ui, 6)); pr.h = r.h - top - (cell ? 8 : lt_ui_px(ui, 8));
     if (!cell) {
         lt_ui_draw_vgrad(ui, pr, LT_RGBA(255, 255, 255, t->dark ? 6 : 0), LT_RGBA(0, 0, 0, t->dark ? 40 : 6));
     }
@@ -139,8 +139,8 @@ static void chart_draw(lt_ui *ui, lt_rect r, int ns, const char *const *names,
             x1 = pr.x + (npts > 1 ? (double)i * (pr.w - 1) / (npts - 1) : 0);
             y1 = pr.y + pr.h - 1 - (pts[k][i] - lo) / (hi - lo) * (pr.h - 2);
             if (i > 0) {
-                if (!cell) { lt_ui_draw_line(ui, x0, y0, x1, y1, 4.0, (col & 0x00FFFFFFUL) | 0x28000000UL); }
-                lt_ui_draw_line(ui, x0, y0, x1, y1, 1.5, col);
+                if (!cell) { lt_ui_draw_line(ui, x0, y0, x1, y1, lt_ui_px(ui, 4), (col & 0x00FFFFFFUL) | 0x28000000UL); }
+                lt_ui_draw_line(ui, x0, y0, x1, y1, 1.5 * (double)lt_ui_scale_pct(ui) / 100.0, col);
             }
             x0 = x1; y0 = y1;
         }
@@ -152,11 +152,11 @@ static void chart_draw(lt_ui *ui, lt_rect r, int ns, const char *const *names,
             /* legend chip: dot, name, value */
             int nw = lt_vk_text_w(ui, (int)LT_FONT_SANS_MEDIUM, 11.0, names[k]);
             int vw = lt_vk_text_w(ui, (int)LT_FONT_MONO_MEDIUM, 11.0, vb);
-            lt_ui_draw_circle_fill(ui, (double)lx + 4.0, (double)(r.y + 15), 3.5, col);
-            lt_vk_text(ui, lt_rect_make(lx + 12, r.y + 4, nw + 4, 22), (int)LT_FONT_SANS_MEDIUM, 11.0, names[k], t->text2, 0);
-            lt_vk_text(ui, lt_rect_make(lx + 14 + nw, r.y + 4, vw + 4, 22), (int)LT_FONT_MONO_MEDIUM, 11.0, vb, col, 0);
-            lt_vk_text(ui, lt_rect_make(lx + 18 + nw + vw, r.y + 4, 60, 22), (int)LT_FONT_SANS, 10.0, units[k], t->muted, 0);
-            lx += 18 + nw + vw + 6 + lt_vk_text_w(ui, (int)LT_FONT_SANS, 10.0, units[k]) + 16;
+            lt_ui_draw_circle_fill(ui, (double)lx + (double)lt_ui_px(ui, 4), (double)(r.y + lt_ui_px(ui, 15)), 3.5 * (double)lt_ui_scale_pct(ui) / 100.0, col);
+            lt_vk_text(ui, lt_rect_make(lx + lt_ui_px(ui, 12), r.y + lt_ui_px(ui, 4), nw + lt_ui_px(ui, 4), lt_ui_px(ui, 22)), (int)LT_FONT_SANS_MEDIUM, 11.0, names[k], t->text2, 0);
+            lt_vk_text(ui, lt_rect_make(lx + lt_ui_px(ui, 14) + nw, r.y + lt_ui_px(ui, 4), vw + lt_ui_px(ui, 4), lt_ui_px(ui, 22)), (int)LT_FONT_MONO_MEDIUM, 11.0, vb, col, 0);
+            lt_vk_text(ui, lt_rect_make(lx + lt_ui_px(ui, 18) + nw + vw, r.y + lt_ui_px(ui, 4), lt_ui_px(ui, 60), lt_ui_px(ui, 22)), (int)LT_FONT_SANS, 10.0, units[k], t->muted, 0);
+            lx += lt_ui_px(ui, 18 + 6 + 16) + nw + vw + lt_vk_text_w(ui, (int)LT_FONT_SANS, 10.0, units[k]);
         }
     }
     if (cursor_frac >= 0.0 && cursor_frac <= 1.0) {

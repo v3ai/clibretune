@@ -110,7 +110,14 @@ void   lt_ui_destroy(lt_ui *ui);
 lt_theme *lt_ui_theme(lt_ui *ui);       /* editable; call lt_ui_theme_changed() after */
 void   lt_ui_set_theme(lt_ui *ui, const lt_theme *t);
 void   lt_ui_theme_changed(lt_ui *ui);  /* recompute metrics (cell mode, scale) */
-void   lt_ui_set_scale(lt_ui *ui, int scale);   /* integer 1..3 */
+void   lt_ui_set_scale(lt_ui *ui, int scale);   /* integer 1..3 (= 100..300 %) */
+void   lt_ui_set_scale_pct(lt_ui *ui, int pct); /* UI scale in percent, clamped 100..300 */
+int    lt_ui_scale_pct(const lt_ui *ui);
+/* px at 100% -> device pixels, rounded (identity in cell mode). Use for every
+ * hard-coded pixel metric. */
+int    lt_ui_px(const lt_ui *ui, int px);
+int    lt_ui_px_pct(int px, int pct);          /* same with an explicit percent */
+int    lt_ui_unpx(const lt_ui *ui, int px);   /* device px -> px at 100% (rounded down) */
 void   lt_ui_set_backend(lt_ui *ui, lt_backend *b); /* clipboard source; may be NULL */
 /* feed one backend event (any time between frames) */
 void   lt_ui_input(lt_ui *ui, const lt_event *ev);
@@ -229,6 +236,14 @@ void lt_ui_draw_shadow(lt_ui *ui, lt_rect r, int radius, int spread, int alpha);
  * 2...). height: >0 pixels, 0 = default row height, <0 = fill the remaining
  * height of the container (minus |height|-1). The row repeats until the next
  * lt_ui_layout_row call. widths may be NULL for n == 1 (full width). */
+/* NOTE: layout row widths/height, layout_space/indent/gap, group_begin height,
+ * modal_begin size and grid_begin cell/header sizes are all in px at 100% scale
+ * and are scaled by the toolkit. */
+/* same as lt_ui_layout_row/gap/space but with sizes already in device pixels
+ * (values taken from rects, theme metrics or text measurements) */
+void    lt_ui_layout_row_px(lt_ui *ui, int n, const int *widths, int height);
+void    lt_ui_layout_gap_px(lt_ui *ui, int x, int y);
+void    lt_ui_layout_space_px(lt_ui *ui, int pixels);
 void    lt_ui_layout_row(lt_ui *ui, int n, const int *widths, int height);
 lt_rect lt_ui_layout_next(lt_ui *ui);           /* rect of the next cell */
 void    lt_ui_layout_set_rect(lt_ui *ui, lt_rect r); /* next widget uses exactly r */

@@ -239,6 +239,9 @@ lt_bool lt_ui_grid_begin(lt_ui *ui, const char *label, int rows, int cols, int c
     int over_rowh, over_colh;
 
     if (rows < 1 || cols < 1 || cell_w < 1 || cell_h < 1) { return LT_FALSE; }
+    /* sizes are given in px at 100% */
+    cell_w = lt_ui_px(ui, cell_w); cell_h = lt_ui_px(ui, cell_h);
+    row_header_w = lt_ui_px(ui, row_header_w); col_header_h = lt_ui_px(ui, col_header_h);
     lt_ui_push_id(ui, label);
     gid = lt_ui_id(ui, "##grid");
     G = grid_find(ui, gid);

@@ -152,7 +152,7 @@ typedef struct ui_grp {
 
 struct lt_ui {
     lt_theme theme;
-    int scale;
+    int pct;                       /* UI scale in percent (100..300) */
     lt_bool cell;
     lt_backend *be;
     lt_gfx *g;
@@ -274,7 +274,12 @@ typedef struct lt_theme_row {
     lt_u32 col[LT_THEME_NTOK];       /* 0xRRGGBB, 0xFFFFFFFF = unset */
 } lt_theme_row;
 extern const lt_theme_row lt_theme_rows[LT_THEME_NROWS];
-void ui_theme_metrics(lt_theme *t, int cell, int scale);
+void ui_theme_metrics(lt_theme *t, int cell, int pct);
+void ui_layout_row_dev(lt_ui *ui, int n, const int *widths, int height);
+lt_bool ui_modal_begin_dev(lt_ui *ui, const char *title, int w, int h, int *open);
+void ui_layout_space_dev(lt_ui *ui, int px);
+int  ui_bscale(const lt_ui *ui);
+int  ui_text_box_h(const lt_ui *ui);
 
 /* ---- core (ui.c) ---- */
 ui_state *ui_state_get(lt_ui *ui, lt_u32 id);

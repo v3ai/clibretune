@@ -356,7 +356,7 @@ int ui_edit_widget(lt_ui *ui, lt_u32 id, lt_rect r, char *buf, size_t cap, int f
     border = focused ? t->focus : ((ir & UI_HOVER) ? t->border_strong : t->border);
     if (ui->cell && focused) { bg = lt_color_mix(t->input, t->primary, 70); }
     if (draw_box) { ui_field_box(ui, r, bg, border, focused && ui->kbd_nav); }
-    inner = lt_rect_make(r.x + padx - (ui->cell ? 0 : 2), r.y, r.w - 2 * padx + (ui->cell ? 0 : 4), r.h);
+    inner = lt_rect_make(r.x + padx - (ui->cell ? 0 : lt_ui_px(ui, 2)), r.y, r.w - 2 * padx + (ui->cell ? 0 : lt_ui_px(ui, 4)), r.h);
     if (flags & LT_UI_TEXT_PASSWORD) {
         size_t i, n = (size_t)cp_count(buf);
         for (i = 0; i < n && i + 1 < sizeof(disp); i++) { disp[i] = '*'; }
@@ -367,13 +367,13 @@ int ui_edit_widget(lt_ui *ui, lt_u32 id, lt_rect r, char *buf, size_t cap, int f
     }
     lt_ui_clip_push(ui, inner);
     {
-        int tx, ty, th = 16 * (ui->cell ? 1 : ui->scale), dy = (r.h - th) / 2;
+        int tx, ty, th = ui_text_box_h(ui), dy = (r.h - th) / 2;
         int scroll = (focused && e->id == id) ? e->scroll : 0;
         if (ui->cell) { dy = (dy / 16) * 16; }
         if (focused && e->id == id) {
             int cx = ui_prefix_w(ui, show, e->cursor);
             int vis = r.w - 2 * padx;
-            int cw = ui->cell ? 8 : 2 * ui->scale;
+            int cw = ui->cell ? 8 : lt_ui_px(ui, 2);
             if (cx - scroll > vis - cw) { scroll = cx - vis + cw; }
             if (cx - scroll < 0) { scroll = cx; }
             if (scroll < 0) { scroll = 0; }
@@ -383,7 +383,7 @@ int ui_edit_widget(lt_ui *ui, lt_u32 id, lt_rect r, char *buf, size_t cap, int f
         ty = r.y + dy;
         if (focused && e->id == id && sel_hi(e) > sel_lo(e)) {
             int a = ui_prefix_w(ui, show, sel_lo(e)), b = ui_prefix_w(ui, show, sel_hi(e));
-            lt_ui_draw_fill(ui, lt_rect_make(tx + a, ty + (ui->cell ? 0 : 1), b - a, th - (ui->cell ? 0 : 2)),
+            lt_ui_draw_fill(ui, lt_rect_make(tx + a, ty + (ui->cell ? 0 : 1), b - a, th - (ui->cell ? 0 : lt_ui_px(ui, 2))),
                             ui->cell ? t->primary_active : t->selected);
         }
         lt_ui_draw_text(ui, tx, ty, show, ui->disabled ? t->disabled : t->text);
@@ -410,7 +410,7 @@ int ui_edit_widget(lt_ui *ui, lt_u32 id, lt_rect r, char *buf, size_t cap, int f
                 } else {
                     {
                     int cph = ui_font_px(ui, 0) * 5 / 4 + 1;
-                    lt_ui_draw_fill(ui, lt_rect_make(cx, ty + (th - cph) / 2, ui->scale, cph), t->text);
+                    lt_ui_draw_fill(ui, lt_rect_make(cx, ty + (th - cph) / 2, lt_ui_px(ui, 1), cph), t->text);
                 }
                 }
             }

@@ -95,3 +95,35 @@ void lt_backend_destroy(lt_backend *b)
     }
     lt_free(b);
 }
+
+/* ------------------------------------------------------------------ */
+/* NULL-safe wrappers for the optional hooks                           */
+double lt_backend_scale_hint(lt_backend *b)
+{
+    double v = 1.0;
+    if (b != NULL && b->scale_hint != NULL) { v = b->scale_hint(b); }
+    if (!(v >= 0.5) || v > 8.0) { v = 1.0; }
+    return v;
+}
+
+void lt_backend_set_min_size(lt_backend *b, int w, int h)
+{
+    if (b != NULL && b->set_min_size != NULL) { b->set_min_size(b, w, h); }
+}
+
+int lt_backend_screen_size(lt_backend *b, int *w, int *h)
+{
+    if (b == NULL || b->screen_size == NULL) { return 0; }
+    return b->screen_size(b, w, h);
+}
+
+void lt_backend_set_initial_geometry(lt_backend *b, int x, int y, int flags)
+{
+    if (b != NULL && b->set_initial_geometry != NULL) { b->set_initial_geometry(b, x, y, flags); }
+}
+
+int lt_backend_get_geometry(lt_backend *b, int *x, int *y, int *maximized)
+{
+    if (b == NULL || b->get_geometry == NULL) { return 0; }
+    return b->get_geometry(b, x, y, maximized);
+}

@@ -48,7 +48,7 @@ void ui_popup_need(lt_ui *ui, int w)
     if (w > ui->pop_need[d]) { ui->pop_need[d] = w; }
 }
 
-static int popup_ins(const lt_ui *ui) { return ui->cell ? 0 : 3; }
+static int popup_ins(const lt_ui *ui) { return ui->cell ? 0 : lt_ui_px(ui, 3); }
 
 void ui_popup_begin(lt_ui *ui, int idx, int min_w, int est_h)
 {
@@ -65,11 +65,11 @@ void ui_popup_begin(lt_ui *ui, int idx, int min_w, int est_h)
     if (w < min_w) { w = min_w; }
     h = st->i[1] > 0 ? st->i[1] : est_h;
     if (P->kind == 2 || P->kind == 3) {
-        x = P->x + (ui->cell ? 0 : 2); y = P->y + (ui->cell ? 0 : 2);
+        x = P->x + (ui->cell ? 0 : lt_ui_px(ui, 2)); y = P->y + (ui->cell ? 0 : lt_ui_px(ui, 2));
     } else if (P->right) {
         x = P->anchor.x + P->anchor.w - 2; y = P->anchor.y - ins;
     } else {
-        x = P->anchor.x; y = P->anchor.y + P->anchor.h + (ui->cell ? 0 : 2);
+        x = P->anchor.x; y = P->anchor.y + P->anchor.h + (ui->cell ? 0 : lt_ui_px(ui, 2));
     }
     if (x + w > ui->sw) {
         x = P->right ? P->anchor.x - w + 2 : ui->sw - w;
@@ -216,7 +216,7 @@ lt_bool lt_ui_menubar_begin(lt_ui *ui)
     lt_ui_draw_fill(ui, r, t->menubar);
     if (!ui->cell) { lt_ui_draw_hline(ui, 0, ui->sw - 1, r.y + r.h - 1, t->border_subtle); }
     ui->in_bar = 1;
-    ui->bar_x = ui->cell ? 0 : 6;
+    ui->bar_x = ui->cell ? 0 : lt_ui_px(ui, 6);
     ui->bar_y = r.y;
     ui->bar_h = r.h;
     ui->nbar = 0;
@@ -253,7 +253,7 @@ lt_bool lt_ui_menu_begin(lt_ui *ui, const char *title)
     lt_u32 id = lt_ui_id(ui, title);
     const lt_theme *t = &ui->theme;
     lt_rect r;
-    int padx = ui->cell ? 8 : 8 * ui->scale;
+    int padx = ui->cell ? 8 : lt_ui_px(ui, 8);
     int idx;
     amp_strip(title, vis, sizeof(vis), &mn_pos, &mn_ch);
     tw = lt_ui_text_width(ui, vis);
@@ -293,7 +293,7 @@ lt_bool lt_ui_menu_begin(lt_ui *ui, const char *title)
     }
     ui_set_last(ui, id, r);
     if (!open) { return LT_FALSE; }
-    ui_popup_begin(ui, 0, ui->cell ? 24 : 200, ui->theme.row_h * 3);
+    ui_popup_begin(ui, 0, ui->cell ? 24 : lt_ui_px(ui, 200), ui->theme.row_h * 3);
     ui->menu_depth = 1;
     ui->menu_idx[0] = 0;
     return LT_TRUE;
@@ -317,7 +317,7 @@ static void item_draw(lt_ui *ui, lt_rect r, int st, int disabled, const char *la
 {
     const lt_theme *t = &ui->theme;
     lt_color fg = disabled ? t->disabled : t->text;
-    int pad = 8, chk = ui->cell ? 16 : 26;
+    int pad = 8, chk = ui->cell ? 16 : lt_ui_px(ui, 26);
     lt_rect hr = ui->cell ? r : lt_rect_inset(r, 2, 1);
     int hi = (st & UI_ITEM_HI) && !disabled;
     if (hi) {
@@ -325,7 +325,7 @@ static void item_draw(lt_ui *ui, lt_rect r, int st, int disabled, const char *la
         fg = ui->cell ? t->text : t->primary_text;
     }
     if (flags & LT_UI_MENU_CHECKED) {
-        lt_ui_draw_icon(ui, lt_rect_make(r.x + (ui->cell ? 0 : 4), r.y, ui->cell ? 16 : 18, r.h),
+        lt_ui_draw_icon(ui, lt_rect_make(r.x + (ui->cell ? 0 : lt_ui_px(ui, 4)), r.y, ui->cell ? 16 : lt_ui_px(ui, 18), r.h),
                         LT_UI_ICON_CHECK, disabled ? t->disabled : (hi ? fg : (ui->cell ? t->text : t->primary_hover)));
     }
     ui_text_in(ui, lt_rect_make(r.x + chk, r.y, r.w - chk - pad, r.h), label, fg, 0);
@@ -347,9 +347,9 @@ lt_bool lt_ui_menu_item(lt_ui *ui, const char *label, const char *shortcut, int 
     lt_rect r;
     if (depth < 0) { return LT_FALSE; }
     amp_strip(label, vis, sizeof(vis), &mn_pos, &mn_ch);
-    need = (ui->cell ? 16 : 26) + lt_ui_text_width(ui, vis) + 16;
+    need = (ui->cell ? 16 : lt_ui_px(ui, 26)) + lt_ui_text_width(ui, vis) + 16;
     if (shortcut != NULL && shortcut[0]) { need += 24 + lt_ui_text_width_f(ui, shortcut, ui->tfont, LT_UI_FS_SM); }
-    ui_popup_need(ui, need + (ui->cell ? 0 : 6));
+    ui_popup_need(ui, need + (ui->cell ? 0 : lt_ui_px(ui, 6)));
     r = ui_next(ui, 0);
     st = ui_popup_item(ui, depth, r, dis);
     if ((st & UI_ITEM_OVER) && !dis && ui->npopups > depth + 1 &&
@@ -368,8 +368,8 @@ lt_bool lt_ui_menu_item(lt_ui *ui, const char *label, const char *shortcut, int 
 void lt_ui_menu_separator(lt_ui *ui)
 {
     lt_rect r = ui_next(ui, 0);
-    int y = r.y + (ui->cell ? 8 : 4);
-    lt_ui_draw_hline(ui, r.x + (ui->cell ? 0 : 6), r.x + r.w - (ui->cell ? 1 : 7), y, ui->theme.border);
+    int y = r.y + (ui->cell ? 8 : lt_ui_px(ui, 4));
+    lt_ui_draw_hline(ui, r.x + (ui->cell ? 0 : lt_ui_px(ui, 6)), r.x + r.w - (ui->cell ? 1 : lt_ui_px(ui, 7)), y, ui->theme.border);
     if (!ui->cell) {
         /* separators are thinner than rows */
         ui_layout *L = ui_lay(ui);
@@ -387,8 +387,8 @@ lt_bool lt_ui_submenu_begin(lt_ui *ui, const char *label, int flags)
     int keyopen = 0, mods = 0;
     if (depth < 0 || depth + 1 >= UI_MAX_POPUPS) { return LT_FALSE; }
     amp_strip(label, vis, sizeof(vis), &mn_pos, &mn_ch);
-    need = (ui->cell ? 16 : 24) + lt_ui_text_width(ui, vis) + 40;
-    ui_popup_need(ui, need + (ui->cell ? 0 : 6));
+    need = (ui->cell ? 16 : lt_ui_px(ui, 24)) + lt_ui_text_width(ui, vis) + 40;
+    ui_popup_need(ui, need + (ui->cell ? 0 : lt_ui_px(ui, 6)));
     r = ui_next(ui, 0);
     st = ui_popup_item(ui, depth, r, dis);
     moved = (ui->mx != ui->lmx || ui->my != ui->lmy);
@@ -413,7 +413,7 @@ lt_bool lt_ui_submenu_begin(lt_ui *ui, const char *label, int flags)
     ui_set_last(ui, id, r);
     if (!open) { return LT_FALSE; }
     ui->popups[depth + 1].anchor = r;
-    ui_popup_begin(ui, depth + 1, ui->cell ? 24 : 160, ui->theme.row_h * 3);
+    ui_popup_begin(ui, depth + 1, ui->cell ? 24 : lt_ui_px(ui, 160), ui->theme.row_h * 3);
     ui->menu_depth = depth + 2;
     ui->menu_idx[depth + 1] = 0;
     return LT_TRUE;
@@ -436,7 +436,7 @@ lt_bool lt_ui_context_begin(lt_ui *ui, const char *id, lt_rect area)
         open = 1;
     }
     if (!open) { return LT_FALSE; }
-    ui_popup_begin(ui, 0, ui->cell ? 24 : 160, ui->theme.row_h * 3);
+    ui_popup_begin(ui, 0, ui->cell ? 24 : lt_ui_px(ui, 160), ui->theme.row_h * 3);
     ui->menu_depth = 1;
     ui->menu_idx[0] = 0;
     return LT_TRUE;
@@ -541,25 +541,25 @@ lt_bool lt_ui_combo_cb(lt_ui *ui, const char *label, int *sel, int n,
     border = (ui->focus == id || open) ? t->focus : ((res & UI_HOVER) ? t->border_strong : t->border);
     if (ui->cell && (ui->focus == id || open)) { fill = lt_color_mix(t->input, t->primary, 70); }
     ui_field_box(ui, r, fill, border, ui->focus == id && ui->kbd_nav);
-    ui_text_in(ui, lt_rect_make(r.x + t->pad_x, r.y, r.w - t->pad_x - (ui->cell ? 16 : 26), r.h), cur,
+    ui_text_in(ui, lt_rect_make(r.x + t->pad_x, r.y, r.w - t->pad_x - (ui->cell ? 16 : lt_ui_px(ui, 26)), r.h), cur,
                ui->disabled ? t->disabled : t->text, 0);
     if (ui->cell) {
         lt_ui_draw_icon(ui, lt_rect_make(r.x + r.w - 16, r.y, 16, r.h), LT_UI_ICON_ARROW_DOWN,
                         ui->disabled ? t->disabled : t->text2);
     } else {
-        lt_ui_draw_lucide(ui, lt_rect_make(r.x + r.w - 22 * ui->scale, r.y, 18 * ui->scale, r.h),
+        lt_ui_draw_lucide(ui, lt_rect_make(r.x + r.w - lt_ui_px(ui, 22), r.y, lt_ui_px(ui, 18), r.h),
                           LT_ICON_CHEVRON_DOWN, 14, 2.0, ui->disabled ? t->disabled : t->text2);
     }
     ui_set_last(ui, id, r);
     if (open) {
         int rows = n < 10 ? n : 10, i;
         int hb = rows * t->row_h;
-        ui_popup_begin(ui, 0, r.w, hb + 8);
+        ui_popup_begin(ui, 0, r.w, hb + lt_ui_px(ui, 8));
         ui->menu_depth = 1;
         ui->menu_idx[0] = 0;
         if (n > 10) {
             int w1 = -1;
-            lt_ui_layout_row(ui, 1, &w1, hb);
+            ui_layout_row_dev(ui, 1, &w1, hb);
             lt_ui_push_id(ui, "combo");
             lt_ui_scroll_begin(ui, "items");
         }
@@ -671,14 +671,14 @@ int lt_ui_listbox_cb(lt_ui *ui, const char *label, int *sel, int n,
         } else if (ir_res & UI_HOVER) {
             bg = t->hover;
         }
-        if (bg != 0) { lt_ui_draw_box(ui, lt_rect_inset(ir, ui->cell ? 0 : 2, ui->cell ? 0 : 1), bg, 0, 3); }
+        if (bg != 0) { lt_ui_draw_box(ui, lt_rect_inset(ir, ui->cell ? 0 : lt_ui_px(ui, 2), ui->cell ? 0 : 1), bg, 0, 3); }
         if (s[0] == '\x01' || s[0] == '\x02') {
-            lt_ui_draw_icon(ui, lt_rect_make(ir.x + t->pad_x, ir.y, ui->cell ? 16 : 20, ir.h),
+            lt_ui_draw_icon(ui, lt_rect_make(ir.x + t->pad_x, ir.y, ui->cell ? 16 : lt_ui_px(ui, 20), ir.h),
                             s[0] == '\x01' ? LT_UI_ICON_FOLDER : LT_UI_ICON_FILE,
                             s[0] == '\x01' ? t->accent : t->text2);
             s++;
-            ui_text_in(ui, lt_rect_make(ir.x + t->pad_x + (ui->cell ? 16 : 24), ir.y,
-                                        ir.w - 2 * t->pad_x - (ui->cell ? 16 : 24), ir.h), s, fg, 0);
+            ui_text_in(ui, lt_rect_make(ir.x + t->pad_x + (ui->cell ? 16 : lt_ui_px(ui, 24)), ir.y,
+                                        ir.w - 2 * t->pad_x - (ui->cell ? 16 : lt_ui_px(ui, 24)), ir.h), s, fg, 0);
         } else {
             ui_text_in(ui, lt_rect_make(ir.x + t->pad_x, ir.y, ir.w - 2 * t->pad_x, ir.h), s, fg, 0);
         }
@@ -718,7 +718,7 @@ lt_bool lt_ui_color_edit(lt_ui *ui, const char *label, lt_color *c)
         char hex[16];
         ui->popups[0].anchor = r;
         v[0] = LT_COLOR_R(*c); v[1] = LT_COLOR_G(*c); v[2] = LT_COLOR_B(*c);
-        ui_popup_begin(ui, 0, ui->cell ? 200 : 230, ui->theme.row_h * 4 + 12);
+        ui_popup_begin(ui, 0, ui->cell ? 200 : lt_ui_px(ui, 230), ui->theme.row_h * 4 + lt_ui_px(ui, 12));
         ui->menu_depth = 1;
         w[0] = ui->cell ? 16 : 18; w[1] = -1;
         for (k = 0; k < 3; k++) {
@@ -729,7 +729,7 @@ lt_bool lt_ui_color_edit(lt_ui *ui, const char *label, lt_color *c)
         lt_snprintf(hex, sizeof(hex), "#%02X%02X%02X", (int)v[0], (int)v[1], (int)v[2]);
         lt_ui_layout_row(ui, 1, NULL, 0);
         lt_ui_label_ex(ui, hex, ui->theme.muted, LT_UI_ALIGN_CENTER);
-        ui_popup_need(ui, ui->cell ? 200 : 230);
+        ui_popup_need(ui, ui->cell ? 200 : lt_ui_px(ui, 230));
         ui_popup_end(ui, depth);
         ui->menu_depth = 0;
         if (changed) { *c = LT_RGB((int)v[0], (int)v[1], (int)v[2]); }

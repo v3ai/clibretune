@@ -24,11 +24,26 @@ int main(void) {
     lt_event ev;
     char *logname, *log;
     int w = 0, h = 0;
+    CHECK(lt_x11_parse_xft_dpi("a: b\nXft.dpi:\t192\n") > 191.9);
+    CHECK(lt_x11_parse_xft_dpi("xft.dpi: 96") > 95.9);
+    CHECK(lt_x11_parse_xft_dpi("Xft.dpix: 96\nfoo: 1") == 0.0);
+    CHECK(lt_x11_parse_xft_dpi("Xft.dpi: abc") == 0.0);
+    CHECK(lt_x11_parse_xft_dpi(NULL) == 0.0);
     if (!mock) { printf("test_x11: LT_X11_MOCK unset, skipped\n"); return 0; }
     b = lt_backend_x11_create();
     CHECK(b != NULL);
     if (!b) return 1;
+    /* Xft.dpi 144 from the mock's RESOURCE_MANAGER -> 1.5 */
+    CHECK(b->scale_hint != NULL);
+    if (b->scale_hint) { double sh = b->scale_hint(b); CHECK(sh > 1.499 && sh < 1.501); }
+    CHECK(b->screen_size != NULL && b->screen_size(b, &w, &h) == 1 && w == 640 && h == 480);
+    b->set_min_size(b, 1024, 700);
+    b->set_initial_geometry(b, 30, 40, LT_GEOM_POS);
     CHECK(b->open(b, "mock", 320, 200) == 0);
+    {
+        int gx = 0, gy = 0, gm = 1;
+        CHECK(b->get_geometry(b, &gx, &gy, &gm) == 1 && gx == 7 && gy == 9 && gm == 0);
+    }
     b->size(b, &w, &h);
     CHECK(w == 320 && h == 200);
     lt_canvas_init(&c, 320, 200);
@@ -55,6 +70,8 @@ int main(void) {
         CHECK(strstr(log, "op=72 ") != NULL);
         CHECK(strstr(log, "op=101 ") != NULL);
         CHECK(strstr(log, "op=8 ") != NULL);
+        CHECK(strstr(log, "op=20 ") != NULL);
+        CHECK(strstr(log, "op=40 ") != NULL);
         lt_free(log);
     }
     free(logname);

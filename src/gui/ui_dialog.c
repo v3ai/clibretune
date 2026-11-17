@@ -307,7 +307,7 @@ int lt_ui_file_dialog(lt_ui *ui, lt_ui_filedlg *d, const char *title)
     footer = 2 * (t->row_h + t->spacing_y) + 1 + (d->err[0] ? 0 : 0);
     {
         int wfull = -1;
-        lt_ui_layout_row(ui, 1, &wfull, -footer);
+        ui_layout_row_dev(ui, 1, &wfull, -footer);
     }
     fl = lt_ui_listbox_cb(ui, "files", &d->sel, d->n_names, fd_get, d);
     if (d->sel >= 0 && d->sel < d->n_names && (fl & LT_UI_CHANGED) && !d->is_dir[d->sel]) {

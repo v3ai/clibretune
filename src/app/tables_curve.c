@@ -90,30 +90,32 @@ static double clampy(const crv_tab *st, double v)
     return lt_tabs_round(v, st->ydig);
 }
 
-typedef struct plot_ctx { crv_tab *st; lt_rect r; lt_color line, grid, pt, sel, live, axis, bg; int hot, cell; } plot_ctx;
+typedef struct plot_ctx { crv_tab *st; lt_rect r; lt_color line, grid, pt, sel, live, axis, bg; int hot, cell, pct; } plot_ctx;
 
-#define PL_L 54
-#define PL_R 20
-#define PL_T 18
-#define PL_B 38
+/* plot margins at 100%; scaled by the UI scale kept in plot_ctx.pct */
+#define PL_L(p) lt_ui_px_pct(54, (p)->pct)
+#define PL_R(p) lt_ui_px_pct(20, (p)->pct)
+#define PL_T(p) lt_ui_px_pct(18, (p)->pct)
+#define PL_B(p) lt_ui_px_pct(38, (p)->pct)
 
 static double sx_of(const plot_ctx *p, double x)
 {
-    return p->r.x + PL_L + (x - p->st->px0) / (p->st->px1 - p->st->px0) * (p->r.w - PL_L - PL_R);
+    return p->r.x + PL_L(p) + (x - p->st->px0) / (p->st->px1 - p->st->px0) * (p->r.w - PL_L(p) - PL_R(p));
 }
 static double sy_of(const plot_ctx *p, double y)
 {
-    return p->r.y + p->r.h - PL_B - (y - p->st->py0) / (p->st->py1 - p->st->py0) * (p->r.h - PL_T - PL_B);
+    return p->r.y + p->r.h - PL_B(p) - (y - p->st->py0) / (p->st->py1 - p->st->py0) * (p->r.h - PL_T(p) - PL_B(p));
 }
 
 static void chip(lt_gfx *g, double cx, double ytop, const char *s, lt_color fg)
 {
     lt_font *f = lt_font_get(LT_FONT_MONO_MEDIUM);
-    double tw = f != NULL ? lt_gfx_text_measure(f, 11.0, s) : (double)strlen(s) * 8.0;
-    lt_rect c = lt_rect_make((int)(cx - tw / 2.0) - 6, (int)ytop, (int)tw + 12, 18);
-    lt_gfx_fill_round_rect(g, c, 4, LT_RGBA(0, 0, 0, 215));
+    double fp = lt_gfx_fpx(g, 11.0);
+    double tw = f != NULL ? lt_gfx_text_measure(f, fp, s) : (double)strlen(s) * 8.0;
+    lt_rect c = lt_rect_make((int)(cx - tw / 2.0) - lt_gfx_px(g, 6), (int)ytop, (int)tw + lt_gfx_px(g, 12), lt_gfx_px(g, 18));
+    lt_gfx_fill_round_rect(g, c, lt_gfx_px(g, 4), LT_RGBA(0, 0, 0, 215));
     lt_gfx_rect(g, c, LT_RGBA(255, 255, 255, 40));
-    lt_gfx_text_bl(g, f, 11.0, (double)c.x + 6.0, c.y + 13, s, fg);
+    lt_gfx_text_bl(g, f, fp, (double)c.x + (double)lt_gfx_px(g, 6), c.y + lt_gfx_px(g, 13), s, fg);
 }
 
 static void draw_plot(lt_gfx *g, lt_rect r, void *user)
@@ -124,6 +126,7 @@ static void draw_plot(lt_gfx *g, lt_rect r, void *user)
     size_t i;
     int k, x0, x1, y0, y1;
     char b[48];
+    double f10 = lt_gfx_fpx(g, 10.0), f11 = lt_gfx_fpx(g, 11.0);
     x0 = (int)sx_of(p, st->px0); x1 = (int)sx_of(p, st->px1);
     y0 = (int)sy_of(p, st->py0); y1 = (int)sy_of(p, st->py1);
     /* plot area */
@@ -135,19 +138,19 @@ static void draw_plot(lt_gfx *g, lt_rect r, void *user)
         lt_gfx_hline(g, x0, x1, (int)yy, p->grid);
         lt_gfx_vline(g, (int)xx, y1, y0, p->grid);
         lt_snprintf(b, sizeof(b), "%g", fy);
-        lt_gfx_text_bl(g, fm, 10.0, (double)x0 - 8.0 - (fm != NULL ? lt_gfx_text_measure(fm, 10.0, b) : 0.0),
-                       (int)yy + 4, b, p->axis);
+        lt_gfx_text_bl(g, fm, f10, (double)x0 - (double)lt_gfx_px(g, 8) - (fm != NULL ? lt_gfx_text_measure(fm, f10, b) : 0.0),
+                       (int)yy + lt_gfx_px(g, 4), b, p->axis);
         lt_snprintf(b, sizeof(b), "%g", fx);
-        lt_gfx_text_bl(g, fm, 10.0, xx - (fm != NULL ? lt_gfx_text_measure(fm, 10.0, b) / 2.0 : 0.0), y0 + 16, b, p->axis);
+        lt_gfx_text_bl(g, fm, f10, xx - (fm != NULL ? lt_gfx_text_measure(fm, f10, b) / 2.0 : 0.0), y0 + lt_gfx_px(g, 16), b, p->axis);
     }
     lt_gfx_rect(g, lt_rect_make(x0, y1, x1 - x0 + 1, y0 - y1 + 1), LT_RGBA(255, 255, 255, 45));
     /* axis captions */
     if (st->c->col_x != NULL) {
-        lt_gfx_text_bl(g, fs, 11.0, (double)(x0 + x1) / 2.0 - lt_gfx_text_measure(fs, 11.0, st->c->col_x) / 2.0,
-                       r.y + r.h - 6, st->c->col_x, p->axis);
+        lt_gfx_text_bl(g, fs, f11, (double)(x0 + x1) / 2.0 - lt_gfx_text_measure(fs, f11, st->c->col_x) / 2.0,
+                       r.y + r.h - lt_gfx_px(g, 6), st->c->col_x, p->axis);
     }
     if (st->c->col_y != NULL) {
-        lt_gfx_text_rot(g, fs, 11.0, r.x + 12, (double)(y0 + y1) / 2.0, st->c->col_y, -1.57079632679, 1, 2, p->axis);
+        lt_gfx_text_rot(g, fs, f11, r.x + lt_gfx_px(g, 12), (double)(y0 + y1) / 2.0, st->c->col_y, -1.57079632679, 1, 2, p->axis);
     }
     if (st->v.cols >= 2 && st->v.cols <= 128 && !p->cell) {
         double poly[2 * 132];
@@ -261,7 +264,7 @@ static void crv_draw(lt_app *app, lt_app_tab *tab, lt_rect rr)
         hr = lt_ui_layout_next(ui);
         lt_ui_draw_fill(ui, hr, th->bg_app);
         lt_ui_draw_hline(ui, hr.x, hr.x + hr.w - 1, hr.y + hr.h - 1, th->border_subtle);
-        lt_vk_text(ui, lt_rect_make(hr.x + 14, hr.y, hr.w / 2, hr.h), (int)LT_FONT_SANS_SEMIBOLD, 14.0, tab->title, th->text, 0);
+        lt_vk_text(ui, lt_rect_make(hr.x + lt_ui_px(ui, 14), hr.y, hr.w / 2, hr.h), (int)LT_FONT_SANS_SEMIBOLD, 14.0, tab->title, th->text, 0);
         memset(it, 0, sizeof(it));
         it[0].kind = LT_VK_SPACER;
         it[1].kind = LT_VK_BTN; it[1].icon = LT_ICON_UNDO_2; it[1].label = "Undo"; it[1].tip = "Undo (Ctrl+Z)";
@@ -270,7 +273,7 @@ static void crv_draw(lt_app *app, lt_app_tab *tab, lt_rect rr)
         it[4].kind = LT_VK_BTN; it[4].icon = LT_ICON_FLAME; it[4].label = "Burn"; it[4].tip = "Write the changes to ECU flash";
         it[4].accent = 1; it[4].disabled = lt_app_can_burn(app) ? 0 : 1;
         it[5].kind = LT_VK_END;
-        hit = lt_vk_toolbar_in(ui, it, lt_rect_make(hr.x + hr.w / 2, hr.y + 5, hr.w / 2 - 12, 30));
+        hit = lt_vk_toolbar_in(ui, it, lt_rect_make(hr.x + hr.w / 2, hr.y + lt_ui_px(ui, 5), hr.w / 2 - lt_ui_px(ui, 12), lt_ui_px(ui, 30)));
         if (hit == 1) { if (lt_tblview_undo(&st->v)) { crv_commit(app, tab, st); } }
         else if (hit == 2) { if (lt_tblview_redo(&st->v)) { crv_commit(app, tab, st); } }
         else if (hit == 4) { lt_app_burn(app); tab->dirty = 0; }
@@ -288,7 +291,7 @@ static void crv_draw(lt_app *app, lt_app_tab *tab, lt_rect rr)
     pc.line = th->primary_hover; pc.grid = LT_RGBA(255, 255, 255, th->dark ? 22 : 0);
     if (!th->dark) { pc.grid = LT_RGBA(0, 0, 0, 28); }
     pc.pt = th->accent; pc.sel = th->warning; pc.live = th->cursor_live; pc.axis = th->text2;
-    pc.bg = th->table_bg; pc.cell = lt_ui_cell_mode(ui);
+    pc.bg = th->table_bg; pc.cell = lt_ui_cell_mode(ui); pc.pct = lt_ui_scale_pct(ui);
     pc.hot = st->drag;
     if (st->drag < 0) {
         double best = 100.0;

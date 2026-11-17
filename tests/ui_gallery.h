@@ -480,7 +480,7 @@ static void gallery_frame(lt_ui *ui, gallery *g)
     }
     if (g->about_open) {
         lt_ui_msgbox(ui, "about", "About LibreTune",
-                     "LibreTune - open source ECU tuning, rewritten in portable C89.", "OK", &g->about_open);
+                     "LibreTune - open source ECU tuning, In Universal C.", "OK", &g->about_open);
     }
     if (g->fd.open) {
         int res = lt_ui_file_dialog(ui, &g->fd, g->fd.mode == LT_UI_FILE_SAVE ? "Save tune" : "Open tune");

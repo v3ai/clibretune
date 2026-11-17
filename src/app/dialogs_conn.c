@@ -196,7 +196,8 @@ static const char *const heatmaps[] = { "tunerstudio", "grayscale", "pastel", "t
 static const char *const temps[] = { "Celsius", "Fahrenheit" };
 static const char *const press[] = { "kPa", "psi", "bar" };
 static const char *const afrs[] = { "AFR", "Lambda" };
-static const char *const scales[] = { "1x", "2x", "3x" };
+static const char *const scales[] = { "Auto", "100%", "125%", "150%", "175%", "200%", "250%", "300%" };
+static const int scale_pcts[] = { 0, 100, 125, 150, 175, 200, 250, 300 };
 
 static int find_str(const char *const *a, int n, const char *s)
 {
@@ -219,7 +220,7 @@ static void swatch_row(lt_ui *ui, const char *name, const int *w2)
     for (i = 0; i < 5; i++) {
         lt_rect q = r;
         q.x = r.x + i * 48; q.w = 44;
-        lt_ui_draw_box(ui, q, cs[i], t.border, 2);
+        lt_ui_draw_box(ui, q, cs[i], t.border, lt_ui_px(ui, 2));
     }
 }
 
@@ -297,8 +298,9 @@ static void settings_draw(lt_app *app, lt_app_dialog *d)
                 if (lt_ui_combo(ui, "heat", &sel, heatmaps, 6)) { lt_strlcpy(st->heatmap, heatmaps[sel], sizeof(st->heatmap)); ch = 1; }
                 form_label(ui, "UI scale");
                 lt_ui_layout_row(ui, 1, &w1, 0);
-                sel = LT_CLAMP(st->scale, 1, 3) - 1;
-                if (lt_ui_combo(ui, "scale", &sel, scales, 3)) { st->scale = sel + 1; lt_ui_set_scale(ui, st->scale); ch = 1; }
+                sel = 0;
+                { int si; for (si = 0; si < 8; si++) { if (scale_pcts[si] == st->scale_pct) { sel = si; } } }
+                if (lt_ui_combo(ui, "scale", &sel, scales, 8)) { lt_app_set_scale_setting(app, scale_pcts[sel]); ch = 1; }
                 lt_ui_layout_space(ui, 8);
                 lt_ui_layout_row(ui, 1, &w1, 0);
                 if (lt_ui_checkbox(ui, "Show ECU menus in the menu bar", &st->show_ecu_menus)) { ch = 1; }

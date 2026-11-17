@@ -426,9 +426,9 @@ static void menu_ini(lt_app *app)
     const lt_ini *ini = app->ini;
     if (ini == NULL || !app->settings.show_ecu_menus || ini->n_menus == 0) { return; }
     for (i = 0; i < ini->n_menus; i++) {
-        total += (size_t)lt_ui_text_width(ui, ini->menus[i].title) + 24u;
+        total += (size_t)lt_ui_text_width(ui, ini->menus[i].title) + (size_t)lt_ui_px(ui, 24);
     }
-    group = (int)total > lt_ui_surface(ui).w - 520;
+    group = (int)total > lt_ui_surface(ui).w - lt_ui_px(ui, 520);
     if (group) {
         if (lt_ui_menu_begin(ui, "&Tuning")) {
             for (i = 0; i < ini->n_menus; i++) {
@@ -551,8 +551,7 @@ static void sidebar(lt_app *app, lt_rect r)
     const lt_ini *ini = app->ini;
     int w1 = -1, counter = 0;
     int cell = lt_ui_cell_mode(ui);
-    int sc = cell ? 1 : lt_ui_row_height(ui) / 24;
-    int hh = t->tab_h, sh = cell ? 16 : 30 * sc;
+    int hh = t->tab_h, sh = cell ? 16 : lt_ui_px(ui, 30);
     size_t i;
     char lab[160], title[160];
     const char *active = NULL;
@@ -579,16 +578,16 @@ static void sidebar(lt_app *app, lt_rect r)
     lt_ui_draw_fill(ui, srow, t->bg_toolbar);
     if (!cell) { lt_ui_draw_hline(ui, r.x, r.x + r.w - 1, srow.y + srow.h - 1, t->border_subtle); }
     {
-        int ix = srow.x + (cell ? 0 : 6 * sc), bw = cell ? 16 : 22 * sc;
-        int gap = cell ? 0 : 4 * sc;
+        int ix = srow.x + (cell ? 0 : lt_ui_px(ui, 6)), bw = cell ? 16 : lt_ui_px(ui, 22);
+        int gap = cell ? 0 : lt_ui_px(ui, 4);
         lt_rect ib;
-        lt_ui_draw_icon(ui, lt_rect_make(ix, srow.y, cell ? 16 : 14 * sc, srow.h),
+        lt_ui_draw_icon(ui, lt_rect_make(ix, srow.y, cell ? 16 : lt_ui_px(ui, 14), srow.h),
                         cell ? LT_UI_ICON_SEARCH : LT_UI_LUCIDE(LT_ICON_SEARCH), t->muted);
-        ix += cell ? 16 : 14 * sc + gap;
-        sin = lt_rect_make(ix, srow.y + (srow.h - (cell ? 16 : bw)) / 2, srow.x + srow.w - ix - bw - 2 * gap - (cell ? 0 : 2),
+        ix += cell ? 16 : lt_ui_px(ui, 14) + gap;
+        sin = lt_rect_make(ix, srow.y + (srow.h - (cell ? lt_ui_px(ui, 16) : bw)) / 2, srow.x + srow.w - ix - bw - 2 * gap - (cell ? 0 : lt_ui_px(ui, 2)),
                            cell ? 16 : bw);
         lt_ui_region_begin(ui, sin, 0);
-        lt_ui_layout_row(ui, 1, &w1, sin.h);
+        lt_ui_layout_row_px(ui, 1, &w1, sin.h);
         lt_ui_layout_gap(ui, 0, 0);
         lt_ui_text_style(ui, (int)LT_FONT_SANS, LT_UI_FS_SM);
         lt_ui_text(ui, "search", app->search, sizeof(app->search), 0);
@@ -599,9 +598,9 @@ static void sidebar(lt_app *app, lt_rect r)
             lt_ui_draw_text_in_f(ui, lt_rect_make(sr.x + t->pad_x, sr.y, sr.w - 2 * t->pad_x, sr.h),
                                  "Search... (Ctrl+K)", t->muted, 0, (int)LT_FONT_SANS, LT_UI_FS_SM);
         } else if (app->search[0] != '\0') {
-            lt_rect cr = lt_rect_make(sin.x + sin.w - 20 * sc, sin.y + 2, 18 * sc, sin.h - 4);
+            lt_rect cr = lt_rect_make(sin.x + sin.w - lt_ui_px(ui, 20), sin.y + 2, lt_ui_px(ui, 18), sin.h - 4);
             lt_ui_region_begin(ui, cr, 0);
-            lt_ui_layout_row(ui, 1, &w1, cr.h);
+            lt_ui_layout_row_px(ui, 1, &w1, cr.h);
             lt_ui_layout_gap(ui, 0, 0);
             if (lt_ui_icon_button(ui, cell ? LT_UI_ICON_CLOSE : LT_UI_LUCIDE(LT_ICON_X), "Clear search", 0)) { app->search[0] = '\0'; }
             lt_ui_region_end(ui);
@@ -609,7 +608,7 @@ static void sidebar(lt_app *app, lt_rect r)
         lt_ui_region_end(ui);
         ib = lt_rect_make(sin.x + sin.w + gap, sin.y, bw, sin.h);
         lt_ui_region_begin(ui, ib, 0);
-        lt_ui_layout_row(ui, 1, &w1, ib.h);
+        lt_ui_layout_row_px(ui, 1, &w1, ib.h);
         lt_ui_layout_gap(ui, 0, 0);
         lt_ui_push_id(ui, "expand");
         if (lt_ui_icon_button(ui, cell ? LT_UI_ICON_PLUS : LT_UI_LUCIDE(LT_ICON_CHEVRONS_UP_DOWN),
@@ -627,7 +626,7 @@ static void sidebar(lt_app *app, lt_rect r)
     lt_ui_layout_row(ui, 1, &w1, -1);
     if (lt_ui_scroll_begin(ui, "tree")) {
         lt_ui_layout_gap(ui, 0, 0);
-        lt_ui_layout_row(ui, 1, &w1, t->tree_row_h);
+        lt_ui_layout_row_px(ui, 1, &w1, t->tree_row_h);
         for (i = 0; i < ini->n_menus; i++) {
             const lt_ini_menu *m = &ini->menus[i];
             size_t k;
@@ -683,7 +682,7 @@ static void statusbar_cell(lt_app *app)
     else { lt_snprintf(buf, sizeof(buf), "  %s: %s", lt_app_conn_label(app), app->signature); }
     lt_ui_label_ex(ui, buf, cc, LT_UI_ALIGN_LEFT);
     dr = lt_ui_last_rect(ui);
-    lt_ui_draw_icon(ui, lt_rect_make(dr.x - 2, dr.y, 16, dr.h), LT_UI_ICON_DOT, cc);
+    lt_ui_draw_icon(ui, lt_rect_make(dr.x - lt_ui_px(ui, 2), dr.y, lt_ui_px(ui, 16), dr.h), LT_UI_ICON_DOT, cc);
     if (app->conn == LT_APP_ONLINE || app->conn == LT_APP_DEMO) {
         double rpm = 0.0;
         if (lt_app_channel(app, "RPMValue", &rpm) || lt_app_channel(app, "rpm", &rpm)) {
@@ -710,7 +709,7 @@ static void statusbar(lt_app *app)
 {
     lt_ui *ui = app->ui;
     const lt_theme *t = lt_ui_theme(ui);
-    int w[7], sc;
+    int w[7];
     char conn[200], mid[200], proj[200], rate[48];
     const char *units = app->settings.metric ? "Metric" : "Imperial";
     const char *logt;
@@ -718,7 +717,6 @@ static void statusbar(lt_app *app)
     lt_rect r;
     int rec = app->rec != NULL && lt_rec_is_recording(app->rec);
     if (lt_ui_cell_mode(ui)) { statusbar_cell(app); return; }
-    sc = lt_ui_row_height(ui) / 24;
     lt_ui_text_style(ui, (int)LT_FONT_SANS, LT_UI_FS_SM);
     switch (app->conn) {
     case LT_APP_ONLINE: cc = t->success; break;
@@ -742,18 +740,18 @@ static void statusbar(lt_app *app)
     else { rate[0] = '\0'; }
     logt = rec ? "Logging" : "Not Logging";
     lt_ui_statusbar_begin(ui);
-    w[0] = LT_MIN(lt_ui_text_width(ui, conn) + 24 * sc, lt_ui_surface(ui).w / 2);
+    w[0] = LT_MIN(lt_ui_text_width(ui, conn) + lt_ui_px(ui, 24), lt_ui_surface(ui).w / 2);
     w[1] = -1;
-    w[2] = proj[0] ? lt_ui_text_width(ui, proj) + 16 * sc : 1;
-    w[3] = rate[0] ? lt_ui_text_width(ui, rate) + 16 * sc : 1;
-    w[4] = lt_ui_text_width(ui, units) + 16 * sc;
-    w[5] = 20 * sc + lt_ui_text_width(ui, logt) + 8 * sc;
-    w[6] = lt_ui_text_width(ui, "v" LT_APP_VERSION) + 8 * sc;
-    lt_ui_layout_row(ui, 7, w, 0);
+    w[2] = proj[0] ? lt_ui_text_width(ui, proj) + lt_ui_px(ui, 16) : 1;
+    w[3] = rate[0] ? lt_ui_text_width(ui, rate) + lt_ui_px(ui, 16) : 1;
+    w[4] = lt_ui_text_width(ui, units) + lt_ui_px(ui, 16);
+    w[5] = lt_ui_px(ui, 20) + lt_ui_text_width(ui, logt) + lt_ui_px(ui, 8);
+    w[6] = lt_ui_text_width(ui, "v" LT_APP_VERSION) + lt_ui_px(ui, 8);
+    lt_ui_layout_row_px(ui, 7, w, 0);
     lt_ui_layout_indent(ui, 0);
     r = lt_ui_layout_next(ui);
-    lt_ui_draw_circle_fill(ui, r.x + 6.0 * sc, r.y + r.h / 2.0, 3.5 * sc, cc);
-    lt_ui_draw_text_in(ui, lt_rect_make(r.x + 16 * sc, r.y, r.w - 16 * sc, r.h), conn, t->text2, 0);
+    lt_ui_draw_circle_fill(ui, r.x + (double)lt_ui_px(ui, 6), r.y + r.h / 2.0, 3.5 * (double)lt_ui_scale_pct(ui) / 100.0, cc);
+    lt_ui_draw_text_in(ui, lt_rect_make(r.x + lt_ui_px(ui, 16), r.y, r.w - lt_ui_px(ui, 16), r.h), conn, t->text2, 0);
     r = lt_ui_layout_next(ui);
     lt_ui_draw_text_in(ui, r, mid, t->muted, 1);
     r = lt_ui_layout_next(ui);
@@ -763,9 +761,9 @@ static void statusbar(lt_app *app)
     r = lt_ui_layout_next(ui);
     lt_ui_draw_text_in(ui, r, units, t->muted, 2);
     r = lt_ui_layout_next(ui);
-    lt_ui_draw_lucide(ui, lt_rect_make(r.x, r.y, 16 * sc, r.h), rec ? LT_ICON_CIRCLE_DOT : LT_ICON_CIRCLE, 12, 2.0,
+    lt_ui_draw_lucide(ui, lt_rect_make(r.x, r.y, lt_ui_px(ui, 16), r.h), rec ? LT_ICON_CIRCLE_DOT : LT_ICON_CIRCLE, 12, 2.0,
                       rec ? t->error : t->muted);
-    lt_ui_draw_text_in(ui, lt_rect_make(r.x + 20 * sc, r.y, r.w - 20 * sc, r.h), logt, rec ? t->error : t->muted, 0);
+    lt_ui_draw_text_in(ui, lt_rect_make(r.x + lt_ui_px(ui, 20), r.y, r.w - lt_ui_px(ui, 20), r.h), logt, rec ? t->error : t->muted, 0);
     r = lt_ui_layout_next(ui);
     lt_ui_draw_text_in_f(ui, r, "v" LT_APP_VERSION, t->muted, 2, (int)LT_FONT_MONO, LT_UI_FS_XS);
     lt_ui_statusbar_end(ui);
@@ -782,16 +780,16 @@ static void welcome_cell(lt_app *app, lt_rect area)
     int cw = LT_MIN(area.w - 32, 640), i, w1 = -1, w2[2], rh = lt_ui_row_height(ui);
     lt_rect r;
     char buf[640];
-    r = lt_rect_make(area.x + (area.w - cw) / 2, area.y + (cell ? 16 : 40), cw, area.h - 40);
+    r = lt_rect_make(area.x + (area.w - cw) / 2, area.y + (cell ? lt_ui_px(ui, 16) : lt_ui_px(ui, 40)), cw, area.h - lt_ui_px(ui, 40));
     lt_ui_draw_fill(ui, area, t->bg_app);
     if (cell) {
-        lt_ui_draw_text_in(ui, lt_rect_make(r.x, r.y, r.w, 16), "LibreTune", t->primary, 1);
-        lt_ui_draw_text_in(ui, lt_rect_make(r.x, r.y + 16, r.w, 16),
+        lt_ui_draw_text_in(ui, lt_rect_make(r.x, r.y, r.w, lt_ui_px(ui, 16)), "LibreTune", t->primary, 1);
+        lt_ui_draw_text_in(ui, lt_rect_make(r.x, r.y + lt_ui_px(ui, 16), r.w, lt_ui_px(ui, 16)),
                            "Open-source ECU tuning software", t->text2, 1);
         r.y += 48;
     } else {
         lt_ui_draw_vtext(ui, r.x + r.w / 2.0, r.y + 28, "LibreTune", 44.0, 0.0, 1, 1, 3.0, t->primary);
-        lt_ui_draw_text_in(ui, lt_rect_make(r.x, r.y + 64, r.w, 24),
+        lt_ui_draw_text_in(ui, lt_rect_make(r.x, r.y + lt_ui_px(ui, 64), r.w, lt_ui_px(ui, 24)),
                            "Open-source ECU tuning software", t->text2, 1);
         r.y += 110;
     }
@@ -848,27 +846,26 @@ static void welcome(lt_app *app, lt_rect area)
 {
     lt_ui *ui = app->ui;
     const lt_theme *t = lt_ui_theme(ui);
-    int sc, i, cw, y, bw1, bw2, bh, gap, cardw, cardh;
+    int i, cw, y, bw1, bw2, bh, gap, cardw, cardh;
     lt_rect r;
     int w1 = -1, w2[2];
     char buf[640];
     if (lt_ui_cell_mode(ui)) { welcome_cell(app, area); return; }
-    sc = lt_ui_row_height(ui) / 24;
     lt_ui_draw_fill(ui, area, t->bg_app);
     /* the stock welcome view is centred about 40% down from the top */
-    y = area.y + LT_MAX(24 * sc, (area.h - 560 * sc) / 3);
-    lt_ui_draw_text_in_f(ui, lt_rect_make(area.x, y, area.w, 48 * sc), "LibreTune", t->text, 1,
+    y = area.y + LT_MAX(lt_ui_px(ui, 24), (area.h - lt_ui_px(ui, 560)) / 3);
+    lt_ui_draw_text_in_f(ui, lt_rect_make(area.x, y, area.w, lt_ui_px(ui, 48)), "LibreTune", t->text, 1,
                          (int)LT_FONT_SANS_SEMIBOLD, 36);
-    lt_ui_draw_text_in_f(ui, lt_rect_make(area.x, y + 46 * sc, area.w, 24 * sc),
+    lt_ui_draw_text_in_f(ui, lt_rect_make(area.x, y + lt_ui_px(ui, 46), area.w, lt_ui_px(ui, 24)),
                          "Open-source ECU tuning software", t->muted, 1, (int)LT_FONT_SANS, LT_UI_FS_LG);
-    y += 100 * sc;
-    bw1 = 154 * sc; bw2 = 164 * sc; bh = 56 * sc; gap = 16 * sc;
+    y += lt_ui_px(ui, 100);
+    bw1 = lt_ui_px(ui, 154); bw2 = lt_ui_px(ui, 164); bh = lt_ui_px(ui, 56); gap = lt_ui_px(ui, 16);
     cw = bw1 + gap + bw2;
     r = lt_rect_make(area.x + (area.w - cw) / 2, y, cw, bh);
     lt_ui_region_begin(ui, r, 0);
     w2[0] = bw1; w2[1] = bw2;
-    lt_ui_layout_row(ui, 2, w2, bh);
-    lt_ui_layout_gap(ui, gap, 0);
+    lt_ui_layout_row_px(ui, 2, w2, bh);
+    lt_ui_layout_gap_px(ui, gap, 0);
     lt_ui_text_style(ui, (int)LT_FONT_SANS_MEDIUM, LT_UI_FS_XL);
     if (lt_ui_button_ex(ui, "New Project", LT_UI_BTN_PRIMARY)) { lt_app_new_project_dialog(app); }
     if (lt_ui_button(ui, "Open Project")) {
@@ -877,55 +874,55 @@ static void welcome(lt_app *app, lt_rect area)
     }
     lt_ui_text_style_reset(ui);
     lt_ui_region_end(ui);
-    y += bh + 12 * sc;
+    y += bh + lt_ui_px(ui, 12);
     /* secondary actions */
-    r = lt_rect_make(area.x + (area.w - cw) / 2, y, cw, 26 * sc);
+    r = lt_rect_make(area.x + (area.w - cw) / 2, y, cw, lt_ui_px(ui, 26));
     lt_ui_region_begin(ui, r, 0);
-    lt_ui_layout_row(ui, 2, w2, 26 * sc);
-    lt_ui_layout_gap(ui, gap, 0);
+    lt_ui_layout_row_px(ui, 2, w2, lt_ui_px(ui, 26));
+    lt_ui_layout_gap_px(ui, gap, 0);
     if (lt_ui_button_ex(ui, "Demo mode", LT_UI_BTN_FLAT)) { lt_app_start_demo(app, NULL); }
     if (lt_ui_button_ex(ui, "Import TunerStudio", LT_UI_BTN_FLAT)) {
         lt_app_file_dialog(app, LT_APP_FD_IMPORT_TS, LT_UI_FILE_OPEN, NULL, "", "All files|*");
     }
     lt_ui_region_end(ui);
-    y += 26 * sc + 36 * sc;
+    y += lt_ui_px(ui, 26) + lt_ui_px(ui, 36);
     /* recent projects */
-    cardw = LT_MIN(500 * sc, area.w - 32 * sc);
-    cardh = 72 * sc;
+    cardw = LT_MIN(lt_ui_px(ui, 500), area.w - lt_ui_px(ui, 32));
+    cardh = lt_ui_px(ui, 72);
     if (app->settings.n_recent > 0) {
-        lt_ui_draw_text_in_f(ui, lt_rect_make(area.x, y, area.w, 20 * sc), "Recent Projects", t->text2, 1,
+        lt_ui_draw_text_in_f(ui, lt_rect_make(area.x, y, area.w, lt_ui_px(ui, 20)), "Recent Projects", t->text2, 1,
                              (int)LT_FONT_SANS_SEMIBOLD, LT_UI_FS_MD);
-        y += 32 * sc;
+        y += lt_ui_px(ui, 32);
     }
     for (i = 0; i < app->settings.n_recent; i++) {
         lt_rect card = lt_rect_make(area.x + (area.w - cardw) / 2, y, cardw, cardh);
-        lt_rect del = lt_rect_make(card.x + card.w - 28 * sc - 8 * sc, card.y + (card.h - 24 * sc) / 2, 28 * sc, 24 * sc);
-        lt_rect body = lt_rect_make(card.x, card.y, card.w - 40 * sc, card.h);
+        lt_rect del = lt_rect_make(card.x + card.w - lt_ui_px(ui, 28) - lt_ui_px(ui, 8), card.y + (card.h - lt_ui_px(ui, 24)) / 2, lt_ui_px(ui, 28), lt_ui_px(ui, 24));
+        lt_rect body = lt_rect_make(card.x, card.y, card.w - lt_ui_px(ui, 40), card.h);
         int hov;
         if (card.y + card.h > area.y + area.h) { break; }
         lt_ui_push_id_int(ui, i);
         {
             lt_point mp = lt_ui_mouse(ui);
             lt_bool hv = lt_rect_contains(card, mp.x, mp.y) && !lt_ui_popup_open(ui);
-            lt_ui_draw_shadow(ui, card, t->radius_lg, 4 * sc, 40);
+            lt_ui_draw_shadow(ui, card, t->radius_lg, lt_ui_px(ui, 4), 40);
             lt_ui_draw_box(ui, card, hv ? t->hover : t->elevated, hv ? t->border_strong : t->border, t->radius_lg);
         }
         lt_ui_region_begin(ui, body, 0);
-        lt_ui_layout_row(ui, 1, &w1, body.h);
+        lt_ui_layout_row_px(ui, 1, &w1, body.h);
         lt_ui_layout_gap(ui, 0, 0);
         hov = lt_ui_button_ex(ui, "##card", LT_UI_BTN_FLAT);
         {
             lt_rect cr = lt_ui_last_rect(ui);
-            lt_ui_draw_text_in_f(ui, lt_rect_make(cr.x + 16 * sc, cr.y + 12 * sc, cr.w - 24 * sc, 20 * sc),
+            lt_ui_draw_text_in_f(ui, lt_rect_make(cr.x + lt_ui_px(ui, 16), cr.y + lt_ui_px(ui, 12), cr.w - lt_ui_px(ui, 24), lt_ui_px(ui, 20)),
                                  lt_path_base(app->settings.recent[i]), t->text, 0, (int)LT_FONT_SANS_SEMIBOLD, LT_UI_FS_LG);
             lt_snprintf(buf, sizeof(buf), "%s", app->settings.recent[i]);
-            lt_ui_draw_text_in_f(ui, lt_rect_make(cr.x + 16 * sc, cr.y + 36 * sc, cr.w - 24 * sc, 18 * sc), buf, t->muted, 0,
+            lt_ui_draw_text_in_f(ui, lt_rect_make(cr.x + lt_ui_px(ui, 16), cr.y + lt_ui_px(ui, 36), cr.w - lt_ui_px(ui, 24), lt_ui_px(ui, 18)), buf, t->muted, 0,
                                  (int)LT_FONT_SANS, LT_UI_FS_BASE);
         }
         lt_ui_region_end(ui);
         if (hov) { lt_app_open_project(app, app->settings.recent[i]); lt_ui_pop_id(ui); break; }
         lt_ui_region_begin(ui, del, 0);
-        lt_ui_layout_row(ui, 1, &w1, del.h);
+        lt_ui_layout_row_px(ui, 1, &w1, del.h);
         lt_ui_layout_gap(ui, 0, 0);
         if (lt_ui_icon_button(ui, LT_UI_LUCIDE(LT_ICON_TRASH_2), app->confirm_delete == i ? "Click again to remove" : "Remove from list",
                               app->confirm_delete == i ? LT_UI_BTN_DANGER : 0)) {
@@ -946,7 +943,7 @@ static void welcome(lt_app *app, lt_rect area)
         }
         lt_ui_region_end(ui);
         lt_ui_pop_id(ui);
-        y += cardh + 8 * sc;
+        y += cardh + lt_ui_px(ui, 8);
     }
 }
 
@@ -1049,7 +1046,7 @@ static void app_dialogs(lt_app *app)
     if (app->about_open) {
         lt_ui_msgbox(ui, "about", "About LibreTune",
                      "LibreTune " LT_APP_VERSION " - open source ECU tuning software.\n"
-                     "Portable C89 rewrite. GPL-2.0-or-later.\nBuild: " __DATE__, "OK", &app->about_open);
+                     "In Universal C. GPL-2.0-or-later.\nBuild: " __DATE__, "OK", &app->about_open);
     }
     if (app->shortcuts_open) {
         lt_ui_msgbox(ui, "keys", "Keyboard shortcuts",
@@ -1088,6 +1085,15 @@ static void app_dialogs(lt_app *app)
     }
 }
 
+/* sidebar width is stored in logical px; the splitter works in device px */
+static void sidebar_split(lt_app *app, lt_rect cr, lt_rect *side, lt_rect *main_r)
+{
+    lt_ui *ui = app->ui;
+    int dev = lt_ui_px(ui, app->settings.sidebar_w), old = dev;
+    lt_ui_splitter(ui, "sidebar", cr, 1, &dev, lt_ui_px(ui, 160), cr.w / 2, side, main_r);
+    if (dev != old) { app->settings.sidebar_w = (int)((lt_s64)dev * 100 / lt_ui_scale_pct(ui)); }
+}
+
 /* ------------------------------------------------------------------ */
 void lt_app_frame(lt_app *app)
 {
@@ -1100,7 +1106,7 @@ void lt_app_frame(lt_app *app)
     cr = lt_ui_client_rect(ui);
     if (app->ini == NULL) {
         if (!lt_ui_cell_mode(ui) && app->settings.sidebar_on) {
-            lt_ui_splitter(ui, "sidebar", cr, 1, &app->settings.sidebar_w, 160, cr.w / 2, &side, &main_r);
+            sidebar_split(app, cr, &side, &main_r);
             sidebar(app, side);
         } else {
             main_r = cr;
@@ -1108,7 +1114,7 @@ void lt_app_frame(lt_app *app)
         welcome(app, main_r);
     } else {
         if (app->settings.sidebar_on) {
-            lt_ui_splitter(ui, "sidebar", cr, 1, &app->settings.sidebar_w, 160, cr.w / 2, &side, &main_r);
+            sidebar_split(app, cr, &side, &main_r);
             sidebar(app, side);
         } else {
             main_r = cr;
@@ -1138,24 +1144,127 @@ static void init_surface(lt_app *app, int w, int h)
     }
     app->ui = lt_ui_create();
     lt_ui_set_backend(app->ui, app->backend);
-    lt_ui_set_scale(app->ui, app->settings.scale);
+    lt_ui_set_scale_pct(app->ui, app->scale_pct);
     lt_app_apply_theme(app, app->settings.theme);
+}
+
+#define WIN_DEF_W 1280          /* stock LibreTune window, logical px */
+#define WIN_DEF_H 800
+#define WIN_MIN_W 1024
+#define WIN_MIN_H 700
+
+static int round25(double pct)
+{
+    return (int)(pct / 25.0 + 0.5) * 25;
+}
+
+int lt_app_pick_scale(const char *env, int setting_pct, double hint)
+{
+    int pct = 0;
+    if (env != NULL && env[0] != '\0' && lt_stricmp(env, "auto") != 0) {
+        pct = atoi(env);
+        if (pct >= 1 && pct <= 3) { pct *= 100; }
+    }
+    if (pct <= 0) { pct = setting_pct; }
+    if (pct <= 0) { pct = round25(hint * 100.0); }
+    return LT_CLAMP(pct, 100, 300);
+}
+
+void lt_app_pick_window(const lt_app_settings *s, int pct, int scr_w, int scr_h,
+                        int *w, int *h, int *x, int *y, int *flags)
+{
+    int lw = WIN_DEF_W, lh = WIN_DEF_H, pw, ph;
+    *x = 0; *y = 0; *flags = 0;
+    if (s->win_w >= WIN_MIN_W && s->win_h >= WIN_MIN_H && s->win_w <= 16384 && s->win_h <= 16384) {
+        int sw = (int)((lt_s64)s->win_w * pct / 100), sh = (int)((lt_s64)s->win_h * pct / 100);
+        if (scr_w <= 0 || scr_h <= 0 || (sw <= scr_w && sh <= scr_h)) { lw = s->win_w; lh = s->win_h; }
+    }
+    pw = (int)((lt_s64)lw * pct / 100);
+    ph = (int)((lt_s64)lh * pct / 100);
+    if (scr_w > 0 && scr_h > 0) {            /* never larger than the desktop */
+        if (pw > scr_w) { pw = scr_w; }
+        if (ph > scr_h) { ph = scr_h; }
+    }
+    *w = pw; *h = ph;
+    if (s->win_pos) {
+        int ok = 1;
+        if (scr_w > 0 && scr_h > 0) {
+            ok = s->win_x > -(pw - 100) && s->win_x < scr_w - 100 && s->win_y >= 0 && s->win_y < scr_h - 100;
+        } else {
+            ok = s->win_x >= 0 && s->win_y >= 0;
+        }
+        if (ok) { *x = s->win_x; *y = s->win_y; *flags |= LT_GEOM_POS; }
+    }
+    if (s->win_max) { *flags |= LT_GEOM_MAX; }
+}
+
+static void apply_min_size(lt_app *app)
+{
+    int sw = 0, sh = 0, mw = (int)((lt_s64)WIN_MIN_W * app->scale_pct / 100);
+    int mh = (int)((lt_s64)WIN_MIN_H * app->scale_pct / 100);
+    if (lt_backend_screen_size(app->backend, &sw, &sh)) {
+        if (mw > sw) { mw = sw; }
+        if (mh > sh) { mh = sh; }
+    }
+    lt_backend_set_min_size(app->backend, mw, mh);
+}
+
+void lt_app_set_scale_setting(lt_app *app, int pct)
+{
+    char *e = lt_plat_getenv("LT_SCALE");
+    app->settings.scale_pct = pct == 0 ? 0 : LT_CLAMP(pct, 100, 300);
+    app->scale_pct = lt_app_pick_scale(e, app->settings.scale_pct, lt_backend_scale_hint(app->backend));
+    lt_free(e);
+    if (app->ui != NULL) { lt_ui_set_scale_pct(app->ui, app->scale_pct); lt_ui_request_redraw(app->ui); }
+    if (app->backend != NULL && !app->cell_mode) { apply_min_size(app); }
 }
 
 int lt_app_open_window(lt_app *app, const char *backend, int w, int h)
 {
     lt_backend *be = lt_backend_select(backend != NULL ? backend : app->settings.backend);
+    char *e;
+    int sw = 0, sh = 0, x, y, flags;
     if (be == NULL) { lt_err_set("no GUI backend available"); return -1; }
+    e = lt_plat_getenv("LT_SCALE");
+    app->scale_pct = lt_app_pick_scale(e, app->settings.scale_pct, lt_backend_scale_hint(be));
+    lt_free(e);
+    app->backend = be;
+    if (!be->cell_mode) {
+        /* w x h is the default LOGICAL size; the saved size (if any) wins */
+        (void)lt_backend_screen_size(be, &sw, &sh);
+        lt_app_pick_window(&app->settings, app->scale_pct, sw, sh, &w, &h, &x, &y, &flags);
+        apply_min_size(app);
+        lt_backend_set_initial_geometry(be, x, y, flags);
+    }
     if (be->open(be, "LibreTune", w, h) != 0) {
         lt_err_set("cannot open backend '%s': %s", be->name, lt_err_get());
         lt_backend_destroy(be);
+        app->backend = NULL;
         return -1;
     }
-    app->backend = be;
     app->cell_mode = be->cell_mode ? 1 : 0;
     be->size(be, &w, &h);
     init_surface(app, w, h);
     return 0;
+}
+
+/* remember window geometry (logical size) for the next start */
+static void save_geometry(lt_app *app)
+{
+    lt_app_settings *s = &app->settings;
+    int gx = 0, gy = 0, gm = 0, w = 0, h = 0, pct = app->scale_pct > 0 ? app->scale_pct : 100;
+    if (app->backend == NULL || app->cell_mode || app->headless) { return; }
+    if (lt_backend_get_geometry(app->backend, &gx, &gy, &gm)) {
+        s->win_max = gm ? 1 : 0;
+        s->win_x = gx; s->win_y = gy; s->win_pos = 1;
+    }
+    if (!s->win_max) {                       /* keep the last normal size while maximized */
+        app->backend->size(app->backend, &w, &h);
+        if (w > 0 && h > 0) {
+            s->win_w = (int)((lt_s64)w * 100 / pct);
+            s->win_h = (int)((lt_s64)h * 100 / pct);
+        }
+    }
 }
 
 static void run_frame(lt_app *app)
@@ -1188,6 +1297,15 @@ int lt_app_run(lt_app *app)
         while (got) {
             if (ev.type == LT_EV_QUIT) {
                 lt_app_request_quit(app);
+            } else if (ev.type == LT_EV_SCALE) {
+                if (app->settings.scale_pct == 0) {
+                    char *se = lt_plat_getenv("LT_SCALE");
+                    app->scale_pct = lt_app_pick_scale(se, 0, (double)ev.x / 100.0);
+                    lt_free(se);
+                    lt_ui_set_scale_pct(app->ui, app->scale_pct);
+                    apply_min_size(app);
+                    lt_ui_request_redraw(app->ui);
+                }
             } else if (ev.type == LT_EV_RESIZE) {
                 if (app->cell_mode) {
                     lt_cells_resize(&app->cells, ev.x, ev.y);
@@ -1215,6 +1333,7 @@ int lt_app_run(lt_app *app)
             if (max_frames > 0 && frames >= max_frames) { app->quit = 1; }
         }
     }
+    save_geometry(app);
     lt_app_settings_save(app);
     return 0;
 }
@@ -1244,6 +1363,12 @@ int lt_app_screenshot(lt_app *app, const char *ppm_path, int w, int h, int frame
     lt_event ev;
     app->cell_mode = 0;
     app->headless = 1;
+    {
+        char *se = lt_plat_getenv("LT_SCALE");
+        if (se == NULL) { se = lt_plat_getenv("LT_SHOT_SCALE"); }
+        app->scale_pct = lt_app_pick_scale(se, app->settings.scale_pct, 1.0);
+        lt_free(se);
+    }
     init_surface(app, w, h);
     if (click != NULL) { sscanf(click, "%d,%d", &cx, &cy); lt_free(click); }
     for (i = 0; i < frames; i++) {

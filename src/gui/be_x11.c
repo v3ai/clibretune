@@ -24,6 +24,11 @@ typedef struct x11 {
     int w, h;
     int seq;
     lt_u32 a_prot, a_del, a_netname, a_utf8;
+    lt_u32 a_wmstate, a_maxh, a_maxv;
+    int root_w, root_h;
+    double xft_dpi;          /* from RESOURCE_MANAGER, 0 = none */
+    int minw, minh;          /* WM_NORMAL_HINTS minimum, 0 = none */
+    int init_x, init_y, init_flags;
     int min_kc, kpk, nkc;
     lt_u32 *syms;
     lt_u8 *in;
@@ -514,6 +519,7 @@ static int do_setup(x11 *x, const char *host, int num) {
         x->depth = d[off + 38];
         x->w = (int)r16(x, d + off + 20);
         x->h = (int)r16(x, d + off + 22);
+        x->root_w = x->w; x->root_h = x->h;
         found_fmt = 0;
         for (i = 0; i < (size_t)nformats; i++) {
             if (d[fo + 8 * i] == x->depth) {
@@ -624,6 +630,141 @@ static void set_title_impl(lt_backend *be, const char *title) {
     lt_buf_free(&b);
 }
 
+
+/* ---- display scale, geometry ---- */
+/* "Xft.dpi: 144" -> 144.0; 0.0 when absent or out of range */
+double lt_x11_parse_xft_dpi(const char *res) {
+    const char *p = res;
+    static const char key[] = "xft.dpi:";
+    if (!res) return 0.0;
+    while (*p) {
+        const char *q = p;
+        size_t i = 0;
+        while (key[i] && q[i] && tolower((unsigned char)q[i]) == key[i]) i++;
+        if (key[i] == '\0') {
+            double v;
+            q += i;
+            while (*q == ' ' || *q == '\t') q++;
+            v = atof(q);
+            return (v >= 24.0 && v <= 1000.0) ? v : 0.0;
+        }
+        while (*p && *p != '\n') p++;
+        if (*p == '\n') p++;
+    }
+    return 0.0;
+}
+
+/* GetProperty (op 20) of the whole property; reply stays in x->reply */
+static int get_prop(x11 *x, lt_buf *b, lt_u32 win, lt_u32 prop) {
+    req_begin(b, 20, 0);
+    p32(x, b, win); p32(x, b, prop); p32(x, b, 0);
+    p32(x, b, 0); p32(x, b, 16384);
+    if (req_end(x, b) < 0) return -1;
+    if (wait_reply(x, x->seq, 5000) < 0) { drop_reply(x); return -1; }
+    return 0;
+}
+
+static void fetch_resources(x11 *x, lt_buf *b) {
+    if (get_prop(x, b, x->root, 23) == 0) {
+        if (x->reply[1] == 8) {
+            size_t n = (size_t)r32(x, x->reply + 16), avail = x->reply_len - 32;
+            char *t;
+            if (n > avail) n = avail;
+            t = (char *)lt_malloc(n + 1);
+            memcpy(t, x->reply + 32, n);
+            t[n] = '\0';
+            x->xft_dpi = lt_x11_parse_xft_dpi(t);
+            lt_free(t);
+        }
+        drop_reply(x);
+    }
+}
+
+static double x_scale_hint(lt_backend *be) {
+    x11 *x = (x11 *)be->impl;
+    const char *e;
+    double v;
+    if (x && x->xft_dpi > 0.0) return x->xft_dpi / 96.0;
+    e = getenv("GDK_SCALE");
+    if (e && (v = atof(e)) >= 1.0 && v <= 8.0) return v;
+    e = getenv("QT_SCALE_FACTOR");
+    if (e && (v = atof(e)) >= 0.5 && v <= 8.0) return v;
+    return 1.0;
+}
+
+static void send_size_hints(x11 *x, lt_buf *b) {
+    lt_u32 h[18];
+    lt_u8 raw[72];
+    int i;
+    memset(h, 0, sizeof h);
+    if (x->minw > 0 && x->minh > 0) { h[0] |= 16; h[5] = (lt_u32)x->minw; h[6] = (lt_u32)x->minh; }
+    if (x->init_flags & LT_GEOM_POS) {
+        h[0] |= 4; h[1] = (lt_u32)x->init_x; h[2] = (lt_u32)x->init_y;
+    }
+    if (!h[0] || !x->win) return;
+    for (i = 0; i < 18; i++) {
+        if (x->msb) lt_wr_be(raw + 4 * i, 4, h[i]); else lt_wr_le(raw + 4 * i, 4, h[i]);
+    }
+    change_prop(x, b, 40, 41, 32, raw, 18);
+}
+
+static void x_set_min_size(lt_backend *be, int w, int h) {
+    x11 *x = (x11 *)be->impl;
+    lt_buf b;
+    if (!x) return;
+    x->minw = w; x->minh = h;
+    if (x->win && !x->dead) {
+        lt_buf_init(&b);
+        send_size_hints(x, &b);
+        lt_buf_free(&b);
+    }
+}
+
+static int x_screen_size(lt_backend *be, int *w, int *h) {
+    x11 *x = (x11 *)be->impl;
+    if (!x || x->root_w <= 0 || x->root_h <= 0) return 0;
+    if (w) *w = x->root_w;
+    if (h) *h = x->root_h;
+    return 1;
+}
+
+static void x_set_initial_geometry(lt_backend *be, int xx, int yy, int flags) {
+    x11 *x = (x11 *)be->impl;
+    if (!x) return;
+    x->init_x = xx; x->init_y = yy; x->init_flags = flags;
+}
+
+static int x_get_geometry(lt_backend *be, int *px, int *py, int *maxd) {
+    x11 *x = (x11 *)be->impl;
+    lt_buf b;
+    int ok = 0, mh = 0, mv = 0;
+    if (!x || !x->win || x->dead) return 0;
+    lt_buf_init(&b);
+    req_begin(&b, 40, 0);
+    p32(x, &b, x->win); p32(x, &b, x->root); p16(x, &b, 0); p16(x, &b, 0);
+    if (req_end(x, &b) == 0 && wait_reply(x, x->seq, 3000) == 0) {
+        if (px) *px = r16s(x, x->reply + 12);
+        if (py) *py = r16s(x, x->reply + 14);
+        ok = 1;
+    }
+    drop_reply(x);
+    if (x->a_wmstate && get_prop(x, &b, x->win, x->a_wmstate) == 0) {
+        if (x->reply[1] == 32) {
+            size_t n = (size_t)r32(x, x->reply + 16), i;
+            if (n > (x->reply_len - 32) / 4) n = (x->reply_len - 32) / 4;
+            for (i = 0; i < n; i++) {
+                lt_u32 a = r32(x, x->reply + 32 + 4 * i);
+                if (a && a == x->a_maxh) mh = 1;
+                if (a && a == x->a_maxv) mv = 1;
+            }
+        }
+        drop_reply(x);
+    }
+    if (maxd) *maxd = (mh && mv) ? 1 : 0;
+    lt_buf_free(&b);
+    return ok;
+}
+
 static int x_open(lt_backend *be, const char *title, int w, int h) {
     x11 *x = (x11 *)be->impl;
     lt_buf b;
@@ -639,7 +780,9 @@ static int x_open(lt_backend *be, const char *title, int w, int h) {
     lt_buf_init(&b);
     req_begin(&b, 1, x->depth);
     p32(x, &b, x->win); p32(x, &b, x->root);
-    p16(x, &b, 0); p16(x, &b, 0); p16(x, &b, (lt_u32)w); p16(x, &b, (lt_u32)h);
+    p16(x, &b, (lt_u32)(x->init_flags & LT_GEOM_POS ? x->init_x : 0));
+    p16(x, &b, (lt_u32)(x->init_flags & LT_GEOM_POS ? x->init_y : 0));
+    p16(x, &b, (lt_u32)w); p16(x, &b, (lt_u32)h);
     p16(x, &b, 0); p16(x, &b, 1); /* border, InputOutput */
     p32(x, &b, x->rootvis);
     p32(x, &b, 0x2 | 0x800);
@@ -657,6 +800,13 @@ static int x_open(lt_backend *be, const char *title, int w, int h) {
     if (x->a_prot && x->a_del) {
         if (x->msb) lt_wr_be(tmp, 4, x->a_del); else lt_wr_le(tmp, 4, x->a_del);
         change_prop(x, &b, x->a_prot, 4, 32, tmp, 1);
+    }
+    send_size_hints(x, &b);
+    if ((x->init_flags & LT_GEOM_MAX) && x->a_wmstate && x->a_maxh && x->a_maxv) {
+        lt_u8 at[8];
+        if (x->msb) { lt_wr_be(at, 4, x->a_maxh); lt_wr_be(at + 4, 4, x->a_maxv); }
+        else { lt_wr_le(at, 4, x->a_maxh); lt_wr_le(at + 4, 4, x->a_maxv); }
+        change_prop(x, &b, x->a_wmstate, 4, 32, at, 2);
     }
     req_begin(&b, 8, 0);
     p32(x, &b, x->win);
@@ -795,10 +945,12 @@ lt_backend *lt_backend_x11_create(void) {
     x11 *x;
     lt_backend *be;
     lt_buf b;
-    int sq[4], i;
+    int sq[7], i;
     lt_stream *s = NULL;
-    static const char *names[4] = { "WM_PROTOCOLS", "WM_DELETE_WINDOW", "_NET_WM_NAME",
-                                    "UTF8_STRING" };
+    static const char *names[7] = { "WM_PROTOCOLS", "WM_DELETE_WINDOW", "_NET_WM_NAME",
+                                    "UTF8_STRING", "_NET_WM_STATE",
+                                    "_NET_WM_STATE_MAXIMIZED_HORZ",
+                                    "_NET_WM_STATE_MAXIMIZED_VERT" };
     if (!disp || !disp[0]) return NULL;
     if (parse_display(disp, host, sizeof host, &num, path, sizeof path) < 0) return NULL;
     if (path[0]) s = lt_unix_connect(path);
@@ -817,16 +969,20 @@ lt_backend *lt_backend_x11_create(void) {
     if (fetch_keymap(x, &b) < 0) {
         fprintf(stderr, "x11: GetKeyboardMapping failed\n");
     }
-    for (i = 0; i < 4; i++) intern_send(x, &b, names[i], &sq[i]);
-    for (i = 0; i < 4; i++) {
+    for (i = 0; i < 7; i++) intern_send(x, &b, names[i], &sq[i]);
+    for (i = 0; i < 7; i++) {
         lt_u32 atom = 0;
         if (wait_reply(x, sq[i], 5000) == 0) atom = r32(x, x->reply + 8);
         drop_reply(x);
         if (i == 0) x->a_prot = atom;
         else if (i == 1) x->a_del = atom;
         else if (i == 2) x->a_netname = atom;
-        else x->a_utf8 = atom;
+        else if (i == 3) x->a_utf8 = atom;
+        else if (i == 4) x->a_wmstate = atom;
+        else if (i == 5) x->a_maxh = atom;
+        else x->a_maxv = atom;
     }
+    fetch_resources(x, &b);
     lt_buf_free(&b);
     if (x->dead) { x_free(x); return NULL; }
     be = (lt_backend *)lt_calloc(1, sizeof *be);
@@ -840,6 +996,11 @@ lt_backend *lt_backend_x11_create(void) {
     be->set_title = set_title_impl;
     be->set_clipboard = NULL;
     be->get_clipboard = NULL;
+    be->scale_hint = x_scale_hint;
+    be->set_min_size = x_set_min_size;
+    be->screen_size = x_screen_size;
+    be->set_initial_geometry = x_set_initial_geometry;
+    be->get_geometry = x_get_geometry;
     be->impl = x;
     return be;
 }

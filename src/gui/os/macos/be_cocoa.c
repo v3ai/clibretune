@@ -19,8 +19,9 @@
  *
  * HiDPI choice: the canvas is in logical points (1x). On a Retina display
  * Cocoa scales the image 2x with interpolation off, i.e. exact pixel
- * doubling: sharp, never blurred, and the UI keeps its layout units. A 2x
- * canvas would need a UI scale factor the toolkit does not have yet.
+ * doubling: sharp, never blurred, and the UI keeps its layout units. The
+ * canvas size is therefore already in logical points, so scale_hint reports
+ * 1.0 (the OS does the Retina scaling; the app's own UI scale stays 100%).
  *
  * ABI notes (this file was written without access to a Mac):
  *   - objc_msgSend is declared as `void f(void)` and is only ever called
@@ -137,6 +138,7 @@ typedef void (*lc_f_void_id)(lc_id, lc_sel, lc_id);
 typedef void (*lc_f_void_b)(lc_id, lc_sel, signed char);
 typedef void (*lc_f_void_long)(lc_id, lc_sel, long);
 typedef void (*lc_f_void_size)(lc_id, lc_sel, lc_cgsize);
+typedef void (*lc_f_void_point)(lc_id, lc_sel, lc_cgpoint);
 typedef signed char (*lc_f_b0)(lc_id, lc_sel);
 typedef signed char (*lc_f_b_id_id)(lc_id, lc_sel, lc_id, lc_id);
 typedef unsigned long (*lc_f_ul0)(lc_id, lc_sel);
@@ -247,6 +249,8 @@ typedef struct lc_state {
     lc_id view;                     /* LTCocoaView */
     lc_id delegate;                 /* LTCocoaDelegate */
     int cw, ch;                     /* content size in points */
+    int min_w, min_h;               /* requested minimum content size, 0 = default */
+    int init_x, init_y, init_flags;
     int opened;
     int ctrl_click;                 /* a Control-click is being sent as a right click */
     lt_canvas *canvas;              /* last presented canvas */
@@ -787,14 +791,26 @@ static int lc_open(lt_backend *b, const char *title, int cw, int ch)
     lc_send_void_id(win, "setContentView:", view);
     lc_send_void_id(win, "setDelegate:", s->delegate);
     lc_send_void_b(win, "setAcceptsMouseMovedEvents:", 1);
-    minsize.w = CO_MIN_W;
-    minsize.h = CO_MIN_H;
+    minsize.w = s->min_w > 0 ? (double)s->min_w : CO_MIN_W;
+    minsize.h = s->min_h > 0 ? (double)s->min_h : CO_MIN_H;
     CO_SEND(lc_f_void_size)(win, lc_sel_of("setContentMinSize:"), minsize);
-    lc_send_void0(win, "center");
+    if (s->init_flags & LT_GEOM_POS) {
+        /* init_y is measured from the top of the main screen */
+        lc_cgrect sf = lc_get_rect(lc_send0(lc_cls("NSScreen"), "mainScreen"), "frame");
+        lc_cgpoint tl;
+        tl.x = (double)s->init_x;
+        tl.y = sf.size.h - (double)s->init_y;
+        CO_SEND(lc_f_void_point)(win, lc_sel_of("setFrameTopLeftPoint:"), tl);
+    } else {
+        lc_send_void0(win, "center");
+    }
     (void)lc_send_id(win, "makeFirstResponder:", view);
     lc_send_void_id(win, "makeKeyAndOrderFront:", NULL);
     lc_send_void0(s->app, "finishLaunching");
     lc_send_void_b(s->app, "activateIgnoringOtherApps:", 1);
+    if (s->init_flags & LT_GEOM_MAX) {
+        lc_send_void_id(win, "zoom:", NULL);
+    }
     lc_refresh_size(s);
     s->opened = 1;
     lc_pool_drain(pool);
@@ -804,6 +820,73 @@ static int lc_open(lt_backend *b, const char *title, int cw, int ch)
     s->qn = 0;
     (void)lc_new_event(s, LT_EV_EXPOSE);
     return 0;
+}
+
+static double lc_scale_hint(lt_backend *b)
+{
+    (void)b;
+    return 1.0;      /* canvas is in points; AppKit scales it for Retina */
+}
+
+static void lc_set_min_size(lt_backend *b, int mw, int mh)
+{
+    lc_state *s = (lc_state *)b->impl;
+    lc_cgsize m;
+    s->min_w = mw;
+    s->min_h = mh;
+    if (s->opened && s->window != NULL) {
+        m.w = (double)mw;
+        m.h = (double)mh;
+        CO_SEND(lc_f_void_size)(s->window, lc_sel_of("setContentMinSize:"), m);
+    }
+}
+
+static int lc_screen_size(lt_backend *b, int *pw, int *ph)
+{
+    lc_cgrect r;
+    lc_id scr;
+    (void)b;
+    scr = lc_send0(lc_cls("NSScreen"), "mainScreen");
+    if (scr == NULL) {
+        return 0;
+    }
+    r = lc_get_rect(scr, "visibleFrame");
+    if (pw != NULL) {
+        *pw = lc_to_int(r.size.w);
+    }
+    if (ph != NULL) {
+        *ph = lc_to_int(r.size.h);
+    }
+    return 1;
+}
+
+static void lc_set_initial_geometry(lt_backend *b, int x, int y, int flags)
+{
+    lc_state *s = (lc_state *)b->impl;
+    s->init_x = x;
+    s->init_y = y;
+    s->init_flags = flags;
+}
+
+static int lc_get_geometry(lt_backend *b, int *px, int *py, int *maxd)
+{
+    lc_state *s = (lc_state *)b->impl;
+    lc_cgrect wf, sf;
+    if (s == NULL || !s->opened || s->window == NULL) {
+        return 0;
+    }
+    wf = lc_get_rect(s->window, "frame");
+    sf = lc_get_rect(lc_send0(lc_cls("NSScreen"), "mainScreen"), "frame");
+    if (px != NULL) {
+        *px = lc_to_int(wf.origin.x);
+    }
+    if (py != NULL) {
+        *py = lc_to_int(sf.size.h - (wf.origin.y + wf.size.h));
+    }
+    if (maxd != NULL) {
+        *maxd = CO_SEND(lc_f_b0)(s->window, lc_sel_of("isZoomed")) ? 1 : 0;
+    }
+    return 1;
 }
 
 static void lc_close(lt_backend *b)
@@ -1005,6 +1088,11 @@ lt_backend *lt_backend_cocoa_create(void)
     b->set_title = lc_set_title;
     b->set_clipboard = lc_set_clipboard;
     b->get_clipboard = lc_get_clipboard;
+    b->scale_hint = lc_scale_hint;
+    b->set_min_size = lc_set_min_size;
+    b->screen_size = lc_screen_size;
+    b->set_initial_geometry = lc_set_initial_geometry;
+    b->get_geometry = lc_get_geometry;
     b->impl = s;
     return b;
 }

@@ -93,6 +93,15 @@ tests/        tests/test_<module>.c (universal), tests/os/<os>/ (platform), test
 tools/        target.sh, check_universal.sh, audit_names.py, font generators
 ```
 
+## UI scale (pixel metrics)
+The toolkit scale is a percentage (`lt_ui_set_scale_pct`, 100..300). Write every pixel
+size as it would be at 100% and route it through `lt_ui_px(ui, n)`; toolkit entry points that
+take sizes at 100% (`lt_ui_layout_row/space/indent/gap`, `lt_ui_group_begin`, `lt_ui_modal_begin`,
+`lt_ui_grid_begin`, `lt_vk_*` font/icon sizes) scale them for you. Use the `_px` variants
+(`lt_ui_layout_row_px`, ...) when the value is already in device pixels (taken from a rect, the
+theme or a text measurement) and `lt_ui_unpx` to go back. Custom draw callbacks use
+`lt_gfx_px` / `lt_gfx_fpx`. Cell (tty) mode ignores the scale.
+
 ## Build
 ```
 ./build.sh [app|test|clean|list]      TARGET=linux|macos|windows|bsd (auto), CC, CFLAGS, LDFLAGS,

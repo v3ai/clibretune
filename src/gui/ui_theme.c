@@ -60,9 +60,9 @@ lt_color lt_heat_color(int scheme, double t)
 
 /* ------------------------------------------------------------------ */
 /* metrics                                                             */
-void ui_theme_metrics(lt_theme *t, int cell, int scale)
+#define SC(n) lt_ui_px_pct((n), pct)
+void ui_theme_metrics(lt_theme *t, int cell, int pct)
 {
-    int s = scale < 1 ? 1 : (scale > 3 ? 3 : scale);
     if (cell) {
         t->row_h = 16; t->spacing_x = 8; t->spacing_y = 0; t->padding = 8; t->pad_x = 8;
         t->radius = 0; t->scrollbar_w = 8; t->indent = 16; t->menubar_h = 16;
@@ -70,10 +70,10 @@ void ui_theme_metrics(lt_theme *t, int cell, int scale)
         t->title_h = 16; t->tree_row_h = 16; t->radius_lg = 0;
         return;
     }
-    t->row_h = 24 * s; t->spacing_x = 6 * s; t->spacing_y = 4 * s; t->padding = 8 * s;
-    t->pad_x = 8 * s; t->radius = 3 * s; t->scrollbar_w = 10 * s; t->indent = 16 * s;
-    t->menubar_h = 26 * s; t->tbar_h = 34 * s; t->tab_h = 28 * s; t->statusbar_h = 26 * s;
-    t->splitter_w = 4 * s; t->title_h = 42 * s; t->tree_row_h = 20 * s; t->radius_lg = 4 * s;
+    t->row_h = SC(24); t->spacing_x = SC(6); t->spacing_y = SC(4); t->padding = SC(8);
+    t->pad_x = SC(8); t->radius = SC(3); t->scrollbar_w = SC(10); t->indent = SC(16);
+    t->menubar_h = SC(26); t->tbar_h = SC(34); t->tab_h = SC(28); t->statusbar_h = SC(26);
+    t->splitter_w = SC(4); t->title_h = SC(42); t->tree_row_h = SC(20); t->radius_lg = SC(4);
 }
 
 /* ------------------------------------------------------------------ */
@@ -104,7 +104,7 @@ void lt_theme_dark(lt_theme *t)
     t->change_richer = H(0x2196F3); t->change_leaner = H(0xF44336); t->change_same = H(0x808080);
     t->cursor_live = H(0x00FF00); t->cursor_trail = H(0xFFCC00);
     t->cursor_selected = H(0xFF0000); t->cursor_active = H(0x0088FF);
-    ui_theme_metrics(t, 0, 1);
+    ui_theme_metrics(t, 0, 100);
 }
 
 static void theme_base_light(lt_theme *t)
@@ -134,7 +134,7 @@ static void theme_base_light(lt_theme *t)
     t->change_richer = H(0x1565C0); t->change_leaner = H(0xC62828); t->change_same = H(0x808080);
     t->cursor_live = H(0x00A000); t->cursor_trail = H(0xE0A000);
     t->cursor_selected = H(0xD00000); t->cursor_active = H(0x0070D0);
-    ui_theme_metrics(t, 0, 1);
+    ui_theme_metrics(t, 0, 100);
 }
 
 /* field offsets in the order of tools/gen_themes.py TOKENS */
@@ -173,7 +173,7 @@ static void theme_from_row(lt_theme *t, const lt_theme_row *row)
     }
     t->name = row->name;
     t->dark = row->dark;
-    ui_theme_metrics(t, 0, 1);
+    ui_theme_metrics(t, 0, 100);
 }
 
 void lt_theme_light(lt_theme *t) { theme_from_row(t, &lt_theme_rows[1]); }

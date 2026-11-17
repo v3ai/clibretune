@@ -447,9 +447,10 @@ static void w3_label(lt_gfx *g, const cam3 *c, double x, double y, double z, con
     cam3_proj(c, x, y, z, &sx, &sy);
     if (f == NULL) { lt_gfx_text(g, (int)sx, (int)sy - 8, s, col, 1); return; }
     {
-        double w = lt_gfx_text_measure(f, 11.0, s);
+        double fp = lt_gfx_fpx(g, 11.0);
+        double w = lt_gfx_text_measure(f, fp, s);
         double xx = align == 1 ? sx - w * 0.5 : (align == 2 ? sx - w : sx);
-        lt_gfx_text_bl(g, f, 11.0, xx, (int)(sy + 4.0), s, col);
+        lt_gfx_text_bl(g, f, fp, xx, (int)(sy + fp * 4.0 / 11.0), s, col);
     }
 }
 
@@ -611,10 +612,11 @@ static void draw3d(lt_gfx *g, lt_rect r, void *user)
             {
                 lt_font *f = lt_font_get(LT_FONT_MONO_MEDIUM);
                 if (f != NULL) {
-                    double tw = lt_gfx_text_measure(f, 11.0, b);
-                    lt_rect chip = lt_rect_make((int)(sx - tw * 0.5) - 5, (int)sy - 28, (int)tw + 10, 18);
-                    lt_gfx_fill_round_rect(g, chip, 4, LT_RGBA(0, 0, 0, 200));
-                    lt_gfx_text_bl(g, f, 11.0, sx - tw * 0.5, (int)sy - 15, b, gc);
+                    double fp = lt_gfx_fpx(g, 11.0), tw = lt_gfx_text_measure(f, fp, b);
+                    lt_rect chip = lt_rect_make((int)(sx - tw * 0.5) - lt_gfx_px(g, 5), (int)sy - lt_gfx_px(g, 28),
+                                                (int)tw + lt_gfx_px(g, 10), lt_gfx_px(g, 18));
+                    lt_gfx_fill_round_rect(g, chip, lt_gfx_px(g, 4), LT_RGBA(0, 0, 0, 200));
+                    lt_gfx_text_bl(g, f, fp, sx - tw * 0.5, (int)sy - lt_gfx_px(g, 15), b, gc);
                 }
             }
         } else {
@@ -871,12 +873,12 @@ static void ov_draw(lt_gfx *g, lt_rect r, void *user)
     for (k = st->ov_n - 1; k > 0; k--) {
         int a = 215 - k * 150 / TRAIL_N;
         lt_color c = (st->ov_trail & 0x00FFFFFFUL) | ((lt_u32)a << 24);
-        lt_gfx_line(g, st->ov_xy[k][0], st->ov_xy[k][1], st->ov_xy[k - 1][0], st->ov_xy[k - 1][1], 2.5, c);
+        lt_gfx_line(g, st->ov_xy[k][0], st->ov_xy[k][1], st->ov_xy[k - 1][0], st->ov_xy[k - 1][1], lt_gfx_fpx(g, 2.5), c);
     }
     for (k = st->ov_n - 1; k >= 1; k--) {
         int a = 235 - k * 150 / TRAIL_N;
         lt_color c = (st->ov_trail & 0x00FFFFFFUL) | ((lt_u32)a << 24);
-        lt_gfx_fill_circle(g, st->ov_xy[k][0], st->ov_xy[k][1], 3.5, c);
+        lt_gfx_fill_circle(g, st->ov_xy[k][0], st->ov_xy[k][1], lt_gfx_fpx(g, 3.5), c);
     }
     if (st->ov_live) {
         lt_rect c = st->ov_live_r;
@@ -940,7 +942,7 @@ static void tbl_grid(lt_app *app, lt_app_tab *tab, tbl_tab *st, int vh)
     if (cw < 48) { cw = 48; }
     if (!cell && !st->show3d && cols > 0) {
         /* stretch the columns to the viewport like the stock "fit" mode (not for tiny tables) */
-        int avail = lt_ui_layout_width(ui) - rhw - lt_ui_theme(ui)->scrollbar_w - 2;
+        int avail = lt_ui_unpx(ui, lt_ui_layout_width(ui) - lt_ui_theme(ui)->scrollbar_w) - rhw - 2;
         int fit = avail / cols;
         if (cols >= 12 && fit > cw) { cw = fit > 96 ? 96 : fit; }
     }
@@ -1053,13 +1055,13 @@ static void tbl_header(lt_app *app, lt_app_tab *tab, tbl_tab *st)
     lt_ui_draw_fill(ui, r, th->bg_app);
     lt_ui_draw_hline(ui, r.x, r.x + r.w - 1, r.y + r.h - 1, th->border_subtle);
     tw = lt_vk_text_w(ui, (int)LT_FONT_SANS_SEMIBOLD, 13.0, tab->title);
-    lt_vk_text(ui, lt_rect_make(r.x + 12, r.y, r.w - 160, r.h), (int)LT_FONT_SANS_SEMIBOLD, 13.0,
+    lt_vk_text(ui, lt_rect_make(r.x + lt_ui_px(ui, 12), r.y, r.w - lt_ui_px(ui, 160), r.h), (int)LT_FONT_SANS_SEMIBOLD, 13.0,
                tab->title, th->text, 0);
     lt_snprintf(b, sizeof(b), "%d x %d", (int)st->v.cols, (int)st->v.rows);
-    lt_vk_text(ui, lt_rect_make(r.x + 12 + tw + 10, r.y, 80, r.h), (int)LT_FONT_MONO, 11.0, b, th->muted, 0);
+    lt_vk_text(ui, lt_rect_make(r.x + lt_ui_px(ui, 12) + tw + lt_ui_px(ui, 10), r.y, lt_ui_px(ui, 80), r.h), (int)LT_FONT_MONO, 11.0, b, th->muted, 0);
     if (lt_tblview_is_dirty(&st->v)) {
-        lt_vk_pill(ui, lt_rect_make(r.x + r.w - 86, r.y + 7, 74, 16), th->warning_bg, th->warning);
-        lt_vk_text(ui, lt_rect_make(r.x + r.w - 86, r.y + 7, 74, 16), (int)LT_FONT_SANS_SEMIBOLD, 10.0,
+        lt_vk_pill(ui, lt_rect_make(r.x + r.w - lt_ui_px(ui, 86), r.y + lt_ui_px(ui, 7), lt_ui_px(ui, 74), lt_ui_px(ui, 16)), th->warning_bg, th->warning);
+        lt_vk_text(ui, lt_rect_make(r.x + r.w - lt_ui_px(ui, 86), r.y + lt_ui_px(ui, 7), lt_ui_px(ui, 74), lt_ui_px(ui, 16)), (int)LT_FONT_SANS_SEMIBOLD, 10.0,
                    "MODIFIED", lt_color_contrast(th->warning_bg), 1);
     }
 }
@@ -1093,23 +1095,23 @@ static void tbl_status(lt_app *app, lt_app_tab *tab, tbl_tab *st)
     r = lt_ui_layout_next(ui);
     lt_ui_draw_fill(ui, r, th->statusbar);
     lt_ui_draw_hline(ui, r.x, r.x + r.w - 1, r.y, th->border_subtle);
-    x = r.x + 12;
+    x = r.x + lt_ui_px(ui, 12);
     lt_snprintf(b, sizeof(b), "[%s, %s]", xs, ys);
-    lt_vk_text(ui, lt_rect_make(x, r.y, 160, r.h), (int)LT_FONT_MONO, 11.0, b, th->text2, 0);
-    x += lt_vk_text_w(ui, (int)LT_FONT_MONO, 11.0, b) + 10;
-    lt_vk_text(ui, lt_rect_make(x, r.y, 90, r.h), (int)LT_FONT_MONO_MEDIUM, 12.0, vs, th->text, 0);
-    x += lt_vk_text_w(ui, (int)LT_FONT_MONO_MEDIUM, 12.0, vs) + 18;
+    lt_vk_text(ui, lt_rect_make(x, r.y, lt_ui_px(ui, 160), r.h), (int)LT_FONT_MONO, 11.0, b, th->text2, 0);
+    x += lt_vk_text_w(ui, (int)LT_FONT_MONO, 11.0, b) + lt_ui_px(ui, 10);
+    lt_vk_text(ui, lt_rect_make(x, r.y, lt_ui_px(ui, 90), r.h), (int)LT_FONT_MONO_MEDIUM, 12.0, vs, th->text, 0);
+    x += lt_vk_text_w(ui, (int)LT_FONT_MONO_MEDIUM, 12.0, vs) + lt_ui_px(ui, 18);
     lt_snprintf(b, sizeof(b), "%d selected", st->nsel);
-    lt_vk_text(ui, lt_rect_make(x, r.y, 120, r.h), (int)LT_FONT_SANS, 11.0, b, th->muted, 0);
-    x += lt_vk_text_w(ui, (int)LT_FONT_SANS, 11.0, b) + 18;
+    lt_vk_text(ui, lt_rect_make(x, r.y, lt_ui_px(ui, 120), r.h), (int)LT_FONT_SANS, 11.0, b, th->muted, 0);
+    x += lt_vk_text_w(ui, (int)LT_FONT_SANS, 11.0, b) + lt_ui_px(ui, 18);
     lt_snprintf(b, sizeof(b), "range %g .. %g", st->lo, st->hi);
-    lt_vk_text(ui, lt_rect_make(x, r.y, 200, r.h), (int)LT_FONT_SANS, 11.0, b, th->muted, 0);
+    lt_vk_text(ui, lt_rect_make(x, r.y, lt_ui_px(ui, 200), r.h), (int)LT_FONT_SANS, 11.0, b, th->muted, 0);
     if (st->live_ok) {
         const char *ch = st->t->x_channel != NULL ? st->t->x_channel : "live";
         lt_snprintf(b, sizeof(b), "%s = %g", ch, st->live_x);
-        lt_vk_text(ui, lt_rect_make(r.x + r.w - 220, r.y, 208, r.h), (int)LT_FONT_MONO, 11.0, b,
+        lt_vk_text(ui, lt_rect_make(r.x + r.w - lt_ui_px(ui, 220), r.y, lt_ui_px(ui, 208), r.h), (int)LT_FONT_MONO, 11.0, b,
                    th->cursor_live, 2);
-        lt_ui_draw_circle_fill(ui, (double)(r.x + r.w - 226), (double)(r.y + r.h / 2), 3.0, th->cursor_live);
+        lt_ui_draw_circle_fill(ui, (double)(r.x + r.w - lt_ui_px(ui, 226)), (double)(r.y + r.h / 2), 3.0 * (double)lt_ui_scale_pct(ui) / 100.0, th->cursor_live);
     }
 }
 
@@ -1145,7 +1147,7 @@ static void tbl_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
         lt_ui_layout_row(ui, 2, w2, -28);
     } else if (st->show3d) {
         w2[0] = -1; w2[1] = -1;
-        lt_ui_layout_row(ui, 2, w2, -(lt_ui_row_height(ui) + 2));
+        lt_ui_layout_row_px(ui, 2, w2, -(lt_ui_row_height(ui) + 2));
     } else {
         lt_ui_layout_row(ui, 1, &w1, lt_ui_cell_mode(ui) ? -(lt_ui_row_height(ui) + 8) : -28);
     }

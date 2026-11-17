@@ -77,7 +77,10 @@ typedef struct lt_app_settings {
     int  metric;            /* 1 metric, 0 imperial */
     int  sidebar_w, sidebar_on;
     int  show_ecu_menus;
-    int  scale;
+    int  scale_pct;         /* 0 = auto (display hint), else 100..300 percent */
+    int  win_w, win_h;      /* saved window size in LOGICAL px (0 = none) */
+    int  win_x, win_y, win_pos;   /* saved position (win_pos = valid) */
+    int  win_max;           /* was maximized */
     char backend[16];
     char last_project[512];
     char recent[8][512];    /* project directories, newest first */
@@ -98,6 +101,7 @@ struct lt_app {
     lt_gfx      gfx;
     lt_ui      *ui;
     int         cell_mode;
+    int         scale_pct;           /* effective UI scale in percent */
     int         quit, quit_asked, headless;
     lt_app_settings settings;
     char       *config_dir;
@@ -157,6 +161,16 @@ struct lt_app {
 lt_app *lt_app_new(void);
 void    lt_app_free(lt_app *app);
 /* open the window (backend NULL/"auto" = best); screenshot mode skips this */
+/* UI scale in percent: env LT_SCALE ("150", "150%") beats the setting (0 =
+ * auto), auto uses the backend hint (1.0 = 100%) rounded to 25%; clamped 100..300. */
+int     lt_app_pick_scale(const char *env, int setting_pct, double hint);
+/* Window plan: default 1280x800 logical, or the saved logical size, times pct;
+ * falls back to the default when the saved size does not fit the screen
+ * (scr_w/scr_h = 0 when unknown). Outputs physical size, position, LT_GEOM_*. */
+void    lt_app_pick_window(const lt_app_settings *s, int pct, int scr_w, int scr_h,
+                           int *w, int *h, int *x, int *y, int *flags);
+/* Set the UI scale setting (0 = auto), recompute and apply the effective scale. */
+void    lt_app_set_scale_setting(lt_app *app, int pct);
 int     lt_app_open_window(lt_app *app, const char *backend, int w, int h);
 /* main loop until quit */
 int     lt_app_run(lt_app *app);

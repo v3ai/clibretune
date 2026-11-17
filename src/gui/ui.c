@@ -15,7 +15,7 @@ lt_ui *lt_ui_create(void)
     lt_ui *ui = (lt_ui *)lt_calloc(1, sizeof(*ui));
     int i;
     lt_theme_dark(&ui->theme);
-    ui->scale = 1;
+    ui->pct = 100;
     ui->wake_in = -1.0;
     lt_buf_init(&ui->tbuf);
     lt_buf_init(&ui->clipbuf);
@@ -49,7 +49,7 @@ lt_theme *lt_ui_theme(lt_ui *ui) { return &ui->theme; }
 
 void lt_ui_theme_changed(lt_ui *ui)
 {
-    ui_theme_metrics(&ui->theme, ui->cell, ui->scale);
+    ui_theme_metrics(&ui->theme, ui->cell, ui->pct);
     ui->extra = 2;
 }
 
@@ -59,10 +59,55 @@ void lt_ui_set_theme(lt_ui *ui, const lt_theme *t)
     lt_ui_theme_changed(ui);
 }
 
+void lt_ui_set_scale_pct(lt_ui *ui, int pct)
+{
+    ui->pct = LT_CLAMP(pct, 100, 300);
+    lt_ui_theme_changed(ui);
+}
+
 void lt_ui_set_scale(lt_ui *ui, int scale)
 {
-    ui->scale = LT_CLAMP(scale, 1, 3);
-    lt_ui_theme_changed(ui);
+    lt_ui_set_scale_pct(ui, LT_CLAMP(scale, 1, 3) * 100);
+}
+
+int lt_ui_scale_pct(const lt_ui *ui) { return ui->pct; }
+
+/* px at 100% -> device pixels, rounded half away from zero; 64-bit
+ * intermediate so large px cannot overflow. Identity in cell mode. */
+int lt_ui_px_pct(int px, int pct)
+{
+    lt_s64 v;
+    if (pct <= 0) { pct = 100; }
+    v = (lt_s64)px * (lt_s64)pct;
+    v = v >= 0 ? (v + 50) / 100 : -((-v + 50) / 100);
+    if (v > 2147483647) { return 2147483647; }
+    if (v < -2147483647) { return -2147483647; }
+    return (int)v;
+}
+
+int lt_ui_px(const lt_ui *ui, int px)
+{
+    return ui->cell ? px : lt_ui_px_pct(px, ui->pct);
+}
+
+/* inverse of lt_ui_px (device px -> 100% px, rounded down) */
+int lt_ui_unpx(const lt_ui *ui, int px)
+{
+    return ui->cell ? px : (int)(((lt_s64)px * 100) / ui->pct);
+}
+
+/* integer scale for the bitmap-font fallback */
+int ui_bscale(const lt_ui *ui)
+{
+    return ui->cell ? 1 : LT_MAX(1, (ui->pct + 50) / 100);
+}
+
+/* height of one text line box (16 at 100%) for whichever font path is active */
+int ui_text_box_h(const lt_ui *ui)
+{
+    if (ui->cell) { return 16; }
+    if (ui->g != NULL && (ui->g->bitmap_text || ui->g->cells != NULL)) { return 16 * ui_bscale(ui); }
+    return lt_ui_px(ui, 16);
 }
 
 void lt_ui_set_backend(lt_ui *ui, lt_backend *b) { ui->be = b; }
@@ -566,7 +611,7 @@ static lt_font *ui_ttf(const lt_ui *ui, int font)
 int ui_font_px(const lt_ui *ui, int px)
 {
     if (px <= 0) { px = ui->tpx > 0 ? ui->tpx : LT_UI_FS_BASE; }
-    return px * ui->scale;
+    return lt_ui_px_pct(px, ui->cell ? 100 : ui->pct);
 }
 
 int ui_line_h(const lt_ui *ui)
@@ -580,7 +625,7 @@ int ui_text_w(const lt_ui *ui, const char *s, int font, int px)
     lt_font *f;
     if (s == NULL || s[0] == '\0') { return 0; }
     f = ui_ttf(ui, font);
-    if (f == NULL) { return lt_gfx_text_width(s, ui->cell ? 1 : ui->scale); }
+    if (f == NULL) { return lt_gfx_text_width(s, ui_bscale(ui)); }
     return (int)ceil(lt_gfx_text_measure(f, (double)ui_font_px(ui, px), s));
 }
 
@@ -591,7 +636,7 @@ int ui_prefix_w(const lt_ui *ui, const char *s, int nbytes)
     if ((size_t)nbytes >= sizeof(tmp)) { nbytes = (int)sizeof(tmp) - 1; }
     memcpy(tmp, s, (size_t)nbytes);
     tmp[nbytes] = '\0';
-    if (ui_ttf(ui, ui->tfont) == NULL) { return lt_gfx_text_width(tmp, ui->cell ? 1 : ui->scale); }
+    if (ui_ttf(ui, ui->tfont) == NULL) { return lt_gfx_text_width(tmp, ui_bscale(ui)); }
     return (int)floor(lt_gfx_text_measure(ui_ttf(ui, ui->tfont), (double)ui_font_px(ui, 0), tmp) + 0.5);
 }
 
@@ -604,12 +649,12 @@ void lt_ui_text_style_reset(lt_ui *ui) { ui->tfont = (int)LT_FONT_SANS; ui->tpx 
 int lt_ui_draw_text_f(lt_ui *ui, int x, int y, const char *s, lt_color c, int font, int px)
 {
     ui_cmd *k;
-    int sc = ui->cell ? 1 : ui->scale;
+    int sc = ui_bscale(ui);
     int w = ui_text_w(ui, s, font, px);
     if (LT_COLOR_A(c) == 0 || s[0] == '\0') { return w; }
-    if (!rect_vis(ui, lt_rect_make(x, y, w, 16 * sc))) { return w; }
+    if (!rect_vis(ui, lt_rect_make(x, y, w, ui_text_box_h(ui)))) { return w; }
     k = ui_cmd_push(ui, UC_TEXT);
-    k->r = lt_rect_make(x, y, w, 16 * sc);
+    k->r = lt_rect_make(x, y, w, ui_text_box_h(ui));
     k->c = c; k->i[0] = sc; k->i[1] = font; k->i[2] = ui_font_px(ui, px);
     k->off = arena_text(ui, s);
     return w;
@@ -686,8 +731,8 @@ int ui_fit_text(const lt_ui *ui, const char *s, int maxw, char *out, size_t cap,
 void ui_text_in_f(lt_ui *ui, lt_rect r, const char *s, lt_color c, int align, int font, int px)
 {
     char tmp[256];
-    int sc = ui->cell ? 1 : ui->scale;
-    int tw, th = 16 * sc, x, y, dy;
+    int sc = ui_bscale(ui);
+    int tw, th = ui_text_box_h(ui), x, y, dy;
     if (s == NULL || s[0] == '\0') { return; }
     tw = ui_text_w(ui, s, font, px);
     if (tw > r.w) {
@@ -768,8 +813,8 @@ void lt_ui_draw_lucide(lt_ui *ui, lt_rect r, int lucide_id, int px, double strok
     if (lucide_id <= 0 || LT_COLOR_A(c) == 0 || !rect_vis(ui, r)) { return; }
     k = ui_cmd_push(ui, UC_ICON);
     k->r = r; k->c = c; k->i[0] = lucide_id;
-    k->d[0] = (double)(px > 0 ? px : 14) * (double)ui->scale;
-    k->d[1] = stroke > 0.0 ? stroke * (double)ui->scale : 0.0;
+    k->d[0] = (double)(px > 0 ? px : 14) * (double)ui->pct / 100.0;
+    k->d[1] = stroke > 0.0 ? stroke * (double)ui->pct / 100.0 : 0.0;
 }
 
 /* legacy glyph ids -> lucide */
@@ -800,16 +845,17 @@ void lt_ui_draw_icon(lt_ui *ui, lt_rect r, int icon, lt_color c)
     double k = (double)LT_MIN(r.w, r.h) / 16.0;
     double pts[16];
     if (icon >= 1000) {
-        int px = LT_MIN(LT_MIN(r.w, r.h) - 2, 14 * ui->scale) / ui->scale;
+        int px = LT_MIN(LT_MIN(r.w, r.h) - 2, lt_ui_px(ui, 14));
+        px = lt_ui_unpx(ui, px);
         lt_ui_draw_lucide(ui, r, icon - 1000, px, 0.0, c);
         return;
     }
     if (!ui->cell) {
         int lid = legacy_lucide(icon);
         if (lid != 0) {
-            int sz = LT_MIN(LT_MIN(r.w, r.h) - 2, 14 * ui->scale);
+            int sz = LT_MIN(LT_MIN(r.w, r.h) - 2, lt_ui_px(ui, 14));
             double sw = (icon == LT_UI_ICON_CHECK) ? 2.6 : 2.0;
-            lt_ui_draw_lucide(ui, r, lid, sz / ui->scale, sw, c);
+            lt_ui_draw_lucide(ui, r, lid, lt_ui_unpx(ui, sz), sw, c);
             return;
         }
     }
@@ -895,7 +941,9 @@ void ui_layout_pop(lt_ui *ui)
     if (ui->nlay > 1) { ui->nlay--; }
 }
 
-void lt_ui_layout_row(lt_ui *ui, int n, const int *widths, int height)
+/* device-pixel layout row (internal): widths > 0 and height > 0 are device px,
+ * widths < 0 are weights, height < 0 reserves -height-1 px at the bottom */
+void ui_layout_row_dev(lt_ui *ui, int n, const int *widths, int height)
 {
     ui_layout *L = ui_lay(ui);
     int i;
@@ -905,6 +953,20 @@ void lt_ui_layout_row(lt_ui *ui, int n, const int *widths, int height)
     for (i = 0; i < n; i++) { L->widths[i] = widths != NULL ? widths[i] : -1; }
     L->spec_h = height;
     L->col = n;
+}
+
+/* public layout row: widths/height in px at 100% scale */
+void lt_ui_layout_row(lt_ui *ui, int n, const int *widths, int height)
+{
+    int w[LT_UI_MAX_COLS], i;
+    if (n < 1) { n = 1; }
+    if (n > LT_UI_MAX_COLS) { n = LT_UI_MAX_COLS; }
+    if (widths != NULL) {
+        for (i = 0; i < n; i++) { w[i] = widths[i] > 0 ? lt_ui_px(ui, widths[i]) : widths[i]; }
+    }
+    if (height > 0) { height = lt_ui_px(ui, height); }
+    else if (height < 0) { height = -(lt_ui_px(ui, -height - 1) + 1); }
+    ui_layout_row_dev(ui, n, widths != NULL ? w : NULL, height);
 }
 
 static void row_start(lt_ui *ui, ui_layout *L)
@@ -973,7 +1035,7 @@ lt_rect ui_next_full(lt_ui *ui, int height)
     int w[LT_UI_MAX_COLS], n = L->ncols, h = L->spec_h;
     lt_rect r;
     memcpy(w, L->widths, sizeof(w));
-    lt_ui_layout_row(ui, 1, NULL, height);
+    ui_layout_row_dev(ui, 1, NULL, height);
     r = ui_next(ui, 0);
     L->ncols = n;
     memcpy(L->widths, w, sizeof(w));
@@ -997,7 +1059,7 @@ void lt_ui_layout_set_rect(lt_ui *ui, lt_rect r)
     L->override_r = r;
 }
 
-void lt_ui_layout_space(lt_ui *ui, int px)
+void ui_layout_space_dev(lt_ui *ui, int px)
 {
     ui_layout *L = ui_lay(ui);
     if (L->started) {
@@ -1011,18 +1073,20 @@ void lt_ui_layout_space(lt_ui *ui, int px)
     if (L->row_y + L->row_h > L->max_y) { L->max_y = L->row_y + L->row_h; }
 }
 
+void lt_ui_layout_space(lt_ui *ui, int px) { ui_layout_space_dev(ui, lt_ui_px(ui, px)); }
+
 void lt_ui_layout_indent(lt_ui *ui, int dx)
 {
     ui_layout *L = ui_lay(ui);
-    L->indent += dx;
+    L->indent += lt_ui_px(ui, dx);
     if (L->indent < 0) { L->indent = 0; }
 }
 
 void lt_ui_layout_gap(lt_ui *ui, int x, int y)
 {
     ui_layout *L = ui_lay(ui);
-    L->sp_x = x;
-    L->sp_y = y;
+    L->sp_x = lt_ui_px(ui, x);
+    L->sp_y = lt_ui_px(ui, y);
 }
 
 int lt_ui_layout_width(const lt_ui *ui) { return ui->lay[ui->nlay > 0 ? ui->nlay - 1 : 0].body.w; }
@@ -1229,9 +1293,10 @@ void lt_ui_begin(lt_ui *ui, lt_gfx *g, double now_ms)
     int i, cell;
     ui->g = g;
     cell = lt_gfx_cell_mode(g) ? 1 : 0;
+    g->ui_pct = cell ? 100 : ui->pct;
     if (cell != ui->cell || ui->frame_no == 0) {
         ui->cell = cell;
-        ui_theme_metrics(&ui->theme, cell, ui->scale);
+        ui_theme_metrics(&ui->theme, cell, ui->pct);
     }
     ui->sw = lt_gfx_width(g);
     ui->sh = lt_gfx_height(g);
@@ -1331,9 +1396,9 @@ static void draw_tooltip(lt_ui *ui)
         if (!e) { break; }
         p = e + 1;
     }
-    w = maxw + 2 * ui->theme.pad_x; h = lines * ui_line_h(ui) + (ui->cell ? 0 : 2 * ui->theme.padding);
-    x = ui->mx + (ui->cell ? 8 : 12);
-    y = ui->my + (ui->cell ? 16 : 20);
+    w = maxw + 2 * ui->theme.pad_x; h = lines * ui_line_h(ui) + (ui->cell ? 0 : lt_ui_px(ui, 2) * ui->theme.padding);
+    x = ui->mx + (ui->cell ? 8 : lt_ui_px(ui, 12));
+    y = ui->my + (ui->cell ? 16 : lt_ui_px(ui, 20));
     if (x + w > ui->sw) { x = ui->sw - w; }
     if (y + h > ui->sh) { y = ui->my - h - 4; }
     if (x < 0) { x = 0; }
@@ -1374,7 +1439,7 @@ static void draw_toasts(lt_ui *ui)
     for (i = keep - 1; i >= 0; i--) {
         const ui_toast *t = &ui->msg_q[i];
         lt_color bg, fg;
-        int tw = lt_ui_text_width(ui, t->text), w, h = ui->theme.row_h + (ui->cell ? 0 : 8);
+        int tw = lt_ui_text_width(ui, t->text), w, h = ui->theme.row_h + (ui->cell ? 0 : lt_ui_px(ui, 8));
         double age = ui->now - t->t0;
         lt_rect r;
         switch (t->kind) {
@@ -1384,19 +1449,19 @@ static void draw_toasts(lt_ui *ui)
         default: bg = ui->theme.info_bg; break;
         }
         fg = lt_color_contrast(bg);
-        w = tw + 3 * ui->theme.pad_x + (ui->cell ? 8 : 16);
+        w = tw + 3 * ui->theme.pad_x + (ui->cell ? 8 : lt_ui_px(ui, 16));
         y -= h;
         r = lt_rect_make(ui->sw - w - ui->theme.padding, y, w, h);
         if (!ui->cell) {
             lt_ui_draw_box(ui, lt_rect_make(r.x + 2, r.y + 3, r.w, r.h), LT_RGBA(0, 0, 0, 80), 0, 4);
         }
         lt_ui_draw_box(ui, r, bg, lt_color_mix(bg, fg, 60), ui->theme.radius + 1);
-        lt_ui_draw_icon(ui, lt_rect_make(r.x + ui->theme.pad_x / 2, r.y, ui->cell ? 8 : 20, h),
+        lt_ui_draw_icon(ui, lt_rect_make(r.x + ui->theme.pad_x / 2, r.y, ui->cell ? 8 : lt_ui_px(ui, 20), h),
                         t->kind == 3 || t->kind == 2 ? LT_UI_ICON_WARN :
                         (t->kind == 1 ? LT_UI_ICON_CHECK : LT_UI_ICON_INFO), fg);
-        ui_text_in(ui, lt_rect_make(r.x + ui->theme.pad_x + (ui->cell ? 8 : 18), r.y, r.w, r.h),
+        ui_text_in(ui, lt_rect_make(r.x + ui->theme.pad_x + (ui->cell ? 8 : lt_ui_px(ui, 18)), r.y, r.w, r.h),
                    t->text, fg, 0);
-        y -= ui->cell ? 0 : 6;
+        y -= ui->cell ? 0 : lt_ui_px(ui, 6);
         if (age > UI_TOAST_MS - 400) { ui_animate(ui, 50); } else { ui_animate(ui, (int)(UI_TOAST_MS - 400 - age)); }
     }
     ui_layer_end(ui);
@@ -1515,3 +1580,17 @@ void lt_ui_end(lt_ui *ui)
     if (ui->extra > 0) { ui->extra--; }
     ui->in_frame = 0;
 }
+
+void lt_ui_layout_row_px(lt_ui *ui, int n, const int *widths, int height)
+{
+    ui_layout_row_dev(ui, n, widths, height);
+}
+
+void lt_ui_layout_gap_px(lt_ui *ui, int x, int y)
+{
+    ui_layout *L = ui_lay(ui);
+    L->sp_x = x;
+    L->sp_y = y;
+}
+
+void lt_ui_layout_space_px(lt_ui *ui, int pixels) { ui_layout_space_dev(ui, pixels); }

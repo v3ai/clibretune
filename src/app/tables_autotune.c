@@ -282,7 +282,7 @@ static void at_grid(lt_app *app, at_tab *st)
         if (st->ve.z[k] > zhi) { zhi = st->ve.z[k]; }
     }
     if (!cell && cols > 0) {
-        int avail = lt_ui_layout_width(ui) - 360 - rhw - th->scrollbar_w - th->spacing_x - 2, fit = avail / cols;
+        int avail = lt_ui_unpx(ui, lt_ui_layout_width(ui) - th->scrollbar_w - th->spacing_x) - 360 - rhw - 2, fit = avail / cols;
         if (fit > cw) { cw = fit > 80 ? 80 : fit; }
     }
     if (!lt_ui_grid_begin(ui, "atgrid", rows, cols, cw, ch, rhw, chh)) { return; }
@@ -371,7 +371,7 @@ static void at_panel(lt_app *app, at_tab *st)
         ati(&pt[0], LT_VK_BTN, LT_ICON_ACTIVITY, "Health", "Tune health and region scores"); pt[0].on = st->ptab == 0;
         ati(&pt[1], LT_VK_BTN, LT_ICON_SLIDERS_HORIZONTAL, "Settings", "Targets, filters and authority limits"); pt[1].on = st->ptab == 1;
         ati(&pt[2], LT_VK_END, 0, NULL, NULL);
-        h2 = lt_vk_toolbar_in(ui, pt, lt_rect_make(tr.x, tr.y + 2, tr.w, 28));
+        h2 = lt_vk_toolbar_in(ui, pt, lt_rect_make(tr.x, tr.y + lt_ui_px(ui, 2), tr.w, lt_ui_px(ui, 28)));
         if (h2 == 0) { st->ptab = 0; } else if (h2 == 1) { st->ptab = 1; }
         if (st->ptab == 0) { at_health_card(app, st); }
     }
@@ -461,12 +461,12 @@ static void score_row(lt_ui *ui, lt_rect r, const char *label, unsigned score)
 {
     const lt_theme *th = lt_ui_theme(ui);
     char b[16];
-    int bw = r.w - 168;
-    lt_vk_text(ui, lt_rect_make(r.x, r.y, 96, r.h), (int)LT_FONT_SANS, 11.0, label, th->text2, 0);
-    lt_vk_bar(ui, lt_rect_make(r.x + 100, r.y + r.h / 2 - 2, bw, 4), (double)score / 100.0,
+    int bw = r.w - lt_ui_px(ui, 168);
+    lt_vk_text(ui, lt_rect_make(r.x, r.y, lt_ui_px(ui, 96), r.h), (int)LT_FONT_SANS, 11.0, label, th->text2, 0);
+    lt_vk_bar(ui, lt_rect_make(r.x + lt_ui_px(ui, 100), r.y + r.h / 2 - lt_ui_px(ui, 2), bw, lt_ui_px(ui, 4)), (double)score / 100.0,
               lt_vk_score_color((int)score), th->dark ? LT_RGBA(255, 255, 255, 26) : LT_RGBA(0, 0, 0, 24));
     lt_snprintf(b, sizeof(b), "%u", score);
-    lt_vk_text(ui, lt_rect_make(r.x + r.w - 56, r.y, 56, r.h), (int)LT_FONT_MONO_MEDIUM, 11.0, b, th->text, 2);
+    lt_vk_text(ui, lt_rect_make(r.x + r.w - lt_ui_px(ui, 56), r.y, lt_ui_px(ui, 56), r.h), (int)LT_FONT_MONO_MEDIUM, 11.0, b, th->text, 2);
 }
 
 static void at_health_card(lt_app *app, at_tab *st)
@@ -479,24 +479,24 @@ static void at_health_card(lt_app *app, at_tab *st)
     if (!st->hr_valid) { return; }
     lt_ui_layout_row(ui, 1, &w1, 96);
     r = lt_ui_layout_next(ui);
-    lt_vk_card(ui, r, th->surface, th->border_subtle, 10);
+    lt_vk_card(ui, r, th->surface, th->border_subtle, lt_ui_px(ui, 10));
     {
-        double cx = (double)r.x + 46.0, cy = (double)r.y + 48.0;
+        double fs_ = (double)lt_ui_scale_pct(ui) / 100.0, cx = (double)r.x + 46.0 * fs_, cy = (double)r.y + 48.0 * fs_;
         lt_color gc = grade_color(st->hr.grade);
         char gl[2];
-        lt_ui_draw_circle_fill(ui, cx, cy, 30.0, LT_RGBA(0, 0, 0, 70));
-        lt_vk_ring(ui, cx, cy, 29.0, 3.0, (double)st->hr.overall_score / 100.0, gc, th->dark ? LT_RGBA(255, 255, 255, 30) : LT_RGBA(0, 0, 0, 30));
+        lt_ui_draw_circle_fill(ui, cx, cy, 30.0 * fs_, LT_RGBA(0, 0, 0, 70));
+        lt_vk_ring(ui, cx, cy, 29.0 * fs_, 3.0 * fs_, (double)st->hr.overall_score / 100.0, gc, th->dark ? LT_RGBA(255, 255, 255, 30) : LT_RGBA(0, 0, 0, 30));
         gl[0] = st->hr.grade != '\0' ? st->hr.grade : '?'; gl[1] = '\0';
-        lt_vk_text(ui, lt_rect_make((int)cx - 24, (int)cy - 20, 48, 26), (int)LT_FONT_SANS_SEMIBOLD, 24.0, gl, gc, 1);
+        lt_vk_text(ui, lt_rect_make((int)cx - lt_ui_px(ui, 24), (int)cy - lt_ui_px(ui, 20), lt_ui_px(ui, 48), lt_ui_px(ui, 26)), (int)LT_FONT_SANS_SEMIBOLD, 24.0, gl, gc, 1);
         lt_snprintf(b, sizeof(b), "%u/100", st->hr.overall_score);
-        lt_vk_text(ui, lt_rect_make((int)cx - 24, (int)cy + 8, 48, 14), (int)LT_FONT_MONO, 10.0, b, th->text2, 1);
+        lt_vk_text(ui, lt_rect_make((int)cx - lt_ui_px(ui, 24), (int)cy + lt_ui_px(ui, 8), lt_ui_px(ui, 48), lt_ui_px(ui, 14)), (int)LT_FONT_MONO, 10.0, b, th->text2, 1);
     }
-    lt_vk_text(ui, lt_rect_make(r.x + 92, r.y + 12, r.w - 104, 20), (int)LT_FONT_SANS_SEMIBOLD, 15.0, "Tune Health", th->text, 0);
+    lt_vk_text(ui, lt_rect_make(r.x + lt_ui_px(ui, 92), r.y + lt_ui_px(ui, 12), r.w - lt_ui_px(ui, 104), lt_ui_px(ui, 20)), (int)LT_FONT_SANS_SEMIBOLD, 15.0, "Tune Health", th->text, 0);
     lt_snprintf(b, sizeof(b), "%u/%u cells covered (%.0f%%)", (unsigned)st->hr.coverage_cells,
                 (unsigned)st->hr.cells_all, st->hr.coverage_percent);
-    lt_vk_text(ui, lt_rect_make(r.x + 92, r.y + 34, r.w - 104, 16), (int)LT_FONT_SANS, 12.0, b, th->text2, 0);
+    lt_vk_text(ui, lt_rect_make(r.x + lt_ui_px(ui, 92), r.y + lt_ui_px(ui, 34), r.w - lt_ui_px(ui, 104), lt_ui_px(ui, 16)), (int)LT_FONT_SANS, 12.0, b, th->text2, 0);
     {
-        lt_rect p1 = lt_rect_make(r.x + 92, r.y + 58, 92, 22), p2 = lt_rect_make(r.x + 190, r.y + 58, 100, 22);
+        lt_rect p1 = lt_rect_make(r.x + lt_ui_px(ui, 92), r.y + lt_ui_px(ui, 58), lt_ui_px(ui, 92), lt_ui_px(ui, 22)), p2 = lt_rect_make(r.x + lt_ui_px(ui, 190), r.y + lt_ui_px(ui, 58), lt_ui_px(ui, 100), lt_ui_px(ui, 22));
         lt_vk_pill(ui, p1, LT_RGBA(0xF4, 0x43, 0x36, 50), LT_RGBA(0xF4, 0x43, 0x36, 90));
         lt_snprintf(b, sizeof(b), "%u recs", (unsigned)st->hr.n_recommendations);
         lt_vk_text(ui, p1, (int)LT_FONT_SANS, 11.0, b, th->error, 1);
@@ -509,17 +509,17 @@ static void at_health_card(lt_app *app, at_tab *st)
         lt_rect cr, row;
         lt_ui_layout_row(ui, 1, &w1, 98);
         cr = lt_ui_layout_next(ui);
-        lt_vk_card(ui, cr, th->surface, th->border_subtle, 8);
-        lt_vk_text(ui, lt_rect_make(cr.x + 12, cr.y + 8, cr.w - 80, 20), (int)LT_FONT_SANS_SEMIBOLD, 13.0, rg->name, th->text, 0);
+        lt_vk_card(ui, cr, th->surface, th->border_subtle, lt_ui_px(ui, 8));
+        lt_vk_text(ui, lt_rect_make(cr.x + lt_ui_px(ui, 12), cr.y + lt_ui_px(ui, 8), cr.w - lt_ui_px(ui, 80), lt_ui_px(ui, 20)), (int)LT_FONT_SANS_SEMIBOLD, 13.0, rg->name, th->text, 0);
         lt_snprintf(b, sizeof(b), "%u", rg->score);
-        lt_vk_text(ui, lt_rect_make(cr.x + cr.w - 62, cr.y + 8, 50, 20), (int)LT_FONT_SANS_SEMIBOLD, 15.0, b,
+        lt_vk_text(ui, lt_rect_make(cr.x + cr.w - lt_ui_px(ui, 62), cr.y + lt_ui_px(ui, 8), lt_ui_px(ui, 50), lt_ui_px(ui, 20)), (int)LT_FONT_SANS_SEMIBOLD, 15.0, b,
                    lt_vk_score_color((int)rg->score), 2);
-        row = lt_rect_make(cr.x + 12, cr.y + 30, cr.w - 24, 18);
+        row = lt_rect_make(cr.x + lt_ui_px(ui, 12), cr.y + lt_ui_px(ui, 30), cr.w - lt_ui_px(ui, 24), lt_ui_px(ui, 18));
         score_row(ui, row, "Coverage", rg->coverage_score);
-        row.y += 17; score_row(ui, row, "Smoothness", rg->smoothness_score);
-        row.y += 17; score_row(ui, row, "Monotonicity", rg->monotonicity_score);
+        row.y += lt_ui_px(ui, 17); score_row(ui, row, "Smoothness", rg->smoothness_score);
+        row.y += lt_ui_px(ui, 17); score_row(ui, row, "Monotonicity", rg->monotonicity_score);
         lt_snprintf(b, sizeof(b), "%u cells", (unsigned)rg->cell_count);
-        lt_vk_text(ui, lt_rect_make(cr.x + 12, cr.y + 80, cr.w - 24, 14), (int)LT_FONT_SANS, 10.0, b, th->muted, 0);
+        lt_vk_text(ui, lt_rect_make(cr.x + lt_ui_px(ui, 12), cr.y + lt_ui_px(ui, 80), cr.w - lt_ui_px(ui, 24), lt_ui_px(ui, 14)), (int)LT_FONT_SANS, 10.0, b, th->muted, 0);
     }
     for (i = 0; i < (int)st->hr.n_recommendations && i < 4; i++) {
         lt_ui_layout_row(ui, 1, &w1, 0);
@@ -548,16 +548,16 @@ static int at_header(lt_app *app, at_tab *st, int *combo_sel)
     hr = lt_ui_layout_next(ui);
     lt_ui_draw_fill(ui, hr, th->elevated);
     lt_ui_draw_hline(ui, hr.x, hr.x + hr.w - 1, hr.y + hr.h - 1, th->border_subtle);
-    lt_vk_text(ui, lt_rect_make(hr.x + 14, hr.y, 90, hr.h), (int)LT_FONT_SANS_SEMIBOLD, 16.0, "AutoTune", th->text, 0);
+    lt_vk_text(ui, lt_rect_make(hr.x + lt_ui_px(ui, 14), hr.y, lt_ui_px(ui, 90), hr.h), (int)LT_FONT_SANS_SEMIBOLD, 16.0, "AutoTune", th->text, 0);
     if (st->running) {
-        lt_rect bdg = lt_rect_make(hr.x + 100, hr.y + 18, 62, 18);
+        lt_rect bdg = lt_rect_make(hr.x + lt_ui_px(ui, 100), hr.y + lt_ui_px(ui, 18), lt_ui_px(ui, 62), lt_ui_px(ui, 18));
         lt_vk_pill(ui, bdg, LT_RGBA(0x4C, 0xAF, 0x50, 60), th->success);
         lt_vk_text(ui, bdg, (int)LT_FONT_SANS_SEMIBOLD, 10.0, "RUNNING", th->success, 1);
     }
     /* table selector laid out over the band */
-    lt_vk_text(ui, lt_rect_make(hr.x + 176, hr.y + 11, 52, 32), (int)LT_FONT_SANS, 12.0, "Table", th->muted, 0);
+    lt_vk_text(ui, lt_rect_make(hr.x + lt_ui_px(ui, 176), hr.y + lt_ui_px(ui, 11), lt_ui_px(ui, 52), lt_ui_px(ui, 32)), (int)LT_FONT_SANS, 12.0, "Table", th->muted, 0);
     *combo_sel = st->tsel;
-    lt_ui_layout_set_rect(ui, lt_rect_make(hr.x + 224, hr.y + 11, 216, 32));
+    lt_ui_layout_set_rect(ui, lt_rect_make(hr.x + lt_ui_px(ui, 224), hr.y + lt_ui_px(ui, 11), lt_ui_px(ui, 216), lt_ui_px(ui, 32)));
     if (st->ntables > 0) { lt_ui_combo(ui, "tsel", combo_sel, (const char *const *)st->names, (int)st->ntables); }
     ati(&it[n], LT_VK_SPACER, 0, NULL, NULL); ids[n++] = -1;
     ati(&it[n], LT_VK_BTN, LT_ICON_FOLDER_OPEN, "Replay log", "Replay a data log offline and propose changes"); ids[n++] = AT_REPLAY;
@@ -571,7 +571,7 @@ static int at_header(lt_app *app, at_tab *st, int *combo_sel)
     ati(&it[n], LT_VK_BTN, LT_ICON_FLAME, "Burn", "Write the changes to ECU flash");
     it[n].accent = 1; it[n].disabled = lt_app_can_burn(app) ? 0 : 1; ids[n++] = AT_BURN;
     ati(&it[n], LT_VK_END, 0, NULL, NULL);
-    rr = lt_rect_make(hr.x + 450, hr.y + 8, hr.w - 450 - 12, 38);
+    rr = lt_rect_make(hr.x + lt_ui_px(ui, 450), hr.y + lt_ui_px(ui, 8), hr.w - lt_ui_px(ui, 450) - lt_ui_px(ui, 12), lt_ui_px(ui, 38));
     hit = lt_vk_toolbar_in(ui, it, rr);
     if (hit >= 0) { res = ids[hit]; }
     return res;
@@ -587,14 +587,14 @@ static int at_heat_strip(lt_app *app, at_tab *st)
     lt_ui_layout_row(ui, 1, &w1, 40);
     r = lt_ui_layout_next(ui);
     lt_ui_draw_fill(ui, r, th->bg_toolbar);
-    lt_vk_text(ui, lt_rect_make(r.x + 14, r.y, 200, r.h), (int)LT_FONT_SANS_MEDIUM, 12.0,
+    lt_vk_text(ui, lt_rect_make(r.x + lt_ui_px(ui, 14), r.y, lt_ui_px(ui, 200), r.h), (int)LT_FONT_SANS_MEDIUM, 12.0,
                st->replay ? "Replay recommendations" : "Recommendations", th->text2, 0);
     ati(&it[n], LT_VK_SPACER, 0, NULL, NULL); ids[n++] = -1;
     ati(&it[n], LT_VK_BTN, LT_ICON_ARROW_UP_DOWN, NULL, "Y axis: zero at the bottom"); it[n].on = st->ybottom; ids[n++] = AT_FLIP;
     ati(&it[n], LT_VK_BTN, LT_ICON_LOCK, "Lock", "Toggle lock on the selected cells (L); locked cells are not changed"); ids[n++] = AT_LOCK;
     ati(&it[n], LT_VK_BTN, LT_ICON_LOCK_OPEN, "Unlock", "Unlock every cell"); ids[n++] = AT_UNLOCK;
     ati(&it[n], LT_VK_END, 0, NULL, NULL);
-    hit = lt_vk_toolbar_in(ui, it, lt_rect_make(r.x + 200, r.y + 5, r.w - 212, 30));
+    hit = lt_vk_toolbar_in(ui, it, lt_rect_make(r.x + lt_ui_px(ui, 200), r.y + lt_ui_px(ui, 5), r.w - lt_ui_px(ui, 212), lt_ui_px(ui, 30)));
     return hit >= 0 ? ids[hit] : -1;
 }
 
@@ -608,14 +608,14 @@ static void at_legend(lt_ui *ui, const lt_theme *th)
     lt_ui_draw_hline(ui, r.x, r.x + r.w - 1, r.y, th->border_subtle);
     {
         int bw = 140, bx = r.x + (r.w - bw) / 2;
-        lt_vk_text(ui, lt_rect_make(bx - 60, r.y, 54, r.h), (int)LT_FONT_SANS, 10.0, "Richer", th->muted, 2);
+        lt_vk_text(ui, lt_rect_make(bx - lt_ui_px(ui, 60), r.y, lt_ui_px(ui, 54), r.h), (int)LT_FONT_SANS, 10.0, "Richer", th->muted, 2);
         for (i = 0; i < bw; i++) {
             double t = (double)i / (double)(bw - 1);
             lt_color c = t < 0.5 ? lt_color_mix(th->change_richer, th->surface, (int)(t * 512.0))
                                  : lt_color_mix(th->surface, th->change_leaner, (int)((t - 0.5) * 512.0));
-            lt_ui_draw_fill(ui, lt_rect_make(bx + i, r.y + 9, 1, 8), c);
+            lt_ui_draw_fill(ui, lt_rect_make(bx + i, r.y + lt_ui_px(ui, 9), 1, lt_ui_px(ui, 8)), c);
         }
-        lt_vk_text(ui, lt_rect_make(bx + bw + 6, r.y, 60, r.h), (int)LT_FONT_SANS, 10.0, "Leaner", th->muted, 0);
+        lt_vk_text(ui, lt_rect_make(bx + bw + lt_ui_px(ui, 6), r.y, lt_ui_px(ui, 60), r.h), (int)LT_FONT_SANS, 10.0, "Leaner", th->muted, 0);
     }
 }
 

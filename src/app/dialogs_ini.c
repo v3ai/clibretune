@@ -105,7 +105,7 @@ static const char *label_text(lt_app *app, const char *raw, char *buf, size_t ca
 
 static void field_layout(lt_ui *ui, int *w3, int *n)
 {
-    int avail = lt_ui_layout_width(ui);
+    int avail = lt_ui_unpx(ui, lt_ui_layout_width(ui));
     int cell = lt_ui_cell_mode(ui);
     if (avail >= 460) {
         w3[0] = LT_CLAMP(avail * (cell ? 42 : 46) / 100, 150, cell ? 340 : 400);
@@ -135,12 +135,12 @@ static void field_label(lt_ui *ui, const char *label, const lt_ini_const *c, int
         up[n++] = (ch >= 'a' && ch <= 'z') ? (char)(ch - 'a' + 'A') : ch;
     }
     up[n] = '\0';
-    lt_vk_text(ui, lt_rect_make(r.x + 4, r.y, r.w - (c != NULL && c->help != NULL ? 30 : 8), r.h),
+    lt_vk_text(ui, lt_rect_make(r.x + lt_ui_px(ui, 4), r.y, r.w - (c != NULL && c->help != NULL ? lt_ui_px(ui, 30) : lt_ui_px(ui, 8)), r.h),
                (int)LT_FONT_SANS_SEMIBOLD, 11.0, up, enabled ? t->text2 : t->disabled, 0);
     if (c != NULL && c->help != NULL) {
         tw = lt_vk_text_w(ui, (int)LT_FONT_SANS_SEMIBOLD, 11.0, up);
         if (tw > r.w - 34) { tw = r.w - 34; }
-        lt_vk_icon(ui, lt_rect_make(r.x + 4 + tw + 6, r.y, 14, r.h), LT_ICON_CIRCLE_HELP, 13, 2.0,
+        lt_vk_icon(ui, lt_rect_make(r.x + lt_ui_px(ui, 4) + tw + lt_ui_px(ui, 6), r.y, lt_ui_px(ui, 14), r.h), LT_ICON_CIRCLE_HELP, 13, 2.0,
                    enabled ? t->accent : t->disabled);
     }
 }
@@ -358,7 +358,7 @@ static void draw_comp(lt_app *app, ini_state *st, const lt_ini_dialog *dlg, size
                 lt_rect hr;
                 lt_ui_layout_row(ui, 1, &w1, 30);
                 hr = lt_ui_layout_next(ui);
-                lt_vk_caption(ui, lt_rect_make(hr.x + 4, hr.y + 6, hr.w - 8, hr.h - 6), label + 1, t->text2);
+                lt_vk_caption(ui, lt_rect_make(hr.x + lt_ui_px(ui, 4), hr.y + lt_ui_px(ui, 6), hr.w - lt_ui_px(ui, 8), hr.h - lt_ui_px(ui, 6)), label + 1, t->text2);
                 lt_ui_draw_hline(ui, hr.x, hr.x + hr.w - 1, hr.y + hr.h - 2, t->border_subtle);
             }
         } else if (label[0] == '!') {
@@ -593,7 +593,7 @@ static void ini_dialog_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
             }
             tw = lt_vk_text_w(ui, (int)LT_FONT_SANS_SEMIBOLD, 17.0, ttl);
             if (tw > hr.w - 40) { tw = hr.w - 40; }
-            lt_vk_text(ui, lt_rect_make(hr.x + 20, hr.y + 6, hr.w - 40, 30), (int)LT_FONT_SANS_SEMIBOLD, 17.0,
+            lt_vk_text(ui, lt_rect_make(hr.x + lt_ui_px(ui, 20), hr.y + lt_ui_px(ui, 6), hr.w - lt_ui_px(ui, 40), lt_ui_px(ui, 30)), (int)LT_FONT_SANS_SEMIBOLD, 17.0,
                        ttl, t->text, 1);
             lt_ui_draw_hline(ui, hr.x + (hr.w - tw) / 2 - 4, hr.x + (hr.w + tw) / 2 + 4, hr.y + 38, t->border_strong);
         }

@@ -89,7 +89,12 @@ typedef struct lt_gfx {
     lt_rect    dirty;     /* union of everything drawn since last reset */
     int        bitmap_text; /* nonzero: lt_gfx_text/vtext use the 8x16 bitmap/Hershey
                              * fonts even in pixel mode (default 0 = IBM Plex) */
+    int        ui_pct;    /* UI scale percent for custom draw callbacks (0 = 100); set by lt_ui_begin */
 } lt_gfx;
+
+/* px at 100% -> device px using g->ui_pct (identity in cell mode) */
+int    lt_gfx_px(const lt_gfx *g, int px);
+double lt_gfx_fpx(const lt_gfx *g, double px);
 
 void lt_gfx_init_canvas(lt_gfx *g, lt_canvas *c);
 void lt_gfx_init_cells(lt_gfx *g, lt_cells *cells);
@@ -218,7 +223,8 @@ typedef enum lt_ev_type {
     LT_EV_KEY_DOWN,    /* key (LT_KEY_*), mods; repeats allowed */
     LT_EV_KEY_UP,
     LT_EV_TEXT,        /* text = UTF-8 of typed character(s) */
-    LT_EV_FOCUS_LOST
+    LT_EV_FOCUS_LOST,
+    LT_EV_SCALE        /* display scale changed: x = new scale in percent (app re-queries) */
 } lt_ev_type;
 
 /* mouse buttons */
@@ -274,8 +280,32 @@ struct lt_backend {
     /* optional (may be NULL): system clipboard */
     void (*set_clipboard)(lt_backend *b, const char *utf8);
     char *(*get_clipboard)(lt_backend *b); /* malloc'd or NULL */
+    /* ---- optional hooks (NULL = unsupported; call through the lt_backend_*
+     * helpers below, which supply the defaults) ---- */
+    /* display scale factor (1.0 = 96 dpi / unknown); may be called before open */
+    double (*scale_hint)(lt_backend *b);
+    /* minimum client size in pixels; may be called before open */
+    void (*set_min_size)(lt_backend *b, int w, int h);
+    /* desktop size in pixels; returns 1 if known */
+    int  (*screen_size)(lt_backend *b, int *w, int *h);
+    /* window position/maximized state to use when the window opens
+     * (flags: LT_GEOM_POS = x,y valid, LT_GEOM_MAX = start maximized) */
+    void (*set_initial_geometry)(lt_backend *b, int x, int y, int flags);
+    /* current top-left of the client area and maximized state; returns 1 if known */
+    int  (*get_geometry)(lt_backend *b, int *x, int *y, int *maximized);
     void *impl;
 };
+
+#define LT_GEOM_POS 1
+#define LT_GEOM_MAX 2
+/* NULL-safe wrappers for the optional hooks */
+double lt_backend_scale_hint(lt_backend *b);                 /* 1.0 when unknown */
+void   lt_backend_set_min_size(lt_backend *b, int w, int h);
+int    lt_backend_screen_size(lt_backend *b, int *w, int *h);
+void   lt_backend_set_initial_geometry(lt_backend *b, int x, int y, int flags);
+int    lt_backend_get_geometry(lt_backend *b, int *x, int *y, int *maximized);
+/* "Xft.dpi: N" from an X resource-manager string; 0.0 if absent (exposed for tests) */
+double lt_x11_parse_xft_dpi(const char *resources);
 
 /* Backend constructors. Each returns NULL if unavailable on this system
  * (e.g. no $DISPLAY, not running on Windows). Never abort. */

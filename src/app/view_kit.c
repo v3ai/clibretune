@@ -33,17 +33,28 @@ static int vk_nt, vk_ni;
 typedef char vk_check_text[(sizeof(vk_texts) <= 32000UL) ? 1 : -1];
 typedef char vk_check_icon[(sizeof(vk_icons) <= 32000UL) ? 1 : -1];
 
+/* font/icon sizes are given in px at 100% and scaled here */
+static double vkpx(const lt_ui *ui, double px)
+{
+    return lt_ui_cell_mode(ui) ? px : px * (double)lt_ui_scale_pct(ui) / 100.0;
+}
+
 static lt_font *vk_font(int id)
 {
     if (id < 0 || id >= (int)LT_FONT_COUNT) { id = (int)LT_FONT_SANS; }
     return lt_font_get((lt_font_id)id);
 }
 
-int lt_vk_text_w(lt_ui *ui, int font, double px, const char *s)
+static int vk_text_w_dev(lt_ui *ui, int font, double dpx, const char *s)
 {
     if (s == NULL) { return 0; }
     if (lt_ui_cell_mode(ui)) { return lt_ui_text_width(ui, s); }
-    return (int)(lt_gfx_text_measure(vk_font(font), px, s) + 0.999);
+    return (int)(lt_gfx_text_measure(vk_font(font), dpx, s) + 0.999);
+}
+
+int lt_vk_text_w(lt_ui *ui, int font, double px, const char *s)
+{
+    return vk_text_w_dev(ui, font, vkpx(ui, px), s);
 }
 
 /* copy s, eliding with "..." so that it fits max_w pixels */
@@ -89,6 +100,7 @@ void lt_vk_text(lt_ui *ui, lt_rect r, int font, double px, const char *s, lt_col
     lt_rect vis;
     if (s == NULL || s[0] == '\0' || r.w <= 0 || r.h <= 0) { return; }
     if (lt_ui_cell_mode(ui)) { lt_ui_draw_text_in(ui, r, s, c, align); return; }
+    px = vkpx(ui, px);
     vis = lt_rect_intersect(r, lt_ui_clip_get(ui));
     if (vis.w <= 0 || vis.h <= 0) { return; }       /* scrolled out of view: keep the ring short */
     t = &vk_texts[vk_nt++ % VK_RING_T];
@@ -103,6 +115,7 @@ void lt_vk_text_at(lt_ui *ui, int x, int y, int font, double px, const char *s, 
     lt_rect r;
     if (s == NULL || s[0] == '\0') { return; }
     if (lt_ui_cell_mode(ui)) { lt_ui_draw_text(ui, x, y - 12, s, c); return; }
+    px = vkpx(ui, px);
     {
         lt_rect cl = lt_ui_clip_get(ui);
         if (y < cl.y - 40 || y > cl.y + cl.h + 40 || x > cl.x + cl.w || x < cl.x - 400) { return; }
@@ -110,7 +123,7 @@ void lt_vk_text_at(lt_ui *ui, int x, int y, int font, double px, const char *s, 
     t = &vk_texts[vk_nt++ % VK_RING_T];
     t->font = font; t->px = px; t->c = c; t->align = 0; t->mode = 1; t->y = y;
     lt_strlcpy(t->s, s, sizeof(t->s));
-    r = lt_rect_make(x, y - (int)(px * 1.2) - 2, lt_vk_text_w(ui, font, px, s) + 4, (int)(px * 1.6) + 4);
+    r = lt_rect_make(x, y - (int)(px * 1.2) - 2, vk_text_w_dev(ui, font, px, s) + 4, (int)(px * 1.6) + 4);
     lt_ui_draw_custom(ui, r, draw_text_cb, t);
 }
 
@@ -130,7 +143,7 @@ void lt_vk_icon(lt_ui *ui, lt_rect r, int icon, int size_px, double line_w, lt_c
     vis = lt_rect_intersect(r, lt_ui_clip_get(ui));
     if (vis.w <= 0 || vis.h <= 0) { return; }
     ic = &vk_icons[vk_ni++ % VK_RING_I];
-    ic->icon = icon; ic->size = size_px; ic->line_w = line_w; ic->c = c;
+    ic->icon = icon; ic->size = lt_ui_px(ui, size_px); ic->line_w = vkpx(ui, line_w); ic->c = c;
     lt_ui_draw_custom(ui, r, draw_icon_cb, ic);
 }
 
@@ -140,7 +153,7 @@ void lt_vk_card(lt_ui *ui, lt_rect r, lt_color fill, lt_color border, int radius
     if (lt_ui_cell_mode(ui)) { lt_ui_draw_box(ui, r, fill, border, 0); return; }
     /* soft shadow: two translucent offset outlines under the card */
     lt_ui_draw_round(ui, lt_rect_make(r.x - 1, r.y + 1, r.w + 2, r.h + 2), radius + 1, LT_RGBA(0, 0, 0, 40));
-    lt_ui_draw_round(ui, lt_rect_make(r.x, r.y + 2, r.w, r.h), radius, LT_RGBA(0, 0, 0, 30));
+    lt_ui_draw_round(ui, lt_rect_make(r.x, r.y + lt_ui_px(ui, 2), r.w, r.h), radius, LT_RGBA(0, 0, 0, 30));
     lt_ui_draw_box(ui, r, fill, border, radius);
 }
 
@@ -208,23 +221,23 @@ static int item_label_w(lt_ui *ui, const lt_vk_item *it)
 static int item_key_w(lt_ui *ui, const lt_vk_item *it)
 {
     return (it->key != NULL && it->key[0] != '\0')
-               ? lt_vk_text_w(ui, (int)LT_FONT_MONO, 10.0, it->key) + 6 : 0;
+               ? lt_vk_text_w(ui, (int)LT_FONT_MONO, 10.0, it->key) + lt_ui_px(ui, 6) : 0;
 }
 
 /* width of the content group: icon, label, key chip */
 static int item_content_w(lt_ui *ui, const lt_vk_item *it)
 {
     int w = 0, lw = item_label_w(ui, it), kw = item_key_w(ui, it);
-    if (it->icon != 0) { w += 14; }
-    if (lw > 0) { w += (w > 0 ? 5 : 0) + lw; }
-    if (kw > 0) { w += (w > 0 ? 4 : 0) + kw; }
+    if (it->icon != 0) { w += lt_ui_px(ui, 14); }
+    if (lw > 0) { w += (w > 0 ? lt_ui_px(ui, 5) : 0) + lw; }
+    if (kw > 0) { w += (w > 0 ? lt_ui_px(ui, 4) : 0) + kw; }
     return w;
 }
 
 static int item_w(lt_ui *ui, const lt_vk_item *it)
 {
-    int w = item_content_w(ui, it) + VK_PAD * 2;
-    return w < 28 ? 28 : w;
+    int w = item_content_w(ui, it) + lt_ui_px(ui, VK_PAD * 2);
+    return w < lt_ui_px(ui, 28) ? lt_ui_px(ui, 28) : w;
 }
 
 static int item_flags(const lt_vk_item *it)
@@ -250,16 +263,17 @@ static void item_face(lt_ui *ui, const lt_vk_item *it, lt_rect r)
         fg = lt_color_contrast(it->fill);
     }
     if (it->icon != 0) {
-        lt_vk_icon(ui, lt_rect_make(x, r.y, 14, r.h), it->icon, 14, 2.0, fg);
-        x += 14 + 5;
+        lt_vk_icon(ui, lt_rect_make(x, r.y, lt_ui_px(ui, 14), r.h), it->icon, 14, 2.0, fg);
+        x += lt_ui_px(ui, 14 + 5);
     }
     if (lw > 0) {
         lt_vk_text(ui, lt_rect_make(x, r.y, lw + 2, r.h), (int)LT_FONT_SANS_MEDIUM, 12.0, it->label, fg, 0);
-        x += lw + 4;
+        x += lw + lt_ui_px(ui, 4);
     }
     if (kw > 0) {
-        lt_rect kr = lt_rect_make(x, r.y + (r.h - 16) / 2, kw, 16);
-        lt_ui_draw_round(ui, kr, 2, it->on ? LT_RGBA(255, 255, 255, 60) : LT_RGBA(255, 255, 255, 26));
+        int kh = lt_ui_px(ui, 16);
+        lt_rect kr = lt_rect_make(x, r.y + (r.h - kh) / 2, kw, kh);
+        lt_ui_draw_round(ui, kr, lt_ui_px(ui, 2), it->on ? LT_RGBA(255, 255, 255, 60) : LT_RGBA(255, 255, 255, 26));
         lt_vk_text(ui, kr, (int)LT_FONT_MONO, 10.0, it->key, it->on ? fg : t->text2, 1);
     }
 }
@@ -275,8 +289,8 @@ int lt_vk_toolbar_in(lt_ui *ui, const lt_vk_item *items, lt_rect row)
 {
     const lt_theme *t = lt_ui_theme(ui);
     int cell = lt_ui_cell_mode(ui), n = 0, i, x, clicked = -1, spare = 0, nspacer = 0;
-    int wid[VK_MAX_ITEMS], total = 0, gap = cell ? 8 : 2;
-    int h = row.h;
+    int wid[VK_MAX_ITEMS], total = 0, gap = cell ? 8 : lt_ui_px(ui, 2);
+    int h = row.h, hmax = cell ? h : lt_ui_px(ui, 28);
     while (n < VK_MAX_ITEMS && items[n].kind != LT_VK_END) { n++; }
     for (i = 0; i < n; i++) {
         if (items[i].kind == LT_VK_BTN) {
@@ -284,7 +298,7 @@ int lt_vk_toolbar_in(lt_ui *ui, const lt_vk_item *items, lt_rect row)
             const char *txt = (it->label != NULL && it->label[0] != '\0') ? it->label :
                               (it->key != NULL && it->key[0] != '\0' ? it->key : it->tip);
             wid[i] = cell ? lt_ui_text_width(ui, txt != NULL ? txt : "?") + 8 : item_w(ui, it);
-        } else if (items[i].kind == LT_VK_SEP) { wid[i] = cell ? 8 : 13; }
+        } else if (items[i].kind == LT_VK_SEP) { wid[i] = cell ? 8 : lt_ui_px(ui, 13); }
         else { wid[i] = 0; nspacer++; }
         total += wid[i] + gap;
     }
@@ -294,10 +308,10 @@ int lt_vk_toolbar_in(lt_ui *ui, const lt_vk_item *items, lt_rect row)
     for (i = 0; i < n; i++) {
         lt_rect r;
         if (items[i].kind == LT_VK_SPACER) { x += nspacer > 0 ? spare / nspacer : 0; continue; }
-        r = lt_rect_make(x, row.y + (cell ? 0 : (row.h - (h > 28 ? 28 : h)) / 2), wid[i],
-                         cell ? row.h : (h > 28 ? 28 : h));
+        r = lt_rect_make(x, row.y + (cell ? 0 : (row.h - (h > hmax ? hmax : h)) / 2), wid[i],
+                         cell ? row.h : (h > hmax ? hmax : h));
         if (items[i].kind == LT_VK_SEP) {
-            if (!cell) { lt_ui_draw_vline(ui, r.x + r.w / 2, r.y + 4, r.y + r.h - 5, t->border); }
+            if (!cell) { lt_ui_draw_vline(ui, r.x + r.w / 2, r.y + lt_ui_px(ui, 4), r.y + r.h - lt_ui_px(ui, 5), t->border); }
         } else {
             const lt_vk_item *it = &items[i];
             const char *txt = (it->label != NULL && it->label[0] != '\0') ? it->label :
@@ -323,12 +337,12 @@ lt_bool lt_vk_icon_btn(lt_ui *ui, int icon, const char *tip, int on, int w, int 
     lt_vk_item it;
     lt_rect r;
     lt_bool hit;
-    int ww = w > 0 ? w : 28;
+    int ww = w > 0 ? lt_ui_px(ui, w) : lt_ui_px(ui, 28);
     memset(&it, 0, sizeof(it));
     it.kind = LT_VK_BTN; it.icon = icon; it.on = on; it.tip = tip;
     r = lt_ui_layout_next(ui);
     r.w = ww < r.w ? ww : r.w;
-    if (h > 0 && h < r.h) { r.y += (r.h - h) / 2; r.h = h; }
+    if (h > 0 && lt_ui_px(ui, h) < r.h) { int hh = lt_ui_px(ui, h); r.y += (r.h - hh) / 2; r.h = hh; }
     lt_ui_layout_set_rect(ui, r);
     if (lt_ui_cell_mode(ui)) {
         hit = lt_ui_button_ex(ui, tip != NULL ? tip : "?", on ? LT_UI_BTN_SELECTED : 0);

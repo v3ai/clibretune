@@ -2,7 +2,8 @@
 """Fake X server for tests/test_x11.c. usage: x11_mock.py SOCKET_PATH
 Logs 'op=<opcode> len=<words>' per request to SOCKET_PATH.log. After the first
 PutImage it sends Expose, KeyPress('a'), ButtonPress(1) and ClientMessage
-(WM_DELETE_WINDOW). Exits when the client disconnects."""
+(WM_DELETE_WINDOW). Answers GetProperty (RESOURCE_MANAGER = Xft.dpi 144) and TranslateCoordinates.
+Exits when the client disconnects."""
 import os, socket, struct, sys
 
 path = sys.argv[1]
@@ -61,6 +62,16 @@ try:
             atoms[name] = next_atom
             conn.sendall(struct.pack("<BBHII20x", 1, 0, seq, 0, next_atom))
             next_atom += 1
+        elif op == 20:
+            prop = struct.unpack("<I", rest[4:8])[0]
+            if prop == 23:   # RESOURCE_MANAGER on the root
+                val = b"*.background:\tblack\nXft.dpi:\t144\nXft.antialias:\t1\n"
+                data = val + b"\0" * (pad(len(val)) - len(val))
+                conn.sendall(struct.pack("<BBHIIII12x", 1, 8, seq, len(data) // 4, 31, 0, len(val)) + data)
+            else:            # no such property
+                conn.sendall(struct.pack("<BBHIIII12x", 1, 0, seq, 0, 0, 0, 0))
+        elif op == 40:       # TranslateCoordinates -> window origin (7, 9)
+            conn.sendall(struct.pack("<BBHIIhh16x", 1, 1, seq, 0, 0, 7, 9))
         elif op == 101:
             first, count = rest[0], rest[1]
             kpk = 2

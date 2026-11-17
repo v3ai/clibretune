@@ -1,9 +1,9 @@
-# LibreTune (C89 rewrite)
+# LibreTune In Universal C
 
 LibreTune is open-source ECU tuning software (INI-driven, rusEFI / Speeduino / MegaSquirt
 style): table, curve and INI dialog editing, AutoTune, dashboards, data logging and
 playback, restore points, projects and a built-in ECU simulator for demo mode.
-This is a from-scratch rewrite in strictly portable C89 with no third-party dependencies.
+This is a from-scratch rewrite in Universal C (see [docs/UNIVERSAL_C.md](docs/UNIVERSAL_C.md)) with no third-party dependencies.
 
 ## Build
 
@@ -40,7 +40,10 @@ Linux (x86-64, ARM64), Windows and macOS (universal) are attached to each releas
   - `win32` (Windows) and `cocoa` (macOS) are the native window backends; `auto` picks them first on
     their OS. On Windows `./build.sh app` (MinGW) or `build.bat` (MSVC) gives `build/libretune.exe`
     (console subsystem; add `-mwindows` to `LDFLAGS` for a console-less release build).
-- Screenshot harness: `LT_SCREENSHOT=out.ppm [LT_SHOT_SIZE=WxH LT_SHOT_FRAMES=N LT_SHOT_OPEN=target LT_SHOT_CLICK=x,y LT_SHOT_THEME=..]`.
+- Screenshot harness: `LT_SCREENSHOT=out.ppm [LT_SHOT_SIZE=WxH LT_SHOT_FRAMES=N LT_SHOT_OPEN=target LT_SHOT_CLICK=x,y LT_SHOT_THEME=.. LT_SCALE=150]`.
+- UI scale: `Auto` by default (X11 `Xft.dpi`/`GDK_SCALE`/`QT_SCALE_FACTOR`, Windows per-monitor DPI), or set
+  `LT_SCALE=150` (percent) / Settings > Appearance > UI scale. The window opens at 1280x800 logical px
+  (min 1024x700) and its size/position/maximized state are remembered in `settings.conf`.
 
 ## Keyboard shortcuts
 

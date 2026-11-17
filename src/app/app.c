@@ -39,7 +39,7 @@ static void settings_defaults(lt_app_settings *s)
     s->sidebar_w = 260;
     s->sidebar_on = 1;
     s->show_ecu_menus = 1;
-    s->scale = 1;
+    s->scale_pct = 0;
     lt_strlcpy(s->backend, "auto", sizeof(s->backend));
     s->baud = 115200;
     lt_strlcpy(s->heatmap, "tunerstudio", sizeof(s->heatmap));
@@ -70,7 +70,19 @@ void lt_app_settings_load(lt_app *app)
         lt_props_get_i32(&p, "sidebar_w", &s->sidebar_w);
         lt_props_get_i32(&p, "sidebar_on", &s->sidebar_on);
         lt_props_get_i32(&p, "show_ecu_menus", &s->show_ecu_menus);
-        lt_props_get_i32(&p, "scale", &s->scale);
+        v = lt_props_get(&p, "scale");
+        if (v != NULL) {
+            int sv = lt_stricmp(v, "auto") == 0 ? 0 : atoi(v);
+            s->scale_pct = (sv >= 1 && sv <= 3) ? sv * 100 : sv;   /* old files: 1..3 */
+        }
+        lt_props_get_i32(&p, "win_w", &s->win_w);
+        lt_props_get_i32(&p, "win_h", &s->win_h);
+        lt_props_get_i32(&p, "win_max", &s->win_max);
+        if (lt_props_get(&p, "win_x") != NULL && lt_props_get(&p, "win_y") != NULL) {
+            lt_props_get_i32(&p, "win_x", &s->win_x);
+            lt_props_get_i32(&p, "win_y", &s->win_y);
+            s->win_pos = 1;
+        }
         lt_props_get_i32(&p, "baud", &s->baud);
         lt_props_get_i32(&p, "auto_connect", &s->auto_connect);
         lt_props_get_i32(&p, "temp_unit", &s->temp_unit);
@@ -98,7 +110,10 @@ void lt_app_settings_load(lt_app *app)
     lt_props_free(&p);
     lt_free(path);
     s->sidebar_w = LT_CLAMP(s->sidebar_w, 160, 600);
-    s->scale = LT_CLAMP(s->scale, 1, 3);
+    if (s->scale_pct != 0) { s->scale_pct = LT_CLAMP(s->scale_pct, 100, 300); }
+    if (s->win_w < 320 || s->win_h < 240 || s->win_w > 16384 || s->win_h > 16384) { s->win_w = s->win_h = 0; }
+    s->win_max = s->win_max ? 1 : 0;
+    if (s->win_x < -32000 || s->win_x > 32000 || s->win_y < -32000 || s->win_y > 32000) { s->win_pos = 0; }
     s->poll_hz = LT_CLAMP(s->poll_hz, 5, 100);
 }
 
@@ -116,7 +131,17 @@ void lt_app_settings_save(lt_app *app)
     lt_snprintf(num, sizeof(num), "%d", s->sidebar_w); lt_props_set(&p, "sidebar_w", num);
     lt_snprintf(num, sizeof(num), "%d", s->sidebar_on); lt_props_set(&p, "sidebar_on", num);
     lt_snprintf(num, sizeof(num), "%d", s->show_ecu_menus); lt_props_set(&p, "show_ecu_menus", num);
-    lt_snprintf(num, sizeof(num), "%d", s->scale); lt_props_set(&p, "scale", num);
+    if (s->scale_pct == 0) { lt_props_set(&p, "scale", "auto"); }
+    else { lt_snprintf(num, sizeof(num), "%d", s->scale_pct); lt_props_set(&p, "scale", num); }
+    if (s->win_w > 0 && s->win_h > 0) {
+        lt_snprintf(num, sizeof(num), "%d", s->win_w); lt_props_set(&p, "win_w", num);
+        lt_snprintf(num, sizeof(num), "%d", s->win_h); lt_props_set(&p, "win_h", num);
+    }
+    if (s->win_pos) {
+        lt_snprintf(num, sizeof(num), "%d", s->win_x); lt_props_set(&p, "win_x", num);
+        lt_snprintf(num, sizeof(num), "%d", s->win_y); lt_props_set(&p, "win_y", num);
+    }
+    lt_snprintf(num, sizeof(num), "%d", s->win_max); lt_props_set(&p, "win_max", num);
     lt_snprintf(num, sizeof(num), "%d", s->baud); lt_props_set(&p, "baud", num);
     lt_snprintf(num, sizeof(num), "%d", s->auto_connect); lt_props_set(&p, "auto_connect", num);
     lt_snprintf(num, sizeof(num), "%d", s->temp_unit); lt_props_set(&p, "temp_unit", num);

@@ -1,9 +1,10 @@
 /* be_win32.c - native Win32 GDI pixel backend.
  *
  * One top-level window; the app canvas (32-bit XRGB) is copied to the client
- * area with SetDIBitsToDevice (1:1, no scaling). The process is marked DPI
- * aware, so the canvas is in physical pixels and Windows never bitmap-scales
- * it. Input arrives through the window procedure into a small ring queue that
+ * area with SetDIBitsToDevice (1:1, no scaling). The process is marked
+ * per-monitor DPI aware, so the canvas is in physical pixels and Windows never
+ * bitmap-scales it; scale_hint reports dpi/96 and WM_DPICHANGED resizes the
+ * window to the suggested rectangle and raises LT_EV_SCALE. Input arrives through the window procedure into a small ring queue that
  * poll() drains.
  *
  * Built only for TARGET=windows (selected by the build system); other
@@ -37,7 +38,72 @@ typedef struct wb_state {
     WCHAR hi_surr;              /* pending UTF-16 high surrogate */
     lt_event q[WB_EVQ_CAP];
     int qh, qn;
+    UINT dpi;                   /* current window/system dpi (96 = 100%) */
+    int min_w, min_h;           /* minimum client size, 0 = none */
+    int init_x, init_y, init_flags;
 } wb_state;
+
+/* ---- dynamically bound user32 DPI entry points (Win10+; absent earlier) ---- */
+typedef UINT (WINAPI *wb_dpi_sys_fn)(void);
+typedef UINT (WINAPI *wb_dpi_win_fn)(HWND);
+typedef BOOL (WINAPI *wb_set_ctx_fn)(HANDLE);
+typedef BOOL (WINAPI *wb_adjust_dpi_fn)(LPRECT, DWORD, BOOL, DWORD, UINT);
+
+static void (*wb_user32_proc(const char *name))(void)
+{
+    HMODULE m = GetModuleHandleW(L"user32.dll");
+    if (m == NULL) {
+        return NULL;
+    }
+    return (void (*)(void))GetProcAddress(m, name);
+}
+
+static UINT wb_system_dpi(void)
+{
+    wb_dpi_sys_fn fn = (wb_dpi_sys_fn)wb_user32_proc("GetDpiForSystem");
+    UINT d = 0;
+    if (fn != NULL) {
+        d = fn();
+    } else {
+        HDC dc = GetDC(NULL);
+        if (dc != NULL) {
+            d = (UINT)GetDeviceCaps(dc, LOGPIXELSX);
+            (void)ReleaseDC(NULL, dc);
+        }
+    }
+    return d >= 48 ? d : 96;
+}
+
+static UINT wb_window_dpi(const wb_state *w)
+{
+    wb_dpi_win_fn fn;
+    UINT d = 0;
+    if (w->hwnd != NULL) {
+        fn = (wb_dpi_win_fn)wb_user32_proc("GetDpiForWindow");
+        if (fn != NULL) {
+            d = fn(w->hwnd);
+        }
+    }
+    return d >= 48 ? d : wb_system_dpi();
+}
+
+/* client size -> outer window size at the given dpi */
+static void wb_outer_size(int cw, int ch, DWORD style, UINT dpi, int *ow, int *oh)
+{
+    RECT r;
+    wb_adjust_dpi_fn fn = (wb_adjust_dpi_fn)wb_user32_proc("AdjustWindowRectExForDpi");
+    r.left = 0;
+    r.top = 0;
+    r.right = cw;
+    r.bottom = ch;
+    if (fn != NULL) {
+        (void)fn(&r, style, FALSE, 0, dpi);
+    } else {
+        (void)AdjustWindowRectEx(&r, style, FALSE, 0);
+    }
+    *ow = (int)(r.right - r.left);
+    *oh = (int)(r.bottom - r.top);
+}
 
 /* ---- UTF helpers ---- */
 /* UTF-8 -> UTF-16 (NUL terminated, lt_malloc'd) */
@@ -249,6 +315,33 @@ static LRESULT CALLBACK wb_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             }
         }
         return 0;
+    case WM_GETMINMAXINFO:
+        if (w->min_w > 0 && w->min_h > 0) {
+            MINMAXINFO *mm = (MINMAXINFO *)lp;
+            int ow, oh;
+            wb_outer_size(w->min_w, w->min_h, (DWORD)GetWindowLongW(hwnd, GWL_STYLE),
+                          wb_window_dpi(w), &ow, &oh);
+            mm->ptMinTrackSize.x = ow;
+            mm->ptMinTrackSize.y = oh;
+        }
+        return 0;
+    case WM_DPICHANGED: {
+        const RECT *sug = (const RECT *)lp;
+        UINT nd = (UINT)(wp & 0xFFFFUL);
+        if (nd >= 48) {
+            w->dpi = nd;
+        }
+        if (sug != NULL) {
+            (void)SetWindowPos(hwnd, NULL, (int)sug->left, (int)sug->top,
+                               (int)(sug->right - sug->left), (int)(sug->bottom - sug->top),
+                               SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+        e = wb_new_event(w, LT_EV_SCALE);
+        if (e != NULL) {
+            e->x = (int)((w->dpi * 100UL + 48UL) / 96UL);
+        }
+        return 0;
+    }
     case WM_PAINT:
         BeginPaint(hwnd, &ps);
         wb_blit(w, ps.hdc);
@@ -359,12 +452,11 @@ static int wb_open(lt_backend *b, const char *title, int cw, int ch)
     RECT r;
     WCHAR *t;
     DWORD style = WS_OVERLAPPEDWINDOW;
+    int ow, oh;
 
     if (w->opened) {
         return 0;
     }
-    /* Vista+; harmless if the process manifest already declares awareness */
-    (void)SetProcessDPIAware();
     w->hinst = GetModuleHandleW(NULL);
     if (!w->class_ok) {
         memset(&wc, 0, sizeof(wc));
@@ -380,17 +472,14 @@ static int wb_open(lt_backend *b, const char *title, int cw, int ch)
         }
         w->class_ok = 1;
     }
-    r.left = 0;
-    r.top = 0;
-    r.right = cw;
-    r.bottom = ch;
-    (void)AdjustWindowRectEx(&r, style, FALSE, 0);
+    wb_outer_size(cw, ch, style, wb_system_dpi(), &ow, &oh);
     w->cw = cw;
     w->ch = ch;
     t = wb_utf8_to_16(title);
-    w->hwnd = CreateWindowExW(0, WB_CLASS_NAME, t, style, CW_USEDEFAULT, CW_USEDEFAULT,
-                              (int)(r.right - r.left), (int)(r.bottom - r.top),
-                              NULL, NULL, w->hinst, w);
+    w->hwnd = CreateWindowExW(0, WB_CLASS_NAME, t, style,
+                              (w->init_flags & LT_GEOM_POS) ? w->init_x : CW_USEDEFAULT,
+                              (w->init_flags & LT_GEOM_POS) ? w->init_y : CW_USEDEFAULT,
+                              ow, oh, NULL, NULL, w->hinst, w);
     lt_free(t);
     if (w->hwnd == NULL) {
         lt_err_set("win32: CreateWindowExW failed (%lu)", (unsigned long)GetLastError());
@@ -399,7 +488,8 @@ static int wb_open(lt_backend *b, const char *title, int cw, int ch)
         return -1;
     }
     w->opened = 1;
-    (void)ShowWindow(w->hwnd, SW_SHOW);
+    w->dpi = wb_window_dpi(w);
+    (void)ShowWindow(w->hwnd, (w->init_flags & LT_GEOM_MAX) ? SW_SHOWMAXIMIZED : SW_SHOW);
     /* The real client size may differ from the request (work-area clamping). */
     if (GetClientRect(w->hwnd, &r)) {
         w->cw = (int)(r.right - r.left);
@@ -581,11 +671,83 @@ static char *wb_get_clipboard(lt_backend *b)
     return out;
 }
 
+static double wb_scale_hint(lt_backend *b)
+{
+    wb_state *w = (wb_state *)b->impl;
+    UINT d = (w != NULL && w->opened) ? w->dpi : wb_system_dpi();
+    return (double)d / 96.0;
+}
+
+static void wb_set_min_size(lt_backend *b, int mw, int mh)
+{
+    wb_state *w = (wb_state *)b->impl;
+    w->min_w = mw;
+    w->min_h = mh;
+}
+
+static int wb_screen_size(lt_backend *b, int *pw, int *ph)
+{
+    RECT wa;
+    wb_state *w = (wb_state *)b->impl;
+    (void)w;
+    if (!SystemParametersInfoW(SPI_GETWORKAREA, 0, &wa, 0)) {
+        return 0;
+    }
+    if (pw != NULL) {
+        *pw = (int)(wa.right - wa.left);
+    }
+    if (ph != NULL) {
+        *ph = (int)(wa.bottom - wa.top);
+    }
+    return 1;
+}
+
+static void wb_set_initial_geometry(lt_backend *b, int x, int y, int flags)
+{
+    wb_state *w = (wb_state *)b->impl;
+    w->init_x = x;
+    w->init_y = y;
+    w->init_flags = flags;
+}
+
+static int wb_get_geometry(lt_backend *b, int *px, int *py, int *maxd)
+{
+    wb_state *w = (wb_state *)b->impl;
+    WINDOWPLACEMENT wp;
+    if (w == NULL || !w->opened) {
+        return 0;
+    }
+    memset(&wp, 0, sizeof(wp));
+    wp.length = (UINT)sizeof(wp);
+    if (!GetWindowPlacement(w->hwnd, &wp)) {
+        return 0;
+    }
+    if (px != NULL) {
+        *px = (int)wp.rcNormalPosition.left;
+    }
+    if (py != NULL) {
+        *py = (int)wp.rcNormalPosition.top;
+    }
+    if (maxd != NULL) {
+        *maxd = IsZoomed(w->hwnd) ? 1 : 0;
+    }
+    return 1;
+}
+
 lt_backend *lt_backend_win32_create(void)
 {
     lt_backend *b;
     wb_state *w;
+    /* Per-monitor v2 awareness (Win10 1703+), else system aware (Vista+). Must
+     * happen before any window exists; harmless if the manifest already says so. */
+    {
+        wb_set_ctx_fn ctx = (wb_set_ctx_fn)wb_user32_proc("SetProcessDpiAwarenessContext");
+        if (ctx == NULL || !ctx((HANDLE)(LONG_PTR)-4)) {
+            (void)SetProcessDPIAware();
+        }
+    }
     w = (wb_state *)lt_calloc(1, sizeof(*w));
+    w->dpi = wb_system_dpi();
     b = (lt_backend *)lt_calloc(1, sizeof(*b));
     b->name = "win32";
     b->cell_mode = LT_FALSE;
@@ -597,6 +759,11 @@ lt_backend *lt_backend_win32_create(void)
     b->set_title = wb_set_title;
     b->set_clipboard = wb_set_clipboard;
     b->get_clipboard = wb_get_clipboard;
+    b->scale_hint = wb_scale_hint;
+    b->set_min_size = wb_set_min_size;
+    b->screen_size = wb_screen_size;
+    b->set_initial_geometry = wb_set_initial_geometry;
+    b->get_geometry = wb_get_geometry;
     b->impl = w;
     return b;
 }
