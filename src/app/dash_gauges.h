@@ -11,4 +11,7 @@ void lt_gauges_install(void);
 /* Expression context used to resolve "{expr}" titles/units (may be NULL). */
 void lt_gauges_set_env(lt_expr_cache *cache, const lt_expr_env *env);
 
+/* display options (settings): right-align digital values, wrap indicator text instead of scaling it */
+void lt_gauges_set_options(int right_align, int wrap_indicator_text);
+
 #endif

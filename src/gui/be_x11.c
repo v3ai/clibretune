@@ -24,7 +24,8 @@ typedef struct x11 {
     int w, h;
     int seq;
     lt_u32 a_prot, a_del, a_netname, a_utf8;
-    lt_u32 a_wmstate, a_maxh, a_maxv;
+    lt_u32 a_wmstate, a_maxh, a_maxv, a_fs;
+    int fullscreen;
     int root_w, root_h;
     double xft_dpi;          /* from RESOURCE_MANAGER, 0 = none */
     int minw, minh;          /* WM_NORMAL_HINTS minimum, 0 = none */
@@ -765,6 +766,27 @@ static int x_get_geometry(lt_backend *be, int *px, int *py, int *maxd) {
     return ok;
 }
 
+/* EWMH: ask the window manager to add/remove _NET_WM_STATE_FULLSCREEN (ClientMessage to root) */
+static void x_set_fullscreen(lt_backend *be, int on) {
+    x11 *x = (x11 *)be->impl;
+    lt_buf b;
+    if (!x || !x->win || x->dead || !x->a_wmstate || !x->a_fs) return;
+    if ((on ? 1 : 0) == x->fullscreen) return;
+    lt_buf_init(&b);
+    req_begin(&b, 25, 0);
+    p32(x, &b, x->root);
+    p32(x, &b, (1UL << 20) | (1UL << 19));
+    p8(&b, 33); p8(&b, 32); p16(x, &b, 0);
+    p32(x, &b, x->win);
+    p32(x, &b, x->a_wmstate);
+    p32(x, &b, on ? 1UL : 0UL);
+    p32(x, &b, x->a_fs);
+    p32(x, &b, 0); p32(x, &b, 1); p32(x, &b, 0);
+    (void)req_end(x, &b);
+    lt_buf_free(&b);
+    x->fullscreen = on ? 1 : 0;
+}
+
 static int x_open(lt_backend *be, const char *title, int w, int h) {
     x11 *x = (x11 *)be->impl;
     lt_buf b;
@@ -945,12 +967,13 @@ lt_backend *lt_backend_x11_create(void) {
     x11 *x;
     lt_backend *be;
     lt_buf b;
-    int sq[7], i;
+    int sq[8], i;
     lt_stream *s = NULL;
-    static const char *names[7] = { "WM_PROTOCOLS", "WM_DELETE_WINDOW", "_NET_WM_NAME",
+    static const char *names[8] = { "WM_PROTOCOLS", "WM_DELETE_WINDOW", "_NET_WM_NAME",
                                     "UTF8_STRING", "_NET_WM_STATE",
                                     "_NET_WM_STATE_MAXIMIZED_HORZ",
-                                    "_NET_WM_STATE_MAXIMIZED_VERT" };
+                                    "_NET_WM_STATE_MAXIMIZED_VERT",
+                                    "_NET_WM_STATE_FULLSCREEN" };
     if (!disp || !disp[0]) return NULL;
     if (parse_display(disp, host, sizeof host, &num, path, sizeof path) < 0) return NULL;
     if (path[0]) s = lt_unix_connect(path);
@@ -969,8 +992,8 @@ lt_backend *lt_backend_x11_create(void) {
     if (fetch_keymap(x, &b) < 0) {
         fprintf(stderr, "x11: GetKeyboardMapping failed\n");
     }
-    for (i = 0; i < 7; i++) intern_send(x, &b, names[i], &sq[i]);
-    for (i = 0; i < 7; i++) {
+    for (i = 0; i < 8; i++) intern_send(x, &b, names[i], &sq[i]);
+    for (i = 0; i < 8; i++) {
         lt_u32 atom = 0;
         if (wait_reply(x, sq[i], 5000) == 0) atom = r32(x, x->reply + 8);
         drop_reply(x);
@@ -980,7 +1003,8 @@ lt_backend *lt_backend_x11_create(void) {
         else if (i == 3) x->a_utf8 = atom;
         else if (i == 4) x->a_wmstate = atom;
         else if (i == 5) x->a_maxh = atom;
-        else x->a_maxv = atom;
+        else if (i == 6) x->a_maxv = atom;
+        else x->a_fs = atom;
     }
     fetch_resources(x, &b);
     lt_buf_free(&b);
@@ -1001,6 +1025,7 @@ lt_backend *lt_backend_x11_create(void) {
     be->screen_size = x_screen_size;
     be->set_initial_geometry = x_set_initial_geometry;
     be->get_geometry = x_get_geometry;
+    be->set_fullscreen = x_set_fullscreen;
     be->impl = x;
     return be;
 }

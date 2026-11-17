@@ -12,6 +12,13 @@
 
 static lt_expr_cache *g_cache = NULL;
 static const lt_expr_env *g_env = NULL;
+static int g_right_align = 0, g_wrap_ind = 0;
+
+void lt_gauges_set_options(int right_align, int wrap_indicator_text)
+{
+    g_right_align = right_align ? 1 : 0;
+    g_wrap_ind = wrap_indicator_text ? 1 : 0;
+}
 
 void lt_gauges_set_env(lt_expr_cache *cache, const lt_expr_env *env)
 {
@@ -139,6 +146,11 @@ static double p_text_s(gp *p, double x, double y, const char *s, double h, int a
     px = style == 2 ? h * 1.12 : h / ratio;
     w = lt_gfx_text_measure(f, px, s);
     if (maxw > 0.0 && w > maxw) { px = px * maxw / w; w = maxw; if (px * ratio < 3.0) { return 0.0; } }
+    if (g_right_align && style == 2 && align == 1) {
+        /* digits stay put: anchor the right edge where a 5 character value would end */
+        double wref = lt_gfx_text_measure(f, px, "88888");
+        if (wref > w) { x += wref / 2.0; align = 2; }
+    }
     lt_gfx_text_rot(p->g, f, px, p->r.x + x, p->r.y + y, s, 0.0, align, 1, c);
     return w;
 }
@@ -1067,6 +1079,36 @@ static void gauge_paint(void *ud, lt_gfx *g, lt_rect r, const lt_dash_gauge *cfg
 }
 
 /* ---- indicators ---- */
+/* centred label; with the "wrap" setting a label that is too wide is split at a space into two lines */
+static void ind_text(gp *p, const char *t, double h, lt_color fg)
+{
+    double maxw = p->W - 8.0;
+    if (g_wrap_ind && p->H >= 2.0 * h * 0.9) {
+        char a[96], b[96];
+        size_t n = strlen(t), i, best = 0;
+        lt_font *f = lt_font_get(LT_FONT_SANS_MEDIUM);
+        double ratio, px, w = 0.0;
+        if (f != NULL && n > 1 && n < sizeof a) {
+            ratio = (double)lt_ttf_cap_height(f) / (double)lt_ttf_units_per_em(f);
+            px = h * VS / ratio;
+            w = lt_gfx_text_measure(f, px, t);
+        }
+        if (w > maxw) {
+            for (i = 1; i + 1 < n; i++) {
+                if (t[i] == ' ' && (best == 0 || (i > n / 2 ? i - n / 2 : n / 2 - i) < (best > n / 2 ? best - n / 2 : n / 2 - best))) { best = i; }
+            }
+            if (best > 0) {
+                memcpy(a, t, best); a[best] = '\0';
+                lt_strlcpy(b, t + best + 1, sizeof b);
+                (void)p_text(p, p->W / 2, p->H / 2 - h * 0.6, a, h * 0.85, 1, 1, fg, maxw);
+                (void)p_text(p, p->W / 2, p->H / 2 + h * 0.6, b, h * 0.85, 1, 1, fg, maxw);
+                return;
+            }
+        }
+    }
+    (void)p_text(p, p->W / 2, p->H / 2, t, h, 1, 1, fg, maxw);
+}
+
 static void indicator_paint(void *ud, lt_gfx *g, lt_rect r, const lt_dash_indicator *in, lt_bool on)
 {
     lt_color bg = opq(on ? in->on_background_color : in->off_background_color);
@@ -1098,7 +1140,7 @@ static void indicator_paint(void *ud, lt_gfx *g, lt_rect r, const lt_dash_indica
         p_round(&p, 0, 0, p.W, p.H, cr, darken(bg, 55));
         p_round(&p, 1, 1, p.W - 2, p.H - 2, cr, bg);
         if (on) { p_vgrad(&p, 2, 2, p.W - 4, p.H * 0.4, alpha(lighten(bg, 40), 140), alpha(bg, 0)); }
-        if (t && t[0]) { p_text(&p, p.W / 2, p.H / 2, t, h, 1, 1, fg, p.W - 8); }
+        if (t && t[0]) { ind_text(&p, t, h, fg); }
     }
     lt_gfx_pop_clip(g, prev);
 }

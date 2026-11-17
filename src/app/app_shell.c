@@ -1139,6 +1139,7 @@ void lt_app_frame(lt_app *app)
     lt_ui *ui = app->ui;
     lt_rect cr, side, main_r;
     char title[200];
+    if (lt_dashx_kiosk_frame(app)) { return; }
     menubar(app);
     if (!lt_ui_cell_mode(ui)) { app_toolbar(app); }
     statusbar(app);

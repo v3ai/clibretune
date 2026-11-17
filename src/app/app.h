@@ -265,6 +265,7 @@ void lt_app_tables_service(lt_app *app);   /* called by lt_app_service on each n
 /* dashboard owner (stubs_dash.c) */
 void lt_app_register_dash(lt_app *app);
 int  lt_app_dashboard_tab_open(lt_app *app);
+int  lt_dashx_kiosk_frame(lt_app *app);     /* full-screen dashboard: 1 = it drew the whole frame */
 /* dialogs owner (stubs_dialogs.c) */
 void lt_app_register_dialogs(lt_app *app);
 int  lt_app_dialog_open(lt_app *app, const char *ini_dialog_name);
