@@ -34,6 +34,7 @@
 #include "../sim/sim.h"
 #include "../datalog/datalog.h"
 #include "prefs.h"
+#include "i18n.h"
 
 typedef struct lt_app lt_app;
 typedef struct lt_app_tab lt_app_tab;
@@ -54,6 +55,7 @@ struct lt_app_tab {
     void *data;             /* owner state (allocate in draw on first use; free in close) */
     int closable;
     int dirty;              /* show the dirty dot */
+    int pinned;             /* protected: cannot be closed by the user (feat_tabs.c) */
 };
 typedef struct lt_app_tab_kind {
     const char *kind;       /* static string */

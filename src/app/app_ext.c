@@ -9,7 +9,10 @@ typedef struct ext_target { char name[48]; lt_ext_target_fn fn; } ext_target;
 typedef struct ext_item {
     int menu; const char *label; const char *shortcut; lt_ext_action_fn fn; lt_ext_pred_fn pred;
 } ext_item;
-typedef struct ext_key { int key, mods; lt_ext_action_fn fn; lt_ext_pred_fn pred; } ext_key;
+typedef struct ext_key {
+    int key, mods; lt_ext_action_fn fn; lt_ext_pred_fn pred;
+    const char *id, *label;     /* customizable (hotkeys.h) when id is not NULL */
+} ext_key;
 typedef struct ext_page { const char *title; lt_ext_draw_fn draw; } ext_page;
 typedef struct ext_hook { lt_ext_draw_fn fn; } ext_hook;
 typedef struct ext_state { char key[48]; void *data; lt_ext_free_fn cleanup; } ext_state;
@@ -151,7 +154,7 @@ int lt_ext_menu_draw(lt_app *app, int menu, int lead_sep)
         if (shown == 0 && lead_sep) { lt_ui_menu_separator(ui); }
         shown++;
         lt_ui_push_id_int(ui, 7000 + i);
-        if (lt_ui_menu_item(ui, it->label, it->shortcut, 0)) { it->fn(app); }
+        if (lt_ui_menu_item(ui, lt_tr(it->label), it->shortcut, 0)) { it->fn(app); }
         lt_ui_pop_id(ui);
     }
     return shown;
@@ -161,19 +164,46 @@ int lt_ext_menu_draw(lt_app *app, int menu, int lead_sep)
 void lt_ext_add_shortcut(lt_app_ext *reg, int key, int mods, lt_ext_action_fn fn,
                          lt_ext_pred_fn pred)
 {
+    lt_ext_add_shortcut_named(reg, NULL, NULL, key, mods, fn, pred);
+}
+
+void lt_ext_add_shortcut_named(lt_app_ext *reg, const char *id, const char *label, int key,
+                               int mods, lt_ext_action_fn fn, lt_ext_pred_fn pred)
+{
     ext_key *k = (ext_key *)ext_push((void **)&reg->keys, &reg->n_keys, &reg->cap_keys,
                                      sizeof(ext_key));
-    k->key = key; k->mods = mods; k->fn = fn; k->pred = pred;
+    k->key = key; k->mods = mods; k->fn = fn; k->pred = pred; k->id = id; k->label = label;
+}
+
+int lt_ext_shortcut_defs(const lt_app *app, lt_hk_def *out, int cap)
+{
+    int i, n = 0;
+    if (app->ext == NULL) { return 0; }
+    for (i = 0; i < app->ext->n_keys && n < cap; i++) {
+        const ext_key *k = &app->ext->keys[i];
+        if (k->id == NULL) { continue; }
+        out[n].id = k->id; out[n].label = k->label != NULL ? k->label : k->id;
+        out[n].key = k->key; out[n].mods = k->mods;
+        n++;
+    }
+    return n;
 }
 
 void lt_ext_shortcuts(lt_app *app)
 {
     int i;
-    if (app->ext == NULL) { return; }
+    if (app->ext == NULL || lt_hk_capturing(app)) { return; }
     for (i = 0; i < app->ext->n_keys; i++) {
         const ext_key *k = &app->ext->keys[i];
+        int key = k->key, mods = k->mods;
         if (k->pred != NULL && !k->pred(app)) { continue; }
-        if (lt_ui_key_pressed(app->ui, k->key, k->mods)) { k->fn(app); }
+        if (k->id != NULL) {
+            lt_hk_def d;
+            d.id = k->id; d.label = k->id; d.key = key; d.mods = mods;
+            lt_hk_effective(app, &d, &key, &mods);
+            if (key == LT_HK_NONE) { continue; }
+        }
+        if (lt_ui_key_pressed(app->ui, key, mods)) { k->fn(app); }
     }
 }
 

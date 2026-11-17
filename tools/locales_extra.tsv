@@ -1,0 +1,153 @@
+# English	pt-BR	hu-HU   (strings of this port that the stock locales lack; empty = untranslated)
+&Annotations...	&Anotações...	&Megjegyzések...
+&AutoTune	&AutoTune	&AutoTune
+&Compare Tune Files...	&Comparar arquivos de tune...	Hangolásfájlok ö&sszehasonlítása...
+&Full Screen Dashboard	Painel em &tela cheia	&Teljes képernyős műszerfal
+&Import TunerStudio Project...	&Importar projeto do TunerStudio...	&TunerStudio projekt importálása...
+&New Tune...	&Novo tune...	Ú&j hangolás...
+&Open Project...	&Abrir projeto...	Projekt &megnyitása...
+&Tuning	&Ajuste	&Hangolás
+&Units	&Unidades	&Mértékegységek
+AFR &Delay Test...	Teste de &atraso do AFR...	AFR &késleltetési teszt...
+Air-Fuel Ratio	Relação ar-combustível	Levegő-üzemanyag arány
+AutoTune	AutoTune	AutoTune
+Autodetect	Detecção automática	Automatikus felismerés
+Baud rate	Taxa de transmissão	Baudsebesség
+Behavior	Comportamento	Viselkedés
+Burn to ECU	Gravar na ECU	Írás az ECU-ba
+Burn	Gravar	Írás
+Cancel scan	Cancelar busca	Keresés megszakítása
+Clear search	Limpar busca	Keresés törlése
+Click a shortcut, then press the new keys. Backspace removes it, Esc cancels.	Clique em um atalho e pressione as novas teclas. Backspace remove, Esc cancela.	Kattintson egy gyorsbillentyűre, majd nyomja meg az új billentyűket. A Backspace törli, az Esc megszakítja.
+Close All	Fechar todas	Összes bezárása
+Close Others	Fechar as outras	Többi bezárása
+Close to the Right	Fechar à direita	Jobbra lévők bezárása
+Composite Logger	Registrador composto	Összetett naplózó
+Connect ECU &Wizard...	&Assistente de conexão da ECU...	ECU csatlakozási &varázsló...
+Connect ECU...	Conectar ECU...	ECU csatlakoztatása...
+Connect automatically when a project opens	Conectar automaticamente ao abrir um projeto	Automatikus csatlakozás projekt megnyitásakor
+Connect	Conectar	Csatlakozás
+Connection &Metrics...	&Métricas da conexão...	Kapcsolat &mérőszámai...
+Contents	Índice	Tartalom
+Create Restore Point	Criar ponto de restauração	Visszaállítási pont létrehozása
+Ctrl+1..9 always switch tabs.	Ctrl+1..9 sempre alternam as abas.	A Ctrl+1..9 mindig fület vált.
+Dashboard	Painel	Műszerfal
+Data Logging	Registro de dados	Adatnaplózás
+Datalog &Viewer...	&Visualizador de logs...	Napló&megjelenítő...
+Demo (simulator)	Demo (simulador)	Demó (szimulátor)
+Demo mode (simulated ECU)	Modo demo (ECU simulada)	Demó mód (szimulált ECU)
+Demo mode	Modo demo	Demó mód
+Directory	Diretório	Könyvtár
+E&xport Tune as CSV...	E&xportar tune como CSV...	Hangolás e&xportálása CSV-be...
+ECU &Connection...	&Conexão da ECU...	ECU &kapcsolat...
+ECU Connection	Conexão da ECU	ECU kapcsolat
+ECU Conso&le	Conso&le da ECU	ECU kon&zol
+ECU Definitions	Definições da ECU	ECU definíciók
+ECU definition	Definição da ECU	ECU definíció
+Enter D&FU Mode...	Entrar no modo D&FU...	D&FU módba lépés...
+Go to tab	Ir para a aba	Ugrás a fülre
+Graphics backend	Back-end gráfico	Grafikus háttérrendszer
+Heat map	Mapa de calor	Hőtérkép
+Host:port	Host:porta	Gép:port
+Imperial	Imperial	Angolszász
+Import Tune from &CSV...	Importar tune de &CSV...	Hangolás importálása &CSV-ből...
+Import TunerStudio Project...	Importar projeto do TunerStudio...	TunerStudio projekt importálása...
+Import TunerStudio	Importar TunerStudio	TunerStudio importálása
+Keyboard &Shortcuts	Atalhos de &teclado	&Gyorsbillentyűk
+Keyboard Shortcuts	Atalhos de teclado	Gyorsbillentyűk
+Keyboard shortcuts	Atalhos de teclado	Gyorsbillentyűk
+Metric	Métrico	Metrikus
+Move Left	Mover para a esquerda	Mozgatás balra
+Move Right	Mover para a direita	Mozgatás jobbra
+New Project...	Novo projeto...	Új projekt...
+No matching page	Nenhuma página encontrada	Nincs találat
+No matching section	Nenhuma seção encontrada	Nincs találat
+No recent projects yet.	Nenhum projeto recente ainda.	Még nincs legutóbbi projekt.
+Nothing to burn	Nada para gravar	Nincs mit írni
+Open &Recent	Abrir &recente	&Legutóbbiak megnyitása
+Open &Tune...	Abrir &tune...	&Hangolás megnyitása...
+Open Project	Abrir projeto	Projekt megnyitása
+Open Project...	Abrir projeto...	Projekt megnyitása...
+Open a table or curve tab to use the Edit actions	Abra uma aba de tabela ou curva para usar as ações de edição	A szerkesztési műveletekhez nyisson meg egy tábla- vagy görbefület
+Open project	Abrir projeto	Projekt megnyitása
+Open the base map wizard after creating	Abrir o assistente de mapa base após criar	Alaptérkép-varázsló megnyitása létrehozás után
+Port	Porta	Port
+Press keys...	Pressione as teclas...	Nyomja meg a billentyűket...
+Pressure	Pressão	Nyomás
+Project name	Nome do projeto	Projekt neve
+Project	Projeto	Projekt
+Protect Tab	Proteger aba	Fül védelme
+Realtime rate (Hz)	Taxa em tempo real (Hz)	Valós idejű frissítés (Hz)
+Reassign	Reatribuir	Újrakiosztás
+Recent Projects	Projetos recentes	Legutóbbi projektek
+Reconnect	Reconectar	Újracsatlakozás
+Refresh ports	Atualizar portas	Portok frissítése
+Reset Tune to &Defaults	Redefinir tune para o &padrão	Hangolás &alaphelyzetbe
+Reset all	Redefinir tudo	Összes visszaállítása
+Resize sidebar (terminal)	Redimensionar barra lateral (terminal)	Oldalsáv átméretezése (terminál)
+Restore Points...	Pontos de restauração...	Visszaállítási pontok...
+Save tune	Salvar tune	Hangolás mentése
+Search for INI &Online...	Procurar INI &online...	INI keresése &online...
+Search the manual...	Pesquisar no manual...	Keresés a kézikönyvben...
+Search...	Pesquisar...	Keresés...
+Select &All	Selecionar &tudo	Mi&nden kijelölése
+Serial / USB	Serial / USB	Soros / USB
+Show ECU menus in menu bar	Mostrar menus da ECU na barra de menus	ECU menük megjelenítése a menüsorban
+Show ECU menus in the menu bar	Mostrar menus da ECU na barra de menus	ECU menük megjelenítése a menüsorban
+Status Bar	Barra de status	Állapotsor
+TCP / WiFi	TCP / WiFi	TCP / WiFi
+TCP connect	Conexão TCP	TCP kapcsolat
+Table Display	Exibição de tabelas	Táblázatok megjelenítése
+Temperature	Temperatura	Hőmérséklet
+Texts without a translation stay in English.	Textos sem tradução permanecem em inglês.	A fordítás nélküli szövegek angolul maradnak.
+The backend change applies at the next start.	A alteração do back-end vale na próxima inicialização.	A háttérrendszer módosítása a következő indításkor lép életbe.
+The local definition repository is empty. Import an INI file first.	O repositório local de definições está vazio. Importe um arquivo INI primeiro.	A helyi definíciótár üres. Előbb importáljon egy INI fájlt.
+Theme	Tema	Téma
+Tooth Logger	Registrador de dentes	Fogazás-naplózó
+Tune &Migration Report...	Relatório de &migração do tune...	Hangolás-&migrációs jelentés...
+UI scale	Escala da interface	Felület méretezése
+Unit system	Sistema de unidades	Mértékegység-rendszer
+Update Project &INI...	Atualizar &INI do projeto...	Projekt &INI frissítése...
+User Manual	Manual do usuário	Felhasználói kézikönyv
+&User Manual	Manual do &usuário	Felhasználói &kézikönyv
+Version Control	Controle de versão	Verziókezelés
+is already used by	já é usado por	már használja:
+no serial ports found	nenhuma porta serial encontrada	nem található soros port
+Back	Voltar	Vissza
+Edit Cell Value	Editar valor da célula	Cellaérték szerkesztése
+Protect	Proteger	Védelem
+Getting Started	Primeiros passos	Első lépések
+Core Features	Recursos principais	Fő funkciók
+Project Management	Gerenciamento de projetos	Projektkezelés
+Reference	Referência	Referencia
+FAQ	Perguntas frequentes	GYIK
+Manual	Manual	Kézikönyv
+Appearance	Aparência	Megjelenés
+General	Geral	Általános
+Connection	Conexão	Kapcsolat
+Dashboard full screen	Painel em tela cheia	Műszerfal teljes képernyőn
+New project	Novo projeto	Új projekt
+Load tune	Carregar tune	Hangolás betöltése
+Save tune as	Salvar tune como	Hangolás mentése másként
+Quit	Sair	Kilépés
+Disconnect	Desconectar	Szétkapcsolás
+Toggle sidebar	Alternar barra lateral	Oldalsáv ki/be
+Search the sidebar	Pesquisar na barra lateral	Keresés az oldalsávban
+Start/stop data log	Iniciar/parar registro de dados	Adatnaplózás indítása/leállítása
+Close tab	Fechar aba	Fül bezárása
+Next tab	Próxima aba	Következő fül
+Previous tab	Aba anterior	Előző fül
+Undo	Desfazer	Visszavonás
+Redo	Refazer	Újra
+Cut	Recortar	Kivágás
+Copy	Copiar	Másolás
+Paste	Colar	Beillesztés
+Select all	Selecionar tudo	Összes kijelölése
+User manual (context help)	Manual do usuário (ajuda contextual)	Felhasználói kézikönyv (környezetfüggő súgó)
+Connect to ECU	Conectar à ECU	Csatlakozás az ECU-hoz
+Start data logging	Iniciar registro de dados	Adatnaplózás indítása
+Stop data logging	Parar registro de dados	Adatnaplózás leállítása
+Edit	Editar	Szerkesztés
+Language	Idioma	Nyelv
+Interface language. Restart not required.	Idioma da interface. Não é necessário reiniciar.	A felület nyelve. Újraindítás nem szükséges.
+Metric (°C, kPa)	Métrico (°C, kPa)	Metrikus (°C, kPa)

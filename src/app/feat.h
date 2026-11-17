@@ -10,6 +10,33 @@
 /* runs every feature registration (app_features.c) */
 void lt_app_features_register(lt_app_ext *reg);
 
+/* ---- hotkeys (feat_hotkeys.c) ---- */
+/* the shortcut of def after the user's changes (key 0 = unbound) */
+void lt_hk_effective(lt_app *app, const lt_hk_def *def, int *key, int *mods);
+/* a built-in shell action (hotkeys.h table) was pressed this frame */
+int  lt_hk_pressed(lt_app *app, const char *id);
+/* "Ctrl+S" of an action for menu hints (valid until a few later calls); "" when unbound */
+const char *lt_hk_text(lt_app *app, const char *id);
+/* "Save tune (Ctrl+S)": translated English text plus the current shortcut of id */
+const char *lt_hk_tip(lt_app *app, const char *english, const char *id);
+/* the editor is waiting for a key: global shortcuts are suspended */
+int  lt_hk_capturing(lt_app *app);
+/* Edit menu / hotkey actions routed to the active tab; id is "edit.undo" ... "edit.select_all" */
+void lt_feat_edit_do(lt_app *app, const char *id);
+
+void lt_feat_i18n_register(lt_app_ext *reg);      /* Settings > Language */
+void lt_feat_manual_register(lt_app_ext *reg);    /* User Manual viewer, F1 context help */
+void lt_feat_manual_open(lt_app *app, const char *page_id);   /* NULL = last page */
+void lt_feat_manual_context(lt_app *app);          /* the page of the active tab (F1) */
+void lt_feat_hotkeys_register(lt_app_ext *reg);   /* Settings > Keyboard Shortcuts, Edit routing */
+/* tab management (feat_tabs.c): close respecting protected tabs, drag/context menu of the tab bar */
+void lt_feat_tabs_close_active(lt_app *app);
+int  lt_feat_tabs_move(lt_app *app, int from, int to);              /* reorder; active tab follows */
+int  lt_feat_tabs_close_many(lt_app *app, int mode, int idx);       /* 0 others, 1 to the right, 2 all */
+void lt_feat_tabs_protect(lt_app *app, int idx, int on);
+int  lt_feat_tabs_at(const lt_rect *rects, int n, int x);
+void lt_feat_tabs_bar(lt_app *app, const lt_rect *rects, int n);   /* drag + context menu */
+void lt_feat_hotkeys_grid(lt_app *app);           /* effective shortcut list (Shortcuts dialog) */
 void lt_feat_core_register(lt_app_ext *reg);     /* builtin std targets, base map, autotune key */
 void lt_feat_help_register(lt_app_ext *reg);     /* About, Keyboard Shortcuts, F1 */
 void lt_feat_calib_register(lt_app_ext *reg);    /* sensor calibration: std_ms2gentherm, std_ms2geno2 */

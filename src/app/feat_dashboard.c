@@ -213,6 +213,7 @@ static void settings_page(lt_app *app)
 void lt_feat_dashboard_register(lt_app_ext *reg)
 {
     lt_ext_add_menu_item(reg, LT_EXT_MENU_VIEW, "&Full Screen Dashboard", "F11", act_fullscreen, lt_ext_pred_ini);
-    lt_ext_add_shortcut(reg, LT_KEY_F11, 0, act_fullscreen, lt_ext_pred_ini);
+    lt_ext_add_shortcut_named(reg, "view.fullscreen", "Dashboard full screen", LT_KEY_F11, 0,
+                              act_fullscreen, lt_ext_pred_ini);
     lt_ext_add_settings_page(reg, "Dashboard", settings_page);
 }
