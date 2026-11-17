@@ -148,7 +148,16 @@ case $target in
             name=$(basename "$t" .c)
             total=$((total + 1))
             echo "RUN $name"
-            if ! $RUNNER "./$OBJDIR/test/$name$EXE"; then
+            # private config/home/projects per test program: tests never touch the
+            # user's real settings, and concurrent runs cannot interfere. (Not for
+            # Windows targets: wine finds its prefix through HOME.)
+            tenv=""
+            if [ "$TARGET" != windows ]; then
+                tdir="$PWD/$OBJDIR/test/env-$name"
+                rm -rf "$tdir" && mkdir -p "$tdir/home" "$tdir/projects"
+                tenv="env HOME=$tdir/home XDG_CONFIG_HOME=$tdir/home/.config LIBRETUNE_PROJECTS=$tdir/projects"
+            fi
+            if ! $tenv $RUNNER "./$OBJDIR/test/$name$EXE"; then
                 failed=$((failed + 1))
                 echo "FAILED: $name"
             fi
