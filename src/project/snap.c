@@ -233,6 +233,325 @@ char *lt_snap_format_message(const char *msg, const char *note)
 }
 
 /* ---------------------------------------------------------------- */
+/* branches: named chains of snapshots                               */
+/* ---------------------------------------------------------------- */
+/* snapshots/branches.txt: "current<TAB>name" then one "name<TAB>tip" line per branch. Without
+ * the file there is one branch "main" whose tip is the newest snapshot. Every snapshot records its
+ * parent in snapshots/<id>/parent.txt ("-" = none); snapshots without it (older stores) take the
+ * previous index entry as parent. */
+#define BR_NAME_MAX 64
+typedef struct br_ent { char name[BR_NAME_MAX]; char tip[9]; } br_ent;
+typedef struct br_set { br_ent *v; size_t n; char cur[BR_NAME_MAX]; lt_bool from_file; } br_set;
+
+static char *br_file(const char *proj)
+{
+    char *root = snap_root(proj), *f = lt_path_join(root, "branches.txt");
+    lt_free(root);
+    return f;
+}
+
+static void br_free(br_set *b)
+{
+    lt_free(b->v);
+    b->v = NULL;
+    b->n = 0;
+}
+
+static void br_add(br_set *b, const char *name, const char *tip)
+{
+    br_ent *e;
+    b->v = (br_ent *)lt_realloc(b->v, (b->n + 1) * sizeof *b->v);
+    e = &b->v[b->n++];
+    memset(e, 0, sizeof *e);
+    lt_strlcpy(e->name, name, sizeof e->name);
+    lt_strlcpy(e->tip, tip, sizeof e->tip);
+}
+
+lt_bool lt_snap_branch_name_ok(const char *name)
+{
+    size_t i, n;
+    if (name == NULL) return LT_FALSE;
+    n = strlen(name);
+    if (n == 0 || n >= BR_NAME_MAX) return LT_FALSE;
+    if (name[0] == '-' || name[0] == '.') return LT_FALSE;
+    for (i = 0; i < n; i++) {
+        char c = name[i];
+        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+              c == '-' || c == '_' || c == '.' || c == '/'))
+            return LT_FALSE;
+    }
+    return LT_TRUE;
+}
+
+static int br_load(const char *proj, const snap_rec *recs, size_t nr, br_set *b)
+{
+    char *f = br_file(proj), *data;
+    size_t len = 0;
+    const char *cur;
+    memset(b, 0, sizeof *b);
+    lt_strlcpy(b->cur, "main", sizeof b->cur);
+    if (!lt_file_exists(f)) {
+        lt_free(f);
+        br_add(b, "main", nr > 0 ? recs[nr - 1].id : "");
+        return LT_OK;
+    }
+    data = lt_file_read(f, &len);
+    lt_free(f);
+    if (data == NULL) return LT_EIO;
+    b->from_file = LT_TRUE;
+    cur = data;
+    while (*cur != '\0') {
+        const char *eol = strchr(cur, '\n');
+        size_t ll = eol ? (size_t)(eol - cur) : strlen(cur);
+        const char *tab = (const char *)memchr(cur, '\t', ll);
+        char name[BR_NAME_MAX], val[16];
+        if (tab != NULL) {
+            size_t nl = (size_t)(tab - cur), vl = ll - nl - 1;
+            if (nl > 0 && nl < sizeof name && vl < sizeof val) {
+                memcpy(name, cur, nl);
+                name[nl] = '\0';
+                memcpy(val, tab + 1, vl);
+                val[vl] = '\0';
+                if (strcmp(name, "current") == 0) lt_strlcpy(b->cur, val, sizeof b->cur);
+                else if (lt_snap_branch_name_ok(name) && (val[0] == '\0' || valid_id(val)))
+                    br_add(b, name, val);
+            }
+        }
+        cur = eol ? eol + 1 : cur + ll;
+    }
+    lt_free(data);
+    if (b->n == 0) br_add(b, "main", nr > 0 ? recs[nr - 1].id : "");
+    return LT_OK;
+}
+
+static int br_save(const char *proj, const br_set *b)
+{
+    lt_buf o;
+    size_t i;
+    char *f;
+    int rc;
+    lt_buf_init(&o);
+    lt_buf_printf(&o, "current\t%s\n", b->cur);
+    for (i = 0; i < b->n; i++) lt_buf_printf(&o, "%s\t%s\n", b->v[i].name, b->v[i].tip);
+    f = br_file(proj);
+    rc = lt_proj_write_atomic(f, o.data ? o.data : "", o.len);
+    lt_free(f);
+    lt_buf_free(&o);
+    return rc;
+}
+
+static br_ent *br_find(br_set *b, const char *name)
+{
+    size_t i;
+    for (i = 0; i < b->n; i++)
+        if (strcmp(b->v[i].name, name) == 0) return &b->v[i];
+    return NULL;
+}
+
+static const char *br_tip(br_set *b)
+{
+    br_ent *e = br_find(b, b->cur);
+    if (e == NULL && b->n > 0) e = &b->v[0];
+    return e != NULL ? e->tip : "";
+}
+
+static long rec_index(const snap_rec *v, size_t n, const char *id)
+{
+    size_t i;
+    for (i = 0; i < n; i++)
+        if (strcmp(v[i].id, id) == 0) return (long)i;
+    return -1;
+}
+
+/* index of the parent record of recs[i], -1 = none */
+static long rec_parent(const char *proj, const snap_rec *recs, size_t nr, size_t i)
+{
+    char *root = snap_root(proj), *d = lt_path_join(root, recs[i].id);
+    char *f = lt_path_join(d, "parent.txt");
+    long r;
+    lt_free(root);
+    lt_free(d);
+    if (lt_file_exists(f)) {
+        size_t len = 0;
+        char *t = lt_file_read(f, &len);
+        r = -1;
+        if (t != NULL) {
+            char id[9];
+            memset(id, 0, sizeof id);
+            memcpy(id, t, len < 8 ? len : 8);
+            if (valid_id(id)) r = rec_index(recs, nr, id);
+        }
+        lt_free(t);
+    } else {
+        r = i > 0 ? (long)i - 1 : -1;
+    }
+    lt_free(f);
+    return r;
+}
+
+/* record indexes from `tip` back to the root, newest first (caller frees) */
+static size_t chain_of(const char *proj, const snap_rec *recs, size_t nr, const char *tip,
+                       size_t **out)
+{
+    size_t *v = (size_t *)lt_calloc(nr + 1, sizeof(size_t)), n = 0;
+    long cur = tip[0] != '\0' ? rec_index(recs, nr, tip) : -1;
+    while (cur >= 0 && n < nr) {
+        v[n++] = (size_t)cur;
+        cur = rec_parent(proj, recs, nr, (size_t)cur);
+    }
+    *out = v;
+    return n;
+}
+
+lt_bool lt_snap_enabled(const char *proj_dir)
+{
+    char *root = snap_root(proj_dir), *f = lt_path_join(root, "index.txt"), *m;
+    lt_bool on = lt_file_exists(f);
+    lt_free(f);
+    m = lt_path_join(root, "disabled");
+    if (lt_file_exists(m)) on = LT_FALSE;
+    lt_free(m);
+    lt_free(root);
+    return on;
+}
+
+lt_bool lt_snap_exists(const char *proj_dir)
+{
+    char *root = snap_root(proj_dir), *f = lt_path_join(root, "index.txt");
+    lt_bool on = lt_file_exists(f);
+    lt_free(f);
+    lt_free(root);
+    return on;
+}
+
+int lt_snap_set_enabled(const char *proj_dir, lt_bool on)
+{
+    char *root = snap_root(proj_dir), *m = lt_path_join(root, "disabled");
+    int rc = LT_OK;
+    if (on) {
+        if (lt_file_exists(m) && lt_plat_remove(m) != 0) rc = LT_EIO;
+    } else if (lt_plat_mkdirs(root) != 0 || lt_file_write(m, "off\n", 4) != 0) {
+        rc = LT_EIO;
+    }
+    lt_free(m);
+    lt_free(root);
+    return rc;
+}
+
+int lt_snap_branches(const char *proj_dir, lt_snap_branch **out, size_t *n)
+{
+    snap_rec *recs;
+    size_t nr, i;
+    br_set b;
+    lt_snap_branch *v;
+    int rc = index_read(proj_dir, &recs, &nr);
+    *out = NULL;
+    *n = 0;
+    if (rc != LT_OK) return rc;
+    rc = br_load(proj_dir, recs, nr, &b);
+    recs_free(recs, nr);
+    if (rc != LT_OK) return rc;
+    v = (lt_snap_branch *)lt_calloc(b.n + 1, sizeof *v);
+    for (i = 0; i < b.n; i++) {
+        lt_strlcpy(v[i].name, b.v[i].name, sizeof v[i].name);
+        memcpy(v[i].tip, b.v[i].tip, 9);
+        v[i].is_current = strcmp(b.v[i].name, b.cur) == 0;
+    }
+    *n = b.n;
+    *out = v;
+    br_free(&b);
+    return LT_OK;
+}
+
+void lt_snap_branch_current(const char *proj_dir, char out[64])
+{
+    snap_rec *recs = NULL;
+    size_t nr = 0;
+    br_set b;
+    lt_strlcpy(out, "main", 64);
+    if (index_read(proj_dir, &recs, &nr) != LT_OK) return;
+    if (br_load(proj_dir, recs, nr, &b) == LT_OK) {
+        lt_strlcpy(out, b.cur, 64);
+        br_free(&b);
+    }
+    recs_free(recs, nr);
+}
+
+int lt_snap_branch_create(const char *proj_dir, const char *name)
+{
+    snap_rec *recs;
+    size_t nr;
+    br_set b;
+    const char *tip;
+    int rc;
+    if (!lt_snap_branch_name_ok(name)) {
+        lt_err_set("invalid branch name");
+        return LT_EINVAL;
+    }
+    rc = index_read(proj_dir, &recs, &nr);
+    if (rc != LT_OK) return rc;
+    rc = br_load(proj_dir, recs, nr, &b);
+    if (rc == LT_OK) {
+        tip = br_tip(&b);
+        if (br_find(&b, name) != NULL) {
+            lt_err_set("branch '%s' already exists", name);
+            rc = LT_EEXIST;
+        } else if (tip[0] == '\0') {
+            lt_err_set("save a version first, then create a branch");
+            rc = LT_ENOENT;
+        } else {
+            char tipcopy[9];
+            memcpy(tipcopy, tip, 9);   /* br_add may move the array tip points into */
+            br_add(&b, name, tipcopy);
+            rc = br_save(proj_dir, &b);
+        }
+        br_free(&b);
+    }
+    recs_free(recs, nr);
+    return rc;
+}
+
+int lt_snap_branch_switch(const char *proj_dir, const char *name, lt_bool force)
+{
+    snap_rec *recs;
+    size_t nr;
+    br_set b;
+    int rc = index_read(proj_dir, &recs, &nr);
+    if (rc != LT_OK) return rc;
+    rc = br_load(proj_dir, recs, nr, &b);
+    recs_free(recs, nr);
+    if (rc != LT_OK) return rc;
+    {
+        br_ent *e = br_find(&b, name != NULL ? name : "");
+        if (e == NULL) {
+            lt_err_set("no such branch");
+            rc = LT_ENOENT;
+        } else if (strcmp(e->name, b.cur) == 0) {
+            rc = LT_OK;
+        } else {
+            char tip[9];
+            memcpy(tip, e->tip, 9);
+            if (!force) {
+                int ch = lt_snap_has_changes(proj_dir);
+                if (ch > 0) {
+                    lt_err_set("working copy has uncommitted changes");
+                    rc = LT_EBUSY;
+                } else if (ch < 0) {
+                    rc = ch;
+                }
+            }
+            if (rc == LT_OK && tip[0] != '\0') rc = lt_snap_restore(proj_dir, tip, LT_TRUE);
+            if (rc == LT_OK) {
+                lt_strlcpy(b.cur, e->name, sizeof b.cur);
+                rc = br_save(proj_dir, &b);
+            }
+        }
+    }
+    br_free(&b);
+    return rc;
+}
+
+/* ---------------------------------------------------------------- */
 /* commit / status                                                   */
 /* ---------------------------------------------------------------- */
 static lt_bool snapshot_exists(const snap_rec *v, size_t n, const char *id)
@@ -253,7 +572,10 @@ int lt_snap_commit(const char *proj_dir, const char *message, const char *annota
     unsigned long secs = lt_proj_secs_now();
     unsigned counter = 0;
     int rc;
+    lt_bool parent_set = LT_FALSE;
+    char cur_branch[BR_NAME_MAX];
 
+    cur_branch[0] = '\0';
     if (message == NULL) message = "";
     if (author == NULL) author = "";
     root = snap_root(proj_dir);
@@ -309,6 +631,19 @@ int lt_snap_commit(const char *proj_dir, const char *message, const char *annota
         lt_free(src);
         lt_free(dst);
     }
+    if (rc == LT_OK) {
+        br_set bs;
+        rc = br_load(proj_dir, recs, nr, &bs);
+        if (rc == LT_OK) {
+            const char *tip = br_tip(&bs);
+            char *pf = lt_path_join(dir, "parent.txt");
+            if (lt_file_write(pf, tip[0] != '\0' ? tip : "-", tip[0] != '\0' ? 8 : 1) != 0) rc = LT_EIO;
+            lt_free(pf);
+            parent_set = bs.from_file;
+            if (parent_set) lt_strlcpy(cur_branch, bs.cur, sizeof cur_branch);
+            br_free(&bs);
+        }
+    }
     if (rc == LT_OK && annotation != NULL) {
         char *note = lt_strdup(annotation);
         lt_str_trim(note);
@@ -328,6 +663,17 @@ int lt_snap_commit(const char *proj_dir, const char *message, const char *annota
         r->author = lt_strdup(author);
         r->message = lt_strdup(message);
         rc = index_write(proj_dir, recs, nr);
+    }
+    if (rc == LT_OK && parent_set) {
+        br_set bs;
+        if (br_load(proj_dir, recs, nr, &bs) == LT_OK) {
+            br_ent *e = br_find(&bs, cur_branch);
+            if (e != NULL) {
+                memcpy(e->tip, id, 9);
+                rc = br_save(proj_dir, &bs);
+            }
+            br_free(&bs);
+        }
     }
     if (rc != LT_OK) lt_proj_rmtree(dir);
     lt_free(dir);
@@ -366,22 +712,32 @@ int lt_snap_has_changes(const char *proj_dir)
 {
     snap_rec *recs;
     size_t nr;
+    br_set b;
+    const char *tip;
     int rc = index_read(proj_dir, &recs, &nr), r;
     if (rc != LT_OK) return rc;
-    if (nr == 0) {
+    rc = br_load(proj_dir, recs, nr, &b);
+    if (rc != LT_OK) {
+        recs_free(recs, nr);
+        return rc;
+    }
+    tip = br_tip(&b);
+    if (tip[0] == '\0' || rec_index(recs, nr, tip) < 0) {
         char **f;
         size_t nf;
         collect(proj_dir, &f, &nf);
         lt_proj_strv_free(f, nf);
+        br_free(&b);
         recs_free(recs, nr);
         return nf > 0 ? 1 : 0;
     }
     {
-        char *root = snap_root(proj_dir), *d = lt_path_join(root, recs[nr - 1].id);
+        char *root = snap_root(proj_dir), *d = lt_path_join(root, tip);
         r = has_changes_vs(proj_dir, d);
         lt_free(d);
         lt_free(root);
     }
+    br_free(&b);
     recs_free(recs, nr);
     return r;
 }
@@ -404,23 +760,32 @@ void lt_snap_info_free(lt_snap_info *v, size_t n)
 int lt_snap_history(const char *proj_dir, size_t max, lt_snap_info **out, size_t *n)
 {
     snap_rec *recs;
-    size_t nr, i, cnt;
+    size_t nr, i, cnt, *chain = NULL, nch;
     lt_snap_info *v;
     char *root;
+    br_set b;
     int rc = index_read(proj_dir, &recs, &nr);
 
     *out = NULL;
     *n = 0;
     if (rc != LT_OK) return rc;
-    cnt = (max == 0 || max > nr) ? nr : max;
+    rc = br_load(proj_dir, recs, nr, &b);
+    if (rc != LT_OK) {
+        recs_free(recs, nr);
+        return rc;
+    }
+    nch = chain_of(proj_dir, recs, nr, br_tip(&b), &chain);
+    br_free(&b);
+    cnt = (max == 0 || max > nch) ? nch : max;
     if (cnt == 0) {
+        lt_free(chain);
         recs_free(recs, nr);
         return LT_OK;
     }
     v = (lt_snap_info *)lt_calloc(cnt, sizeof *v);
     root = snap_root(proj_dir);
     for (i = 0; i < cnt; i++) {
-        const snap_rec *r = &recs[nr - 1 - i];
+        const snap_rec *r = &recs[chain[i]];
         char *d = lt_path_join(root, r->id), *nf = lt_path_join(d, "note.txt");
         size_t len = 0;
         char *note = lt_file_exists(nf) ? lt_file_read(nf, &len) : NULL;
@@ -437,6 +802,7 @@ int lt_snap_history(const char *proj_dir, size_t max, lt_snap_info **out, size_t
         lt_free(nf);
     }
     lt_free(root);
+    lt_free(chain);
     recs_free(recs, nr);
     *out = v;
     *n = cnt;
@@ -661,22 +1027,71 @@ int lt_snap_prune(const char *proj_dir, size_t keep)
     }
     drop = nr - keep;
     root = snap_root(proj_dir);
-    for (i = 0; i < drop; i++) {
-        char *d = lt_path_join(root, recs[i].id);
-        lt_proj_rmtree(d);
-        lt_free(d);
-    }
-    lt_free(root);
-    for (i = 0; i < drop; i++) {
-        lt_free(recs[i].author);
-        lt_free(recs[i].message);
-    }
-    memmove(recs, recs + drop, keep * sizeof *recs);
-    rc = index_write(proj_dir, recs, keep);
-    for (i = 0; i < keep; i++) {
-        lt_free(recs[i].author);
-        lt_free(recs[i].message);
+    {
+        /* the tip of every branch survives, whatever its age */
+        br_set b;
+        size_t w = 0;
+        if (br_load(proj_dir, recs, nr, &b) != LT_OK) memset(&b, 0, sizeof b);
+        for (i = 0; i < nr; i++) {
+            lt_bool kill = LT_FALSE;
+            size_t k;
+            if (i < drop) {
+                kill = LT_TRUE;
+                for (k = 0; k < b.n; k++)
+                    if (strcmp(b.v[k].tip, recs[i].id) == 0) kill = LT_FALSE;
+            }
+            if (kill) {
+                char *d = lt_path_join(root, recs[i].id);
+                lt_proj_rmtree(d);
+                lt_free(d);
+                lt_free(recs[i].author);
+                lt_free(recs[i].message);
+            } else {
+                if (w != i) recs[w] = recs[i];
+                w++;
+            }
+        }
+        br_free(&b);
+        lt_free(root);
+        rc = index_write(proj_dir, recs, w);
+        for (i = 0; i < w; i++) {
+            lt_free(recs[i].author);
+            lt_free(recs[i].message);
+        }
     }
     lt_free(recs);
     return rc;
+}
+
+/* ---------------------------------------------------------------- */
+/* commit message format                                             */
+/* ---------------------------------------------------------------- */
+char *lt_snap_expand_format(const char *fmt, const char *table, const char *stamp)
+{
+    lt_buf b;
+    char date[16], tm[16];
+    size_t i, n;
+    lt_buf_init(&b);
+    memset(date, 0, sizeof date);
+    memset(tm, 0, sizeof tm);
+    if (stamp != NULL && strlen(stamp) >= 19) {
+        memcpy(date, stamp, 10);
+        memcpy(tm, stamp + 11, 8);
+    }
+    n = strlen(fmt);
+    for (i = 0; i < n; i++) {
+        if (fmt[i] == '{' && strncmp(fmt + i, "{date}", 6) == 0) {
+            lt_buf_puts(&b, date);
+            i += 5;
+        } else if (fmt[i] == '{' && strncmp(fmt + i, "{time}", 6) == 0) {
+            lt_buf_puts(&b, tm);
+            i += 5;
+        } else if (fmt[i] == '{' && strncmp(fmt + i, "{table}", 7) == 0) {
+            lt_buf_puts(&b, table != NULL ? table : "");
+            i += 6;
+        } else {
+            lt_buf_putc(&b, (unsigned char)fmt[i]);
+        }
+    }
+    return b.data != NULL ? lt_buf_take(&b) : lt_strdup("");
 }

@@ -18,4 +18,8 @@ void lt_app_features_register(lt_app_ext *reg)
     lt_feat_math_register(reg);
     lt_feat_loggers_register(reg);
     lt_feat_dashboard_register(reg);
+    lt_feat_history_register(reg);
+    lt_feat_restore_register(reg);
+    lt_feat_annot_register(reg);
+    lt_feat_csv_register(reg);
 }

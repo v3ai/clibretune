@@ -96,6 +96,8 @@ typedef struct lt_app_settings {
     int  poll_hz;           /* realtime poll rate 5..100 */
     int  reconnect_cmd;     /* reconnect after controller commands (default 1) */
     int  reconnect_fw;      /* reconnect after a firmware update (default 1) */
+    int  auto_commit;       /* tune history on save: 0 never, 1 always, 2 ask (default 2) */
+    char commit_fmt[96];    /* commit message format, {date} {time} {table} */
 } lt_app_settings;
 
 struct lt_app {
@@ -118,6 +120,7 @@ struct lt_app {
     char        ini_path[512];
     lt_tune    *tune;                /* project.tune when a project is open */
     int         modified;            /* tune changed since last save */
+    int         keep_project_tune;   /* "Ignore" chosen on connect: disconnect must not copy the ECU into the project tune */
     lt_expr_cache expr;              /* per-frame menu/dialog conditions */
 
     /* ECU link */

@@ -153,6 +153,27 @@ int  lt_snap_restore(const char *proj_dir, const char *id, lt_bool force);
 int  lt_snap_prune(const char *proj_dir, size_t keep);
 char *lt_snap_format_message(const char *msg, const char *note);    /* "msg\n\nLT-Note: note" */
 
+/* Branches: named chains of snapshots (git branch replacement). Commits go onto the current
+ * branch (a snapshot records its parent); history/has_changes follow the current branch. A store
+ * without branch data has the single branch "main". */
+typedef struct lt_snap_branch { char name[64]; char tip[9]; lt_bool is_current; } lt_snap_branch;
+lt_bool lt_snap_branch_name_ok(const char *name);        /* [A-Za-z0-9._/-], 1..63, not starting - or . */
+int  lt_snap_branches(const char *proj_dir, lt_snap_branch **out, size_t *n);   /* lt_free(*out) */
+void lt_snap_branch_current(const char *proj_dir, char out[64]);
+/* new branch at the current tip; LT_EEXIST, LT_ENOENT when no snapshot exists yet */
+int  lt_snap_branch_create(const char *proj_dir, const char *name);
+/* makes `name` current and restores its tip into the working copy; LT_EBUSY when !force and the
+ * working copy has changes */
+int  lt_snap_branch_switch(const char *proj_dir, const char *name, lt_bool force);
+/* version control state of a project: a store exists (snapshots/index.txt) / auto-commit is on
+ * (a store exists and was not switched off) */
+lt_bool lt_snap_exists(const char *proj_dir);
+lt_bool lt_snap_enabled(const char *proj_dir);
+int  lt_snap_set_enabled(const char *proj_dir, lt_bool on);
+/* commit message from a format with {date} {time} {table}; stamp is "YYYY-MM-DD HH:MM:SS"
+ * (lt_plat_timestamp), table may be NULL; malloc'd */
+char *lt_snap_expand_format(const char *fmt, const char *table, const char *stamp);
+
 /* ====================================================================== */
 /* Sensor calibration curves (spec 6) - used by the calibration dialogs    */
 /* ====================================================================== */

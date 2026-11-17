@@ -47,6 +47,8 @@ static void settings_defaults(lt_app_settings *s)
     s->poll_hz = 20;
     s->reconnect_cmd = 1;
     s->reconnect_fw = 1;
+    s->auto_commit = 2;
+    lt_strlcpy(s->commit_fmt, "Tune saved on {date} at {time}", sizeof(s->commit_fmt));
 }
 
 static char *settings_path(lt_app *app)
@@ -94,6 +96,9 @@ void lt_app_settings_load(lt_app *app)
         lt_props_get_i32(&p, "poll_hz", &s->poll_hz);
         lt_props_get_i32(&p, "reconnect_cmd", &s->reconnect_cmd);
         lt_props_get_i32(&p, "reconnect_fw", &s->reconnect_fw);
+        lt_props_get_i32(&p, "auto_commit", &s->auto_commit);
+        v = lt_props_get(&p, "commit_fmt");
+        if (v != NULL && v[0] != '\0') { lt_strlcpy(s->commit_fmt, v, sizeof(s->commit_fmt)); }
         v = lt_props_get(&p, "backend");
         if (v != NULL) { lt_strlcpy(s->backend, v, sizeof(s->backend)); }
         v = lt_props_get(&p, "last_project");
@@ -155,6 +160,8 @@ void lt_app_settings_save(lt_app *app)
     lt_snprintf(num, sizeof(num), "%d", s->poll_hz); lt_props_set(&p, "poll_hz", num);
     lt_snprintf(num, sizeof(num), "%d", s->reconnect_cmd); lt_props_set(&p, "reconnect_cmd", num);
     lt_snprintf(num, sizeof(num), "%d", s->reconnect_fw); lt_props_set(&p, "reconnect_fw", num);
+    lt_snprintf(num, sizeof(num), "%d", s->auto_commit); lt_props_set(&p, "auto_commit", num);
+    lt_props_set(&p, "commit_fmt", s->commit_fmt);
     lt_props_set(&p, "backend", s->backend);
     lt_props_set(&p, "last_project", s->last_project);
     lt_props_set(&p, "port", s->port);
@@ -488,7 +495,10 @@ void lt_app_disconnect(lt_app *app)
 {
     if (app->conn == LT_APP_OFFLINE && app->proto == NULL) { return; }
     if (app->rec != NULL && lt_rec_is_recording(app->rec)) { lt_rec_stop(app->rec); }
-    if (app->mem != NULL && app->tune != NULL) { lt_tune_from_mem(app->tune, app->mem); }
+    if (app->mem != NULL && app->tune != NULL && !app->keep_project_tune) {
+        lt_tune_from_mem(app->tune, app->mem);
+    }
+    app->keep_project_tune = 0;
     link_free(app);
     app->conn = LT_APP_OFFLINE;
     app->signature[0] = '\0';
@@ -818,6 +828,7 @@ int lt_app_save_tune(lt_app *app)
     if (rc < 0) { lt_app_toast(app, 3, "Save failed: %s", lt_err_get()); return rc; }
     app->modified = 0;
     lt_app_toast(app, 1, "Tune saved");
+    lt_ext_on_save(app);
     return 0;
 }
 

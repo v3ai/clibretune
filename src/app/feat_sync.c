@@ -55,6 +55,14 @@ static void restore_point(lt_app *app)
     }
 }
 
+/* "Ignore" in the Difference Report: keep the project tune as it is (a restore point is saved) and
+ * do not copy the ECU into it on disconnect either */
+void lt_feat_sync_ignore(lt_app *app)
+{
+    restore_point(app);
+    app->keep_project_tune = 1;
+}
+
 /* decide which tune the session continues with; may open the tune_sync dialog */
 static void tune_check(lt_app *app)
 {
@@ -201,7 +209,9 @@ static void tune_sync_draw(lt_app *app, lt_app_dialog *d)
         lt_app_toast(app, 1, "Project tune replaced by the ECU settings");
         open = 0;
     } else if (act != 0) {
-        if (act == 2 && !preview) { restore_point(app); }
+        if (act == 2 && !preview) {
+            lt_feat_sync_ignore(app);
+        }
         open = 0;
     }
     d->open = open;

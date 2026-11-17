@@ -118,6 +118,10 @@ int lt_restore_create(lt_project *p, char **path_out)
     }
     if (path_out) *path_out = full;
     else lt_free(full);
+    /* automatic cleanup: keep the newest max_restore_points (0 = unlimited) */
+    if (p->cfg.settings.max_restore_points > 0) {
+        (void)lt_restore_prune(p, (size_t)p->cfg.settings.max_restore_points, NULL);
+    }
     return LT_OK;
 }
 
