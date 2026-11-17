@@ -5,6 +5,7 @@
 #include "lt_test.h"
 #include "../src/app/app.h"
 #include "../src/app/app_ext.h"
+#include "../src/app/feat.h"
 #include "../src/app/sync_logic.h"
 
 LT_TEST(signature_match)
@@ -156,6 +157,53 @@ LT_TEST(use_ecu_replaces_project)
     lt_app_free(app);
 }
 
+LT_TEST(ignore_keeps_project_tune)
+{
+    lt_app *app = lt_app_new();
+    char buf[512], tmp[512], stamp[32];
+    const lt_ini_const *c = NULL;
+    lt_pagesrc ps;
+    double v, v_after, v_proj, v_ecu;
+    size_t i;
+    int pass;
+    LT_CHECK(lt_app_find_demo_ini(buf, sizeof(buf)) != NULL);
+    LT_CHECK(lt_app_start_demo(app, buf) == 0);
+    LT_CHECK(lt_plat_setenv("LIBRETUNE_PROJECTS", "build/test_ignore_proj") == 0);
+    LT_CHECK(lt_plat_mkdirs("build/test_ignore_proj") == 0);
+    lt_plat_timestamp(stamp, sizeof(stamp));
+    for (i = 0; stamp[i] != '\0'; i++) { if (stamp[i] < '0' || stamp[i] > '9') { stamp[i] = '_'; } }
+    lt_snprintf(tmp, sizeof(tmp), "ign%s_%lu", stamp, (unsigned long)lt_plat_now_ms());
+    LT_CHECK(lt_app_new_project(app, tmp, buf) == 0);
+    for (i = 0; i < app->ini->n_constants; i++) {
+        const lt_ini_const *k = app->ini->constants[i];
+        if (!k->is_pc_var && k->shape.cols <= 1 && k->shape.rows <= 1 && k->type != LT_DT_BITS &&
+            k->size_bytes > 0 && k->max > k->min) { c = k; break; }
+    }
+    LT_CHECK(c != NULL);
+    if (c == NULL) { lt_app_free(app); return; }
+    for (pass = 0; pass < 2; pass++) {
+        ps = lt_app_pages(app);
+        lt_ini_get(app->ini, &ps, c->name, &v);
+        v_proj = (v == c->min) ? c->max : c->min;
+        LT_CHECK(lt_ini_set(app->ini, &ps, c->name, v_proj) == 0);
+        lt_app_edited(app);
+        LT_CHECK(lt_app_save_tune(app) == 0);
+        app->n_dialogs = 0;
+        LT_CHECK(lt_app_connect_demo(app) == 0);
+        LT_CHECK(n_dialogs_of(app, "tune_sync") == 1);
+        ps = lt_app_pages(app);
+        lt_ini_get(app->ini, &ps, c->name, &v_ecu);
+        if (pass == 0) { LT_CHECK(v_ecu != v_proj); lt_feat_sync_ignore(app); }
+        lt_app_disconnect(app);
+        ps = lt_app_pages(app);
+        lt_ini_get(app->ini, &ps, c->name, &v_after);
+        if (pass == 0) { LT_CHECK_NEAR(v_after, v_proj, 1e-6); }     /* Ignore: offline edit survives */
+        else { LT_CHECK_NEAR(v_after, v_ecu, 1e-6); }
+        LT_CHECK(!app->keep_project_tune);
+    }
+    lt_app_free(app);
+}
+
 int main(void)
 {
     LT_RUN(signature_match);
@@ -163,5 +211,6 @@ int main(void)
     LT_RUN(reconnect_schedule);
     LT_RUN(connect_tune_choice);
     LT_RUN(use_ecu_replaces_project);
+    LT_RUN(ignore_keeps_project_tune);
     LT_TEST_MAIN_END
 }

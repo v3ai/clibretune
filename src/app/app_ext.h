@@ -58,6 +58,9 @@ void lt_ext_add_on_connect(lt_app_ext *reg, lt_ext_draw_fn fn);
 /* called when the link drops unexpectedly, just BEFORE the app disconnects (app->conn is still
  * online, app->settings.port holds the port) */
 void lt_ext_add_on_link_lost(lt_app_ext *reg, lt_ext_draw_fn fn);
+/* called after the project tune was saved to disk (lt_app_save_tune with a project open): tune
+ * history auto-commit and similar */
+void lt_ext_add_on_save(lt_app_ext *reg, lt_ext_draw_fn fn);
 /* convenience wrappers over lt_app_register_dialog_kind / _tab_kind */
 void lt_ext_add_dialog_kind(lt_app_ext *reg, const lt_app_dialog_kind *k);
 void lt_ext_add_tab_kind(lt_app_ext *reg, const lt_app_tab_kind *k);
@@ -83,6 +86,7 @@ void lt_ext_shortcuts(lt_app *app);
 void lt_ext_tick(lt_app *app);
 void lt_ext_on_connect(lt_app *app);
 void lt_ext_on_link_lost(lt_app *app);
+void lt_ext_on_save(lt_app *app);
 void lt_ext_overlays(lt_app *app);
 int  lt_ext_n_settings_pages(const lt_app *app);
 const char *lt_ext_settings_title(const lt_app *app, int idx);
