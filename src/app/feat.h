@@ -21,4 +21,7 @@ void lt_feat_tunediff_register(lt_app_ext *reg);  /* Compare Tune Files, selecti
 /* switch the open project to another INI (tune re-resolved, project reopened); tests and scripts */
 int  lt_feat_migrate_apply(lt_app *app, const char *new_ini);
 
+void lt_feat_logging_register(lt_app_ext *reg);  /* smart recording, sample rate, rec channels, alerts */
+void lt_feat_math_register(lt_app_ext *reg);     /* math channels editor */
+
 #endif

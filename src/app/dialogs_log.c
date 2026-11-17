@@ -8,8 +8,10 @@
 #include <math.h>
 #include "dialogs.h"
 #include "view_kit.h"
+#include "feat_log.h"
 
 #define CH 8
+#define LT_DLG_FD_LOG_EXPORT_MLG (LT_APP_FD_USER0 + 85)
 #define MAX_SEL 8
 #define HN 400              /* live history samples */
 #define MAXPTS 512
@@ -31,6 +33,10 @@ typedef struct log_state {
     char **files; int n_files, file_sel, files_loaded;
     char dir[512];
     char err[160];
+    int show_stats;
+    int rename_on, del_confirm;
+    char rename_buf[128];
+    int n_math;                          /* math channels appended to the loaded log */
 } log_state;
 
 static const char *const speeds[] = { "0.25x", "0.5x", "1x", "2x", "4x", "8x" };
@@ -107,7 +113,8 @@ static void sel_defaults(lt_app *app, log_state *s)
 /* ---- chart ---- */
 static void chart_draw(lt_ui *ui, lt_rect r, int ns, const char *const *names,
                        const char *const *units, double *const *pts, int npts,
-                       const double *cur_vals, double cursor_frac)
+                       const double *cur_vals, double cursor_frac,
+                       const lt_log *mk, double mk_t0, double mk_t1)
 {
     const lt_theme *t = lt_ui_theme(ui);
     int cell = lt_ui_cell_mode(ui);
@@ -157,6 +164,17 @@ static void chart_draw(lt_ui *ui, lt_rect r, int ns, const char *const *names,
             lt_vk_text(ui, lt_rect_make(lx + lt_ui_px(ui, 14) + nw, r.y + lt_ui_px(ui, 4), vw + lt_ui_px(ui, 4), lt_ui_px(ui, 22)), (int)LT_FONT_MONO_MEDIUM, 11.0, vb, col, 0);
             lt_vk_text(ui, lt_rect_make(lx + lt_ui_px(ui, 18) + nw + vw, r.y + lt_ui_px(ui, 4), lt_ui_px(ui, 60), lt_ui_px(ui, 22)), (int)LT_FONT_SANS, 10.0, units[k], t->muted, 0);
             lx += lt_ui_px(ui, 18 + 6 + 16) + nw + vw + lt_vk_text_w(ui, (int)LT_FONT_SANS, 10.0, units[k]);
+        }
+    }
+    if (mk != NULL && mk_t1 > mk_t0) {
+        long m;
+        for (m = 0; m < mk->n_markers; m++) {
+            double f = (mk->markers[m].t - mk_t0) / (mk_t1 - mk_t0);
+            if (f >= 0.0 && f <= 1.0) {
+                int mx = pr.x + (int)(f * (pr.w - 1));
+                lt_ui_draw_vline(ui, mx, pr.y, pr.y + pr.h, 0xFFFFB74DUL);
+                lt_ui_draw_text(ui, mx + 2, pr.y + 1, mk->markers[m].text, 0xFFFFB74DUL);
+            }
         }
     }
     if (cursor_frac >= 0.0 && cursor_frac <= 1.0) {
@@ -214,6 +232,14 @@ static int load_log(lt_app *app, log_state *s, const char *path)
         lt_log_free(&nl);
         return -1;
     }
+    s->n_math = 0;
+    {
+        lt_math_set *ms = lt_logx_math(app);
+        if (ms->n > 0 && lt_log_channel_index(&nl, ms->ch[0].name) < 0) {
+            int before = nl.n_ch;
+            if (lt_math_apply_to_log(ms, &nl) == 0) { s->n_math = nl.n_ch - before; }
+        }
+    }
     if (s->have_log) { lt_log_free(&s->log); }
     s->log = nl;
     s->have_log = 1;
@@ -222,6 +248,52 @@ static int load_log(lt_app *app, log_state *s, const char *path)
     s->cursor_t = 0.0; s->playing = 0; s->err[0] = '\0';
     sel_defaults(app, s);
     return 0;
+}
+
+/* ---- statistics panel (G-62) ---- */
+static int stats_rows(const log_state *s) { return (s->n_sel > 0 ? s->n_sel : 1) + 1; }
+
+static void stats_cell(lt_ui *ui, double v, lt_color col)
+{
+    char b[32];
+    lt_fmt_double(b, sizeof(b), v, 2);
+    lt_ui_label_ex(ui, b, col, LT_UI_ALIGN_RIGHT);
+}
+
+static void stats_draw(lt_app *app, log_state *s, double win_t0, double win_t1)
+{
+    lt_ui *ui = app->ui;
+    const lt_theme *t = lt_ui_theme(ui);
+    static const char *const hd[] = { "Channel", "Mean", "Median", "Std dev", "Min", "Max", "P25", "P75", "IQR" };
+    int w[9], k, c, w1 = -1;
+    for (c = 0; c < 9; c++) { w[c] = c == 0 ? CH * 18 : -1; }
+    lt_ui_layout_row(ui, 9, w, 0);
+    for (c = 0; c < 9; c++) { lt_ui_label_ex(ui, hd[c], t->muted, c == 0 ? LT_UI_ALIGN_LEFT : LT_UI_ALIGN_RIGHT); }
+    for (k = 0; k < s->n_sel; k++) {
+        lt_stats st;
+        int rc;
+        if (s->viewer) {
+            if (s->have_log) {
+                rc = lt_stats_log_channel(&s->log, s->sel_idx[k], find_index(&s->log, win_t0),
+                                          find_index(&s->log, win_t1), &st);
+            } else { rc = -1; }
+        } else {
+            rc = lt_stats_compute(s->hist[k], s->hn, &st);
+        }
+        lt_ui_layout_row(ui, 9, w, 0);
+        lt_ui_label_ex(ui, chan_name(app, s, s->sel_idx[k]), palette[k], LT_UI_ALIGN_LEFT);
+        if (rc != 0) {
+            for (c = 1; c < 9; c++) { lt_ui_label_ex(ui, "-", t->muted, LT_UI_ALIGN_RIGHT); }
+            continue;
+        }
+        stats_cell(ui, st.mean, t->text); stats_cell(ui, st.median, t->text); stats_cell(ui, st.stddev, t->text);
+        stats_cell(ui, st.vmin, t->text); stats_cell(ui, st.vmax, t->text); stats_cell(ui, st.p25, t->text);
+        stats_cell(ui, st.p75, t->text); stats_cell(ui, st.iqr, t->text);
+    }
+    if (s->n_sel == 0) {
+        lt_ui_layout_row(ui, 1, &w1, 0);
+        lt_ui_label_ex(ui, "Tick channels to see statistics", t->muted, LT_UI_ALIGN_LEFT);
+    }
 }
 
 /* ---- main draw ---- */
@@ -257,6 +329,12 @@ static void log_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
     picked = lt_app_file_result(app, LT_DLG_FD_LOG_EXPORT);
     if (picked != NULL && s->viewer && s->have_log) {
         if (lt_csv_write(picked, &s->log) == 0) { lt_app_toast(app, 1, "Exported %s", lt_path_base(picked)); }
+        else { lt_app_toast(app, 3, "Export failed: %s", lt_err_get()); }
+    }
+
+    picked = lt_app_file_result(app, LT_DLG_FD_LOG_EXPORT_MLG);
+    if (picked != NULL && s->viewer && s->have_log) {
+        if (lt_mlg_write(picked, &s->log, NULL) == 0) { lt_app_toast(app, 1, "Exported %s", lt_path_base(picked)); }
         else { lt_app_toast(app, 3, "Export failed: %s", lt_err_get()); }
     }
 
@@ -314,7 +392,40 @@ static void log_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
             lt_snprintf(b, sizeof(b), "Last: %s", lt_path_base(lt_rec_path(app->rec)));
             lt_ui_label_ex(ui, b, t->muted, LT_UI_ALIGN_LEFT);
         }
-        lt_ui_label_wrap(ui, "Recording stores every datalog channel of the definition; the chart "
+        {
+            lt_logx *lx = lt_logx_get(app);
+            double hz = (double)lx->rate_hz;
+            int wr[4], ch;
+            wr[0] = 110; wr[1] = 90; wr[2] = -1;
+            lt_ui_layout_row(ui, 3, wr, 0);
+            lt_ui_label(ui, "Sample rate");
+            if (lt_ui_number(ui, "rate", &hz, 1.0, 200.0, 1.0, 0)) { lx->rate_hz = (int)hz; lt_logx_save(app); }
+            lt_ui_label_ex(ui, "Hz", t->muted, LT_UI_ALIGN_LEFT);
+            wr[0] = -1; wr[1] = -1;
+            lt_ui_layout_row(ui, 2, wr, 0);
+            ch = lx->auto_rec;
+            if (lt_ui_checkbox(ui, "Auto-record", &ch)) { lx->auto_rec = ch; lt_logx_save(app); }
+            if (lx->auto_rec) {
+                char kb[48];
+                lt_snprintf(kb, sizeof(kb), "key [%s]  >= %d rpm, %d s", lx->key.on ? "on" : "off",
+                            lx->key_rpm, lx->key_timeout);
+                lt_ui_label_ex(ui, kb, lx->key.on ? t->success : t->muted, LT_UI_ALIGN_LEFT);
+            } else { lt_ui_label(ui, ""); }
+            wr[0] = -1; wr[1] = -1;
+            lt_ui_layout_row(ui, 2, wr, 0);
+            if (lt_ui_button_ex(ui, "Channels...", recording ? LT_UI_BTN_DISABLED : 0) && !recording) {
+                (void)lt_app_dialog_push(app, "rec-channels", "", "Recording channels");
+            }
+            lt_ui_checkbox(ui, "Stats", &s->show_stats);
+            lt_ui_layout_row(ui, 1, &w1, 0);
+            if (lx->n_off > 0) {
+                char kb[64];
+                lt_snprintf(kb, sizeof(kb), "%lu channel%s excluded from recording", (unsigned long)lx->n_off,
+                            lx->n_off == 1 ? "" : "s");
+                lt_ui_label_ex(ui, kb, t->muted, LT_UI_ALIGN_LEFT);
+            }
+        }
+        lt_ui_label_wrap(ui, "Recording stores the selected datalog channels; the chart "
                          "shows the channels ticked below.", t->muted);
     } else {
         w3[0] = -1; w3[1] = -1;
@@ -330,6 +441,15 @@ static void log_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
             lt_app_file_dialog(app, LT_DLG_FD_LOG_EXPORT, LT_UI_FILE_SAVE, s->dir[0] ? s->dir : NULL, nm,
                                "CSV|*.csv");
         }
+        lt_ui_layout_row(ui, 2, w3, 0);
+        if (lt_ui_button_ex(ui, "Export MLG...", s->have_log ? 0 : LT_UI_BTN_DISABLED) && s->have_log) {
+            char nm[300];
+            lt_snprintf(nm, sizeof(nm), "%s", s->path[0] ? lt_path_base(s->path) : "log.mlg");
+            if (lt_str_ends(nm, ".csv")) { nm[strlen(nm) - 4] = '\0'; lt_strlcpy(nm + strlen(nm), ".mlg", 5); }
+            lt_app_file_dialog(app, LT_DLG_FD_LOG_EXPORT_MLG, LT_UI_FILE_SAVE, s->dir[0] ? s->dir : NULL, nm,
+                               "MegaLogViewer|*.mlg");
+        }
+        lt_ui_checkbox(ui, "Stats", &s->show_stats);
         lt_ui_layout_row(ui, 1, &w1, 0);
         lt_ui_label_ex(ui, "Logs in the project datalogs folder", t->text2, LT_UI_ALIGN_LEFT);
         lt_ui_layout_row(ui, 1, &w1, 16 * 5);
@@ -342,6 +462,52 @@ static void log_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
             }
         } else {
             lt_ui_label_ex(ui, "(none found)", t->muted, LT_UI_ALIGN_LEFT);
+        }
+        if (s->n_files > 0 && s->file_sel >= 0 && s->file_sel < s->n_files) {
+            if (s->rename_on) {
+                int wr[2];
+                wr[0] = -1; wr[1] = CH * 10;
+                lt_ui_layout_row(ui, 2, wr, 0);
+                lt_ui_text(ui, "rn", s->rename_buf, sizeof(s->rename_buf), 0);
+                if (lt_ui_button_ex(ui, "Apply", LT_UI_BTN_PRIMARY)) {
+                    char *from = lt_path_join(s->dir, s->files[s->file_sel]);
+                    char nm[160], *to;
+                    lt_strlcpy(nm, s->rename_buf, sizeof(nm));
+                    if (lt_log_format_from_ext(nm) == LT_FMT_NONE) {
+                        const char *ext = lt_path_ext(s->files[s->file_sel]);
+                        lt_strlcpy(nm + strlen(nm), ext != NULL ? ext : ".mlg", sizeof(nm) - strlen(nm));
+                    }
+                    to = lt_path_join(s->dir, nm);
+                    if (nm[0] == '\0' || lt_file_exists(to)) { lt_app_toast(app, 2, "Cannot rename to %s", nm); }
+                    else if (lt_plat_rename(from, to) == 0) {
+                        if (strcmp(s->path, from) == 0) { lt_strlcpy(s->path, to, sizeof(s->path)); }
+                        lt_app_toast(app, 1, "Renamed to %s", nm);
+                        s->rename_on = 0;
+                        files_scan(app, s);
+                    } else { lt_app_toast(app, 3, "Rename failed: %s", lt_err_get()); }
+                    lt_free(from); lt_free(to);
+                }
+            } else {
+                int wr[2];
+                wr[0] = -1; wr[1] = -1;
+                lt_ui_layout_row(ui, 2, wr, 0);
+                if (lt_ui_button(ui, "Rename")) {
+                    lt_strlcpy(s->rename_buf, s->files[s->file_sel], sizeof(s->rename_buf));
+                    s->rename_on = 1; s->del_confirm = 0;
+                }
+                if (lt_ui_button_ex(ui, s->del_confirm == s->file_sel + 1 ? "Click again to delete" : "Delete", LT_UI_BTN_DANGER)) {
+                    if (s->del_confirm != s->file_sel + 1) { s->del_confirm = s->file_sel + 1; }
+                    else {
+                        char *p = lt_path_join(s->dir, s->files[s->file_sel]);
+                        if (lt_plat_remove(p) == 0) { lt_app_toast(app, 0, "Deleted %s", s->files[s->file_sel]); }
+                        else { lt_app_toast(app, 3, "Delete failed: %s", lt_err_get()); }
+                        lt_free(p);
+                        s->del_confirm = 0;
+                        files_scan(app, s);
+                        if (s->file_sel >= s->n_files) { s->file_sel = s->n_files - 1; }
+                    }
+                }
+            }
         }
         lt_ui_layout_row(ui, 1, &w1, 0);
         if (s->err[0] != '\0') { lt_ui_label_wrap(ui, s->err, t->error); }
@@ -415,7 +581,7 @@ static void log_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
         lt_ui_label_ex(ui, "Live view: about the last 20 seconds, each trace scaled to its own range.",
                        t->muted, LT_UI_ALIGN_LEFT);
     }
-    lt_ui_layout_row(ui, 1, &w1, -1);
+    lt_ui_layout_row(ui, 1, &w1, s->show_stats ? -(stats_rows(s) * (lt_ui_cell_mode(ui) ? 16 : 30) + 12) : -1);
     {
         lt_rect cr = lt_ui_layout_next(ui);
         double *store = (double *)lt_calloc((size_t)(MAX_SEL * MAXPTS), sizeof(double));
@@ -462,10 +628,13 @@ static void log_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
                 }
             }
         } else { ok = 0; }
-        if (ok) { chart_draw(ui, cr, s->n_sel, names, units, pts, npts, curv, cursor_frac); }
-        else { chart_draw(ui, cr, 0, names, units, pts, 0, curv, -1.0); }
+        if (ok) {
+            chart_draw(ui, cr, s->n_sel, names, units, pts, npts, curv, cursor_frac,
+                       s->viewer && s->have_log ? &s->log : NULL, win_t0, win_t1);
+        } else { chart_draw(ui, cr, 0, names, units, pts, 0, curv, -1.0, NULL, 0.0, 1.0); }
         lt_free(store);
     }
+    if (s->show_stats) { stats_draw(app, s, win_t0, win_t1); }
     lt_ui_layout_column_end(ui);
 }
 
