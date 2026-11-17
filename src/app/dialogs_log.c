@@ -272,6 +272,7 @@ static void stats_draw(lt_app *app, log_state *s, double win_t0, double win_t1)
     for (k = 0; k < s->n_sel; k++) {
         lt_stats st;
         int rc;
+        memset(&st, 0, sizeof(st));
         if (s->viewer) {
             if (s->have_log) {
                 rc = lt_stats_log_channel(&s->log, s->sel_idx[k], find_index(&s->log, win_t0),
