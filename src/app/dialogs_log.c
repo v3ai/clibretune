@@ -452,7 +452,7 @@ static void log_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
             }
             cursor_frac = (s->cursor_t - win_t0) / (win_t1 - win_t0);
             /* click / drag on the chart scrubs */
-            if (lt_ui_mouse_down(ui, 0) && !lt_ui_popup_open(ui)) {
+            if (lt_ui_mouse_down(ui, LT_MB_LEFT) && !lt_ui_popup_open(ui)) {
                 lt_point m = lt_ui_mouse(ui);
                 if (m.x >= cr.x && m.x < cr.x + cr.w && m.y >= cr.y && m.y < cr.y + cr.h) {
                     double f = (double)(m.x - cr.x - 4) / (double)(cr.w - 8);
