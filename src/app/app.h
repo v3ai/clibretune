@@ -94,6 +94,8 @@ typedef struct lt_app_settings {
     char heatmap[16];
     int  temp_unit, press_unit, afr_unit;   /* 0 C/kPa/AFR, 1 F/psi/lambda, 2 -/bar/- */
     int  poll_hz;           /* realtime poll rate 5..100 */
+    int  reconnect_cmd;     /* reconnect after controller commands (default 1) */
+    int  reconnect_fw;      /* reconnect after a firmware update (default 1) */
 } lt_app_settings;
 
 struct lt_app {

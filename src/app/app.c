@@ -45,6 +45,8 @@ static void settings_defaults(lt_app_settings *s)
     s->baud = 115200;
     lt_strlcpy(s->heatmap, "tunerstudio", sizeof(s->heatmap));
     s->poll_hz = 20;
+    s->reconnect_cmd = 1;
+    s->reconnect_fw = 1;
 }
 
 static char *settings_path(lt_app *app)
@@ -90,6 +92,8 @@ void lt_app_settings_load(lt_app *app)
         lt_props_get_i32(&p, "press_unit", &s->press_unit);
         lt_props_get_i32(&p, "afr_unit", &s->afr_unit);
         lt_props_get_i32(&p, "poll_hz", &s->poll_hz);
+        lt_props_get_i32(&p, "reconnect_cmd", &s->reconnect_cmd);
+        lt_props_get_i32(&p, "reconnect_fw", &s->reconnect_fw);
         v = lt_props_get(&p, "backend");
         if (v != NULL) { lt_strlcpy(s->backend, v, sizeof(s->backend)); }
         v = lt_props_get(&p, "last_project");
@@ -149,6 +153,8 @@ void lt_app_settings_save(lt_app *app)
     lt_snprintf(num, sizeof(num), "%d", s->press_unit); lt_props_set(&p, "press_unit", num);
     lt_snprintf(num, sizeof(num), "%d", s->afr_unit); lt_props_set(&p, "afr_unit", num);
     lt_snprintf(num, sizeof(num), "%d", s->poll_hz); lt_props_set(&p, "poll_hz", num);
+    lt_snprintf(num, sizeof(num), "%d", s->reconnect_cmd); lt_props_set(&p, "reconnect_cmd", num);
+    lt_snprintf(num, sizeof(num), "%d", s->reconnect_fw); lt_props_set(&p, "reconnect_fw", num);
     lt_props_set(&p, "backend", s->backend);
     lt_props_set(&p, "last_project", s->last_project);
     lt_props_set(&p, "port", s->port);
@@ -528,7 +534,8 @@ static int connect_io(lt_app *app, const lt_proto_io *io, const char *port, long
         return rc;
     }
     lt_strlcpy(app->signature, lt_proto_signature(app->proto), sizeof(app->signature));
-    if (app->tune != NULL) { lt_tune_from_mem(app->tune, app->mem); }
+    /* with a project the on-connect hook (feat_sync.c) decides which tune wins */
+    if (app->tune != NULL && !app->has_project) { lt_tune_from_mem(app->tune, app->mem); }
     app->last_poll_ms = 0.0;
     app->rate_t0_ms = lt_plat_now_ms();
     app->rate_frames = 0;
@@ -549,6 +556,7 @@ int lt_app_connect_demo(lt_app *app)
     app->conn = LT_APP_DEMO;
     rebind(app);
     lt_app_toast(app, 1, "Demo mode: simulated ECU connected");
+    lt_ext_on_connect(app);
     return 0;
 }
 
@@ -580,6 +588,7 @@ int lt_app_connect_serial(lt_app *app, const char *port, long baud)
     lt_app_settings_save(app);
     rebind(app);
     lt_app_toast(app, 1, "Connected to %s", port);
+    lt_ext_on_connect(app);
     return 0;
 }
 
@@ -639,6 +648,7 @@ int lt_app_service(lt_app *app)
     if (rc < 0) {
         app->frames_bad++;
         if (lt_proto_state(app->proto) != LT_CONN_CONNECTED) {
+            lt_ext_on_link_lost(app);
             lt_app_disconnect(app);
             lt_app_toast(app, 3, "ECU connection lost");
         }

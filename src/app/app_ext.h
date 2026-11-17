@@ -52,6 +52,12 @@ void lt_ext_add_tick(lt_app_ext *reg, lt_ext_draw_fn fn);
 /* called every frame while dialogs are drawn: draw your own modal (lt_ui_msgbox,
  * lt_ui_modal_begin) guarded by a flag kept in your state block */
 void lt_ext_add_overlay(lt_app_ext *reg, lt_ext_draw_fn fn);
+/* called once after a successful connect (serial, TCP or demo), when the ECU pages are read and
+ * the app is online; use it for the signature check, the tune sync choice, auto actions */
+void lt_ext_add_on_connect(lt_app_ext *reg, lt_ext_draw_fn fn);
+/* called when the link drops unexpectedly, just BEFORE the app disconnects (app->conn is still
+ * online, app->settings.port holds the port) */
+void lt_ext_add_on_link_lost(lt_app_ext *reg, lt_ext_draw_fn fn);
 /* convenience wrappers over lt_app_register_dialog_kind / _tab_kind */
 void lt_ext_add_dialog_kind(lt_app_ext *reg, const lt_app_dialog_kind *k);
 void lt_ext_add_tab_kind(lt_app_ext *reg, const lt_app_tab_kind *k);
@@ -75,6 +81,8 @@ const char *lt_ext_menu_item_label(const lt_app *app, int menu, int idx);
 int  lt_ext_menu_draw(lt_app *app, int menu, int lead_sep);
 void lt_ext_shortcuts(lt_app *app);
 void lt_ext_tick(lt_app *app);
+void lt_ext_on_connect(lt_app *app);
+void lt_ext_on_link_lost(lt_app *app);
 void lt_ext_overlays(lt_app *app);
 int  lt_ext_n_settings_pages(const lt_app *app);
 const char *lt_ext_settings_title(const lt_app *app, int idx);
