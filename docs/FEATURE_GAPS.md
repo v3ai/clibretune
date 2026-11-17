@@ -607,6 +607,7 @@ Orig = path under `ref/LibreTune/crates/`. `app/` = `libretune-app/src/component
   limits). The original exposes no tune/ECU API to the console.
 - Orig: `core/lua/mod.rs` (mlua), `cmd/lua.rs`, `app/console/LuaConsole.tsx`, `docs/src/features/lua-scripting.md`.
 - Approach: section 14.
+- Status update: DONE: own Lua 5.x subset interpreter in `src/script/` (lexer, parser to AST, tree-walking evaluator; nil/boolean/number(double)/string/table/function, closures, varargs, multiple assignment, numeric and generic for, metatables `__index/__newindex/__call/__tostring/__add../__eq/__lt/__le/__len/__concat`; string library incl. `format`, `find/match/gmatch/gsub` with Lua patterns, `math`, `table` (`insert/remove/concat/sort/unpack/pack`), `pcall/xpcall/error/assert`). Limits per run: 3M steps (uncatchable), 32 MB counted allocation (no collector, budget bounds the run), 150 call levels, 100 syntax levels, 1 MB output; errors carry `chunk:line:`. Not supported: goto, integer/float split, bitwise operators, coroutines, os/io/require/load. Tools > Lua Console (`feat_lua.c`, tab with highlighted multi-line editor, Run Ctrl+Enter/F5, output pane, examples; script persisted in the config dir). Beyond the original (which exposes no tune/ECU API) two read-only helpers: `channel(name)` and `constant(name)`. New toolkit widget `lt_ui_text_multi` (`src/gui/ui_multi.c`). Tests: `tests/test_script.c` (semantics, errors, limits, fuzz), `test_script_ui.c`, `test_script_app.c`.
 
 ### G-121 ECU Lua editor (rusEFI)
 - Status: MISSING | Priority: P2 | Effort: S
@@ -614,6 +615,7 @@ Orig = path under `ref/LibreTune/crates/`. `app/` = `libretune-app/src/component
   runs on the ECU).
 - Orig: `app/console/LuaConsole.tsx` (lines ~91-95: `update_constant_string`, `burn_to_ecu`); shown when the INI has `lua_script_constant`.
 - Ours: `src/app/dlg_lua_ecu.c`; needs a multi-line text widget (check `lt_ui_text_multi` availability in `ui.h`, else M).
+- Status update: DONE: Tools > ECU Lua Editor and INI target `lua-console` (`dlg_lua_ecu.c`), shown when the INI has a `luaScript` string constant: loads it from the ECU or the tune file, syntax highlighting, Check Syntax (our parser), Apply to Tune, Upload + Burn + Reset (write constant, burn, `luareset`), Run Snippet (`lua <code>` console command), `luareset`/`luamemory`/`help` buttons, console output pane, byte counter against the constant size. Import/export of `.lua` files is not provided (copy/paste works).
 
 ### G-122 WASM plugin system
 - Status: MISSING | Priority: P2 | Effort: XL

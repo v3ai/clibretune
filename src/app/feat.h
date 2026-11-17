@@ -84,4 +84,7 @@ int  lt_feat_prefs_session_record(lt_app *app);
 void lt_feat_prefs_project_opened(lt_app *app);   /* a project was (re)opened: restore its tabs */
 void lt_feat_statusbar_defaults(lt_prefs *p, char *const *names, size_t n);
 
+/* Lua console (G-120) and the rusEFI ECU script editor (G-121) */
+void lt_feat_lua_register(lt_app_ext *reg);
+
 #endif

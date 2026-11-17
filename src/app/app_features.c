@@ -29,4 +29,5 @@ void lt_app_features_register(lt_app_ext *reg)
     lt_feat_connset_register(reg);
     lt_feat_prefs_register(reg);
     lt_feat_afrdelay_register(reg);
+    lt_feat_lua_register(reg);
 }

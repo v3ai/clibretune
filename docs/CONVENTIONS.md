@@ -82,6 +82,7 @@ src/tune/     .msq XML, .table files, diff, migration (src/xml/ minimal XML)
 src/dash/     .dash/.gauge parse+write, templates
 src/datalog/  MLG/CSV read/write, recorder, playback
 src/autotune/ VE analyze
+src/script/   Lua 5.x subset interpreter (console, ECU script editor)
 src/sim/      demo ECU simulator
 src/basemap/  base map generator
 src/tableops/ table operations, lookups, unit conversion
