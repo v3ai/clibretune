@@ -11,4 +11,7 @@ void lt_app_features_register(lt_app_ext *reg)
     lt_feat_calib_register(reg);
     lt_feat_sync_register(reg);
     lt_feat_reconnect_register(reg);
+    lt_feat_inilib_register(reg);
+    lt_feat_migrate_register(reg);
+    lt_feat_tunediff_register(reg);
 }
