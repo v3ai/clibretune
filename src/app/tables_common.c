@@ -90,7 +90,7 @@ lt_bool lt_tabs_live_index(lt_app *app, const char *channel, const double *bins,
     double v;
     if (channel == NULL || channel[0] == '\0' || n == 0 || app->rt == NULL) { return LT_FALSE; }
     if (app->conn != LT_APP_ONLINE && app->conn != LT_APP_DEMO) { return LT_FALSE; }
-    if (!lt_app_channel(app, channel, &v)) { return LT_FALSE; }
+    if (!lt_app_channel_disp(app, channel, &v, NULL)) { return LT_FALSE; }
     if (value != NULL) { *value = v; }
     *idx = lt_tbl_nearest(bins, n, v);
     return LT_TRUE;

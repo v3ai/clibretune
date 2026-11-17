@@ -59,7 +59,6 @@ Ctrl+R/D fill, Ctrl+Z/Y undo/redo, `f` follow, `g` go to live cell. AutoTune: Sp
 - Signature-mismatch / tune-mismatch prompts on connect: ECU data simply replaces the tune.
 - Table editor 3D view: no zoom/pan; no table compare or resize. Curve points drag vertically only.
 - Dashboard designer: no undo, copy/paste or layers; click actions, background images and embedded fonts unsupported.
-- Unit settings are stored but not yet applied to displayed values.
 - Tooth/composite logger tabs and the port editor are placeholders.
 - AutoTune apply/replay paths are lightly tested; the demo AFR target table is all zeros (fill it first).
 - Burn button in the status bar is slightly clipped at the bottom edge.

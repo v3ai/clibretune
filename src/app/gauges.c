@@ -220,6 +220,19 @@ static void upper(char *s)
     for (; *s; s++) { if (*s >= 'a' && *s <= 'z') { *s = (char)(*s - 32); } }
 }
 
+/* digits to show: the gauge's own plus the extra a finer display unit needs (kPa -> psi) */
+static int vdig(const gp *p)
+{
+    return p->c->value_digits + (p->s != NULL ? p->s->unit_digits : 0);
+}
+
+/* units label: the preferred unit when the gauge units are converted (G-90) */
+static void gauge_units(const gp *p, char *buf, size_t cap)
+{
+    if (p->s != NULL && p->s->unit_label != NULL) { lt_snprintf(buf, cap, "%s", p->s->unit_label); return; }
+    resolve_text(p->c->units, buf, cap);
+}
+
 static void init_ctx(gp *p, lt_gfx *g, lt_rect r, const lt_dash_gauge *c, const lt_dash_gstate *s,
                      double now)
 {
@@ -269,8 +282,8 @@ static void paint_readout(gp *p)
     p_vgrad(p, P + 1, P + 1, p->W - 2 * P - 2, (p->H - 2 * P) * 0.5,
             alpha(lighten(p->bc, 22), 150), alpha(p->bc, 0));
     resolve_text(p->c->title, t, sizeof t);
-    resolve_text(p->c->units, u, sizeof u);
-    fmt_val(p, p->v, p->c->value_digits, buf, sizeof buf);
+    gauge_units(p, u, sizeof u);
+    fmt_val(p, p->v, vdig(p), buf, sizeof buf);
     if (p->H < 40.0 || p->H < p->W * 0.4) {
         /* compact: title left, value right */
         double vh = LT_MIN(p->H - 2 * P - 2, vs);
@@ -292,8 +305,8 @@ static void bar_head(gp *p, double h)
 {
     char t[96], u[48], v[64], buf[160];
     resolve_text(p->c->title, t, sizeof t);
-    resolve_text(p->c->units, u, sizeof u);
-    fmt_val(p, p->v, p->c->value_digits, v, sizeof v);
+    gauge_units(p, u, sizeof u);
+    fmt_val(p, p->v, vdig(p), v, sizeof v);
     lt_snprintf(buf, sizeof buf, "%s%s%s", v, u[0] ? " " : "", u);
     {
         double vw = p_val(p, p->W - 6, 3 + h * 0.55, buf, h, 2, 1, p->vc, p->W * 0.55);
@@ -362,7 +375,7 @@ static void paint_vbar(gp *p)
             p_text(p, barX + barW + 8, y, tk, LT_MAX(7.0, p->H * 0.055), 0, 0, p->tc, 0);
         }
     }
-    fmt_val(p, p->v, p->c->value_digits, v, sizeof v);
+    fmt_val(p, p->v, vdig(p), v, sizeof v);
     p_val(p, p->W / 2, p->H - labelH * 0.8, v, LT_MAX(10.0, labelH * 0.85), 1, 1, p->vc, p->W - 6);
 }
 
@@ -395,7 +408,7 @@ static void paint_dashed(gp *p, int vertical)
     p_vgrad(p, 0, 0, p->W, p->H, darken(p->bc, 5), lighten(p->bc, 6));
     lt_gfx_rect(p->g, p->r, alpha(p->tc, 80));
     resolve_text(p->c->title, t, sizeof t);
-    fmt_val(p, p->v, p->c->value_digits, v, sizeof v);
+    fmt_val(p, p->v, vdig(p), v, sizeof v);
     p_text(p, p->W / 2, 3 + th * 0.6, t, th, 1, 1, p->tc, p->W - 8);
     filled = (int)ceil(pc * N - 1e-9);
     if (!vertical) {
@@ -464,7 +477,7 @@ static void paint_histogram(gp *p)
         p_vgrad(p, P + i * (bw + 2), gy + gh - h, bw, h, lighten(c, 25), darken(c, 15));
     }
     p_line(p, P + gw * pc, gy, P + gw * pc, gy + gh, 1.5, LT_RGB(255, 255, 255));
-    fmt_val(p, p->v, p->c->value_digits, v, sizeof v);
+    fmt_val(p, p->v, vdig(p), v, sizeof v);
     p_val(p, p->W / 2, p->H - valueH * 0.5 - 4, v, LT_MAX(10.0, valueH * 0.9), 1, 1, p->vc, p->W - 8);
 }
 
@@ -479,8 +492,8 @@ static void paint_linegraph(gp *p)
     lt_color lc = p->s->zone >= 2 ? p->cc : (p->s->zone == 1 ? p->wc : p->fc);
     p_vgrad(p, 0, 0, p->W, p->H, lighten(p->bc, 5), darken(p->bc, 10));
     draw_title(p, P, 3 + titleH * 0.5, LT_MAX(9.0, titleH * 0.8), 0, p->W * 0.5);
-    resolve_text(p->c->units, u, sizeof u);
-    fmt_val(p, p->v, p->c->value_digits, v, sizeof v);
+    gauge_units(p, u, sizeof u);
+    fmt_val(p, p->v, vdig(p), v, sizeof v);
     lt_snprintf(buf, sizeof buf, "%s%s%s", v, u[0] ? " " : "", u);
     p_val(p, p->W - P, 3 + titleH * 0.5, buf, LT_MAX(10.0, titleH * 0.9), 2, 1, p->vc, p->W * 0.5);
     if (gh < 8 || gw < 8) { return; }
@@ -520,7 +533,7 @@ static void paint_linegraph(gp *p)
     {
         char a[24], b[24];
         double lh = LT_MAX(7.0, p->H * 0.08);
-        fmt_val(p, p->mx, p->c->value_digits, a, sizeof a); fmt_val(p, p->mn, p->c->value_digits, b, sizeof b);
+        fmt_val(p, p->mx, vdig(p), a, sizeof a); fmt_val(p, p->mn, vdig(p), b, sizeof b);
         p_text(p, P + 3, gy + lh * 0.8, a, lh, 0, 0, alpha(p->tc, 200), 0);
         p_text(p, P + 3, gy + gh - lh * 0.8, b, lh, 0, 0, alpha(p->tc, 200), 0);
     }
@@ -578,7 +591,7 @@ static void paint_multitrend(gp *p)
             e = lt_dash_extras_get(&p->c->extras, key);
             if (e != NULL && e[0]) { lab = e; }
             p_disc(p, lx + 4, ly, 3, col);
-            lt_snprintf(t, sizeof t, "%s %.*f", lab, p->c->value_digits, p->s->series_latest[s]);
+            lt_snprintf(t, sizeof t, "%s %.*f", lab, vdig(p), p->s->series_latest[s]);
             p_text(p, lx + 11, ly, t, LT_MAX(7.0, rowH * 0.8), 0, 0, p->tc,
                    (p->W - 12) / cols - 14);
         }
@@ -690,8 +703,8 @@ static void paint_dial(gp *p)
     }
     /* texts */
     resolve_text(p->c->title, t, sizeof t);
-    resolve_text(p->c->units, u, sizeof u);
-    fmt_val(p, p->v, p->c->value_digits, buf, sizeof buf);
+    gauge_units(p, u, sizeof u);
+    fmt_val(p, p->v, vdig(p), buf, sizeof buf);
     if (u[0]) { lt_snprintf(buf + strlen(buf), sizeof buf - strlen(buf), " %s", u); }
     {
         double tx, ty, vx, vy, vh = LT_MAX(11.0, faceR * 0.17), bw;
@@ -783,8 +796,8 @@ static void paint_sweep(gp *p)
         p_disc(p, tipx, tipy, arcW * 0.48, lighten(lc, 50));
         p_disc(p, tipx, tipy, arcW * 0.28, LT_RGB(255, 255, 255));
     }
-    resolve_text(p->c->title, t, sizeof t); resolve_text(p->c->units, u, sizeof u);
-    fmt_val(p, p->v, p->c->value_digits, buf, sizeof buf);
+    resolve_text(p->c->title, t, sizeof t); gauge_units(p, u, sizeof u);
+    fmt_val(p, p->v, vdig(p), buf, sizeof buf);
     p_val(p, cx, cy + radius * 0.08, buf, LT_MAX(14.0, radius * 0.42), 1, 1, p->vc, radius * 1.3);
     p_text(p, cx, cy + radius * 0.42, u, LT_MAX(8.0, radius * 0.14), 1, 0, p->tc, radius * 1.2);
     p_text(p, cx, LT_MAX(9.0, p->H * 0.08), t, LT_MAX(9.0, p->H * 0.11), 1, 1, p->tc, p->W - 10);
@@ -834,7 +847,7 @@ static void paint_tach(gp *p)
     }
     resolve_text(p->c->title, t, sizeof t);
     p_text(p, cx, cy + radius * 0.30, t, LT_MAX(8.0, radius * 0.11), 1, 1, p->tc, radius);
-    fmt_val(p, p->v, p->c->value_digits, buf, sizeof buf);
+    fmt_val(p, p->v, vdig(p), buf, sizeof buf);
     p_round(p, cx - radius * 0.34, cy + radius * 0.42, radius * 0.68, radius * 0.24, 4, LT_RGB(0, 0, 0));
     p_val(p, cx, cy + radius * 0.54, buf, LT_MAX(10.0, radius * 0.17), 1, 1, p->vc, radius * 0.6);
     pc = clamp01((p->v - p->mn) / range);
@@ -894,8 +907,8 @@ static void paint_round(gp *p, int dashed)
             p_sector(p, cx, cy, radius * 0.55, radius * 0.85, a0, a1, col);
         }
     }
-    resolve_text(p->c->title, t, sizeof t); resolve_text(p->c->units, u, sizeof u);
-    fmt_val(p, p->v, p->c->value_digits, buf, sizeof buf);
+    resolve_text(p->c->title, t, sizeof t); gauge_units(p, u, sizeof u);
+    fmt_val(p, p->v, vdig(p), buf, sizeof buf);
     p_val(p, cx, cy, buf, LT_MAX(12.0, radius * 0.30), 1, 1, p->vc, radius * 1.0);
     p_text(p, cx, cy + radius * 0.30, u, LT_MAX(8.0, radius * 0.13), 1, 0, p->tc, radius);
     p_text(p, cx, cy - radius * 0.36, t, LT_MAX(8.0, radius * 0.12), 1, 1, p->tc, radius * 0.8);
@@ -923,7 +936,7 @@ static void paint_analog_bar(gp *p)
                cx + cos(a) * (radius - barW * 0.55), cy + sin(a) * (radius - barW * 0.55), i % 5 ? 1.0 : 2.0, p->tc);
     }
     resolve_text(p->c->title, t, sizeof t);
-    fmt_val(p, p->v, p->c->value_digits, buf, sizeof buf);
+    fmt_val(p, p->v, vdig(p), buf, sizeof buf);
     p_val(p, cx, cy - radius * 0.28, buf, LT_MAX(12.0, radius * 0.30), 1, 1, p->vc, radius * 1.1);
     p_text(p, cx, cy - radius * 0.02, t, LT_MAX(8.0, radius * 0.12), 1, 1, p->tc, radius * 1.4);
 }
@@ -955,7 +968,7 @@ static void paint_moving_bar(gp *p)
         p_disc(p, cx, cy, radius * 0.06, p->tc);
     }
     resolve_text(p->c->title, t, sizeof t);
-    fmt_val(p, p->v, p->c->value_digits, buf, sizeof buf);
+    fmt_val(p, p->v, vdig(p), buf, sizeof buf);
     p_val(p, cx, cy - radius * 0.25, buf, LT_MAX(12.0, radius * 0.26), 1, 1, p->vc, radius);
     p_text(p, cx, LT_MAX(9.0, p->H * 0.07), t, LT_MAX(9.0, p->H * 0.1), 1, 1, p->tc, p->W - 10);
 }
@@ -980,7 +993,7 @@ static void paint_fuel(gp *p)
     }
     p_text(p, cx + cos(a0 + 0.05 * LT_PI) * radius * 0.52, cy + sin(a0 + 0.05 * LT_PI) * radius * 0.52 + 2, "E", LT_MAX(9.0, radius * 0.15), 1, 1, LT_RGB(255, 255, 255), 0);
     p_text(p, cx + cos(a0 + sw - 0.05 * LT_PI) * radius * 0.52, cy + sin(a0 + sw - 0.05 * LT_PI) * radius * 0.52 + 2, "F", LT_MAX(9.0, radius * 0.15), 1, 1, LT_RGB(255, 255, 255), 0);
-    fmt_val(p, p->v, p->c->value_digits, buf, sizeof buf);
+    fmt_val(p, p->v, vdig(p), buf, sizeof buf);
     resolve_text(p->c->title, t, sizeof t);
     p_val(p, cx, cy + radius * 0.05, buf, LT_MAX(11.0, radius * 0.24), 1, 1, p->vc, radius);
     p_text(p, cx, cy + radius * 0.50, t, LT_MAX(8.0, radius * 0.11), 1, 1, p->tc, radius * 0.6);
@@ -997,8 +1010,8 @@ static void paint_stat(gp *p)
     p_round(p, 0, 0, p->W, p->H, corner, p->bc);
     p_vgrad(p, 1, 1, p->W - 2, p->H - 2, p->bc, darken(p->bc, 8));
     resolve_text(p->c->title, t, sizeof t); upper(t);
-    resolve_text(p->c->units, u, sizeof u);
-    fmt_val(p, p->v, p->c->value_digits, buf, sizeof buf);
+    gauge_units(p, u, sizeof u);
+    fmt_val(p, p->v, vdig(p), buf, sizeof buf);
     cx0 = accW + P * (compact ? 0.4 : 0.6);
     if (compact) {
         if (u[0]) { lt_snprintf(buf + strlen(buf), sizeof buf - strlen(buf), " %s", u); }
@@ -1028,17 +1041,17 @@ static void paint_cells(gp *p)
 {
     char t[96], u[48], val[64], mn[32], mx[32];
     lt_gauge_cell gc;
-    resolve_text(p->c->title, t, sizeof t); resolve_text(p->c->units, u, sizeof u);
-    fmt_val(p, p->v, p->c->value_digits, val, sizeof val);
-    fmt_val(p, p->mn, p->c->value_digits, mn, sizeof mn);
-    fmt_val(p, p->mx, p->c->value_digits, mx, sizeof mx);
+    resolve_text(p->c->title, t, sizeof t); gauge_units(p, u, sizeof u);
+    fmt_val(p, p->v, vdig(p), val, sizeof val);
+    fmt_val(p, p->mn, vdig(p), mn, sizeof mn);
+    fmt_val(p, p->mx, vdig(p), mx, sizeof mx);
     memset(&gc, 0, sizeof gc);
     gc.key = p->c; gc.title = t; gc.units = u; gc.value_text = val; gc.min_text = mn; gc.max_text = mx;
     gc.value = p->v; gc.frac = clamp01(pct_of(p, p->v)); gc.lo = p->mn; gc.hi = p->mx; gc.now_ms = p->now;
     gc.zone = p->s->zone;
     gc.back = p->bc; gc.title_fg = p->tc; gc.value_fg = p->vc; gc.bar = level_color(p);
     gc.warn = p->wc; gc.crit = p->cc; gc.base = p->nc;
-    gc.digits = p->c->value_digits < 0 ? 0 : (p->c->value_digits > 4 ? 4 : p->c->value_digits);
+    gc.digits = vdig(p) < 0 ? 0 : (vdig(p) > 4 ? 4 : vdig(p));
     gc.zone_at[0] = p->s->lim.has_lw ? clamp01(pct_of(p, p->s->lim.lw)) : -1.0;
     gc.zone_at[1] = p->s->lim.has_hw ? clamp01(pct_of(p, p->s->lim.hw)) : -1.0;
     gc.zone_at[2] = p->s->lim.has_lc ? clamp01(pct_of(p, p->s->lim.lc)) : -1.0;

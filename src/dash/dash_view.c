@@ -7,6 +7,7 @@
 #include <math.h>
 #include <string.h>
 #include "dash_priv.h"
+#include "../tableops/tableops.h"
 
 /* ================================================================== */
 /* pure helpers                                                         */
@@ -392,6 +393,7 @@ static void update_gauge(lt_dash_view *v, lt_dash_gstate *s, const lt_dash_gauge
 {
     double raw, target, dt;
     lt_bool first = !s->has_value;
+    lt_uconv uc;
     int k;
 
     lt_dash_limits_from_gauge(g, &s->lim);
@@ -415,6 +417,25 @@ static void update_gauge(lt_dash_view *v, lt_dash_gstate *s, const lt_dash_gauge
     }
 
     if (!get_var(env, g->output_channel, &raw)) raw = g->value;   /* unknown channel: demo value */
+    /* unit preferences: gauge units "C"/"kPa"/"AFR"... are shown in the preferred unit */
+    lt_uconv_make(&uc, g->units);
+    if (uc.kind != s->unit_kind || (uc.kind != LT_UK_NONE && uc.dst != s->unit_dst)) {
+        s->has_value = LT_FALSE;     /* smoothed/peak values are in the old unit */
+        first = LT_TRUE;
+        s->unit_kind = uc.kind;
+        s->unit_dst = uc.dst;
+    }
+    s->unit_digits = lt_uconv_digits(&uc, 0);
+    s->unit_label = lt_uconv_active(&uc) ? lt_unit_name(uc.kind, uc.dst) : NULL;
+    if (lt_uconv_active(&uc)) {
+        raw = lt_uconv_to_disp(&uc, raw);
+        s->lim.min = lt_uconv_to_disp(&uc, s->lim.min);
+        s->lim.max = lt_uconv_to_disp(&uc, s->lim.max);
+        s->lim.lw = lt_uconv_to_disp(&uc, s->lim.lw);
+        s->lim.hw = lt_uconv_to_disp(&uc, s->lim.hw);
+        s->lim.lc = lt_uconv_to_disp(&uc, s->lim.lc);
+        s->lim.hc = lt_uconv_to_disp(&uc, s->lim.hc);
+    }
     s->raw = raw;
     target = raw;
     if (g->peg_limits && s->lim.max > s->lim.min) target = LT_CLAMP(target, s->lim.min, s->lim.max);

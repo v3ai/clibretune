@@ -237,22 +237,29 @@ static void value_widget(lt_app *app, ini_state *st, const lt_ini_const *c, int 
     }
     {
         double lo = c->min, hi = c->max;
-        int fl;
+        int fl, dg;
+        lt_uconv uc;
+        lt_uconv_make(&uc, c->units);          /* shown and typed in the preferred unit (G-90) */
         if (!(hi > lo)) { lo = -1e12; hi = 1e12; }
+        else { lt_uconv_range(&uc, &lo, &hi); }
+        dg = lt_uconv_digits(&uc, c->digits);
+        v = lt_uconv_to_disp(&uc, v);
         lt_ui_disabled_begin(ui, readonly);
-        fl = lt_ui_number(ui, c->name, &v, lo, hi, step_for(c->digits), c->digits);
+        fl = lt_ui_number(ui, c->name, &v, lo, hi, step_for(dg), dg);
         lt_ui_disabled_end(ui);
-        if ((fl & LT_UI_CHANGED) && !readonly) { val_set(app, c, v); }
+        if ((fl & LT_UI_CHANGED) && !readonly) { val_set(app, c, lt_uconv_from_disp(&uc, v)); }
     }
 }
 
 static void units_cell(lt_app *app, const lt_ini_const *c, int has_cell)
 {
     char buf[48];
+    const char *u;
+    lt_uconv uc;
     if (!has_cell) { return; }
-    lt_ui_label_ex(app->ui, c != NULL && c->units != NULL ?
-                   label_text(app, c->units, buf, sizeof(buf)) : "",
-                   lt_ui_theme(app->ui)->muted, LT_UI_ALIGN_LEFT);
+    u = c != NULL && c->units != NULL ? label_text(app, c->units, buf, sizeof(buf)) : "";
+    if (c != NULL) { lt_uconv_make(&uc, c->units); u = lt_uconv_label(&uc, u); }
+    lt_ui_label_ex(app->ui, u, lt_ui_theme(app->ui)->muted, LT_UI_ALIGN_LEFT);
 }
 
 static void push_graph(lt_app *app, graph_slot *g, const lt_ini_comp *cm)
@@ -271,7 +278,7 @@ static void push_graph(lt_app *app, graph_slot *g, const lt_ini_comp *cm)
     i = g->n - 1;
     for (k = 0; k < GRAPH_CH; k++) {
         v = 0.0;
-        if (k < cm->n_channels) { lt_app_channel(app, cm->channels[k], &v); }
+        if (k < cm->n_channels) { lt_app_channel_disp(app, cm->channels[k], &v, NULL); }
         g->h[k][i] = v;
     }
 }
@@ -393,7 +400,7 @@ static void draw_comp(lt_app *app, ini_state *st, const lt_ini_dialog *dlg, size
             if (c->help != NULL) { lt_ui_tooltip(ui, c->help); }
             units_cell(app, c, n == 3);
         } else {
-            if (cm->name != NULL && lt_app_channel(app, cm->name, &v)) {
+            if (cm->name != NULL && lt_app_channel_disp(app, cm->name, &v, NULL)) {
                 char b[48];
                 lt_fmt_double(b, sizeof(b), v, 3);
                 lt_ui_label(ui, b);
@@ -416,8 +423,14 @@ static void draw_comp(lt_app *app, ini_state *st, const lt_ini_dialog *dlg, size
         field_label(ui, label, c, enabled);
         if (c != NULL && c->shape.kind == LT_SH_SCALAR && c->type != LT_DT_BITS && val_get(app, c, &v) == 0) {
             double lo = c->min, hi = c->max;
+            lt_uconv uc;
+            lt_uconv_make(&uc, c->units);
             if (!(hi > lo)) { lo = 0; hi = 100; }
-            if (lt_ui_slider(ui, c->name, &v, lo, hi, c->digits)) { val_set(app, c, v); }
+            lt_uconv_range(&uc, &lo, &hi);
+            v = lt_uconv_to_disp(&uc, v);
+            if (lt_ui_slider(ui, c->name, &v, lo, hi, lt_uconv_digits(&uc, c->digits))) {
+                val_set(app, c, lt_uconv_from_disp(&uc, v));
+            }
             units_cell(app, c, n == 3);
         } else {
             lt_ui_label_ex(ui, "n/a", t->muted, LT_UI_ALIGN_LEFT);
@@ -456,12 +469,15 @@ static void draw_comp(lt_app *app, ini_state *st, const lt_ini_dialog *dlg, size
         char b[64];
         field_layout(ui, w3, &n);
         field_label(ui, label, NULL, enabled);
-        if (cm->name != NULL && lt_app_channel(app, cm->name, &v)) { lt_fmt_double(b, sizeof(b), v, 2); }
+        if (cm->name != NULL && lt_app_channel_disp(app, cm->name, &v, NULL)) { lt_fmt_double(b, sizeof(b), v, 2); }
         else { lt_strlcpy(b, "-", sizeof(b)); }
         lt_ui_label_ex(ui, b, t->accent, LT_UI_ALIGN_LEFT);
         if (n == 3) {
             const lt_ini_channel *ch = cm->name != NULL ? lt_ini_find_channel(app->ini, cm->name) : NULL;
-            lt_ui_label_ex(ui, ch != NULL && ch->units != NULL ? ch->units : "", t->muted, LT_UI_ALIGN_LEFT);
+            lt_uconv uc;
+            lt_uconv_make(&uc, ch != NULL ? ch->units : NULL);
+            lt_ui_label_ex(ui, lt_uconv_label(&uc, ch != NULL && ch->units != NULL ? ch->units : ""), t->muted,
+                           LT_UI_ALIGN_LEFT);
         }
         break; }
     case LT_COMP_LIVEGRAPH:

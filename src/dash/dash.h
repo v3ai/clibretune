@@ -275,6 +275,9 @@ typedef struct lt_dash_gstate {
     double series_latest[LT_DASH_MAX_SERIES];
     lt_dash_ring ring[LT_DASH_MAX_SERIES];
     double last_hist_ms;
+    const char *unit_label;          /* preferred unit name when the gauge units are converted */
+    int unit_digits;                 /* extra value digits for the display unit */
+    int unit_kind, unit_dst;         /* unit conversion in effect (G-90); reset the smoothing on change */
 } lt_dash_gstate;
 lt_bool lt_dash_gstate_spiking(const lt_dash_gstate *s, double now_ms);
 const lt_dash_gstate *lt_dash_view_state(const lt_dash_view *v, size_t index);

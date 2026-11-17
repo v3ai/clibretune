@@ -555,7 +555,19 @@ static void at_panel(lt_app *app, at_tab *st)
         lt_ui_group_end(ui);
     }
     if ((lt_ui_cell_mode(ui) || st->ptab == 1) && lt_ui_group_begin(ui, "Target / weighting", 0)) {
-        numrow(ui, "Target AFR", "tafr", &st->set.target_afr, 8.0, 25.0, 0.1, 2, &ch);
+        {
+            /* the target is stored as AFR; shown and typed in the preferred AFR/lambda unit */
+            lt_uconv uc;
+            double tv, lo = 8.0, hi = 25.0;
+            int tch = 0, dg;
+            lt_uconv_make(&uc, "AFR");
+            tv = lt_uconv_to_disp(&uc, st->set.target_afr);
+            lt_uconv_range(&uc, &lo, &hi);
+            dg = lt_uconv_digits(&uc, 1);
+            numrow(ui, uc.dst == 1 ? "Target lambda" : "Target AFR", "tafr", &tv, lo, hi,
+                   uc.dst == 1 ? 0.005 : 0.1, uc.dst == 1 ? 3 : dg + 1, &tch);
+            if (tch) { st->set.target_afr = lt_uconv_from_disp(&uc, tv); ch = 1; }
+        }
         w2[0] = 130; w2[1] = -1;
         lt_ui_layout_row(ui, 2, w2, 0);
         lt_ui_label(ui, "Hit weighting");

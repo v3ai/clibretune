@@ -71,6 +71,28 @@ static void tbl_free_data(tbl_tab *st)
     lt_free(st->orig); st->orig = NULL; st->orig_n = 0;
 }
 
+/* decimal places per array, widened when the display unit is finer than the native one */
+static void tbl_digits(lt_app *app, tbl_tab *st)
+{
+    st->zdig = lt_uconv_digits(&st->v.zu, lt_tabs_const_digits(app->ini, st->t->z_const));
+    st->xdig = lt_uconv_digits(&st->v.xu, lt_tabs_const_digits(app->ini, st->t->x_const));
+    st->ydig = lt_uconv_digits(&st->v.yu, lt_tabs_const_digits(app->ini, st->t->y_const));
+}
+
+/* the unit preference changed: convert the open edits, the revert copy and the limits */
+static void tbl_units_sync(lt_app *app, tbl_tab *st)
+{
+    lt_uconv zold = st->v.zu;
+    size_t i;
+    if (!st->loaded || !lt_tblview_units_sync(&st->v)) { return; }
+    for (i = 0; i < st->orig_n; i++) {
+        lt_uconv w = zold;
+        st->orig[i] = lt_uconv_retarget(&w, st->orig[i]);
+    }
+    tbl_digits(app, st);
+    lt_tblview_z_range(&st->v, app->ini, &st->lo, &st->hi);
+}
+
 static void tbl_load(lt_app *app, lt_app_tab *tab, tbl_tab *st)
 {
     lt_pagesrc src = lt_app_pages(app);
@@ -86,9 +108,7 @@ static void tbl_load(lt_app *app, lt_app_tab *tab, tbl_tab *st)
         lt_snprintf(st->msg, sizeof(st->msg), "Cannot load table: %s", lt_err_get());
         return;
     }
-    st->zdig = lt_tabs_const_digits(app->ini, st->t->z_const);
-    st->xdig = lt_tabs_const_digits(app->ini, st->t->x_const);
-    st->ydig = lt_tabs_const_digits(app->ini, st->t->y_const);
+    tbl_digits(app, st);
     lt_tblview_z_range(&st->v, app->ini, &st->lo, &st->hi);
     n = st->v.rows * st->v.cols;
     if (n > st->sel_cap) {
@@ -137,7 +157,7 @@ static void tbl_check_external(lt_app *app, lt_app_tab *tab, tbl_tab *st)
     cnt = lt_ini_const_get_array(app->ini, zc, &src, tmp, n);
     if (cnt != (int)n) { diff = 1; }
     for (i = 0; i < n && !diff; i++) {
-        if (fabs(tmp[i] - st->v.z[i]) > 1e-9) { diff = 1; }
+        if (fabs(lt_uconv_to_disp(&st->v.zu, tmp[i]) - st->v.z[i]) > 1e-6) { diff = 1; }
     }
     lt_free(tmp);
     if (diff) { tbl_load(app, tab, st); }
@@ -1464,6 +1484,7 @@ static void tbl_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
         lt_ui_label_ex(ui, st->msg, th->error, LT_UI_ALIGN_LEFT);
         return;
     }
+    tbl_units_sync(app, st);
     if (st->frame % 15 == 0) { tbl_check_external(app, tab, st); }
     if (!st->loaded) { return; }
     tbl_live(app, st);

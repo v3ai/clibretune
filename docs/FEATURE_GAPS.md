@@ -490,6 +490,7 @@ Orig = path under `ref/LibreTune/crates/`. `app/` = `libretune-app/src/component
   dialogs, status, logs, calibration); also Kelvin, inHg, speed (km/h vs mph), and writing back in ECU units.
 - Orig: `src/contexts/useUnitPreferences.tsx`, `utils/unitConversions.ts`, `core/unit_conversion.rs`, `cmd/temperature_units.rs`.
 - Ours: one shared `lt_units_*` helper used by `tables_*`, `dialogs_ini.c`, `dash`, `gauges.c` (touches many files; do as its own batch).
+- Status update: DONE: `lt_unit_detect`/`lt_uconv_*` (tableops_units.c) detect the native unit from the INI string and convert to the preference (C/F/K, kPa/psi/bar/inHg, AFR/lambda, km/h/mph). Applied live to: table/curve editors (axes, cells, limits, plot axes; edits stored in the ECU unit, preference change converts open edits and undo), INI dialog fields/sliders/runtime values/live graphs, dashboard gauges (value, range, zones, peak, unit label, digits), status-bar channels, datalog logger/viewer/stats, AutoTune target AFR, calibration dialog default. Log files and rule thresholds stay in ECU units.
 
 ### G-91 Hotkey editor
 - Status: PARTIAL | Priority: P2 | Effort: M

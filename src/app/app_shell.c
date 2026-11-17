@@ -387,10 +387,12 @@ static void menu_view(lt_app *app)
     }
     if (lt_ui_submenu_begin(ui, "&Units", 0)) {
         if (lt_ui_menu_item(ui, "Metric", NULL, app->settings.metric ? LT_UI_MENU_CHECKED : 0)) {
-            app->settings.metric = 1; lt_app_settings_save(app);
+            app->settings.metric = 1; app->settings.temp_unit = 0; app->settings.press_unit = 0;
+            lt_app_settings_save(app);
         }
         if (lt_ui_menu_item(ui, "Imperial", NULL, app->settings.metric ? 0 : LT_UI_MENU_CHECKED)) {
-            app->settings.metric = 0; lt_app_settings_save(app);
+            app->settings.metric = 0; app->settings.temp_unit = 1; app->settings.press_unit = 1;
+            lt_app_settings_save(app);
         }
         lt_ui_submenu_end(ui);
     }
@@ -1158,6 +1160,8 @@ void lt_app_frame(lt_app *app)
     lt_ui *ui = app->ui;
     lt_rect cr, side, main_r;
     char title[200];
+    lt_units_set(app->settings.temp_unit, app->settings.press_unit, app->settings.afr_unit,
+                 app->settings.metric);
     if (lt_dashx_kiosk_frame(app)) { return; }
     menubar(app);
     if (!lt_ui_cell_mode(ui)) { app_toolbar(app); }

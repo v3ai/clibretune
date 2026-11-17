@@ -28,6 +28,32 @@ typedef struct crv_tab {
     int scale_open, scale_mode; double scale_val;
 } crv_tab;
 
+/* digits and constant limits in display units (G-90) */
+static void crv_limits(crv_tab *st, const lt_ini_const *xc, const lt_ini_const *yc)
+{
+    st->xdig = lt_uconv_digits(&st->v.xu, xc != NULL ? xc->digits : 0);
+    st->ydig = lt_uconv_digits(&st->v.zu, yc != NULL ? yc->digits : 0);
+    st->xlo = xc != NULL ? xc->min : 0.0; st->xhi = xc != NULL ? xc->max : 0.0;
+    st->ylo = yc != NULL ? yc->min : 0.0; st->yhi = yc != NULL ? yc->max : 0.0;
+    lt_uconv_range(&st->v.xu, &st->xlo, &st->xhi);
+    lt_uconv_range(&st->v.zu, &st->ylo, &st->yhi);
+}
+
+/* the unit preference changed: convert open edits, the revert copies and the limits */
+static void crv_units_sync(lt_app *app, crv_tab *st)
+{
+    lt_uconv xold = st->v.xu, zold = st->v.zu;
+    size_t i;
+    if (!st->loaded || !lt_tblview_units_sync(&st->v)) { return; }
+    for (i = 0; i < st->on; i++) {
+        lt_uconv a = xold, b = zold;
+        st->ox[i] = lt_uconv_retarget(&a, st->ox[i]);
+        st->oz[i] = lt_uconv_retarget(&b, st->oz[i]);
+    }
+    crv_limits(st, st->c->x_const != NULL ? lt_ini_find_const(app->ini, st->c->x_const) : NULL,
+               st->c->y_const != NULL ? lt_ini_find_const(app->ini, st->c->y_const) : NULL);
+}
+
 static void crv_load(lt_app *app, lt_app_tab *tab, crv_tab *st)
 {
     lt_pagesrc src = lt_app_pages(app);
@@ -43,10 +69,7 @@ static void crv_load(lt_app *app, lt_app_tab *tab, crv_tab *st)
     }
     xc = st->c->x_const != NULL ? lt_ini_find_const(app->ini, st->c->x_const) : NULL;
     yc = st->c->y_const != NULL ? lt_ini_find_const(app->ini, st->c->y_const) : NULL;
-    st->xdig = xc != NULL ? xc->digits : 0;
-    st->ydig = yc != NULL ? yc->digits : 0;
-    st->xlo = xc != NULL ? xc->min : 0.0; st->xhi = xc != NULL ? xc->max : 0.0;
-    st->ylo = yc != NULL ? yc->min : 0.0; st->yhi = yc != NULL ? yc->max : 0.0;
+    crv_limits(st, xc, yc);
     lt_free(st->ox); lt_free(st->oz);
     st->on = st->v.cols;
     st->ox = (double *)lt_calloc(st->on + 1, sizeof(double));
@@ -66,10 +89,16 @@ static void crv_ranges(crv_tab *st)
         if (st->v.z[i] < yl) { yl = st->v.z[i]; }
         if (st->v.z[i] > yh) { yh = st->v.z[i]; }
     }
-    if (st->range_mode == 0 && st->c->has_xaxis && st->c->xaxis[1] > st->c->xaxis[0]) { st->px0 = st->c->xaxis[0]; st->px1 = st->c->xaxis[1]; }
+    if (st->range_mode == 0 && st->c->has_xaxis && st->c->xaxis[1] > st->c->xaxis[0]) {
+        st->px0 = st->c->xaxis[0]; st->px1 = st->c->xaxis[1];
+        lt_uconv_range(&st->v.xu, &st->px0, &st->px1);
+    }
     else { pad = (xh - xl) * 0.05; if (pad <= 0) { pad = 1; } st->px0 = xl - pad; st->px1 = xh + pad; }
     if (st->range_mode == 2 && st->yhi > st->ylo) { st->py0 = st->ylo; st->py1 = st->yhi; }
-    else if (st->range_mode == 0 && st->c->has_yaxis && st->c->yaxis[1] > st->c->yaxis[0]) { st->py0 = st->c->yaxis[0]; st->py1 = st->c->yaxis[1]; }
+    else if (st->range_mode == 0 && st->c->has_yaxis && st->c->yaxis[1] > st->c->yaxis[0]) {
+        st->py0 = st->c->yaxis[0]; st->py1 = st->c->yaxis[1];
+        lt_uconv_range(&st->v.zu, &st->py0, &st->py1);
+    }
     else { pad = (yh - yl) * 0.05; if (pad <= 0) { pad = 1; } st->py0 = yl - pad; st->py1 = yh + pad; }
 }
 
@@ -96,7 +125,9 @@ static void crv_check_external(lt_app *app, lt_app_tab *tab, crv_tab *st)
     tmp = (double *)lt_calloc(n + 1, sizeof(double));
     src = lt_app_pages(app);
     if (lt_ini_const_get_array(app->ini, yc, &src, tmp, n) != (int)n) { diff = 1; }
-    for (i = 0; i < n && !diff; i++) { if (fabs(tmp[i] - st->v.z[i]) > 1e-9) { diff = 1; } }
+    for (i = 0; i < n && !diff; i++) {
+        if (fabs(lt_uconv_to_disp(&st->v.zu, tmp[i]) - st->v.z[i]) > 1e-6) { diff = 1; }
+    }
     lt_free(tmp);
     if (diff) { crv_load(app, tab, st); }
 }
@@ -135,6 +166,13 @@ static void chip(lt_gfx *g, double cx, double ytop, const char *s, lt_color fg)
     lt_gfx_text_bl(g, f, fp, (double)c.x + (double)lt_gfx_px(g, 6), c.y + lt_gfx_px(g, 13), s, fg);
 }
 
+/* axis caption with the preferred unit appended when the values are converted */
+static void axis_caption(char *buf, size_t cap, const char *label, const lt_uconv *c)
+{
+    if (lt_uconv_active(c)) { lt_snprintf(buf, cap, "%s (%s)", label, lt_unit_name(c->kind, c->dst)); }
+    else { lt_snprintf(buf, cap, "%s", label); }
+}
+
 static void draw_plot(lt_gfx *g, lt_rect r, void *user)
 {
     plot_ctx *p = (plot_ctx *)user;
@@ -163,11 +201,15 @@ static void draw_plot(lt_gfx *g, lt_rect r, void *user)
     lt_gfx_rect(g, lt_rect_make(x0, y1, x1 - x0 + 1, y0 - y1 + 1), LT_RGBA(255, 255, 255, 45));
     /* axis captions */
     if (st->c->col_x != NULL) {
-        lt_gfx_text_bl(g, fs, f11, (double)(x0 + x1) / 2.0 - lt_gfx_text_measure(fs, f11, st->c->col_x) / 2.0,
-                       r.y + r.h - lt_gfx_px(g, 6), st->c->col_x, p->axis);
+        char xl[96];
+        axis_caption(xl, sizeof(xl), st->c->col_x, &st->v.xu);
+        lt_gfx_text_bl(g, fs, f11, (double)(x0 + x1) / 2.0 - lt_gfx_text_measure(fs, f11, xl) / 2.0,
+                       r.y + r.h - lt_gfx_px(g, 6), xl, p->axis);
     }
     if (st->c->col_y != NULL) {
-        lt_gfx_text_rot(g, fs, f11, r.x + lt_gfx_px(g, 12), (double)(y0 + y1) / 2.0, st->c->col_y, -1.57079632679, 1, 2, p->axis);
+        char yl[96];
+        axis_caption(yl, sizeof(yl), st->c->col_y, &st->v.zu);
+        lt_gfx_text_rot(g, fs, f11, r.x + lt_gfx_px(g, 12), (double)(y0 + y1) / 2.0, yl, -1.57079632679, 1, 2, p->axis);
     }
     if (st->v.cols >= 2 && st->v.cols <= 128 && !p->cell) {
         double poly[2 * 132];
@@ -218,7 +260,7 @@ static void crv_live(lt_app *app, crv_tab *st)
     st->live_ok = 0;
     if (st->c->x_channel == NULL || st->v.cols < 2 || app->rt == NULL) { return; }
     if (app->conn != LT_APP_ONLINE && app->conn != LT_APP_DEMO) { return; }
-    if (!lt_app_channel(app, st->c->x_channel, &v)) { return; }
+    if (!lt_app_channel_disp(app, st->c->x_channel, &v, NULL)) { return; }
     for (i = 0; i + 2 < st->v.cols && v > st->v.x[i + 1]; i++) { }
     {
         double x0 = st->v.x[i], x1 = st->v.x[i + 1], f = x1 > x0 ? (v - x0) / (x1 - x0) : 0.0;
@@ -529,6 +571,7 @@ static void crv_draw(lt_app *app, lt_app_tab *tab, lt_rect rr)
         lt_ui_label_ex(ui, st->msg, th->error, LT_UI_ALIGN_LEFT);
         return;
     }
+    crv_units_sync(app, st);
     if (st->frame % 15 == 0) { crv_check_external(app, tab, st); }
     if (!st->loaded) { return; }
     crv_live(app, st);

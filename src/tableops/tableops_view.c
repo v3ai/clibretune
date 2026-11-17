@@ -75,6 +75,31 @@ static int read_axis(const lt_ini *ini, const char *name, const lt_pagesrc *src,
     return 0;
 }
 
+static const char *const_units(const lt_ini *ini, const char *name)
+{
+    const lt_ini_const *c = (name && *name) ? lt_ini_find_const(ini, name) : NULL;
+    return c ? c->units : NULL;
+}
+
+static void conv_arr(const lt_uconv *c, double *a, size_t n)
+{
+    size_t i;
+    if (!lt_uconv_active(c)) return;
+    for (i = 0; i < n; i++) a[i] = lt_uconv_to_disp(c, a[i]);
+}
+
+/* Set up the converters and convert freshly read (native unit) arrays to display units. */
+static void convert_loaded(lt_tblview *v, const lt_ini *ini, const char *xn, const char *yn,
+                           const char *zn)
+{
+    lt_uconv_make(&v->xu, const_units(ini, xn));
+    lt_uconv_make(&v->yu, const_units(ini, yn));
+    lt_uconv_make(&v->zu, const_units(ini, zn));
+    conv_arr(&v->xu, v->x, v->cols);
+    if (v->y) conv_arr(&v->yu, v->y, v->rows);
+    conv_arr(&v->zu, v->z, v->rows * v->cols);
+}
+
 static void finish_load(lt_tblview *v)
 {
     v->x0 = dup_d(v->x, v->cols);
@@ -141,6 +166,7 @@ int lt_tblview_load_table(lt_tblview *v, const lt_ini *ini, const lt_ini_table *
         free_data(v);
         return rc;
     }
+    convert_loaded(v, ini, t->x_const, t->y_const, t->z_const);
     finish_load(v);
     return 0;
 }
@@ -175,6 +201,7 @@ int lt_tblview_load_curve(lt_tblview *v, const lt_ini *ini, const lt_ini_curve *
         free_data(v);
         return rc;
     }
+    convert_loaded(v, ini, c->x_const, NULL, c->y_const);
     v->x0 = dup_d(v->x, cols);
     v->y0 = NULL;
     v->z0 = dup_d(v->z, cols);
@@ -195,7 +222,7 @@ int lt_tblview_revert(lt_tblview *v, const lt_ini *ini, const lt_pagesrc *src)
 
 /* Write changed elements of axis/values `cur` vs `old` into constant `name`. */
 static int commit_array(const lt_ini *ini, const char *name, lt_pagesrc *dst, double *cur,
-                        double *old, size_t n, size_t *written)
+                        double *old, size_t n, size_t *written, const lt_uconv *u)
 {
     const lt_ini_const *c;
     double back;
@@ -206,11 +233,11 @@ static int commit_array(const lt_ini *ini, const char *name, lt_pagesrc *dst, do
     if (!c) return LT_ENOENT;
     for (i = 0; i < n; i++) {
         if (cur[i] == old[i]) continue;
-        rc = lt_ini_const_set(ini, c, dst, i, cur[i]);
+        rc = lt_ini_const_set(ini, c, dst, i, lt_uconv_from_disp(u, cur[i]));
         if (rc < 0) return rc;
         (*written)++;
         /* adopt the quantised value actually stored */
-        if (lt_ini_const_get(ini, c, dst, i, &back) == 0) cur[i] = back;
+        if (lt_ini_const_get(ini, c, dst, i, &back) == 0) cur[i] = lt_uconv_to_disp(u, back);
         old[i] = cur[i];
     }
     return 0;
@@ -231,9 +258,9 @@ int lt_tblview_commit(lt_tblview *v, const lt_ini *ini, lt_pagesrc *dst)
         yn = NULL;
         zn = v->curve->y_const;
     }
-    rc = commit_array(ini, xn, dst, v->x, v->x0, v->cols, &w);
-    if (rc == 0 && yn && v->y) rc = commit_array(ini, yn, dst, v->y, v->y0, v->rows, &w);
-    if (rc == 0) rc = commit_array(ini, zn, dst, v->z, v->z0, v->rows * v->cols, &w);
+    rc = commit_array(ini, xn, dst, v->x, v->x0, v->cols, &w, &v->xu);
+    if (rc == 0 && yn && v->y) rc = commit_array(ini, yn, dst, v->y, v->y0, v->rows, &w, &v->yu);
+    if (rc == 0) rc = commit_array(ini, zn, dst, v->z, v->z0, v->rows * v->cols, &w, &v->zu);
     if (rc < 0) return rc;
     v->x_dirty = v->y_dirty = v->z_dirty = LT_FALSE;
     return (int)w;
@@ -307,6 +334,7 @@ void lt_tblview_z_range(const lt_tblview *v, const lt_ini *ini, double *lo, doub
     if (c && c->range_resolved && c->max > c->min) {
         mn = c->min;
         mx = c->max;
+        lt_uconv_range(&v->zu, &mn, &mx);
     } else if (n > 0 && v->z) {
         mn = mx = v->z[0];
         for (i = 1; i < n; i++) {
@@ -371,6 +399,43 @@ lt_bool lt_tblview_redo(lt_tblview *v)
     if (!v->z || v->undo_pos + 1 >= v->undo_n) return LT_FALSE;
     v->undo_pos++;
     restore(v, v->undo[v->undo_pos]);
+    return LT_TRUE;
+}
+
+/* ---- unit preference changes ---- */
+
+static void retarget_arr(lt_uconv c, double *a, size_t n)
+{
+    size_t i;
+    lt_uconv w;
+    for (i = 0; i < n; i++) {
+        w = c;
+        a[i] = lt_uconv_retarget(&w, a[i]);
+    }
+}
+
+lt_bool lt_tblview_units_sync(lt_tblview *v)
+{
+    size_t i, nx, ny, nz;
+    lt_bool xs, ys, zs;
+    if (!v->x || !v->z) return LT_FALSE;
+    xs = lt_uconv_stale(&v->xu);
+    ys = v->y ? lt_uconv_stale(&v->yu) : LT_FALSE;
+    zs = lt_uconv_stale(&v->zu);
+    if (!xs && !ys && !zs) return LT_FALSE;
+    nx = v->cols; ny = v->y ? v->rows : 0; nz = v->rows * v->cols;
+    for (i = 0; i < v->undo_n; i++) {
+        double *s = v->undo[i];
+        if (xs) retarget_arr(v->xu, s, nx);
+        if (ys) retarget_arr(v->yu, s + nx, ny);
+        if (zs) retarget_arr(v->zu, s + v->cols + v->rows, nz);
+    }
+    if (xs) { retarget_arr(v->xu, v->x, nx); retarget_arr(v->xu, v->x0, nx); }
+    if (ys) { retarget_arr(v->yu, v->y, ny); retarget_arr(v->yu, v->y0, ny); }
+    if (zs) { retarget_arr(v->zu, v->z, nz); retarget_arr(v->zu, v->z0, nz); }
+    if (xs) (void)lt_uconv_retarget(&v->xu, 0.0);
+    if (ys) (void)lt_uconv_retarget(&v->yu, 0.0);
+    if (zs) (void)lt_uconv_retarget(&v->zu, 0.0);
     return LT_TRUE;
 }
 

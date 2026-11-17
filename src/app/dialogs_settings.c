@@ -17,8 +17,8 @@ static const char *const themes[] = { "dark", "light", "midnight", "carbon", "sy
                                       "solarized", "nord", "dracula", "highcontrast" };
 static const char *const backends[] = { "auto", "x11", "win32", "web", "tty" };
 static const char *const heatmaps[] = { "tunerstudio", "grayscale", "pastel", "thermal", "viridis", "plasma" };
-static const char *const temps[] = { "Celsius", "Fahrenheit" };
-static const char *const press[] = { "kPa", "psi", "bar" };
+static const char *const temps[] = { "Celsius", "Fahrenheit", "Kelvin" };
+static const char *const press[] = { "kPa", "psi", "bar", "inHg" };
 static const char *const afrs[] = { "AFR", "Lambda" };
 static const char *const scales[] = { "Auto", "100%", "125%", "150%", "175%", "200%", "250%", "300%" };
 static const int scale_pcts[] = { 0, 100, 125, 150, 175, 200, 250, 300 };
@@ -133,12 +133,12 @@ static int page_builtin(lt_app *app, int tab)
         lt_ui_layout_space(ui, 8);
         form_label(ui, "Temperature");
         lt_ui_layout_row(ui, 1, &w1, 0);
-        sel = LT_CLAMP(st->temp_unit, 0, 1);
-        if (lt_ui_combo(ui, "temp", &sel, temps, 2)) { st->temp_unit = sel; ch = 1; }
+        sel = LT_CLAMP(st->temp_unit, 0, 2);
+        if (lt_ui_combo(ui, "temp", &sel, temps, 3)) { st->temp_unit = sel; ch = 1; }
         form_label(ui, "Pressure");
         lt_ui_layout_row(ui, 1, &w1, 0);
-        sel = LT_CLAMP(st->press_unit, 0, 2);
-        if (lt_ui_combo(ui, "press", &sel, press, 3)) { st->press_unit = sel; ch = 1; }
+        sel = LT_CLAMP(st->press_unit, 0, 3);
+        if (lt_ui_combo(ui, "press", &sel, press, 4)) { st->press_unit = sel; ch = 1; }
         form_label(ui, "Air-Fuel Ratio");
         lt_ui_layout_row(ui, 1, &w1, 0);
         sel = LT_CLAMP(st->afr_unit, 0, 1);

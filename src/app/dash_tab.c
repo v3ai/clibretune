@@ -838,7 +838,10 @@ static void hover_tip(lt_app *app, dash_state *st, lt_point m)
         const lt_dash_gauge *g = c->gauge;
         lt_dash_comp_label(c, l1, sizeof l1);
         lt_snprintf(l2, sizeof l2, "Value %.*f %s   range %g .. %g", g->value_digits > 0 ? g->value_digits + 1 : 2,
-                    gs != NULL ? gs->raw : 0.0, g->units ? g->units : "", g->min, g->max);
+                    gs != NULL ? gs->raw : 0.0,
+                    gs != NULL && gs->unit_label != NULL ? gs->unit_label : (g->units ? g->units : ""),
+                    gs != NULL && gs->has_value ? gs->lim.min : g->min,
+                    gs != NULL && gs->has_value ? gs->lim.max : g->max);
         lt_snprintf(l3, sizeof l3, "Channel %s", g->output_channel ? g->output_channel : "-");
     } else {
         lt_dash_comp_label(c, l1, sizeof l1);

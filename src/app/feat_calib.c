@@ -221,7 +221,9 @@ static void therm_draw(lt_app *app, lt_app_dialog *d)
             s->ids[1] = 1; s->names[1] = "Air Temperature (IAT)";
             s->n_ids = 2;
         }
+        s->fahrenheit = app->settings.temp_unit == 1;   /* start in the preferred unit (G-90) */
         s->bias = 2490; s->t[0] = 0; s->t[1] = 50; s->t[2] = 100;
+        if (s->fahrenheit) { s->t[0] = 32; s->t[1] = 122; s->t[2] = 212; }
         s->r[0] = 94000; s->r[1] = 11000; s->r[2] = 2370;
         if (s->rt != NULL && s->rt->n_therm_opts > 0) { s->preset = 1; therm_load_preset(s, 0); }
         s->dirty = 1;

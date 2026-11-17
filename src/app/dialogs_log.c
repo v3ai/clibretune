@@ -70,6 +70,12 @@ static const char *chan_units(lt_app *app, log_state *s, int i)
     return u != NULL ? u : "";
 }
 
+/* converter for the unit of channel i (native log/INI unit -> preferred unit, G-90) */
+static void chan_conv(lt_app *app, log_state *s, int i, lt_uconv *c)
+{
+    lt_uconv_make(c, chan_units(app, s, i));
+}
+
 static int sel_find(log_state *s, int idx)
 {
     int i;
@@ -287,6 +293,17 @@ static void stats_draw(lt_app *app, log_state *s, double win_t0, double win_t1)
             for (c = 1; c < 9; c++) { lt_ui_label_ex(ui, "-", t->muted, LT_UI_ALIGN_RIGHT); }
             continue;
         }
+        {
+            lt_uconv uc;
+            double sc;
+            chan_conv(app, s, s->sel_idx[k], &uc);
+            sc = lt_uconv_to_disp(&uc, 1.0) - lt_uconv_to_disp(&uc, 0.0);   /* spreads scale only */
+            if (sc < 0.0) { sc = -sc; }
+            st.mean = lt_uconv_to_disp(&uc, st.mean); st.median = lt_uconv_to_disp(&uc, st.median);
+            st.vmin = lt_uconv_to_disp(&uc, st.vmin); st.vmax = lt_uconv_to_disp(&uc, st.vmax);
+            st.p25 = lt_uconv_to_disp(&uc, st.p25); st.p75 = lt_uconv_to_disp(&uc, st.p75);
+            st.stddev *= sc; st.iqr *= sc;
+        }
         stats_cell(ui, st.mean, t->text); stats_cell(ui, st.median, t->text); stats_cell(ui, st.stddev, t->text);
         stats_cell(ui, st.vmin, t->text); stats_cell(ui, st.vmax, t->text); stats_cell(ui, st.p25, t->text);
         stats_cell(ui, st.p75, t->text); stats_cell(ui, st.iqr, t->text);
@@ -309,6 +326,7 @@ static void log_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
     const char *names[MAX_SEL], *units[MAX_SEL];
     double *pts[MAX_SEL];
     double curv[MAX_SEL];
+    lt_uconv cv[MAX_SEL];
     double cursor_frac = -1.0, win_t0 = 0.0, win_t1 = 1.0;
     int npts = 0;
     int online = app->conn == LT_APP_ONLINE || app->conn == LT_APP_DEMO;
@@ -590,7 +608,8 @@ static void log_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
         for (k = 0; k < s->n_sel && k < MAX_SEL; k++) {
             pts[k] = store + (size_t)k * MAXPTS;
             names[k] = chan_name(app, s, s->sel_idx[k]);
-            units[k] = chan_units(app, s, s->sel_idx[k]);
+            chan_conv(app, s, s->sel_idx[k], &cv[k]);
+            units[k] = lt_uconv_label(&cv[k], chan_units(app, s, s->sel_idx[k]));
             curv[k] = 0.0;
         }
         if (!s->viewer) {
@@ -629,6 +648,11 @@ static void log_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
                 }
             }
         } else { ok = 0; }
+        for (k = 0; k < s->n_sel && k < MAX_SEL; k++) {
+            if (!lt_uconv_active(&cv[k])) { continue; }
+            for (i = 0; i < npts; i++) { pts[k][i] = lt_uconv_to_disp(&cv[k], pts[k][i]); }
+            curv[k] = lt_uconv_to_disp(&cv[k], curv[k]);
+        }
         if (ok) {
             chart_draw(ui, cr, s->n_sel, names, units, pts, npts, curv, cursor_frac,
                        s->viewer && s->have_log ? &s->log : NULL, win_t0, win_t1);

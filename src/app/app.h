@@ -27,6 +27,7 @@
 #include "../lt.h"
 #include "../gui/ui.h"
 #include "../ini/ini.h"
+#include "../tableops/tableops.h"
 #include "../proto/proto.h"
 #include "../tune/tune.h"
 #include "../project/project.h"
@@ -94,7 +95,7 @@ typedef struct lt_app_settings {
     int  baud;
     int  auto_connect;
     char heatmap[16];
-    int  temp_unit, press_unit, afr_unit;   /* 0 C/kPa/AFR, 1 F/psi/lambda, 2 -/bar/- */
+    int  temp_unit, press_unit, afr_unit;   /* 0 C/kPa/AFR, 1 F/psi/lambda, 2 K/bar/-, 3 -/inHg/- */
     int  poll_hz;           /* realtime poll rate 5..100 */
     int  reconnect_cmd;     /* reconnect after controller commands (default 1) */
     int  reconnect_fw;      /* reconnect after a firmware update (default 1) */
@@ -229,6 +230,9 @@ lt_bool lt_app_can_burn(const lt_app *app);
 const char *lt_app_conn_label(const lt_app *app);
 /* named realtime value; LT_FALSE if unknown */
 lt_bool lt_app_channel(lt_app *app, const char *name, double *out);
+/* Same, in the preferred display unit (G-90); label (optional) is the unit to show. */
+lt_bool lt_app_channel_disp(lt_app *app, const char *name, double *out, const char **label);
+void    lt_app_channel_conv(const lt_app *app, const char *name, lt_uconv *c);
 /* data logging (project datalogs dir or ./datalogs) */
 int  lt_app_log_toggle(lt_app *app);
 

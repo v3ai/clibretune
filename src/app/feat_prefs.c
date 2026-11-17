@@ -68,9 +68,10 @@ int lt_feat_statusbar_channels(lt_app *app, char *out, size_t cap)
     out[0] = '\0';
     for (i = 0; i < p->sb_n; i++) {
         double v = 0.0;
-        if (!lt_app_channel(app, p->sb_chan[i], &v)) { continue; }
-        lt_snprintf(piece, sizeof(piece), "%s%s %.*f", n > 0 ? "   " : "", p->sb_chan[i],
-                    (v < 100.0 && v > -100.0) ? 1 : 0, v);
+        const char *ul = "";
+        if (!lt_app_channel_disp(app, p->sb_chan[i], &v, &ul)) { continue; }
+        lt_snprintf(piece, sizeof(piece), "%s%s %.*f%s%s", n > 0 ? "   " : "", p->sb_chan[i],
+                    (v < 100.0 && v > -100.0) ? 1 : 0, v, ul[0] != '\0' ? " " : "", ul);
         lt_strlcat(out, piece, cap);
         n++;
     }

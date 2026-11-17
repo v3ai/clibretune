@@ -23,6 +23,14 @@
 #include "../lt_codes.h"
 #include "../ini/ini.h"
 
+/* unit kinds (see the unit preference section at the end) */
+#define LT_UK_NONE  0
+#define LT_UK_TEMP  1     /* units: 0 C, 1 F, 2 K */
+#define LT_UK_PRESS 2     /* units: 0 kPa, 1 psi, 2 bar, 3 inHg */
+#define LT_UK_AFR   3     /* units: 0 AFR, 1 lambda */
+#define LT_UK_SPEED 4     /* units: 0 km/h, 1 mph */
+typedef struct lt_uconv { int kind, src, dst; } lt_uconv;
+
 /* ---- selection ---- */
 typedef struct lt_tcell { size_t y, x; } lt_tcell;   /* (row, col); not gui.h lt_cell */
 /* Bounding box of a selection; returns LT_FALSE if n == 0. */
@@ -108,6 +116,8 @@ typedef struct lt_tblview {
     /* last committed/loaded copies for diffing */
     double *x0, *y0, *z0;
     lt_bool x_dirty, y_dirty, z_dirty;
+    /* unit conversion of the three arrays (native INI unit -> preferred display unit) */
+    lt_uconv xu, yu, zu;
     /* undo ring of z snapshots (axes edits push both) */
     double *undo[LT_TBLVIEW_UNDO_MAX]; size_t undo_n, undo_pos;
 } lt_tblview;
@@ -134,6 +144,9 @@ void   lt_tblview_z_range(const lt_tblview *v, const lt_ini *ini, double *lo, do
 /* Edit an axis entry (marks x/y dirty; no undo push). */
 void   lt_tblview_set_x(lt_tblview *v, size_t col, double value);
 void   lt_tblview_set_y(lt_tblview *v, size_t row, double value);
+/* Re-convert all arrays (and undo snapshots) after the unit preference changed; edits are
+ * kept. Returns LT_TRUE when anything changed. Cheap no-op otherwise. */
+lt_bool lt_tblview_units_sync(lt_tblview *v);
 void   lt_tblview_push_undo(lt_tblview *v);     /* call before a mutating op */
 lt_bool lt_tblview_undo(lt_tblview *v);
 lt_bool lt_tblview_redo(lt_tblview *v);
@@ -201,5 +214,36 @@ double lt_lbs_to_kg(double lbs);   double lt_kg_to_lbs(double kg);
 double lt_fuel_stoich(const char *fuel);
 double lt_lambda_to_afr(double lambda, const char *fuel);
 double lt_afr_to_lambda(double afr, const char *fuel);
+
+/* ---- unit preferences applied to displayed values (G-90) ----
+ * ECU / INI values keep their native unit (detected from the INI unit string); everything
+ * the user sees or types is converted to the preferred unit. Preferences are process-wide
+ * (set from Settings); lt_units_generation() changes whenever they do. */
+
+/* temp 0..2, press 0..3, afr 0..1, metric (speed: 1 km/h, 0 mph); out of range clamps. */
+void lt_units_set(int temp, int press, int afr, int metric);
+void lt_units_get(int *temp, int *press, int *afr, int *metric);
+unsigned lt_units_generation(void);
+/* Detect kind and native unit from an INI unit string ("C", "deg C", "kPa", "AFR", "lambda",
+ * "km/h" ...). Returns LT_UK_NONE for anything else, including "{expr}" units. */
+int  lt_unit_detect(const char *units, int *src);
+/* Value conversion between two units of one kind (via a common base unit). */
+double lt_unit_convert(int kind, int from, int to, double v);
+const char *lt_unit_name(int kind, int unit);
+/* Converter from the native unit string to the current preference. */
+void   lt_uconv_make(lt_uconv *c, const char *units);
+lt_bool lt_uconv_active(const lt_uconv *c);          /* converts something */
+lt_bool lt_uconv_stale(const lt_uconv *c);           /* preference changed since make/retarget */
+double lt_uconv_to_disp(const lt_uconv *c, double ecu);
+double lt_uconv_from_disp(const lt_uconv *c, double disp);
+/* Label to show: the preferred unit name, or `units` itself when nothing is converted. */
+const char *lt_uconv_label(const lt_uconv *c, const char *units);
+/* Re-aim at the current preference; returns `disp` (shown in the old unit) in the new one. */
+double lt_uconv_retarget(lt_uconv *c, double disp);
+/* Decimal places to show/round to for a value whose native unit had `digits`: more when the
+ * display unit is smaller per step (kPa -> psi/bar, AFR -> lambda). */
+int    lt_uconv_digits(const lt_uconv *c, int digits);
+/* Convert a (lo,hi) range to display units, keeping lo <= hi. */
+void   lt_uconv_range(const lt_uconv *c, double *lo, double *hi);
 
 #endif /* LT_TABLEOPS_H */

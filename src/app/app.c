@@ -428,6 +428,26 @@ lt_bool lt_app_channel(lt_app *app, const char *name, double *out)
     return lt_ini_rt_get(app->rt, name, out);
 }
 
+/* Unit converter for a channel (native INI unit -> preferred unit); identity when unknown. */
+void lt_app_channel_conv(const lt_app *app, const char *name, lt_uconv *c)
+{
+    const lt_ini_channel *ch = app->ini != NULL && name != NULL ? lt_ini_find_channel(app->ini, name) : NULL;
+    lt_uconv_make(c, ch != NULL ? ch->units : NULL);
+}
+
+lt_bool lt_app_channel_disp(lt_app *app, const char *name, double *out, const char **label)
+{
+    lt_uconv c;
+    const lt_ini_channel *ch;
+    double v = 0.0;
+    if (!lt_app_channel(app, name, &v)) { return LT_FALSE; }
+    lt_app_channel_conv(app, name, &c);
+    ch = app->ini != NULL ? lt_ini_find_channel(app->ini, name) : NULL;
+    if (out != NULL) { *out = lt_uconv_to_disp(&c, v); }
+    if (label != NULL) { *label = lt_uconv_label(&c, ch != NULL && ch->units != NULL ? ch->units : ""); }
+    return LT_TRUE;
+}
+
 /* ------------------------------------------------------------------ */
 /* recorder                                                            */
 static void rec_free(lt_app *app)
