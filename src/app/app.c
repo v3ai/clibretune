@@ -82,7 +82,9 @@ void lt_app_settings_load(lt_app *app)
         v = lt_props_get(&p, "scale");
         if (v != NULL) {
             int sv = lt_stricmp(v, "auto") == 0 ? 0 : atoi(v);
-            s->scale_pct = (sv >= 1 && sv <= 3) ? sv * 100 : sv;   /* old files: 1..3 */
+            /* old files stored an integer factor: 1 was the default (not a choice),
+             * so it now means auto; 2..3 were explicit and become 200..300 */
+            s->scale_pct = sv == 1 ? 0 : (sv >= 2 && sv <= 3) ? sv * 100 : sv;
         }
         lt_props_get_i32(&p, "win_w", &s->win_w);
         lt_props_get_i32(&p, "win_h", &s->win_h);

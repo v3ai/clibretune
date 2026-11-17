@@ -62,9 +62,24 @@ try:
             atoms[name] = next_atom
             conn.sendall(struct.pack("<BBHII20x", 1, 0, seq, 0, next_atom))
             next_atom += 1
+        elif op == 23:       # GetSelectionOwner: we own _XSETTINGS_S0 with window 0x55
+            sel = struct.unpack("<I", rest[0:4])[0]
+            owner = 0x55 if sel == atoms.get(b"_XSETTINGS_S0") else 0
+            conn.sendall(struct.pack("<BBHII20x", 1, 0, seq, 0, owner))
         elif op == 20:
             prop = struct.unpack("<I", rest[4:8])[0]
-            if prop == 23:   # RESOURCE_MANAGER on the root
+            if prop == atoms.get(b"_XSETTINGS_SETTINGS"):
+                def xs_int(name, v):
+                    return (struct.pack("<BBH", 0, 0, len(name)) + name + b"\0" * (pad(len(name)) - len(name))
+                            + struct.pack("<Ii", 0, v))
+                def xs_str(name, v):
+                    return (struct.pack("<BBH", 1, 0, len(name)) + name + b"\0" * (pad(len(name)) - len(name))
+                            + struct.pack("<II", 0, len(v)) + v + b"\0" * (pad(len(v)) - len(v)))
+                body = (xs_str(b"Net/ThemeName", b"Adwaita") + xs_int(b"Xft/DPI", 192 * 1024)
+                        + xs_int(b"Gdk/WindowScalingFactor", 2))
+                val = struct.pack("<BxxxII", 0, 1, 3) + body
+                conn.sendall(struct.pack("<BBHIIII12x", 1, 8, seq, len(val) // 4, prop, 0, len(val)) + val)
+            elif prop == 23:   # RESOURCE_MANAGER on the root
                 val = b"*.background:\tblack\nXft.dpi:\t144\nXft.antialias:\t1\n"
                 data = val + b"\0" * (pad(len(val)) - len(val))
                 conn.sendall(struct.pack("<BBHIIII12x", 1, 8, seq, len(data) // 4, 31, 0, len(val)) + data)

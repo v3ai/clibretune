@@ -28,6 +28,9 @@ typedef struct x11 {
     int fullscreen;
     int root_w, root_h;
     double xft_dpi;          /* from RESOURCE_MANAGER, 0 = none */
+    double xs_dpi;           /* XSETTINGS Xft/DPI, 0 = none */
+    int xs_wscale;           /* XSETTINGS Gdk/WindowScalingFactor, 0 = none */
+    int mm_w;                /* root screen width in millimetres (0 = unknown) */
     int minw, minh;          /* WM_NORMAL_HINTS minimum, 0 = none */
     int init_x, init_y, init_flags;
     int min_kc, kpk, nkc;
@@ -521,6 +524,7 @@ static int do_setup(x11 *x, const char *host, int num) {
         x->w = (int)r16(x, d + off + 20);
         x->h = (int)r16(x, d + off + 22);
         x->root_w = x->w; x->root_h = x->h;
+        x->mm_w = (int)r16(x, d + off + 24);
         found_fmt = 0;
         for (i = 0; i < (size_t)nformats; i++) {
             if (d[fo + 8 * i] == x->depth) {
@@ -655,6 +659,53 @@ double lt_x11_parse_xft_dpi(const char *res) {
     return 0.0;
 }
 
+/* XSETTINGS blob (_XSETTINGS_SETTINGS on the _XSETTINGS_S0 owner; GNOME, Cinnamon,
+ * MATE, XFCE): extracts Xft/DPI (dpi * 1024) and Gdk/WindowScalingFactor. Returns 0 when
+ * the blob parsed, -1 when malformed; outputs are left untouched when a key is absent. */
+int lt_x11_parse_xsettings(const unsigned char *d, size_t n, double *dpi, int *wscale) {
+    size_t off = 12, i, cnt, nlen;
+    int msb;
+    if (d == NULL || n < 12) return -1;
+    msb = d[0] != 0;
+    cnt = (size_t)(msb ? lt_rd_be(d + 8, 4) : lt_rd_le(d + 8, 4));
+    for (i = 0; i < cnt; i++) {
+        int type;
+        const unsigned char *name;
+        if (off + 4 > n) return -1;
+        type = d[off];
+        nlen = (size_t)(msb ? lt_rd_be(d + off + 2, 2) : lt_rd_le(d + off + 2, 2));
+        name = d + off + 4;
+        off += 4 + ((nlen + 3) & ~(size_t)3) + 4;      /* name, padding, serial */
+        if (off > n) return -1;
+        if (type == 0) {                                 /* integer */
+            long v;
+            if (off + 4 > n) return -1;
+            v = (long)(msb ? lt_rd_be(d + off, 4) : lt_rd_le(d + off, 4));
+            if (v > 0x7FFFFFFFL) v = -1;
+            if (nlen == 7 && memcmp(name, "Xft/DPI", 7) == 0 && v > 0) {
+                double dv = (double)v / 1024.0;
+                if (dv >= 24.0 && dv <= 1000.0) *dpi = dv;
+            } else if (nlen == 23 && memcmp(name, "Gdk/WindowScalingFactor", 23) == 0 &&
+                       v >= 1 && v <= 8) {
+                *wscale = (int)v;
+            }
+            off += 4;
+        } else if (type == 1) {                          /* string */
+            size_t sl;
+            if (off + 4 > n) return -1;
+            sl = (size_t)(msb ? lt_rd_be(d + off, 4) : lt_rd_le(d + off, 4));
+            if (sl > n) return -1;
+            off += 4 + ((sl + 3) & ~(size_t)3);
+        } else if (type == 2) {                          /* colour: 4 x CARD16 */
+            off += 8;
+        } else {
+            return -1;
+        }
+        if (off > n) return -1;
+    }
+    return 0;
+}
+
 /* GetProperty (op 20) of the whole property; reply stays in x->reply */
 static int get_prop(x11 *x, lt_buf *b, lt_u32 win, lt_u32 prop) {
     req_begin(b, 20, 0);
@@ -663,6 +714,32 @@ static int get_prop(x11 *x, lt_buf *b, lt_u32 win, lt_u32 prop) {
     if (req_end(x, b) < 0) return -1;
     if (wait_reply(x, x->seq, 5000) < 0) { drop_reply(x); return -1; }
     return 0;
+}
+
+static void fetch_xsettings(x11 *x, lt_buf *b) {
+    int sq0 = 0, sq1 = 0;
+    lt_u32 sel = 0, prop = 0, owner = 0;
+    intern_send(x, b, "_XSETTINGS_S0", &sq0);
+    intern_send(x, b, "_XSETTINGS_SETTINGS", &sq1);
+    if (wait_reply(x, sq0, 5000) == 0) sel = r32(x, x->reply + 8);
+    drop_reply(x);
+    if (wait_reply(x, sq1, 5000) == 0) prop = r32(x, x->reply + 8);
+    drop_reply(x);
+    if (sel == 0 || prop == 0) return;
+    req_begin(b, 23, 0);                                 /* GetSelectionOwner */
+    p32(x, b, sel);
+    if (req_end(x, b) < 0) return;
+    if (wait_reply(x, x->seq, 5000) == 0) owner = r32(x, x->reply + 8);
+    drop_reply(x);
+    if (owner == 0) return;
+    if (get_prop(x, b, owner, prop) == 0) {
+        if (x->reply[1] == 8) {
+            size_t n = (size_t)r32(x, x->reply + 16), avail = x->reply_len - 32;
+            if (n > avail) n = avail;
+            (void)lt_x11_parse_xsettings(x->reply + 32, n, &x->xs_dpi, &x->xs_wscale);
+        }
+        drop_reply(x);
+    }
 }
 
 static void fetch_resources(x11 *x, lt_buf *b) {
@@ -681,16 +758,34 @@ static void fetch_resources(x11 *x, lt_buf *b) {
     }
 }
 
+/* The largest scale any source asks for wins: desktops differ in which one they keep
+ * current (an Xresources file can hold a stale 96 while XSETTINGS says 192). With no
+ * source at all, a clearly high-DPI panel (by its reported size) gets an integer scale. */
+double lt_x11_pick_scale(double xft_dpi, double xs_dpi, int xs_wscale, double gdk, double qt,
+                         int root_w, int mm_w) {
+    double s = 0.0;
+    if (xft_dpi > 0.0 && xft_dpi / 96.0 > s) s = xft_dpi / 96.0;
+    if (xs_dpi > 0.0 && xs_dpi / 96.0 > s) s = xs_dpi / 96.0;
+    if (xs_wscale >= 1 && (double)xs_wscale > s) s = (double)xs_wscale;
+    if (gdk >= 1.0 && gdk <= 8.0 && gdk > s) s = gdk;
+    if (qt >= 0.5 && qt <= 8.0 && qt > s) s = qt;
+    if (s <= 0.0 && root_w > 0 && mm_w > 0) {
+        double dpi = (double)root_w * 25.4 / (double)mm_w;
+        if (dpi >= 96.0 * 1.75 && dpi <= 1000.0) s = (double)(int)(dpi / 96.0 + 0.25);
+    }
+    return s > 0.0 ? s : 1.0;
+}
+
 static double x_scale_hint(lt_backend *be) {
     x11 *x = (x11 *)be->impl;
     const char *e;
-    double v;
-    if (x && x->xft_dpi > 0.0) return x->xft_dpi / 96.0;
+    double gdk = 0.0, qt = 0.0;
+    if (!x) return 1.0;
     e = getenv("GDK_SCALE");
-    if (e && (v = atof(e)) >= 1.0 && v <= 8.0) return v;
+    if (e) gdk = atof(e);
     e = getenv("QT_SCALE_FACTOR");
-    if (e && (v = atof(e)) >= 0.5 && v <= 8.0) return v;
-    return 1.0;
+    if (e) qt = atof(e);
+    return lt_x11_pick_scale(x->xft_dpi, x->xs_dpi, x->xs_wscale, gdk, qt, x->root_w, x->mm_w);
 }
 
 static void send_size_hints(x11 *x, lt_buf *b) {
@@ -807,8 +902,12 @@ static int x_open(lt_backend *be, const char *title, int w, int h) {
     p16(x, &b, (lt_u32)w); p16(x, &b, (lt_u32)h);
     p16(x, &b, 0); p16(x, &b, 1); /* border, InputOutput */
     p32(x, &b, x->rootvis);
-    p32(x, &b, 0x2 | 0x800);
-    p32(x, &b, 0); /* back pixel */
+    /* BackPixmap None + NorthWest bit gravity: on resize the server keeps the old
+     * pixels instead of clearing to a background colour, so dragging a corner does
+     * not flash black before the next frame arrives */
+    p32(x, &b, 0x1 | 0x10 | 0x800);
+    p32(x, &b, 0); /* back pixmap: None */
+    p32(x, &b, 1); /* bit gravity: NorthWest */
     p32(x, &b, 0x1UL | 0x2 | 0x4 | 0x8 | 0x40 | 0x8000UL | 0x20000UL | 0x200000UL);
     req_end(x, &b);
     /* GC: no values (graphics-exposures default True; turn off via mask 0x10000 = 0) */
@@ -1007,6 +1106,7 @@ lt_backend *lt_backend_x11_create(void) {
         else x->a_fs = atom;
     }
     fetch_resources(x, &b);
+    fetch_xsettings(x, &b);
     lt_buf_free(&b);
     if (x->dead) { x_free(x); return NULL; }
     be = (lt_backend *)lt_calloc(1, sizeof *be);

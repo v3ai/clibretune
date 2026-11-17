@@ -29,13 +29,40 @@ int main(void) {
     CHECK(lt_x11_parse_xft_dpi("Xft.dpix: 96\nfoo: 1") == 0.0);
     CHECK(lt_x11_parse_xft_dpi("Xft.dpi: abc") == 0.0);
     CHECK(lt_x11_parse_xft_dpi(NULL) == 0.0);
+    {
+        /* XSETTINGS blob, little endian: Net/ThemeName "Adwaita", Xft/DPI 196608 (192),
+         * Gdk/WindowScalingFactor 2 */
+        static const unsigned char xs[] = {
+            0, 0, 0, 0,  1, 0, 0, 0,  3, 0, 0, 0,
+            1, 0, 13, 0, 'N', 'e', 't', '/', 'T', 'h', 'e', 'm', 'e', 'N', 'a', 'm', 'e', 0, 0, 0,
+            0, 0, 0, 0,  7, 0, 0, 0, 'A', 'd', 'w', 'a', 'i', 't', 'a', 0,
+            0, 0, 7, 0, 'X', 'f', 't', '/', 'D', 'P', 'I', 0,  0, 0, 0, 0,  0, 0, 3, 0,
+            0, 0, 23, 0, 'G', 'd', 'k', '/', 'W', 'i', 'n', 'd', 'o', 'w', 'S', 'c', 'a', 'l',
+            'i', 'n', 'g', 'F', 'a', 'c', 't', 'o', 'r', 0,  0, 0, 0, 0,  2, 0, 0, 0
+        };
+        double dpi = 0.0;
+        int ws = 0;
+        CHECK(lt_x11_parse_xsettings(xs, sizeof xs, &dpi, &ws) == 0);
+        CHECK(dpi > 191.9 && dpi < 192.1 && ws == 2);
+        dpi = 0.0; ws = 0;
+        CHECK(lt_x11_parse_xsettings(xs, sizeof xs - 6, &dpi, &ws) == -1);   /* truncated */
+        CHECK(lt_x11_parse_xsettings(NULL, 0, &dpi, &ws) == -1);
+    }
+    /* scale picking: largest source wins; physical DPI only as a last resort */
+    CHECK(lt_x11_pick_scale(96.0, 192.0, 0, 0.0, 0.0, 0, 0) > 1.99);
+    CHECK(lt_x11_pick_scale(0.0, 0.0, 2, 0.0, 0.0, 0, 0) > 1.99);
+    CHECK(lt_x11_pick_scale(144.0, 0.0, 0, 0.0, 0.0, 0, 0) > 1.49);
+    CHECK(lt_x11_pick_scale(0.0, 0.0, 0, 0.0, 0.0, 2880, 344) > 1.99);   /* 14" 2880 px: 213 dpi */
+    CHECK(lt_x11_pick_scale(0.0, 0.0, 0, 0.0, 0.0, 1920, 508) < 1.01);   /* ordinary 96 dpi */
+    CHECK(lt_x11_pick_scale(0.0, 0.0, 0, 0.0, 0.0, 0, 0) < 1.01);
     if (!mock) { printf("test_x11: LT_X11_MOCK unset, skipped\n"); return 0; }
     b = lt_backend_x11_create();
     CHECK(b != NULL);
     if (!b) return 1;
-    /* Xft.dpi 144 from the mock's RESOURCE_MANAGER -> 1.5 */
+    /* the mock's RESOURCE_MANAGER says Xft.dpi 144 (1.5) but its XSETTINGS manager says
+     * Xft/DPI 192 and window scale 2: the largest wins -> 2.0 */
     CHECK(b->scale_hint != NULL);
-    if (b->scale_hint) { double sh = b->scale_hint(b); CHECK(sh > 1.499 && sh < 1.501); }
+    if (b->scale_hint) { double sh = b->scale_hint(b); CHECK(sh > 1.999 && sh < 2.001); }
     CHECK(b->screen_size != NULL && b->screen_size(b, &w, &h) == 1 && w == 640 && h == 480);
     b->set_min_size(b, 1024, 700);
     b->set_initial_geometry(b, 30, 40, LT_GEOM_POS);

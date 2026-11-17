@@ -341,6 +341,11 @@ int    lt_backend_get_geometry(lt_backend *b, int *x, int *y, int *maximized);
 int    lt_backend_set_fullscreen(lt_backend *b, int on);
 /* "Xft.dpi: N" from an X resource-manager string; 0.0 if absent (exposed for tests) */
 double lt_x11_parse_xft_dpi(const char *resources);
+/* XSETTINGS blob -> Xft/DPI (dpi) and Gdk/WindowScalingFactor; 0 ok, -1 malformed */
+int lt_x11_parse_xsettings(const unsigned char *d, size_t n, double *dpi, int *wscale);
+/* display scale from every X11 source (largest wins; physical DPI as a last resort) */
+double lt_x11_pick_scale(double xft_dpi, double xs_dpi, int xs_wscale, double gdk, double qt,
+                         int root_w, int mm_w);
 
 /* Backend constructors. Each returns NULL if unavailable on this system
  * (e.g. no $DISPLAY, not running on Windows). Never abort. */
