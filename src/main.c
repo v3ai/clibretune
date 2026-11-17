@@ -3,12 +3,15 @@
  * Env: LT_BACKEND, LT_NO_BROWSER, LT_MAX_FRAMES=N (exit after N frames),
  *      LT_SCREENSHOT=out.ppm [LT_SHOT_SIZE=WxH LT_SHOT_FRAMES=N LT_SHOT_OPEN=target
  *      LT_SHOT_CLICK=x,y LT_SHOT_THEME=name]: render offscreen, write PPM, exit.
+ *      LT_SHOT_TTY=out.ppm [LT_SHOT_TEXT LT_SHOT_ANSI LT_SHOT_KEYS ...]: same for the
+ *      terminal UI (see src/app/app_ttyshot.c).
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "app/app.h"
+#include "app/app_ttyshot.h"
 
 static void usage(void)
 {
@@ -40,6 +43,7 @@ int main(int argc, char **argv)
     }
     app = lt_app_new();
     shot = lt_plat_getenv("LT_SCREENSHOT");
+    if (shot == NULL && lt_app_shot_is_tty()) { shot = lt_strdup(""); }
     if (shot == NULL) {
         if (lt_app_open_window(app, backend, 1280, 800) != 0) {
             fprintf(stderr, "libretune: %s\n", lt_err_get());
@@ -51,6 +55,7 @@ int main(int argc, char **argv)
         int w = 1280, h = 800, frames = 8;
         char *e = lt_plat_getenv("LT_SHOT_SIZE");
         char *th, *op;
+        if (lt_app_shot_is_tty()) { w = 120; h = 40; }
         if (e != NULL) { sscanf(e, "%dx%d", &w, &h); lt_free(e); }
         e = lt_plat_getenv("LT_SHOT_FRAMES");
         if (e != NULL) { frames = atoi(e); lt_free(e); }

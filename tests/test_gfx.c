@@ -218,7 +218,8 @@ LT_TEST(test_cells)
     lt_gfx_fill_poly(&g, tri, 3, LT_RGB(9, 9, 9));
     LT_CHECK(C(&cl, 2, 8)->bg == LT_RGB(9, 9, 9));
     lt_gfx_rect(&g, lt_rect_make(160, 112, 64, 48), LT_RGB(255, 255, 255));
-    LT_CHECK(C(&cl, 20, 7)->ch == 0x250C && C(&cl, 27, 9)->ch == 0x2518);
+    LT_CHECK(C(&cl, 20, 7)->ch == 0x256D && C(&cl, 27, 9)->ch == 0x256F       /* rounded corners */
+              && C(&cl, 22, 7)->ch == 0x2500 && C(&cl, 20, 8)->ch == 0x2502);
     lt_gfx_vtext(&g, 160, 170, "ABC", 12, 0.0, 0, 1, 0, LT_RGB(255, 255, 255));
     LT_CHECK(C(&cl, 20, 10)->ch == 'A');
     {

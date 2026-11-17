@@ -246,6 +246,11 @@ lt_bool lt_ui_grid_begin(lt_ui *ui, const char *label, int rows, int cols, int c
     gid = lt_ui_id(ui, "##grid");
     G = grid_find(ui, gid);
     ui->grid = G;
+    if (ui->cell && (G->lru == 0 || G->lru < ui->frame_no - 1) && ui->npopups == 0 && ui->focus == 0) {
+        /* terminal: a table that just appeared takes the keyboard (arrows work at once) */
+        ui->focus = gid;
+        ui->kbd_nav = 1;
+    }
     G->lru = ui->frame_no;
     G->in_frame = 1;
     if (G->rows != rows || G->cols != cols || G->mask == NULL) {
@@ -511,6 +516,26 @@ void lt_ui_grid_cell(lt_ui *ui, int r, int c, const char *text, lt_color bg, lt_
     cr = cell_rect(G, r, c);
     sel = G->mask[r * G->cols + c];
     cur = (r == G->cur_r && c == G->cur_c);
+    if (ui->cell) {
+        /* heat-mapped text grid: the cursor cell is inverted, the rest of the selection tinted */
+        lt_color fill = bg, tf = fg;
+        int editing = G->edit && G->edit_r == r && G->edit_c == c;
+        if (G->hov_r == r && G->hov_c == c && !sel) { fill = lt_color_mix(bg, LT_RGB(255, 255, 255), 40); }
+        if (sel) {
+            fill = lt_color_mix(bg, lt_color_contrast(bg) == LT_RGB(255, 255, 255) ? LT_RGB(255, 255, 255) : LT_RGB(0, 0, 0), 96);
+            tf = lt_color_contrast(fill);
+        }
+        if (cur) {
+            fill = lt_color_contrast(bg) == LT_RGB(255, 255, 255) ? LT_RGB(255, 255, 255) : LT_RGB(16, 16, 16);
+            tf = lt_color_contrast(fill);
+        }
+        lt_ui_draw_fill(ui, cr, fill);
+        if (!editing && text != NULL) {
+            ui_text_in(ui, cr, text, tf, 1);
+            if (cur || sel) { ui_cell_bold(ui, cr); }
+        }
+        return;
+    }
     lt_ui_draw_fill(ui, cr, bg);
     if (!ui->cell) {
         lt_ui_draw_vline(ui, cr.x + cr.w - 1, cr.y, cr.y + cr.h - 1, t->table_grid);
@@ -538,7 +563,9 @@ void lt_ui_grid_mark(lt_ui *ui, int r, int c, lt_color color, int thickness)
     if (G == NULL || r < 0 || c < 0 || r >= G->rows || c >= G->cols) { return; }
     cr = cell_rect(G, r, c);
     if (ui->cell) {
-        lt_ui_draw_rect(ui, cr, color);
+        /* brackets around the value, in the mark color */
+        lt_ui_draw_text(ui, cr.x, cr.y, "[", color);
+        lt_ui_draw_text(ui, cr.x + cr.w - 8, cr.y, "]", color);
         return;
     }
     for (i = 0; i < thickness; i++) { lt_ui_draw_rect(ui, lt_rect_inset(cr, i, i), color); }

@@ -1748,7 +1748,8 @@ LT_TEST(test_cell_mode)
     LT_CHECK_INT(s_n[0], 1);
     click(R[1].x + 4, R[1].y + 8);
     LT_CHECK_INT(s_chk2, 1);
-    LT_CHECK(cells_has_text("[x] Check me"));
+    LT_CHECK(cells_has_text("] Check me"));
+    LT_CHECK(H.cells.cells[(R[1].y / 16) * H.cells.cols + R[1].x / 8 + 1].ch == 0x2713);   /* check mark */
     /* text input in cell mode */
     click(R[2].x + 20, R[2].y + 8);
     type_str("abc");

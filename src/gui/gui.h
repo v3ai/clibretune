@@ -64,6 +64,16 @@ typedef struct lt_cells {
 void lt_cells_init(lt_cells *g, int cols, int rows);
 void lt_cells_resize(lt_cells *g, int cols, int rows);
 void lt_cells_free(lt_cells *g);
+/* snapshots (cellshot.c): plain text (malloc'd, UTF-8, trailing blanks trimmed) and a PPM
+ * image of the grid (10x20 px per cell); 0 = ok */
+char *lt_cells_to_text(const lt_cells *g);
+int lt_cells_write_ppm(const lt_cells *g, const char *path);
+/* what a terminal of the given color depth (24, 256, 16, 1 = mono) and charset would show:
+ * quantizes colors in place and replaces glyphs the charset (0 ASCII, 1 Unicode, 2 Linux
+ * console subset) cannot show (be_tty.c) */
+void lt_tty_apply_mode(lt_cells *g, int depth, int charset);
+/* the full-frame escape stream for that terminal, malloc'd, NUL-terminated (be_tty.c) */
+char *lt_tty_ansi_dump(const lt_cells *g, int depth, int charset);
 
 /* ------------------------------------------------------------------ */
 /* Fonts: built-in 8x16 bitmap font (ASCII + Latin-1 + a few symbols like
@@ -143,6 +153,20 @@ void lt_gfx_vtext(lt_gfx *g, double x, double y, const char *utf8, double height
                   double rotation, int align, int valign, double stroke, lt_color c);
 double lt_gfx_vtext_width(const char *utf8, double height);
 
+/* Cell-mode drawing helpers (gfx_cell.c; no-ops in pixel mode). Coordinates are pixel units
+ * (a cell is 8x16) like every other draw call; rects snap to whole cells. */
+/* UTF-8 text with its own background (bg alpha 0 keeps the cell's) and attributes */
+int  lt_gfx_cell_text(lt_gfx *g, int x, int y, const char *utf8, lt_color fg, lt_color bg, int attr);
+void lt_gfx_cell_attr(lt_gfx *g, lt_rect r, int attr, int on);
+/* horizontal / vertical bar filled to frac (0..1) with eighth-block resolution */
+void lt_gfx_cell_hbar(lt_gfx *g, lt_rect r, double frac, lt_color fg, lt_color track);
+void lt_gfx_cell_vbar(lt_gfx *g, lt_rect r, double frac, lt_color fg, lt_color track);
+/* sparkline of the newest samples, 8 levels per row of r */
+void lt_gfx_cell_spark(lt_gfx *g, lt_rect r, const double *v, int n, double lo, double hi,
+                       lt_color fg, lt_color bg);
+/* darken the cells under the dx,dy-cell offset copy of r that r does not cover */
+void lt_gfx_cell_shadow(lt_gfx *g, lt_rect r, int dx, int dy);
+
 /* ------------------------------------------------------------------ */
 /* TrueType text (IBM Plex, embedded). Pixel mode only; in cell mode these
  * fall back to the 8x16 cell font (text snapped to the grid).
@@ -214,7 +238,7 @@ void lt_gfx_icon(lt_gfx *g, int icon, double x, double y, double size_px, double
 typedef enum lt_ev_type {
     LT_EV_NONE = 0,
     LT_EV_QUIT,
-    LT_EV_RESIZE,      /* w,h = new size in pixels (cells*8/16 for tty) */
+    LT_EV_RESIZE,      /* w,h = new size in pixels (tty: columns and rows) */
     LT_EV_EXPOSE,      /* need full repaint */
     LT_EV_MOUSE_MOVE,  /* x,y */
     LT_EV_MOUSE_DOWN,  /* x,y,button */

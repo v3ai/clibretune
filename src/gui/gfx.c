@@ -347,6 +347,10 @@ static void cell_bg(lt_gfx *g, int cx, int cy, lt_color c)
         k->attr = 0;
     } else {
         k->bg = blend_color(k->bg, c, a);
+        /* dark translucent fills (shadows, modal dimming) darken the glyph too */
+        if (LT_COLOR_R(c) + LT_COLOR_G(c) + LT_COLOR_B(c) < 96) {
+            k->fg = blend_color(k->fg, c, a);
+        }
     }
     cell_dirty(g, cx, cy);
 }
@@ -458,13 +462,20 @@ void lt_gfx_hline(lt_gfx *g, int x0, int x1, int y, lt_color c)
         return;
     }
     cy = cdiv_floor(y, CELL_H);
-    cx0 = cclamp(cdiv_floor(x0, CELL_W), 0, g->cells->cols);
-    cx1 = cclamp(cdiv_floor(x1, CELL_W), -1, g->cells->cols);
-    for (cx = cx0; cx <= cx1; cx++) {
-        lt_cell *k = cell_at(g, cx, cy);
-        lt_u32 ch = 0x2500;
-        if (k != NULL && k->ch == 0x2502) { ch = 0x253C; }
-        cell_ch(g, cx, cy, ch, c);
+    {
+        int ax0 = cdiv_floor(x0, CELL_W), ax1 = cdiv_floor(x1, CELL_W);
+        cx0 = cclamp(ax0, 0, g->cells->cols);
+        cx1 = cclamp(ax1, -1, g->cells->cols);
+        for (cx = cx0; cx <= cx1; cx++) {
+            lt_cell *k = cell_at(g, cx, cy);
+            int bits = 3;
+            if (k != NULL && (lt_cell_line_bits(k->ch) & 12) != 0) {
+                /* ends abutting a vertical stroke become T junctions */
+                if (cx == ax0 && cx != ax1) { bits = 2; }
+                else if (cx == ax1 && cx != ax0) { bits = 1; }
+            }
+            cell_ch(g, cx, cy, lt_cell_line_merge(k != NULL ? k->ch : ' ', bits, 0), c);
+        }
     }
 }
 
@@ -478,13 +489,19 @@ void lt_gfx_vline(lt_gfx *g, int x, int y0, int y1, lt_color c)
         return;
     }
     cx = cdiv_floor(x, CELL_W);
-    cy0 = cclamp(cdiv_floor(y0, CELL_H), 0, g->cells->rows);
-    cy1 = cclamp(cdiv_floor(y1, CELL_H), -1, g->cells->rows);
-    for (cy = cy0; cy <= cy1; cy++) {
-        lt_cell *k = cell_at(g, cx, cy);
-        lt_u32 ch = 0x2502;
-        if (k != NULL && k->ch == 0x2500) { ch = 0x253C; }
-        cell_ch(g, cx, cy, ch, c);
+    {
+        int ay0 = cdiv_floor(y0, CELL_H), ay1 = cdiv_floor(y1, CELL_H);
+        cy0 = cclamp(ay0, 0, g->cells->rows);
+        cy1 = cclamp(ay1, -1, g->cells->rows);
+        for (cy = cy0; cy <= cy1; cy++) {
+            lt_cell *k = cell_at(g, cx, cy);
+            int bits = 12;
+            if (k != NULL && (lt_cell_line_bits(k->ch) & 3) != 0) {
+                if (cy == ay0 && cy != ay1) { bits = 8; }
+                else if (cy == ay1 && cy != ay0) { bits = 4; }
+            }
+            cell_ch(g, cx, cy, lt_cell_line_merge(k != NULL ? k->ch : ' ', bits, 0), c);
+        }
     }
 }
 
@@ -511,18 +528,27 @@ void lt_gfx_rect(lt_gfx *g, lt_rect r, lt_color c)
         int xa = cclamp(x0, 0, g->cells->cols), xb = cclamp(x1, -1, g->cells->cols);
         int ya = cclamp(y0, 0, g->cells->rows), yb = cclamp(y1, -1, g->cells->rows);
         for (x = xa; x <= xb; x++) {
-            cell_ch(g, x, y0, 0x2500, c);
-            cell_ch(g, x, y1, 0x2500, c);
+            int bits = 3, corner = 0;
+            lt_cell *k;
+            if (x0 == x1) { bits = 0; }
+            else if (x == x0) { bits = 2; corner = 1; }
+            else if (x == x1) { bits = 1; corner = 1; }
+            k = cell_at(g, x, y0);
+            cell_ch(g, x, y0, lt_cell_line_merge(k != NULL ? k->ch : ' ', (x0 == x1 ? 12 : bits) | (corner && y1 != y0 ? 8 : 0), 1), c);
+            if (y1 != y0) {
+                k = cell_at(g, x, y1);
+                cell_ch(g, x, y1, lt_cell_line_merge(k != NULL ? k->ch : ' ', (x0 == x1 ? 12 : bits) | (corner ? 4 : 0), 1), c);
+            }
         }
         for (y = ya; y <= yb; y++) {
-            cell_ch(g, x0, y, 0x2502, c);
-            cell_ch(g, x1, y, 0x2502, c);
-        }
-        if (x0 != x1 && y0 != y1) {
-            cell_ch(g, x0, y0, 0x250C, c);
-            cell_ch(g, x1, y0, 0x2510, c);
-            cell_ch(g, x0, y1, 0x2514, c);
-            cell_ch(g, x1, y1, 0x2518, c);
+            if (y != y0 && y != y1) {
+                lt_cell *k = cell_at(g, x0, y);
+                cell_ch(g, x0, y, lt_cell_line_merge(k != NULL ? k->ch : ' ', 12, 0), c);
+                if (x1 != x0) {
+                    k = cell_at(g, x1, y);
+                    cell_ch(g, x1, y, lt_cell_line_merge(k != NULL ? k->ch : ' ', 12, 0), c);
+                }
+            }
         }
     }
 }

@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "dash_gauges.h"
+#include "gauges_cell.h"
 
 static lt_expr_cache *g_cache = NULL;
 static const lt_expr_env *g_env = NULL;
@@ -1010,20 +1011,25 @@ static void paint_stat(gp *p)
 }
 
 /* ====================================================================== */
-/* Cell-mode fallback: text readout with a block bar                       */
+/* Cell-mode: framed panel with value, bar and trend (gauges_cell.c)        */
 static void paint_cells(gp *p)
 {
-    char t[96], u[48], buf[160], bar[40];
-    int n = (int)(clamp01(pct_of(p, p->v)) * 20.0 + 0.5), i, rows = p->r.h / 16;
-    lt_color c = p->vc;
+    char t[96], u[48], val[64], mn[32], mx[32];
+    lt_gauge_cell gc;
     resolve_text(p->c->title, t, sizeof t); resolve_text(p->c->units, u, sizeof u);
-    lt_gfx_fill_rect(p->g, p->r, LT_RGB(0, 0, 0));
-    for (i = 0; i < 20; i++) { bar[i] = i < n ? '#' : '-'; }
-    bar[20] = '\0';
-    lt_snprintf(buf, sizeof buf, "%.*f %s", p->c->value_digits < 0 ? 0 : p->c->value_digits, p->v, u);
-    lt_gfx_text(p->g, p->r.x + 2, p->r.y, t, p->tc, 1);
-    if (rows >= 2) { lt_gfx_text(p->g, p->r.x + 2, p->r.y + 16, buf, c, 1); }
-    if (rows >= 3) { lt_gfx_text(p->g, p->r.x + 2, p->r.y + 32, bar, c, 1); }
+    fmt_val(p, p->v, p->c->value_digits, val, sizeof val);
+    fmt_val(p, p->mn, p->c->value_digits, mn, sizeof mn);
+    fmt_val(p, p->mx, p->c->value_digits, mx, sizeof mx);
+    memset(&gc, 0, sizeof gc);
+    gc.key = p->c; gc.title = t; gc.units = u; gc.value_text = val; gc.min_text = mn; gc.max_text = mx;
+    gc.value = p->v; gc.frac = clamp01(pct_of(p, p->v)); gc.lo = p->mn; gc.hi = p->mx; gc.now_ms = p->now;
+    gc.zone = p->s->zone;
+    gc.back = p->bc; gc.title_fg = p->tc; gc.value_fg = p->vc; gc.bar = level_color(p);
+    gc.warn = p->wc; gc.crit = p->cc;
+    if (LT_COLOR_R(gc.title_fg) + LT_COLOR_G(gc.title_fg) + LT_COLOR_B(gc.title_fg) < 240) {
+        gc.title_fg = LT_RGB(170, 180, 200);
+    }
+    lt_gauge_cells_paint(p->g, p->r, &gc);
 }
 
 /* ====================================================================== */
@@ -1074,8 +1080,8 @@ static void indicator_paint(void *ud, lt_gfx *g, lt_rect r, const lt_dash_indica
     memset(&p, 0, sizeof p);
     p.g = g; p.r = r; p.W = r.w; p.H = r.h;
     if (lt_gfx_cell_mode(g)) {
-        lt_gfx_fill_rect(g, r, bg);
-        if (t) { lt_gfx_text(g, r.x + 1, r.y, t, fg, 1); }
+        lt_indicator_cells_paint(g, r, t, opq(in->on_background_color), opq(in->on_text_color),
+                                 opq(in->off_background_color), opq(in->off_text_color), on);
         return;
     }
     prev = lt_gfx_push_clip(g, r);

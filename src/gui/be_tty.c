@@ -13,11 +13,18 @@
 #define TTY_INBUF 512
 #define TTY_QCAP 64
 #define TTY_ESC_MS 30
+#define TTY_SLICE_MS 100
 
 #define TTY_D_MONO 1
 #define TTY_D_16 16
 #define TTY_D_256 256
 #define TTY_D_TRUE 24
+
+/* charset levels (tty.utf8): 0 ASCII only, 1 full Unicode, 2 basic Unicode (the
+ * Linux console: box drawing, half/full blocks, shades and CP437 symbols only) */
+#define TTY_CS_ASCII 0
+#define TTY_CS_FULL 1
+#define TTY_CS_BASIC 2
 
 typedef struct tty_out {
     char *p;
@@ -28,6 +35,7 @@ typedef struct tty {
     int cols, rows;
     int depth;
     int utf8;
+    int sync;          /* emit synchronized-output (mode 2026) brackets */
     int opened;
     int eof_sent;
     lt_cell *prev;
@@ -176,6 +184,21 @@ static int tty_detect_utf8(const char *lc_all, const char *lc_ctype, const char 
     return str_has_i(v, "utf-8") || str_has_i(v, "utf8");
 }
 
+/* TERM=linux (the kernel console) has a 256/512 glyph font: no rounded corners,
+ * no partial blocks, no braille */
+static int tty_detect_charset(const char *lc_all, const char *lc_ctype, const char *lang,
+                              const char *term)
+{
+    if (!tty_detect_utf8(lc_all, lc_ctype, lang)) {
+        return TTY_CS_ASCII;
+    }
+    if (term != NULL && (strcmp(term, "linux") == 0 || strcmp(term, "vt220") == 0 ||
+                         strcmp(term, "vt100") == 0 || strcmp(term, "dumb") == 0)) {
+        return (strcmp(term, "linux") == 0) ? TTY_CS_BASIC : TTY_CS_ASCII;
+    }
+    return TTY_CS_FULL;
+}
+
 /* ------------------------------------------------------------------ */
 /* color quantizers */
 static int sq(int a)
@@ -224,7 +247,9 @@ static int tty_rgb_to_256(int r, int g, int b)
     return 16 + 36 * idx[0] + 6 * idx[1] + idx[2];
 }
 
-static int tty_rgb_to_16(int r, int g, int b)
+/* nlim = 16 for foreground, 8 for background (bright backgrounds are not
+ * portable: the Linux console and many terminals only have 8) */
+static int tty_rgb_to_n(int r, int g, int b, int nlim)
 {
     static const int pal[16][3] = {
         { 0, 0, 0 }, { 170, 0, 0 }, { 0, 170, 0 }, { 170, 85, 0 },
@@ -232,9 +257,14 @@ static int tty_rgb_to_16(int r, int g, int b)
         { 85, 85, 85 }, { 255, 85, 85 }, { 85, 255, 85 }, { 255, 255, 85 },
         { 85, 85, 255 }, { 255, 85, 255 }, { 85, 255, 255 }, { 255, 255, 255 }
     };
-    int i, best = 0, bd = 0x7FFFFFF, d;
-    for (i = 0; i < 16; i++) {
-        d = sq(r - pal[i][0]) + sq(g - pal[i][1]) + sq(b - pal[i][2]);
+    int i, best = 0, bd = 0x7FFFFFF, d, rm, dr, dg, db;
+    for (i = 0; i < nlim; i++) {
+        rm = (r + pal[i][0]) / 2;
+        dr = r - pal[i][0];
+        dg = g - pal[i][1];
+        db = b - pal[i][2];
+        /* "redmean" weighted distance: closer to perception than plain RGB */
+        d = ((512 + rm) * dr * dr) / 256 + 4 * dg * dg + ((767 - rm) * db * db) / 256;
         if (d < bd) {
             bd = d;
             best = i;
@@ -249,7 +279,7 @@ static int tty_luma(lt_color c)
 }
 
 /* quantize a color to the code that is emitted at this depth */
-static lt_u32 tty_quant(int depth, lt_color c)
+static lt_u32 tty_quant(int depth, lt_color c, int is_bg)
 {
     int r = LT_COLOR_R(c), g = LT_COLOR_G(c), b = LT_COLOR_B(c);
     if (depth == TTY_D_TRUE) {
@@ -259,23 +289,49 @@ static lt_u32 tty_quant(int depth, lt_color c)
         return (lt_u32)tty_rgb_to_256(r, g, b);
     }
     if (depth == TTY_D_16) {
-        return (lt_u32)tty_rgb_to_16(r, g, b);
+        return (lt_u32)tty_rgb_to_n(r, g, b, is_bg ? 8 : 16);
     }
     return 0;
 }
 
+/* monochrome: cells whose background is a "highlight" (neither the base dark
+ * nor a very light surface) are drawn reversed so selections stay visible */
+static int tty_mono_reverse(const lt_cell *c)
+{
+    int l = tty_luma(c->bg);
+    return (l >= 50 && l < 170) ? 1 : 0;
+}
+
 /* ------------------------------------------------------------------ */
 /* glyph mapping */
+/* partial-block glyphs: how many eighths are filled (0 = not a partial block) */
+static int tty_block_eighths(lt_u32 cp)
+{
+    if (cp >= 0x2581UL && cp <= 0x2587UL) {
+        return (int)(cp - 0x2580UL);
+    }
+    if (cp >= 0x2589UL && cp <= 0x258FUL) {
+        return (int)(0x2590UL - cp);
+    }
+    return 0;
+}
+
 static lt_u32 tty_ascii_fallback(lt_u32 cp)
 {
+    int e;
     if (cp >= 0x2500 && cp <= 0x257F) {
         switch (cp) {
         case 0x2500: case 0x2501: case 0x2504: case 0x2505: case 0x2508: case 0x2509:
-        case 0x254C: case 0x254D: case 0x2550:
+        case 0x254C: case 0x254D: case 0x2550: case 0x2574: case 0x2576: case 0x2578:
+        case 0x257A: case 0x257C: case 0x257E:
             return '-';
         case 0x2502: case 0x2503: case 0x2506: case 0x2507: case 0x250A: case 0x250B:
-        case 0x254E: case 0x254F: case 0x2551:
+        case 0x254E: case 0x254F: case 0x2551: case 0x2575: case 0x2577: case 0x2579:
+        case 0x257B: case 0x257D: case 0x257F:
             return '|';
+        case 0x2571: return '/';
+        case 0x2572: return '\\';
+        case 0x2573: return 'X';
         default:
             return '+';
         }
@@ -287,20 +343,111 @@ static lt_u32 tty_ascii_fallback(lt_u32 cp)
         if (cp == 0x2592) {
             return ':';
         }
+        e = tty_block_eighths(cp);
+        if (e > 0) {
+            return e <= 2 ? '.' : (e <= 5 ? ':' : '#');
+        }
+        if (cp == 0x2580) {
+            return '"';
+        }
+        if (cp == 0x2594) {
+            return '^';
+        }
+        if (cp == 0x2595) {
+            return '|';
+        }
         return '#';
+    }
+    if (cp >= 0x2800 && cp <= 0x28FF) {
+        return cp == 0x2800 ? ' ' : '*';
     }
     switch (cp) {
     case 0xB0: return 'o';
     case 0xB7: case 0x2026: return '.';
-    case 0x2022: return '*';
+    case 0x2022: case 0x25CF: case 0x25CB: case 0x25C9: case 0x2605: case 0x2606: return '*';
     case 0x2212: return '-';
-    case 0x2190: case 0x25C4: case 0x25C0: return '<';
-    case 0x2191: case 0x25B2: return '^';
-    case 0x2192: case 0x25BA: case 0x25B6: return '>';
-    case 0x2193: case 0x25BC: return 'v';
+    case 0x2190: case 0x25C4: case 0x25C0: case 0x25C2: case 0x25C1: return '<';
+    case 0x2191: case 0x25B2: case 0x25B4: return '^';
+    case 0x2192: case 0x25BA: case 0x25B6: case 0x25B8: case 0x25B7: return '>';
+    case 0x2193: case 0x25BC: case 0x25BE: return 'v';
+    case 0x2713: case 0x2714: return 'x';
+    case 0x2717: case 0x2718: case 0xD7: return 'x';
+    case 0x2264: return '<';
+    case 0x2265: return '>';
+    case 0x25A0: case 0x25AA: return '#';
     default: break;
     }
+    if (cp >= 0xC0 && cp <= 0xFF) {
+        return '?';
+    }
     return '?';
+}
+
+/* what the Linux console can show: box drawing (no rounded corners), full/half
+ * blocks and shades, a few CP437 symbols */
+static lt_u32 tty_basic_fallback(lt_u32 cp)
+{
+    int e;
+    if (cp >= 0x256D && cp <= 0x2570) {
+        static const lt_u32 sq[4] = { 0x250C, 0x2510, 0x2518, 0x2514 };
+        return sq[cp - 0x256D];
+    }
+    if (cp >= 0x2571 && cp <= 0x2573) {
+        return cp == 0x2571 ? '/' : (cp == 0x2572 ? '\\' : 'X');
+    }
+    if (cp >= 0x2574 && cp <= 0x257F) {
+        return (cp & 1) ? 0x2502 : 0x2500;
+    }
+    if (cp >= 0x2504 && cp <= 0x250B) {
+        return (cp & 2) ? 0x2502 : 0x2500;
+    }
+    if (cp >= 0x254C && cp <= 0x254F) {
+        return (cp & 2) ? 0x2502 : 0x2500;
+    }
+    if (cp >= 0x2500 && cp <= 0x257F) {
+        return cp;      /* the console has all single/double combos it needs */
+    }
+    if (cp >= 0x2580 && cp <= 0x259F) {
+        e = tty_block_eighths(cp);
+        if (cp >= 0x2581 && cp <= 0x2587) {
+            return e <= 2 ? '_' : (e <= 5 ? 0x2584 : 0x2588);
+        }
+        if (cp >= 0x2589 && cp <= 0x258F) {
+            return e <= 2 ? ' ' : (e <= 5 ? 0x258C : 0x2588);
+        }
+        switch (cp) {
+        case 0x2594: return 0x2580;
+        case 0x2595: return 0x2590;
+        case 0x2596: case 0x2599: return 0x258C;
+        case 0x2597: case 0x259F: return 0x2590;
+        case 0x2598: case 0x259B: return 0x2580;
+        case 0x259A: case 0x259C: case 0x259D: case 0x259E: return 0x2588;
+        default: return cp;
+        }
+    }
+    if (cp >= 0x2800 && cp <= 0x28FF) {
+        return cp == 0x2800 ? ' ' : 0xB7;
+    }
+    switch (cp) {
+    case 0x25B6: case 0x25B8: case 0x25B7: return 0x25BA;
+    case 0x25C0: case 0x25C2: case 0x25C1: return 0x25C4;
+    case 0x25BE: return 0x25BC;
+    case 0x25B4: return 0x25B2;
+    case 0x25CF: case 0x25C9: case 0x2605: case 0x2606: return 0x2022;
+    case 0x2713: case 0x2714: return 0x221A;
+    case 0x2717: case 0x2718: return 'x';
+    case 0x2026: return '.';
+    case 0x2212: return '-';
+    case 0x2022: case 0xB0: case 0xB7: case 0x2190: case 0x2191: case 0x2192: case 0x2193:
+    case 0x25B2: case 0x25BA: case 0x25BC: case 0x25C4: case 0x2264: case 0x2265:
+    case 0x25A0: case 0x25CB:
+        return cp;
+    default: break;
+    }
+    if (cp < 0x250 && cp >= 0xA0) {
+        return cp;      /* Latin-1 / Latin Extended: the console font covers it */
+    }
+    return tty_ascii_fallback(cp);
 }
 
 static lt_u32 tty_glyph(const tty *t, lt_u32 cp)
@@ -308,11 +455,14 @@ static lt_u32 tty_glyph(const tty *t, lt_u32 cp)
     if (cp < 0x20 || cp == 0x7F || (cp >= 0x80 && cp < 0xA0)) {
         return ' ';
     }
-    if (!t->utf8 && cp > 0x7E) {
-        return tty_ascii_fallback(cp);
-    }
     if (cp > 0x10FFFFUL || (cp >= 0xD800UL && cp <= 0xDFFFUL)) {
         return '?';
+    }
+    if (t->utf8 == TTY_CS_ASCII && cp > 0x7E) {
+        return tty_ascii_fallback(cp);
+    }
+    if (t->utf8 == TTY_CS_BASIC && cp > 0x7E) {
+        return tty_basic_fallback(cp);
     }
     return cp;
 }
@@ -351,12 +501,12 @@ static void tty_set_style(tty *t, tty_out *o, const lt_cell *c)
     lt_u32 fg = 0, bg = 0;
     int attr = c->attr & 7;
     if (t->depth == TTY_D_MONO) {
-        if (tty_luma(c->bg) > 127) {
+        if (tty_mono_reverse(c)) {
             attr ^= LT_CELL_REVERSE;
         }
     } else {
-        fg = tty_quant(t->depth, c->fg);
-        bg = tty_quant(t->depth, c->bg);
+        fg = tty_quant(t->depth, c->fg, 0);
+        bg = tty_quant(t->depth, c->bg, 1);
     }
     if (t->cur_valid && t->cur_fg == fg && t->cur_bg == bg && t->cur_attr == attr) {
         return;
@@ -381,6 +531,8 @@ static void tty_set_style(tty *t, tty_out *o, const lt_cell *c)
     t->cur_bg = bg;
     t->cur_attr = attr;
 }
+
+static void tty_free_bufs(tty *t);
 
 /* Build the escape stream for one frame into t->out (does not write). */
 static void tty_render(tty *t, const lt_cells *g)
@@ -438,7 +590,95 @@ static void tty_render(tty *t, const lt_cells *g)
             }
         }
     }
+    if (t->sync && t->out.len > 0) {
+        /* synchronized output: the terminal shows the frame atomically (no tearing);
+         * terminals that do not know mode 2026 ignore the sequence */
+        size_t n = t->out.len;
+        ob_reserve(&t->out, 16 + 8);
+        memmove(t->out.p + 8, t->out.p, n);
+        memcpy(t->out.p, "\033[?2026h", 8);
+        memcpy(t->out.p + 8 + n, "\033[?2026l", 8);
+        t->out.len = n + 16;
+    }
     t->have_prev = 1;
+}
+
+/* ------------------------------------------------------------------ */
+/* previews for the snapshot harness and tests */
+static lt_color tty_code_rgb(int depth, lt_u32 code)
+{
+    static const int pal16[16][3] = {
+        { 0, 0, 0 }, { 170, 0, 0 }, { 0, 170, 0 }, { 170, 85, 0 },
+        { 0, 0, 170 }, { 170, 0, 170 }, { 0, 170, 170 }, { 170, 170, 170 },
+        { 85, 85, 85 }, { 255, 85, 85 }, { 85, 255, 85 }, { 255, 255, 85 },
+        { 85, 85, 255 }, { 255, 85, 255 }, { 85, 255, 255 }, { 255, 255, 255 }
+    };
+    static const int lv[6] = { 0, 95, 135, 175, 215, 255 };
+    int c = (int)code;
+    if (depth == TTY_D_TRUE) {
+        return (lt_color)(0xFF000000UL | code);
+    }
+    if (depth == TTY_D_16 || (depth == TTY_D_256 && c < 16)) {
+        return LT_RGB(pal16[c & 15][0], pal16[c & 15][1], pal16[c & 15][2]);
+    }
+    if (c >= 232) {
+        int v = 8 + 10 * (c - 232);
+        return LT_RGB(v, v, v);
+    }
+    c -= 16;
+    return LT_RGB(lv[(c / 36) % 6], lv[(c / 6) % 6], lv[c % 6]);
+}
+
+void lt_tty_apply_mode(lt_cells *g, int depth, int utf8)
+{
+    int i, n;
+    if (g == NULL || g->cells == NULL) {
+        return;
+    }
+    if (depth != TTY_D_TRUE && depth != TTY_D_256 && depth != TTY_D_16) {
+        depth = TTY_D_MONO;
+    }
+    n = g->cols * g->rows;
+    for (i = 0; i < n; i++) {
+        lt_cell *c = &g->cells[i];
+        if (depth == TTY_D_MONO) {
+            int rev = tty_mono_reverse(c);
+            c->fg = LT_RGB(230, 230, 230);
+            c->bg = LT_RGB(0, 0, 0);
+            if (rev || (c->attr & LT_CELL_REVERSE)) {
+                c->attr = (lt_u8)(c->attr ^ LT_CELL_REVERSE);
+            }
+        } else {
+            c->fg = tty_code_rgb(depth, tty_quant(depth, c->fg, 0));
+            c->bg = tty_code_rgb(depth, tty_quant(depth, c->bg, 1));
+        }
+        if (c->ch < 0x20UL || c->ch == 0x7FUL) {
+            c->ch = ' ';
+        } else if (utf8 == TTY_CS_ASCII && c->ch > 0x7EUL) {
+            c->ch = tty_ascii_fallback(c->ch);
+        } else if (utf8 == TTY_CS_BASIC && c->ch > 0x7EUL) {
+            c->ch = tty_basic_fallback(c->ch);
+        }
+    }
+}
+
+char *lt_tty_ansi_dump(const lt_cells *g, int depth, int utf8)
+{
+    tty t;
+    char *r;
+    memset(&t, 0, sizeof(t));
+    t.cols = g->cols;
+    t.rows = g->rows;
+    t.depth = (depth == TTY_D_TRUE || depth == TTY_D_256 || depth == TTY_D_16) ? depth : TTY_D_MONO;
+    t.utf8 = utf8;
+    tty_render(&t, g);
+    r = (char *)lt_malloc(t.out.len + 1);
+    if (t.out.len > 0) {
+        memcpy(r, t.out.p, t.out.len);
+    }
+    r[t.out.len] = '\0';
+    tty_free_bufs(&t);
+    return r;
 }
 
 /* ------------------------------------------------------------------ */
@@ -493,6 +733,8 @@ static int parse_plain(tty *t, const unsigned char *p, int n, int mods)
             push_key(t, LT_KEY_ENTER, mods);
         } else if (c == 0x08 || c == 0x7F) {
             push_key(t, LT_KEY_BACKSPACE, mods);
+        } else if (c == 0x03 && !(mods & LT_MOD_ALT)) {
+            q_push(t, LT_EV_QUIT);      /* Ctrl-C: ask the app to quit (it may prompt) */
         } else if (c == 0x00) {
             push_key(t, ' ', mods | LT_MOD_CTRL);
         } else if (c >= 1 && c <= 26) {
@@ -817,9 +1059,11 @@ static tty *g_active = NULL;
 static int g_hooks = 0;
 
 static const char tty_seq_open[] =
-    "\033[?1049h\033[?25l\033[?2004l\033[?1000h\033[?1002h\033[?1006h\033[0m\033[2J";
+    "\033[?1049h\033[?25l\033[?2004l\033[?1000h\033[?1002h\033[?1003h\033[?1006h\033[?1004h"
+    "\033[0m\033[2J";
 static const char tty_seq_close[] =
-    "\033[0m\033[?1006l\033[?1002l\033[?1000l\033[?25h\033[?1049l";
+    "\033[0m\033[?2026l\033[?1004l\033[?1006l\033[?1003l\033[?1002l\033[?1000l\033[?25h"
+    "\033[?1049l\033[0m";
 
 static void tty_restore(void)
 {
@@ -856,6 +1100,12 @@ static void tty_install_hooks(void)
 #endif
 #ifdef SIGHUP
     signal(SIGHUP, tty_on_signal);
+#endif
+#ifdef SIGINT
+    signal(SIGINT, tty_on_signal);
+#endif
+#ifdef SIGQUIT
+    signal(SIGQUIT, tty_on_signal);
 #endif
 #ifdef SIGSEGV
     signal(SIGSEGV, tty_on_signal);
@@ -928,7 +1178,7 @@ static int tty_open(lt_backend *b, const char *title, int w, int h)
     ct = getenv("COLORTERM");
     tm = getenv("TERM");
     t->depth = tty_detect_depth(ct, tm);
-    t->utf8 = tty_detect_utf8(getenv("LC_ALL"), getenv("LC_CTYPE"), getenv("LANG"));
+    t->utf8 = tty_detect_charset(getenv("LC_ALL"), getenv("LC_CTYPE"), getenv("LANG"), tm);
     if (lt_term_raw_begin() != 0) {
         lt_err_set("tty: cannot enter raw mode");
         return -1;
@@ -939,6 +1189,7 @@ static int tty_open(lt_backend *b, const char *title, int w, int h)
     t->eof_sent = 0;
     t->cur_valid = 0;
     t->have_prev = 0;
+    t->sync = (t->depth != TTY_D_MONO && (tm == NULL || strcmp(tm, "linux") != 0)) ? 1 : 0;
     g_active = t;
     tty_install_hooks();
     tty_query_size(t);
@@ -1000,7 +1251,7 @@ static int tty_poll(lt_backend *b, lt_event *ev, int timeout_ms)
 {
     tty *t = (tty *)b->impl;
     char buf[128];
-    int n, wait, room;
+    int n, wait, room, remaining = timeout_ms;
 
     memset(ev, 0, sizeof(*ev));
     for (;;) {
@@ -1012,15 +1263,18 @@ static int tty_poll(lt_backend *b, lt_event *ev, int timeout_ms)
             t->have_prev = 0;
             memset(ev, 0, sizeof(*ev));
             ev->type = LT_EV_RESIZE;
-            ev->x = t->cols * TTY_CELL_W;
-            ev->y = t->rows * TTY_CELL_H;
+            ev->x = t->cols;
+            ev->y = t->rows;
             return 1;
         }
         tty_feed(t, 0);
         if (t->qn > 0) {
             continue;
         }
-        wait = timeout_ms;
+        wait = remaining;
+        if (wait < 0 || wait > TTY_SLICE_MS) {
+            wait = TTY_SLICE_MS;        /* wake regularly: console resizes arrive as no input */
+        }
         if (t->inlen > 0) {
             wait = TTY_ESC_MS; /* partial sequence: always give it time to finish */
         }
@@ -1053,7 +1307,13 @@ static int tty_poll(lt_backend *b, lt_event *ev, int timeout_ms)
                 continue;
             }
         }
-        return 0;
+        if (remaining < 0) {
+            continue;
+        }
+        remaining -= wait;
+        if (remaining <= 0) {
+            return 0;
+        }
     }
 }
 
