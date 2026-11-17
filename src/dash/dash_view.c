@@ -669,7 +669,7 @@ void lt_dash_view_render(lt_dash_view *v, lt_gfx *g, lt_rect area, const lt_expr
     lt_gfx_fill_rect(g, cr, cl->background_color | 0xFF000000UL);
     show = lt_expr_cache_test(&v->cache, cl->enabled_condition, env);
     if (v->cell_auto && lt_gfx_cell_mode(g)) {
-        lt_rect more;
+        lt_rect more = { 0, 0, 0, 0 };
         int hidden;
         char note[40];
         for (i = 0; i < v->n; i++) {
