@@ -7,6 +7,7 @@
 #include "app.h"
 #include "../tableops/tableops.h"
 #include "../autotune/autotune.h"
+#include "../basemap/basemap.h"
 
 /* fixed-point format with `digits` decimals (clamped 0..6) */
 void lt_tabs_fmt(char *buf, size_t cap, double v, int digits);
@@ -25,6 +26,62 @@ int  lt_tabs_parse_list(const char *s, double *out, int cap);
 /* nearest-index of the live channel value in bins; LT_FALSE when the channel is unavailable */
 lt_bool lt_tabs_live_index(lt_app *app, const char *channel, const double *bins, size_t n,
                            double *value, size_t *idx);
+
+
+/* ---- Set table size dialog (tables_size.c) ---- */
+typedef struct lt_tabs_size_dlg {
+    int open;
+    double cols, rows;
+    lt_table_size info;
+} lt_tabs_size_dlg;
+/* LT_ENOENT when t is not resizable; else 0 and the dialog is opened at the active size */
+int  lt_tabs_size_begin(lt_app *app, const lt_ini_table *t, lt_tabs_size_dlg *d);
+/* Draw the modal. Returns 1 when the user applied a size (tables already resized in the
+ * page image, shared tables included), <0 on error (toast shown), else 0. */
+int  lt_tabs_size_draw(lt_app *app, const lt_ini_table *t, lt_tabs_size_dlg *d);
+
+/* ---- Generate table dialog (tables_gen.c) ---- */
+typedef struct lt_tabs_gen_dlg {
+    int open;
+    int write_axes;
+    int role;                   /* lt_table_role of the table being generated */
+} lt_tabs_gen_dlg;
+/* Generated Z for a table role (VE / ignition / AFR target) resampled onto the axes
+ * (xb: nx, yb: ny) or, when write_axes, onto axes derived from the engine (out_x/out_y are
+ * then filled; otherwise they are copies of xb/yb). out_z holds nx*ny doubles. */
+
+int  lt_tabs_gen_values(const lt_engine_spec *spec, int role, int write_axes,
+                        const double *xb, size_t nx, const double *yb, size_t ny,
+                        double *out_x, double *out_y, double *out_z);
+/* Draw the modal (engine specs persist in the app between uses). Returns 1 when applied:
+ * out_x/out_y/out_z (nx, ny, nx*ny) hold the new values. */
+int  lt_tabs_gen_draw(lt_app *app, lt_tabs_gen_dlg *d, const char *title, const double *xb,
+                      size_t nx, const double *yb, size_t ny, int zdig, double *out_x,
+                      double *out_y, double *out_z);
+
+/* ---- .table file import/export (tables_io.c) ---- */
+typedef struct lt_tabs_io_dlg {
+    int open;
+    int use_axes;
+    int match;                  /* file shape equals the table shape */
+    char path[256];
+    lt_table_file tf;
+    int have;
+} lt_tabs_io_dlg;
+#define LT_TABS_FD_LOAD (LT_APP_FD_USER0 + 60)
+#define LT_TABS_FD_SAVE (LT_APP_FD_USER0 + 61)
+void lt_tabs_io_free(lt_tabs_io_dlg *d);
+/* Parse the file and open the confirmation modal; <0 on error (message in lt_err_get) */
+int  lt_tabs_io_open_file(lt_tabs_io_dlg *d, const char *path, size_t cols, size_t rows);
+/* Draw the modal; returns 1 when the user confirmed (d->tf and d->use_axes are valid) */
+int  lt_tabs_io_draw(lt_app *app, lt_tabs_io_dlg *d, size_t cols, size_t rows);
+/* Values of the loaded file fitted to a cols x rows table: copied when shapes match, otherwise
+ * bilinearly resampled onto the table's axes (xb/yb). out_z holds rows*cols doubles. */
+int  lt_tabs_io_fit(const lt_table_file *tf, const double *xb, size_t cols, const double *yb,
+                    size_t rows, double *out_z);
+/* Write v's table to a TunerStudio .table file; 0 or <0 */
+int  lt_tabs_io_save(const char *path, const char *xname, const char *yname, const double *x,
+                     size_t cols, const double *y, size_t rows, const double *z);
 
 /* autotune service (feeds samples each realtime frame while a session runs) */
 void lt_tabs_autotune_service(lt_app *app);

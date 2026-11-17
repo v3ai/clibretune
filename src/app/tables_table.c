@@ -28,6 +28,17 @@ typedef struct tbl_tab {
     unsigned long last_frames;
     int goto_live;
     int scale_open, scale_mode; double scale_val;
+    double *orig; size_t orig_n;  /* values at open: Esc reverts the selection to these */
+    double step, step_mult, step_pct;   /* user increments: amount, Ctrl multiplier, PageUp/Dn % */
+    int step_open;
+    int paste_open, paste_mode;
+    int prev_rdown, select_all;
+    lt_rect grid_area;            /* viewport of the grid (right-click menu target) */
+    int fd_load, fd_save;         /* waiting for a file dialog result */
+    int resizable;
+    lt_tabs_size_dlg size_dlg;
+    lt_tabs_gen_dlg gen_dlg;
+    lt_tabs_io_dlg io_dlg;
     int rebin_open, rebin_interp; char xtxt[1024], ytxt[1024];
     double yaw, pitch;
     int drag3d, lmx, lmy, prev_down;
@@ -56,6 +67,7 @@ static void tbl_free_data(tbl_tab *st)
     lt_tblview_free(&st->v);
     lt_free(st->sel); st->sel = NULL; st->sel_cap = 0;
     lt_free(st->cellcol); st->cellcol = NULL;
+    lt_free(st->orig); st->orig = NULL; st->orig_n = 0;
 }
 
 static void tbl_load(lt_app *app, lt_app_tab *tab, tbl_tab *st)
@@ -86,6 +98,11 @@ static void tbl_load(lt_app *app, lt_app_tab *tab, tbl_tab *st)
     }
     memset(st->sel, 0, st->sel_cap);
     st->nsel = 0;
+    lt_free(st->orig);
+    st->orig = (double *)lt_calloc(n, sizeof(double));
+    memcpy(st->orig, st->v.z, n * sizeof(double));
+    st->orig_n = n;
+    st->resizable = st->t->rows_size_const != NULL && st->t->rows_size_const[0] != '\0';
     st->xlab[0] = st->ylab[0] = '\0';
     if (st->t->x_label != NULL && st->t->x_label[0] != '{') { lt_strlcpy(st->xlab, st->t->x_label, sizeof(st->xlab)); }
     if (st->t->y_label != NULL && st->t->y_label[0] != '{') { lt_strlcpy(st->ylab, st->t->y_label, sizeof(st->ylab)); }
@@ -100,7 +117,17 @@ static void tbl_check_external(lt_app *app, lt_app_tab *tab, tbl_tab *st)
     double *tmp;
     size_t n, i;
     int cnt, diff = 0;
-    if (!st->loaded || st->t->rows_size_const != NULL || lt_tblview_is_dirty(&st->v)) { return; }
+    if (!st->loaded || lt_tblview_is_dirty(&st->v)) { return; }
+    if (st->resizable) {
+        /* a resize (here, a shared table, a tune load) changes the active size */
+        lt_table_size sz;
+        lt_pagesrc ps = lt_app_pages(app);
+        if (lt_table_size_info(app->ini, st->t, &ps, &sz) == 0 &&
+            (sz.active_cols != st->v.cols || sz.active_rows != st->v.rows)) {
+            tbl_load(app, tab, st);
+        }
+        return;
+    }
     zc = lt_ini_find_const(app->ini, st->t->z_const);
     if (zc == NULL) { return; }
     n = st->v.rows * st->v.cols;
@@ -153,7 +180,7 @@ static void tbl_fix(tbl_tab *st, const lt_tcell *sel, size_t n)
 }
 
 enum { OP_EQUAL = 1, OP_ADD, OP_SCALE, OP_INTERP, OP_INTERP_H, OP_INTERP_V, OP_SMOOTH,
-       OP_FILL_R, OP_FILL_D, OP_SET };
+       OP_FILL_R, OP_FILL_D, OP_SET, OP_RESTORE, OP_CLEAR };
 
 static void tbl_op(lt_app *app, lt_app_tab *tab, tbl_tab *st, int op, double arg)
 {
@@ -176,6 +203,30 @@ static void tbl_op(lt_app *app, lt_app_tab *tab, tbl_tab *st, int op, double arg
         else if (maxx == minx) { lt_tblview_interp_linear(&st->v, sel, n, LT_TBL_AXIS_COL); }
         else { lt_tblview_interp2d(&st->v, sel, n); }
         break;
+    case OP_RESTORE:
+    case OP_CLEAR: {
+        /* run the pure op on a scratch copy, then write the selected cells through the view */
+        double *tmp = (double *)lt_calloc(st->v.rows * cols + 1, sizeof(double));
+        memcpy(tmp, st->v.z, st->v.rows * cols * sizeof(double));
+        if (op == OP_RESTORE && st->orig != NULL && st->orig_n == st->v.rows * cols) {
+            lt_tbl_restore(tmp, st->v.rows, cols, sel, n, st->orig);
+        } else if (op == OP_CLEAR) {
+            lt_tbl_clear(tmp, st->v.rows, cols, sel, n, st->lo, st->hi);
+        }
+        {
+            int changed = 0;
+            for (i = 0; i < n; i++) {
+                if (tmp[sel[i].y * cols + sel[i].x] != lt_tblview_get(&st->v, sel[i].y, sel[i].x)) { changed = 1; }
+            }
+            if (changed) {
+                lt_tblview_push_undo(&st->v);
+                for (i = 0; i < n; i++) {
+                    lt_tblview_set(&st->v, sel[i].y, sel[i].x, tmp[sel[i].y * cols + sel[i].x]);
+                }
+            }
+        }
+        lt_free(tmp);
+        break; }
     case OP_INTERP_H: lt_tblview_interp_linear(&st->v, sel, n, LT_TBL_AXIS_ROW); break;
     case OP_INTERP_V: lt_tblview_interp_linear(&st->v, sel, n, LT_TBL_AXIS_COL); break;
     case OP_SMOOTH: lt_tblview_smooth(&st->v, sel, n, 1.0); break;
@@ -266,7 +317,15 @@ static void tbl_copy(lt_app *app, tbl_tab *st)
     lt_app_toast(app, 0, "Copied %dx%d cells", r1 - r0 + 1, c1 - c0 + 1);
 }
 
-static void tbl_paste(lt_app *app, lt_app_tab *tab, tbl_tab *st)
+/* combine value `val` with data cell (y,x) using a paste mode and write it through the view */
+static void tbl_put(tbl_tab *st, size_t y, size_t x, double val, int mode)
+{
+    double cell = lt_tblview_get(&st->v, y, x);
+    lt_tbl_paste_op(&cell, 1, 1, 0, 0, &val, 1, 1, mode);
+    lt_tblview_set(&st->v, y, x, cell);
+}
+
+static void tbl_paste(lt_app *app, lt_app_tab *tab, tbl_tab *st, int mode)
 {
     char *txt = lt_ui_clipboard_get(app->ui);
     double *blk = NULL, row[64];
@@ -311,7 +370,7 @@ static void tbl_paste(lt_app *app, lt_app_tab *tab, tbl_tab *st)
         for (r = 0; r < rows; r++) {
             for (c = 0; c < cols; c++) {
                 if (st->sel[(size_t)r * (size_t)cols + (size_t)c]) {
-                    lt_tblview_set(&st->v, (size_t)r, (size_t)c, blk[0]);
+                    tbl_put(st, (size_t)r, (size_t)c, blk[0], mode);
                 }
             }
         }
@@ -321,7 +380,7 @@ static void tbl_paste(lt_app *app, lt_app_tab *tab, tbl_tab *st)
             for (j = 0; j < bw; j++) {
                 int dr = r0 + (int)i, dc = c0 + (int)j;
                 if (dr < rows && dc < cols) {
-                    lt_tblview_set(&st->v, (size_t)drow(st, dr), (size_t)dc, blk[i * bw + j]);
+                    tbl_put(st, (size_t)drow(st, dr), (size_t)dc, blk[i * bw + j], mode);
                 }
             }
         }
@@ -705,39 +764,104 @@ static double small_step(const tbl_tab *st)
     return s;
 }
 
+/* percent step: scale the selection by 1 +/- pct/100 */
+static void tbl_pct(lt_app *app, lt_app_tab *tab, tbl_tab *st, int dir)
+{
+    double f = 1.0 + (double)dir * st->step_pct / 100.0;
+    tbl_op(app, tab, st, OP_SCALE, f);
+}
+
 static void tbl_keys(lt_app *app, lt_app_tab *tab, tbl_tab *st)
 {
     lt_ui *ui = app->ui;
     double ss = small_step(st);
-    if (lt_ui_text_focused(ui)) { return; }
+    double up = st->step, dn = -st->step, cm = st->step * st->step_mult;
+    if (lt_ui_text_focused(ui) || lt_ui_popup_open(ui)) { return; }
     if (lt_ui_key_pressed(ui, 'c', LT_MOD_CTRL)) { tbl_copy(app, st); }
-    if (lt_ui_key_pressed(ui, 'v', LT_MOD_CTRL)) { tbl_paste(app, tab, st); }
+    if (lt_ui_key_pressed(ui, 'v', LT_MOD_CTRL | LT_MOD_SHIFT)) { st->paste_open = 1; }
+    if (lt_ui_key_pressed(ui, 'v', LT_MOD_CTRL)) { tbl_paste(app, tab, st, LT_TBL_PASTE_REPLACE); }
     if (lt_ui_key_pressed(ui, 'z', LT_MOD_CTRL)) { tbl_undo_redo(app, tab, st, 0); }
     if (lt_ui_key_pressed(ui, 'y', LT_MOD_CTRL) || lt_ui_key_pressed(ui, 'z', LT_MOD_CTRL | LT_MOD_SHIFT)) {
         tbl_undo_redo(app, tab, st, 1);
     }
     if (lt_ui_key_pressed(ui, 'r', LT_MOD_CTRL)) { tbl_op(app, tab, st, OP_FILL_R, 0); }
     if (lt_ui_key_pressed(ui, 'd', LT_MOD_CTRL)) { tbl_op(app, tab, st, OP_FILL_D, 0); }
+    if (lt_ui_key_pressed(ui, LT_KEY_ESCAPE, 0)) { tbl_op(app, tab, st, OP_RESTORE, 0); }
+    if (lt_ui_key_pressed(ui, LT_KEY_DELETE, 0) || lt_ui_key_pressed(ui, LT_KEY_BACKSPACE, 0)) {
+        tbl_op(app, tab, st, OP_CLEAR, 0);
+    }
     if (lt_ui_key_pressed(ui, '=', 0)) { tbl_op(app, tab, st, OP_EQUAL, 0); }
-    if (lt_ui_key_pressed(ui, '=', LT_MOD_SHIFT) || lt_tabs_key(ui, '+')) { tbl_op(app, tab, st, OP_ADD, 1.0); }
-    if (lt_tabs_key(ui, '-') || lt_tabs_key(ui, '_')) { tbl_op(app, tab, st, OP_ADD, -1.0); }
-    if (lt_tabs_key(ui, '>')) { tbl_op(app, tab, st, OP_ADD, 1.0); }
-    if (lt_tabs_key(ui, '<')) { tbl_op(app, tab, st, OP_ADD, -1.0); }
+    /* step keys: user amount; Ctrl uses the multiplier */
+    if (lt_ui_key_pressed(ui, '=', LT_MOD_SHIFT) || lt_tabs_key(ui, '+') || lt_tabs_key(ui, '>')) { tbl_op(app, tab, st, OP_ADD, up); }
+    if (lt_tabs_key(ui, '-') || lt_tabs_key(ui, '_') || lt_tabs_key(ui, '<') ||
+        lt_ui_key_pressed(ui, ',', 0)) { tbl_op(app, tab, st, OP_ADD, dn); }
+    /* '.' also starts a cell edit in the grid, so only Ctrl+'.' is a step key */
+    if (lt_ui_key_pressed(ui, '+', LT_MOD_CTRL) || lt_ui_key_pressed(ui, '.', LT_MOD_CTRL) ||
+        lt_ui_key_pressed(ui, '=', LT_MOD_CTRL)) { tbl_op(app, tab, st, OP_ADD, cm); }
+    if (lt_ui_key_pressed(ui, '-', LT_MOD_CTRL) || lt_ui_key_pressed(ui, ',', LT_MOD_CTRL)) {
+        tbl_op(app, tab, st, OP_ADD, -cm);
+    }
+    if (lt_ui_key_pressed(ui, LT_KEY_PAGEUP, LT_MOD_CTRL) || lt_ui_key_pressed(ui, LT_KEY_PAGEUP, LT_MOD_SHIFT)) {
+        tbl_pct(app, tab, st, 1);
+    }
+    if (lt_ui_key_pressed(ui, LT_KEY_PAGEDOWN, LT_MOD_CTRL) || lt_ui_key_pressed(ui, LT_KEY_PAGEDOWN, LT_MOD_SHIFT)) {
+        tbl_pct(app, tab, st, -1);
+    }
     if (lt_tabs_key(ui, 'q')) { tbl_op(app, tab, st, OP_ADD, ss); }
     if (lt_tabs_key(ui, 'w')) { tbl_op(app, tab, st, OP_ADD, -ss); }
-    if (lt_tabs_key(ui, '*')) { st->scale_open = 1; }
+    if (lt_tabs_key(ui, '*')) { st->scale_open = 1; st->scale_mode = 0; }
     if (lt_tabs_key(ui, '/')) { tbl_op(app, tab, st, OP_INTERP, 0); }
     if (lt_tabs_key(ui, 'h')) { tbl_op(app, tab, st, OP_INTERP_H, 0); }
     if (lt_tabs_key(ui, 'v')) { tbl_op(app, tab, st, OP_INTERP_V, 0); }
     if (lt_tabs_key(ui, 's')) { tbl_op(app, tab, st, OP_SMOOTH, 0); }
     if (lt_tabs_key(ui, 'f')) { st->follow = !st->follow; }
     if (lt_tabs_key(ui, 'g')) { st->goto_live = 1; }
+    if (lt_ui_key_pressed(ui, '3', 0)) { st->show3d = !st->show3d; }
 }
 
 /* ---- UI pieces ---- */
 enum { TB_EQ, TB_UP, TB_DOWN, TB_SCALE, TB_INTERP, TB_SMOOTH, TB_REBIN, TB_COPY, TB_PASTE,
        TB_UNDO, TB_REDO, TB_REVERT, TB_FILLR, TB_FILLD, TB_LIVE, TB_FOLLOW, TB_SHADE, TB_YBOT,
-       TB_3D, TB_RESET3D, TB_BURN, TB_N };
+       TB_3D, TB_RESET3D, TB_BURN, TB_SIZE, TB_GEN, TB_LOAD, TB_SAVE, TB_PSPECIAL, TB_STEPS, TB_N };
+
+static int gen_ok(const tbl_tab *st)
+{
+    return st->t != NULL && (st->t->role == LT_ROLE_VE || st->t->role == LT_ROLE_IGNITION ||
+                             st->t->role == LT_ROLE_AFR_TARGET);
+}
+
+static void tbl_open_size(lt_app *app, tbl_tab *st)
+{
+    if (lt_tabs_size_begin(app, st->t, &st->size_dlg) < 0) {
+        lt_app_toast(app, 2, "This table has a fixed size");
+    }
+}
+
+static void tbl_open_gen(tbl_tab *st)
+{
+    st->gen_dlg.role = (int)st->t->role;
+    st->gen_dlg.open = 1;
+}
+
+static void tbl_file_load(lt_app *app, tbl_tab *st)
+{
+    st->fd_load = 1;
+    lt_app_file_dialog(app, LT_TABS_FD_LOAD, LT_UI_FILE_OPEN, NULL, "", "TunerStudio table|*.table|All files|*");
+}
+
+static void tbl_file_save(lt_app *app, lt_app_tab *tab, tbl_tab *st)
+{
+    char name[96];
+    size_t i, k = 0;
+    for (i = 0; tab->title[i] != '\0' && k + 7 < sizeof(name); i++) {
+        char c = tab->title[i];
+        name[k++] = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ? c : '_';
+    }
+    name[k] = '\0';
+    lt_strlcpy(name + k, ".table", sizeof(name) - k);
+    st->fd_save = 1;
+    lt_app_file_dialog(app, LT_TABS_FD_SAVE, LT_UI_FILE_SAVE, NULL, name, "TunerStudio table|*.table|All files|*");
+}
 
 static void tb_item(lt_vk_item *it, int kind, int icon, const char *label, const char *key,
                     const char *tip)
@@ -767,11 +891,15 @@ static void tbl_toolbar(lt_app *app, lt_app_tab *tab, tbl_tab *st)
     TB_ADD(TB_FILLR, LT_ICON_CHEVRONS_RIGHT, cell ? "Fill>" : NULL, NULL, "Fill right from the first selected column (Ctrl+R)");
     TB_ADD(TB_FILLD, LT_ICON_CHEVRONS_DOWN, cell ? "FillV" : NULL, NULL, "Fill down from the top selected row (Ctrl+D)");
     TB_ADD(TB_REBIN, LT_ICON_GRID_3X3, cell ? "Rebin" : NULL, NULL, "Re-bin: set new axis values and resample");
+    if (st->resizable) { TB_ADD(TB_SIZE, LT_ICON_RULER, cell ? "Size" : NULL, NULL, "Set table size (columns x rows)"); }
+    if (gen_ok(st)) { TB_ADD(TB_GEN, LT_ICON_WAND_SPARKLES, cell ? "Gen" : NULL, NULL, "Generate this table from engine specs"); }
     TB_SEP();
     TB_ADD(TB_COPY, LT_ICON_COPY, cell ? "Copy" : NULL, NULL, "Copy selected cells (Ctrl+C), tab separated");
     TB_ADD(TB_PASTE, LT_ICON_CLIPBOARD_PASTE, cell ? "Paste" : NULL, NULL, "Paste at the selection (Ctrl+V)");
     TB_ADD(TB_UNDO, LT_ICON_UNDO_2, cell ? "Undo" : NULL, NULL, "Undo (Ctrl+Z)");
     TB_ADD(TB_REDO, LT_ICON_REDO_2, cell ? "Redo" : NULL, NULL, "Redo (Ctrl+Y)");
+    TB_ADD(TB_LOAD, LT_ICON_FILE_UP, cell ? "Load" : NULL, NULL, "Load a TunerStudio .table file");
+    TB_ADD(TB_SAVE, LT_ICON_FILE_DOWN, cell ? "Save" : NULL, NULL, "Save this table as a TunerStudio .table file");
     TB_ADD(TB_REVERT, LT_ICON_ROTATE_CCW, cell ? "Revert" : NULL, NULL, "Undo every edit made in this tab");
     TB_SEP();
     TB_ADD(TB_LIVE, LT_ICON_MAP_PIN, cell ? "Live" : NULL, "g", "Jump to the live cell (g)");
@@ -808,7 +936,11 @@ static void tbl_toolbar(lt_app *app, lt_app_tab *tab, tbl_tab *st)
     case TB_FILLD: tbl_op(app, tab, st, OP_FILL_D, 0); break;
     case TB_REBIN: rebin_prefill(st); st->rebin_open = 1; break;
     case TB_COPY: tbl_copy(app, st); break;
-    case TB_PASTE: tbl_paste(app, tab, st); break;
+    case TB_PASTE: tbl_paste(app, tab, st, LT_TBL_PASTE_REPLACE); break;
+    case TB_SIZE: tbl_open_size(app, st); break;
+    case TB_GEN: tbl_open_gen(st); break;
+    case TB_LOAD: tbl_file_load(app, st); break;
+    case TB_SAVE: tbl_file_save(app, tab, st); break;
     case TB_UNDO: tbl_undo_redo(app, tab, st, 0); break;
     case TB_REDO: tbl_undo_redo(app, tab, st, 1); break;
     case TB_REVERT: tbl_revert(app, tab, st); break;
@@ -823,15 +955,96 @@ static void tbl_toolbar(lt_app *app, lt_app_tab *tab, tbl_tab *st)
     }
 }
 
+/* write the whole grid (all cells) back clamped and rounded to the constant's precision */
+static void tbl_fix_all(tbl_tab *st)
+{
+    size_t y, x, n = 0;
+    lt_tcell *all = (lt_tcell *)lt_calloc(st->v.rows * st->v.cols + 1, sizeof(lt_tcell));
+    for (y = 0; y < st->v.rows; y++) {
+        for (x = 0; x < st->v.cols; x++) { all[n].y = y; all[n].x = x; n++; }
+    }
+    tbl_fix(st, all, n);
+    lt_free(all);
+}
+
+static void tbl_apply_gen(lt_app *app, lt_app_tab *tab, tbl_tab *st, const double *nx,
+                          const double *ny, const double *nz)
+{
+    size_t y, x;
+    lt_tblview_push_undo(&st->v);
+    if (st->gen_dlg.write_axes) {
+        for (x = 0; x < st->v.cols; x++) { lt_tblview_set_x(&st->v, x, lt_tabs_round(nx[x], st->xdig)); }
+        for (y = 0; y < st->v.rows; y++) { lt_tblview_set_y(&st->v, y, lt_tabs_round(ny[y], st->ydig)); }
+    }
+    for (y = 0; y < st->v.rows; y++) {
+        for (x = 0; x < st->v.cols; x++) { lt_tblview_set(&st->v, y, x, nz[y * st->v.cols + x]); }
+    }
+    tbl_fix_all(st);
+    tbl_commit(app, tab, st);
+    lt_app_toast(app, 1, "Table generated from engine specs");
+}
+
+static void tbl_apply_io(lt_app *app, lt_app_tab *tab, tbl_tab *st)
+{
+    lt_tabs_io_dlg *d = &st->io_dlg;
+    double *z = (double *)lt_calloc(st->v.rows * st->v.cols + 1, sizeof(double));
+    int rc = lt_tabs_io_fit(&d->tf, st->v.x, st->v.cols, st->v.y, st->v.rows, z);
+    if (rc == 0) {
+        if (d->match) {
+            rc = lt_tblview_import(&st->v, st->v.cols, st->v.rows, d->use_axes ? d->tf.x : NULL,
+                                   d->use_axes ? d->tf.y : NULL, z);
+        } else {
+            size_t i;
+            lt_tblview_push_undo(&st->v);
+            for (i = 0; i < st->v.rows * st->v.cols; i++) {
+                lt_tblview_set(&st->v, i / st->v.cols, i % st->v.cols, z[i]);
+            }
+        }
+    }
+    lt_free(z);
+    if (rc < 0) {
+        lt_app_toast(app, 3, "Load failed: %s", lt_err_get());
+    } else {
+        tbl_fix_all(st);
+        tbl_commit(app, tab, st);
+        lt_app_toast(app, 1, "Table loaded from file");
+    }
+    lt_tabs_io_free(d);
+}
+
+static void tbl_file_results(lt_app *app, tbl_tab *st)
+{
+    const char *path;
+    if (st->fd_load && (path = lt_app_file_result(app, LT_TABS_FD_LOAD)) != NULL) {
+        st->fd_load = 0;
+        if (lt_tabs_io_open_file(&st->io_dlg, path, st->v.cols, st->v.rows) < 0) {
+            lt_app_toast(app, 3, "Cannot load table: %s", lt_err_get());
+        }
+    }
+    if (st->fd_save && (path = lt_app_file_result(app, LT_TABS_FD_SAVE)) != NULL) {
+        st->fd_save = 0;
+        if (lt_tabs_io_save(path, st->xlab[0] ? st->xlab : "X", st->ylab[0] ? st->ylab : "Y",
+                            st->v.x, st->v.cols, st->v.y, st->v.rows, st->v.z) < 0) {
+            lt_app_toast(app, 3, "Save failed: %s", lt_err_get());
+        } else {
+            lt_app_toast(app, 1, "Table saved to %s", path);
+        }
+    }
+    if (!app->fd.open) { st->fd_load = st->fd_save = 0; }
+}
+
 static void tbl_dialogs(lt_app *app, lt_app_tab *tab, tbl_tab *st)
 {
     lt_ui *ui = app->ui;
     int w1 = -1, w2[2], wb[3];
-    static const char *const modes[2] = { "Multiply by", "Add" };
-    if (st->scale_open && lt_ui_modal_begin(ui, "Scale / adjust selection", 360, 150, &st->scale_open)) {
+    static const char *const modes[3] = { "Multiply by", "Add", "Set to" };
+    static const char *const pmodes[6] = { "Replace", "Add to cells", "Subtract from cells",
+                                           "Multiply cells", "Keep the lower", "Keep the higher" };
+    tbl_file_results(app, st);
+    if (st->scale_open && lt_ui_modal_begin(ui, "Adjust selection", 360, 150, &st->scale_open)) {
         w2[0] = 110; w2[1] = -1;
         lt_ui_layout_row(ui, 2, w2, 0);
-        lt_ui_combo(ui, "mode", &st->scale_mode, modes, 2);
+        lt_ui_combo(ui, "mode", &st->scale_mode, modes, 3);
         lt_ui_number(ui, "val", &st->scale_val, -100000.0, 100000.0, 0.05, 3);
         lt_ui_layout_row(ui, 1, &w1, 0);
         lt_ui_label(ui, "Applies to the selected cells, clamped to the allowed range.");
@@ -840,10 +1053,43 @@ static void tbl_dialogs(lt_app *app, lt_app_tab *tab, tbl_tab *st)
         lt_ui_label(ui, "");
         if (lt_ui_button_ex(ui, "Apply", LT_UI_BTN_DEFAULT)) {
             if (st->scale_mode == 0) { tbl_op(app, tab, st, OP_SCALE, st->scale_val); }
-            else { tbl_op(app, tab, st, OP_ADD, st->scale_val); }
+            else if (st->scale_mode == 1) { tbl_op(app, tab, st, OP_ADD, st->scale_val); }
+            else { tbl_op(app, tab, st, OP_SET, st->scale_val); }
             st->scale_open = 0;
         }
         if (lt_ui_button(ui, "Cancel")) { st->scale_open = 0; }
+        lt_ui_modal_end(ui);
+    }
+    if (st->step_open && lt_ui_modal_begin(ui, "Increment settings", 420, 190, &st->step_open)) {
+        w2[0] = 250; w2[1] = -1;
+        lt_ui_layout_row(ui, 2, w2, 0);
+        lt_ui_label(ui, "Step amount (+ - > < ,)");
+        lt_ui_number(ui, "st_amt", &st->step, 0.0001, 100000.0, 0.1, 4);
+        lt_ui_label(ui, "Step multiplier (with Ctrl)");
+        lt_ui_number(ui, "st_mul", &st->step_mult, 1.0, 1000.0, 1.0, 2);
+        lt_ui_label(ui, "Step percent (Ctrl/Shift+PageUp/Dn)");
+        lt_ui_number(ui, "st_pct", &st->step_pct, 0.01, 1000.0, 0.5, 2);
+        wb[0] = -1; wb[1] = 90;
+        lt_ui_layout_row(ui, 2, wb, 0);
+        lt_ui_label(ui, "");
+        if (lt_ui_button_ex(ui, "Done", LT_UI_BTN_DEFAULT)) { st->step_open = 0; }
+        lt_ui_modal_end(ui);
+    }
+    if (st->paste_open && lt_ui_modal_begin(ui, "Paste special", 360, 140, &st->paste_open)) {
+        w2[0] = 90; w2[1] = -1;
+        lt_ui_layout_row(ui, 2, w2, 0);
+        lt_ui_label(ui, "Combine");
+        lt_ui_combo(ui, "pmode", &st->paste_mode, pmodes, 6);
+        lt_ui_layout_row(ui, 1, &w1, 0);
+        lt_ui_label(ui, "Pastes the clipboard at the selection, combining it with each cell.");
+        wb[0] = -1; wb[1] = 90; wb[2] = 90;
+        lt_ui_layout_row(ui, 3, wb, 0);
+        lt_ui_label(ui, "");
+        if (lt_ui_button_ex(ui, "Paste", LT_UI_BTN_DEFAULT)) {
+            tbl_paste(app, tab, st, st->paste_mode);
+            st->paste_open = 0;
+        }
+        if (lt_ui_button(ui, "Cancel")) { st->paste_open = 0; }
         lt_ui_modal_end(ui);
     }
     if (st->rebin_open && lt_ui_modal_begin(ui, "Re-bin table", 560, 200, &st->rebin_open)) {
@@ -861,6 +1107,25 @@ static void tbl_dialogs(lt_app *app, lt_app_tab *tab, tbl_tab *st)
         if (lt_ui_button_ex(ui, "Apply", LT_UI_BTN_DEFAULT)) { rebin_apply(app, tab, st); st->rebin_open = 0; }
         if (lt_ui_button(ui, "Cancel")) { st->rebin_open = 0; }
         lt_ui_modal_end(ui);
+    }
+    if (st->size_dlg.open && lt_tabs_size_draw(app, st->t, &st->size_dlg) == 1) {
+        tbl_load(app, tab, st);
+        tab->dirty = 1;
+        lt_app_toast(app, 1, "Table size changed to %d x %d", (int)st->v.cols, (int)st->v.rows);
+    }
+    if (st->gen_dlg.open) {
+        size_t nx = st->v.cols, ny = st->v.rows;
+        double *ox = (double *)lt_calloc(nx + 1, sizeof(double));
+        double *oy = (double *)lt_calloc(ny + 1, sizeof(double));
+        double *oz = (double *)lt_calloc(nx * ny + 1, sizeof(double));
+        if (lt_tabs_gen_draw(app, &st->gen_dlg, tab->title, st->v.x, nx, st->v.y, ny, st->zdig,
+                             ox, oy, oz) == 1) {
+            tbl_apply_gen(app, tab, st, ox, oy, oz);
+        }
+        lt_free(ox); lt_free(oy); lt_free(oz);
+    }
+    if (st->io_dlg.open && lt_tabs_io_draw(app, &st->io_dlg, st->v.cols, st->v.rows) == 1) {
+        tbl_apply_io(app, tab, st);
     }
 }
 
@@ -952,6 +1217,7 @@ static void tbl_grid(lt_app *app, lt_app_tab *tab, tbl_tab *st, int vh)
     }
     if (lt_ui_grid_begin(ui, "grid", rows, cols, cw, ch, rhw, chh)) {
         int r0, r1, c0, c1, r, c, fl;
+        st->grid_area = lt_ui_clip_get(ui);
         lt_ui_grid_visible(ui, &r0, &r1, &c0, &c1);
         lt_ui_grid_corner(ui, st->ylab[0] ? st->ylab : "Y \\ X");
         for (c = c0; c <= c1; c++) {
@@ -996,6 +1262,19 @@ static void tbl_grid(lt_app *app, lt_app_tab *tab, tbl_tab *st, int vh)
                 lt_ui_grid_set_cursor(ui, lr, st->live_c);
             }
             st->goto_live = 0;
+        }
+        if (st->select_all) {
+            lt_ui_grid_select(ui, 0, 0, rows - 1, cols - 1);
+            st->select_all = 0;
+        }
+        /* right click on a cell outside the selection selects it first (like the original) */
+        {
+            int rd = lt_ui_mouse_down(ui, LT_MB_RIGHT) ? 1 : 0, hr, hc;
+            if (rd && !st->prev_rdown && lt_ui_grid_hover(ui, &hr, &hc) && !lt_ui_grid_selected(ui, hr, hc)) {
+                lt_ui_grid_select(ui, hr, hc, hr, hc);
+                lt_ui_grid_set_cursor(ui, hr, hc);
+            }
+            st->prev_rdown = rd;
         }
         /* cache selection in data coordinates */
         memset(st->sel, 0, st->sel_cap);
@@ -1115,6 +1394,46 @@ static void tbl_status(lt_app *app, lt_app_tab *tab, tbl_tab *st)
     }
 }
 
+/* right-click menu over the grid, same command set as the toolbar and hotkeys */
+static void tbl_context(lt_app *app, lt_app_tab *tab, tbl_tab *st, lt_rect area)
+{
+    lt_ui *ui = app->ui;
+    if (!lt_ui_context_begin(ui, "tbl_ctx", area)) { return; }
+    if (lt_ui_menu_item(ui, "Reset to original", "Esc", 0)) { tbl_op(app, tab, st, OP_RESTORE, 0); }
+    lt_ui_menu_separator(ui);
+    if (lt_ui_menu_item(ui, "Set equal (average)", "=", 0)) { tbl_op(app, tab, st, OP_EQUAL, 0); }
+    if (lt_ui_menu_item(ui, "Set value...", NULL, 0)) { st->scale_open = 1; st->scale_mode = 2; }
+    if (lt_ui_menu_item(ui, "Step up", "> or +", 0)) { tbl_op(app, tab, st, OP_ADD, st->step); }
+    if (lt_ui_menu_item(ui, "Step down", "< or -", 0)) { tbl_op(app, tab, st, OP_ADD, -st->step); }
+    if (lt_ui_menu_item(ui, "Add amount...", NULL, 0)) { st->scale_open = 1; st->scale_mode = 1; }
+    if (lt_ui_menu_item(ui, "Multiply by...", "*", 0)) { st->scale_open = 1; st->scale_mode = 0; }
+    if (lt_ui_menu_item(ui, "Clear", "Del", 0)) { tbl_op(app, tab, st, OP_CLEAR, 0); }
+    lt_ui_menu_separator(ui);
+    if (lt_ui_menu_item(ui, "Interpolate", "/", 0)) { tbl_op(app, tab, st, OP_INTERP, 0); }
+    if (lt_ui_menu_item(ui, "Interpolate horizontally", "H", 0)) { tbl_op(app, tab, st, OP_INTERP_H, 0); }
+    if (lt_ui_menu_item(ui, "Interpolate vertically", "V", 0)) { tbl_op(app, tab, st, OP_INTERP_V, 0); }
+    if (lt_ui_menu_item(ui, "Smooth", "S", 0)) { tbl_op(app, tab, st, OP_SMOOTH, 0); }
+    if (lt_ui_menu_item(ui, "Fill right", "Ctrl+R", 0)) { tbl_op(app, tab, st, OP_FILL_R, 0); }
+    if (lt_ui_menu_item(ui, "Fill down", "Ctrl+D", 0)) { tbl_op(app, tab, st, OP_FILL_D, 0); }
+    lt_ui_menu_separator(ui);
+    if (lt_ui_menu_item(ui, "Copy", "Ctrl+C", 0)) { tbl_copy(app, st); }
+    if (lt_ui_menu_item(ui, "Paste", "Ctrl+V", 0)) { tbl_paste(app, tab, st, LT_TBL_PASTE_REPLACE); }
+    if (lt_ui_menu_item(ui, "Paste special...", "Ctrl+Shift+V", 0)) { st->paste_open = 1; }
+    if (lt_ui_menu_item(ui, "Select all", "Ctrl+A", 0)) {
+        st->select_all = 1;
+    }
+    lt_ui_menu_separator(ui);
+    if (lt_ui_menu_item(ui, "Set increments...", NULL, 0)) { st->step_open = 1; }
+    if (st->resizable && lt_ui_menu_item(ui, "Set table size...", NULL, 0)) { tbl_open_size(app, st); }
+    if (gen_ok(st) && lt_ui_menu_item(ui, "Generate from engine specs...", NULL, 0)) { tbl_open_gen(st); }
+    if (lt_ui_menu_item(ui, "Load table file...", NULL, 0)) { tbl_file_load(app, st); }
+    if (lt_ui_menu_item(ui, "Save table file...", NULL, 0)) { tbl_file_save(app, tab, st); }
+    lt_ui_menu_separator(ui);
+    if (lt_ui_menu_item(ui, "Cell color by value", NULL, st->shading ? LT_UI_MENU_CHECKED : 0)) { st->shading = !st->shading; }
+    if (lt_ui_menu_item(ui, "3D view", "3", st->show3d ? LT_UI_MENU_CHECKED : 0)) { st->show3d = !st->show3d; }
+    lt_ui_context_end(ui);
+}
+
 static void tbl_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
 {
     tbl_tab *st = (tbl_tab *)tab->data;
@@ -1127,6 +1446,7 @@ static void tbl_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
         tab->data = st;
         st->shading = 1; st->ybottom = 1; st->yaw = 0.6; st->pitch = 0.55;
         st->rebin_interp = 1; st->scale_val = 1.05; st->cur_r = st->cur_c = 0;
+        st->step = 1.0; st->step_mult = 5.0; st->step_pct = 5.0;
         tbl_load(app, tab, st);
     }
     st->frame++;
@@ -1152,10 +1472,11 @@ static void tbl_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
         lt_ui_layout_row(ui, 1, &w1, lt_ui_cell_mode(ui) ? -(lt_ui_row_height(ui) + 8) : -28);
     }
     tbl_grid(app, tab, st, 0);
+    tbl_context(app, tab, st, st->grid_area);
     if (st->show3d) {
         lt_rect r3 = lt_ui_layout_next(ui);
         lt_point m = lt_ui_mouse(ui);
-        int down = lt_ui_mouse_down(ui, 0) ? 1 : 0;
+        int down = lt_ui_mouse_down(ui, LT_MB_LEFT) ? 1 : 0;
         int inside = m.x >= r3.x && m.x < r3.x + r3.w && m.y >= r3.y && m.y < r3.y + r3.h;
         if (down && !st->prev_down && inside) { st->drag3d = 1; }
         if (!down) { st->drag3d = 0; }
