@@ -82,15 +82,15 @@ static void newproj_draw(lt_app *app, lt_app_dialog *d)
     }
     picked = lt_app_file_result(app, LT_DLG_FD_PROJ_INI);
     if (picked != NULL) { lt_strlcpy(s->ini, picked, sizeof(s->ini)); s->source = 1; }
-    if (lt_ui_modal_begin(ui, "New Project", CH * 76, 420, &open)) {
+    if (lt_ui_modal_begin(ui, lt_tr("New Project"), CH * 76, 420, &open)) {
         w2[0] = CH * 16; w2[1] = -1;
         lt_ui_layout_row(ui, 2, w2, 0);
-        lt_ui_label(ui, "Project name");
+        lt_ui_label(ui, lt_tr("Project name"));
         lt_ui_text(ui, "name", s->name, sizeof(s->name), 0);
-        lt_ui_label(ui, "Directory");
+        lt_ui_label(ui, lt_tr("Directory"));
         lt_ui_text(ui, "dir", s->dir, sizeof(s->dir), 0);
         lt_ui_layout_row(ui, 1, &w1, 0);
-        lt_ui_label_ex(ui, "ECU definition", t->text2, LT_UI_ALIGN_LEFT);
+        lt_ui_label_ex(ui, lt_tr("ECU definition"), t->text2, LT_UI_ALIGN_LEFT);
         lt_ui_radio(ui, "From the local definition repository", &s->source, 0);
         lt_ui_radio(ui, "From an INI file", &s->source, 1);
         if (s->source == 0) {
@@ -98,30 +98,30 @@ static void newproj_draw(lt_app *app, lt_app_dialog *d)
             if (s->repo_ok && s->repo.n > 0) {
                 lt_ui_listbox_cb(ui, "repo", &s->repo_sel, (int)s->repo.n, repo_get, s);
             } else {
-                lt_ui_label_ex(ui, "The local definition repository is empty. Import an INI file first.",
+                lt_ui_label_ex(ui, lt_tr("The local definition repository is empty. Import an INI file first."),
                                t->muted, LT_UI_ALIGN_LEFT);
             }
         } else {
             lt_ui_layout_row(ui, 2, w2, 0);
-            if (lt_ui_button(ui, "Browse...")) {
+            if (lt_ui_button(ui, lt_tr("Browse..."))) {
                 lt_app_file_dialog(app, LT_DLG_FD_PROJ_INI, LT_UI_FILE_OPEN, NULL, "",
                                    "ECU definitions|*.ini|All files|*");
             }
             lt_ui_text(ui, "inipath", s->ini, sizeof(s->ini), 0);
         }
         lt_ui_layout_row(ui, 1, &w1, 0);
-        lt_ui_checkbox(ui, "Open the base map wizard after creating", &s->basemap);
+        lt_ui_checkbox(ui, lt_tr("Open the base map wizard after creating"), &s->basemap);
         if (s->err[0] != '\0') { lt_ui_label_ex(ui, s->err, t->error, LT_UI_ALIGN_LEFT); }
         ok = s->name[0] != '\0' && (s->source == 1 ? s->ini[0] != '\0' : (s->repo_ok && s->repo.n > 0));
         w2[0] = -1; w2[1] = -1;
         lt_ui_layout_row(ui, 2, w2, 0);
-        if (lt_ui_button_ex(ui, "Create", ok ? LT_UI_BTN_DEFAULT : LT_UI_BTN_DISABLED) && ok) {
+        if (lt_ui_button_ex(ui, lt_tr("Create"), ok ? LT_UI_BTN_DEFAULT : LT_UI_BTN_DISABLED) && ok) {
             if (newproj_create(app, s) == 0) {
                 open = 0;
                 if (s->basemap) { lt_app_basemap_wizard(app); }
             }
         }
-        if (lt_ui_button(ui, "Cancel")) { open = 0; }
+        if (lt_ui_button(ui, lt_tr("Cancel"))) { open = 0; }
         lt_ui_modal_end(ui);
     }
     d->open = open;

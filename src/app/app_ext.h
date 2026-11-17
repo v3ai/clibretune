@@ -13,6 +13,7 @@
 #define LT_APP_EXT_H
 
 #include "app.h"
+#include "hotkeys.h"
 
 /* returned by lt_ext_dispatch_target when no handler is registered for the name */
 #define LT_EXT_NO_TARGET 1
@@ -44,6 +45,10 @@ void lt_ext_add_menu_item(lt_app_ext *reg, int menu, const char *label, const ch
 /* global shortcut (key as lt_ui_key_pressed, mods LT_MOD_*); pred NULL = always */
 void lt_ext_add_shortcut(lt_app_ext *reg, int key, int mods, lt_ext_action_fn fn,
                          lt_ext_pred_fn pred);
+/* same, but the user can rebind it in Settings > Keyboard Shortcuts: id is a stable name
+ * ("tools.autotune", static string), label the English action name (static string) */
+void lt_ext_add_shortcut_named(lt_app_ext *reg, const char *id, const char *label, int key,
+                               int mods, lt_ext_action_fn fn, lt_ext_pred_fn pred);
 /* Settings dialog page: draw runs inside the scrolled body with a 1-column full-width
  * layout row already set; save settings yourself when something changed */
 void lt_ext_add_settings_page(lt_app_ext *reg, const char *title, lt_ext_draw_fn draw);
@@ -83,6 +88,8 @@ const char *lt_ext_menu_item_label(const lt_app *app, int menu, int idx);
  * lead_sep and at least one item is shown; returns the number of items shown */
 int  lt_ext_menu_draw(lt_app *app, int menu, int lead_sep);
 void lt_ext_shortcuts(lt_app *app);
+/* the named (customizable) shortcuts with their factory bindings; returns how many were stored */
+int  lt_ext_shortcut_defs(const lt_app *app, lt_hk_def *out, int cap);
 void lt_ext_tick(lt_app *app);
 void lt_ext_on_connect(lt_app *app);
 void lt_ext_on_link_lost(lt_app *app);

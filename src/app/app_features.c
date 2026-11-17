@@ -7,6 +7,7 @@
 void lt_app_features_register(lt_app_ext *reg)
 {
     lt_feat_core_register(reg);
+    lt_feat_manual_register(reg);     /* before Help: User Manual comes first in the menu */
     lt_feat_help_register(reg);
     lt_feat_calib_register(reg);
     lt_feat_sync_register(reg);
@@ -30,4 +31,6 @@ void lt_app_features_register(lt_app_ext *reg)
     lt_feat_prefs_register(reg);
     lt_feat_afrdelay_register(reg);
     lt_feat_assistant_register(reg);
+    lt_feat_hotkeys_register(reg);
+    lt_feat_i18n_register(reg);
 }

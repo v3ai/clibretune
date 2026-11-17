@@ -38,7 +38,7 @@ static void swatch_row(lt_ui *ui, const char *name, const int *w2)
     int i;
     if (lt_theme_preset(&t, name) != 0) { return; }
     lt_ui_layout_row(ui, 2, w2, 20);
-    lt_ui_label(ui, "");
+    lt_ui_label(ui, lt_tr(""));
     r = lt_ui_layout_next(ui);
     cs[0] = t.bg_app; cs[1] = t.surface; cs[2] = t.primary; cs[3] = t.accent; cs[4] = t.text;
     for (i = 0; i < 5; i++) {
@@ -111,7 +111,7 @@ typedef struct set_dlg { char q[48]; const char *titles[N_SET_MAX]; int vis[N_SE
 static const char *set_item(void *user, int i)
 {
     const set_dlg *sd = (const set_dlg *)user;
-    return sd->titles[sd->vis[i]];
+    return lt_tr(sd->titles[sd->vis[i]]);
 }
 
 /* returns 1 when a setting changed */
@@ -123,36 +123,36 @@ static int page_builtin(lt_app *app, int tab)
     double hz;
     switch (tab) {
     case 0:
-        form_label(ui, "Unit system");
+        form_label(ui, lt_tr("Unit system"));
         lt_ui_layout_row(ui, 1, &w1, 0);
-        if (lt_ui_checkbox(ui, "Metric (\xC2\xB0" "C, kPa)", &st->metric)) {
+        if (lt_ui_checkbox(ui, lt_tr("Metric (\xC2\xB0" "C, kPa)"), &st->metric)) {
             st->temp_unit = st->metric ? 0 : 1;
             st->press_unit = st->metric ? 0 : 1;
             ch = 1;
         }
         lt_ui_layout_space(ui, 8);
-        form_label(ui, "Temperature");
+        form_label(ui, lt_tr("Temperature"));
         lt_ui_layout_row(ui, 1, &w1, 0);
         sel = LT_CLAMP(st->temp_unit, 0, 2);
         if (lt_ui_combo(ui, "temp", &sel, temps, 3)) { st->temp_unit = sel; ch = 1; }
-        form_label(ui, "Pressure");
+        form_label(ui, lt_tr("Pressure"));
         lt_ui_layout_row(ui, 1, &w1, 0);
         sel = LT_CLAMP(st->press_unit, 0, 3);
         if (lt_ui_combo(ui, "press", &sel, press, 4)) { st->press_unit = sel; ch = 1; }
-        form_label(ui, "Air-Fuel Ratio");
+        form_label(ui, lt_tr("Air-Fuel Ratio"));
         lt_ui_layout_row(ui, 1, &w1, 0);
         sel = LT_CLAMP(st->afr_unit, 0, 1);
         if (lt_ui_combo(ui, "afr", &sel, afrs, 2)) { st->afr_unit = sel; ch = 1; }
         break;
     case 1:
-        form_label(ui, "Theme");
+        form_label(ui, lt_tr("Theme"));
         lt_ui_layout_row(ui, 1, &w1, 0);
         sel = find_str(themes, 9, st->theme);
         if (lt_ui_combo(ui, "theme", &sel, themes, 9)) { lt_app_apply_theme(app, themes[sel]); ch = 1; }
         wf[0] = 0; wf[1] = -1;
         swatch_row(ui, themes[sel], wf);
         lt_ui_layout_space(ui, 8);
-        form_label(ui, "Heat map");
+        form_label(ui, lt_tr("Heat map"));
         lt_ui_layout_row(ui, 1, &w1, 0);
         sel = find_str(heatmaps, 6, st->heatmap);
         if (lt_ui_combo(ui, "heat", &sel, heatmaps, 6)) {
@@ -160,29 +160,29 @@ static int page_builtin(lt_app *app, int tab)
             lt_strlcpy(st->prefs.heat_scheme[0], heatmaps[sel], sizeof(st->prefs.heat_scheme[0]));
             ch = 1;
         }
-        form_label(ui, "UI scale");
+        form_label(ui, lt_tr("UI scale"));
         lt_ui_layout_row(ui, 1, &w1, 0);
         sel = 0;
         { int si; for (si = 0; si < 8; si++) { if (scale_pcts[si] == st->scale_pct) { sel = si; } } }
         if (lt_ui_combo(ui, "scale", &sel, scales, 8)) { lt_app_set_scale_setting(app, scale_pcts[sel]); ch = 1; }
         lt_ui_layout_space(ui, 8);
         lt_ui_layout_row(ui, 1, &w1, 0);
-        if (lt_ui_checkbox(ui, "Show ECU menus in the menu bar", &st->show_ecu_menus)) { ch = 1; }
+        if (lt_ui_checkbox(ui, lt_tr("Show ECU menus in the menu bar"), &st->show_ecu_menus)) { ch = 1; }
         break;
     default:
-        form_label(ui, "Realtime rate (Hz)");
+        form_label(ui, lt_tr("Realtime rate (Hz)"));
         lt_ui_layout_row(ui, 1, &w1, 0);
         hz = st->poll_hz;
         if (lt_ui_number(ui, "hz", &hz, 5, 100, 1, 0) & LT_UI_CHANGED) { st->poll_hz = (int)(hz + 0.5); ch = 1; }
         lt_ui_layout_space(ui, 8);
         lt_ui_layout_row(ui, 1, &w1, 0);
-        if (lt_ui_checkbox(ui, "Connect automatically when a project opens", &st->auto_connect)) { ch = 1; }
+        if (lt_ui_checkbox(ui, lt_tr("Connect automatically when a project opens"), &st->auto_connect)) { ch = 1; }
         lt_ui_layout_space(ui, 8);
-        form_label(ui, "Graphics backend");
+        form_label(ui, lt_tr("Graphics backend"));
         lt_ui_layout_row(ui, 1, &w1, 0);
         sel = find_str(backends, 5, st->backend);
         if (lt_ui_combo(ui, "backend", &sel, backends, 5)) { lt_strlcpy(st->backend, backends[sel], sizeof(st->backend)); ch = 1; }
-        form_note(ui, "The backend change applies at the next start.");
+        form_note(ui, lt_tr("The backend change applies at the next start."));
         lt_feat_connset_draw(app);
         break;
     }
@@ -200,7 +200,7 @@ static void settings_draw(lt_app *app, lt_app_dialog *d)
         sd = (set_dlg *)lt_calloc(1, sizeof(*sd));
         d->data = sd;
     }
-    if (lt_ui_modal_begin(ui, "Settings", 780, 580, &open)) {
+    if (lt_ui_modal_begin(ui, lt_tr("Settings"), 780, 580, &open)) {
         fh = lt_ui_cell_mode(ui) ? 16 : 30;
         for (nt = 0; nt < N_SET_BUILTIN; nt++) { sd->titles[nt] = set_tabs[nt]; }
         for (ni = 0; ni < lt_ext_n_settings_pages(app) && nt < N_SET_MAX; ni++) {
@@ -209,7 +209,7 @@ static void settings_draw(lt_app *app, lt_app_dialog *d)
         if (*tab >= nt || *tab < 0) { *tab = 0; }
         wq[0] = 70; wq[1] = -1;
         lt_ui_layout_row(ui, 2, wq, 0);
-        lt_ui_label(ui, "Search");
+        lt_ui_label(ui, lt_tr("Search"));
         (void)lt_ui_text(ui, "setsearch", sd->q, sizeof(sd->q), 0);
         nv = 0;
         for (k = 0; k < nt; k++) {
@@ -228,7 +228,7 @@ static void settings_draw(lt_app *app, lt_app_dialog *d)
         if (nv > 0) {
             if (lt_ui_listbox_cb(ui, "setnav", &cur, nv, set_item, sd) & LT_UI_CHANGED) { *tab = sd->vis[cur]; }
         } else {
-            lt_ui_label_ex(ui, "No matching section", lt_ui_theme(ui)->muted, LT_UI_ALIGN_LEFT);
+            lt_ui_label_ex(ui, lt_tr("No matching section"), lt_ui_theme(ui)->muted, LT_UI_ALIGN_LEFT);
         }
         lt_ui_layout_column_end(ui);
         lt_ui_layout_column_begin(ui);
@@ -243,7 +243,7 @@ static void settings_draw(lt_app *app, lt_app_dialog *d)
         wc[0] = -1; wc[1] = 96;
         lt_ui_layout_row(ui, 2, wc, fh);
         lt_ui_layout_next(ui);
-        if (lt_ui_button_ex(ui, "Close", LT_UI_BTN_DEFAULT)) { open = 0; }
+        if (lt_ui_button_ex(ui, lt_tr("Close"), LT_UI_BTN_DEFAULT)) { open = 0; }
         if (ch) { lt_app_settings_save(app); }
         lt_ui_modal_end(ui);
     }

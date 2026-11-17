@@ -103,31 +103,31 @@ static void connect_draw(lt_app *app, lt_app_dialog *d)
     if (s->scanning && s->armed) { scan_step(app, s); }
     s->armed = s->scanning;
     if (s->scanning) { lt_ui_request_redraw(ui); }
-    if (lt_ui_modal_begin(ui, "ECU Connection", CH * 70, CV * 21, &open)) {
+    if (lt_ui_modal_begin(ui, lt_tr("ECU Connection"), CH * 70, CV * 21, &open)) {
         w2[0] = CH * 14; w2[1] = -1;
         lt_ui_layout_row(ui, 1, &w1, 0);
-        lt_ui_heading(ui, "Serial / USB");
+        lt_ui_heading(ui, lt_tr("Serial / USB"));
         lt_ui_layout_row(ui, 2, w2, 0);
-        lt_ui_label(ui, "Port");
+        lt_ui_label(ui, lt_tr("Port"));
         if (s->n_ports > 0) { lt_ui_combo_cb(ui, "port", &s->sel, s->n_ports, port_get, s); }
-        else { lt_ui_label_ex(ui, "no serial ports found", t->muted, LT_UI_ALIGN_LEFT); }
-        lt_ui_label(ui, "Baud rate");
+        else { lt_ui_label_ex(ui, lt_tr("no serial ports found"), t->muted, LT_UI_ALIGN_LEFT); }
+        lt_ui_label(ui, lt_tr("Baud rate"));
         lt_ui_combo(ui, "baud", &s->baud_sel, bauds, N_BAUDS);
         w3[0] = -1; w3[1] = -1; w3[2] = -1;
         lt_ui_layout_row(ui, 3, w3, 0);
-        if (lt_ui_button_ex(ui, "Connect", (s->n_ports > 0 && !s->scanning) ? LT_UI_BTN_PRIMARY : LT_UI_BTN_DISABLED)
+        if (lt_ui_button_ex(ui, lt_tr("Connect"), (s->n_ports > 0 && !s->scanning) ? LT_UI_BTN_PRIMARY : LT_UI_BTN_DISABLED)
             && s->n_ports > 0 && !s->scanning) {
             if (lt_app_connect_serial(app, s->ports[s->sel], atol(bauds[s->baud_sel])) == 0) {
                 open = 0;
             }
         }
-        if (lt_ui_button_ex(ui, "Autodetect", (s->n_ports > 0 && !s->scanning) ? 0 : LT_UI_BTN_DISABLED)
+        if (lt_ui_button_ex(ui, lt_tr("Autodetect"), (s->n_ports > 0 && !s->scanning) ? 0 : LT_UI_BTN_DISABLED)
             && s->n_ports > 0 && !s->scanning) {
             s->scanning = 1; s->armed = 0; s->step = 0; s->found = 0;
             s->steps = s->n_ports * N_SCAN;
             lt_snprintf(s->note, sizeof(s->note), "Scanning...");
         }
-        if (lt_ui_button(ui, "Refresh ports")) { conn_refresh(app, s); }
+        if (lt_ui_button(ui, lt_tr("Refresh ports"))) { conn_refresh(app, s); }
         lt_ui_layout_row(ui, 1, &w1, 0);
         if (s->scanning) {
             int pi = s->step / N_SCAN, bi = s->step % N_SCAN;
@@ -135,7 +135,7 @@ static void connect_draw(lt_app *app, lt_app_dialog *d)
             lt_snprintf(b, sizeof(b), "Probing %s at %ld baud",
                         pi < s->n_ports ? s->ports[pi] : "-", scan_bauds[bi]);
             lt_ui_progress(ui, s->steps > 0 ? (double)s->step / (double)s->steps : -1.0, b);
-            if (lt_ui_button(ui, "Cancel scan")) { s->scanning = 0; lt_strlcpy(s->note, "Scan cancelled", sizeof(s->note)); }
+            if (lt_ui_button(ui, lt_tr("Cancel scan"))) { s->scanning = 0; lt_strlcpy(s->note, "Scan cancelled", sizeof(s->note)); }
         } else if (s->note[0] != '\0') {
             lt_ui_label_ex(ui, s->note, s->found ? t->success : t->text2, LT_UI_ALIGN_LEFT);
             if (s->found) {
@@ -149,24 +149,24 @@ static void connect_draw(lt_app *app, lt_app_dialog *d)
             }
         }
         lt_ui_separator(ui);
-        lt_ui_heading(ui, "TCP / WiFi");
+        lt_ui_heading(ui, lt_tr("TCP / WiFi"));
         lt_ui_layout_row(ui, 2, w2, 0);
-        lt_ui_label(ui, "Host:port");
+        lt_ui_label(ui, lt_tr("Host:port"));
         lt_ui_text(ui, "host", s->host, sizeof(s->host), 0);
         w2[0] = -1; w2[1] = -1;
         lt_ui_layout_row(ui, 2, w2, 0);
-        if (lt_ui_button(ui, "TCP connect")) {
+        if (lt_ui_button(ui, lt_tr("TCP connect"))) {
             char tmp[140];
             lt_snprintf(tmp, sizeof(tmp), "tcp:%s", s->host);
             if (lt_app_connect_serial(app, tmp, 0) == 0) { open = 0; }
         }
-        if (lt_ui_button(ui, "Demo (simulator)")) { if (lt_app_connect_demo(app) == 0) { open = 0; } }
+        if (lt_ui_button(ui, lt_tr("Demo (simulator)"))) { if (lt_app_connect_demo(app) == 0) { open = 0; } }
         lt_ui_separator(ui);
         lt_ui_layout_row(ui, 1, &w1, 0);
         lt_ui_label_ex(ui, lt_app_conn_label(app), t->text2, LT_UI_ALIGN_LEFT);
         lt_ui_layout_row(ui, 2, w2, 0);
-        if (lt_ui_button_ex(ui, "Disconnect", online ? 0 : LT_UI_BTN_DISABLED) && online) { lt_app_disconnect(app); }
-        if (lt_ui_button(ui, "Close")) { open = 0; }
+        if (lt_ui_button_ex(ui, lt_tr("Disconnect"), online ? 0 : LT_UI_BTN_DISABLED) && online) { lt_app_disconnect(app); }
+        if (lt_ui_button(ui, lt_tr("Close"))) { open = 0; }
         lt_ui_modal_end(ui);
     }
     d->open = open;

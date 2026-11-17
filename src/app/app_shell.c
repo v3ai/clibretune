@@ -52,11 +52,11 @@ static void app_toolbar(lt_app *app)
     lt_ui_push_id(ui, "toolbar");
     if (cell) {
         /* tty: the same actions as a text row */
-        if (lt_ui_button_ex(ui, "Open", LT_UI_BTN_FLAT)) {
+        if (lt_ui_button_ex(ui, lt_tr("Open"), LT_UI_BTN_FLAT)) {
             lt_app_file_dialog(app, LT_APP_FD_OPEN_PROJECT, LT_UI_FILE_OPEN, NULL, "project.json",
                                "Project|project.json|All files|*");
         }
-        if (has && lt_ui_button_ex(ui, "Save", LT_UI_BTN_FLAT)) { lt_app_save_tune(app); }
+        if (has && lt_ui_button_ex(ui, lt_tr("Save"), LT_UI_BTN_FLAT)) { lt_app_save_tune(app); }
         if (has && lt_ui_button_ex(ui, burn ? "Burn" : "Burn##x", burn ? LT_UI_BTN_FLAT : LT_UI_BTN_DISABLED) && burn) {
             app->burn_open = 1;
         }
@@ -64,37 +64,38 @@ static void app_toolbar(lt_app *app)
         lt_ui_toolbar_end(ui);
         return;
     }
-    if (lt_ui_icon_button(ui, LT_UI_LUCIDE(LT_ICON_FOLDER_OPEN), "Open project",  0)) {
+    if (lt_ui_icon_button(ui, LT_UI_LUCIDE(LT_ICON_FOLDER_OPEN), lt_tr("Open project"),  0)) {
         lt_app_file_dialog(app, LT_APP_FD_OPEN_PROJECT, LT_UI_FILE_OPEN, NULL, "project.json",
                            "Project|project.json|All files|*");
     }
-    if (lt_ui_icon_button(ui, LT_UI_LUCIDE(LT_ICON_SAVE), "Save tune (Ctrl+S)", has ? 0 : LT_UI_BTN_DISABLED) && has) {
+    if (lt_ui_icon_button(ui, LT_UI_LUCIDE(LT_ICON_SAVE), lt_hk_tip(app, "Save tune", "file.save"), has ? 0 : LT_UI_BTN_DISABLED) && has) {
         lt_app_save_tune(app);
     }
-    if (lt_ui_icon_button(ui, LT_UI_LUCIDE(LT_ICON_FLAME), burn ? "Burn to ECU (Ctrl+B)" : "Nothing to burn",
+    if (lt_ui_icon_button(ui, LT_UI_LUCIDE(LT_ICON_FLAME), burn ? lt_hk_tip(app, "Burn to ECU", "file.burn") : lt_tr("Nothing to burn"),
                           burn ? LT_UI_BTN_DANGER : LT_UI_BTN_DISABLED) && burn) {
         app->burn_open = 1;
     }
     lt_ui_toolbar_separator(ui);
     if (lt_ui_icon_button(ui, LT_UI_LUCIDE(online ? LT_ICON_UNPLUG : LT_ICON_PLUG_ZAP),
-                          online ? "Disconnect (Ctrl+Shift+D)" : "Connect to ECU (Ctrl+Shift+C)",
+                          online ? lt_hk_tip(app, "Disconnect", "conn.disconnect") :
+                              lt_hk_tip(app, "Connect to ECU", "conn.connect"),
                           has ? (online ? LT_UI_BTN_SELECTED : 0) : LT_UI_BTN_DISABLED) && has) {
         if (online) { lt_app_disconnect(app); } else { lt_app_connect_dialog(app); }
     }
-    if (lt_ui_icon_button(ui, LT_UI_LUCIDE(LT_ICON_LAYOUT_DASHBOARD), "Dashboard (Ctrl+D)", has ? 0 : LT_UI_BTN_DISABLED) && has) {
+    if (lt_ui_icon_button(ui, LT_UI_LUCIDE(LT_ICON_LAYOUT_DASHBOARD), lt_hk_tip(app, "Dashboard", "view.dashboard"), has ? 0 : LT_UI_BTN_DISABLED) && has) {
         lt_app_dashboard_tab_open(app);
     }
-    if (lt_ui_icon_button(ui, LT_UI_LUCIDE(LT_ICON_WAND_SPARKLES), "AutoTune (Ctrl+Shift+A)", has ? 0 : LT_UI_BTN_DISABLED) && has) {
+    if (lt_ui_icon_button(ui, LT_UI_LUCIDE(LT_ICON_WAND_SPARKLES), lt_hk_tip(app, "AutoTune", "tools.autotune"), has ? 0 : LT_UI_BTN_DISABLED) && has) {
         lt_app_autotune_open(app);
     }
     lt_ui_toolbar_separator(ui);
     if (lt_ui_icon_button(ui, LT_UI_LUCIDE(rec ? LT_ICON_CIRCLE_STOP : LT_ICON_CIRCLE),
-                          rec ? "Stop data logging (Ctrl+L)" : "Start data logging (Ctrl+L)",
+                          lt_hk_tip(app, rec ? "Stop data logging" : "Start data logging", "tools.log"),
                           has ? (rec ? LT_UI_BTN_DANGER : 0) : LT_UI_BTN_DISABLED) && has) {
         lt_app_log_toggle(app);
     }
     lt_ui_toolbar_separator(ui);
-    if (lt_ui_icon_button(ui, LT_UI_LUCIDE(LT_ICON_SETTINGS), "Settings (Ctrl+,)", 0)) { lt_app_settings_dialog(app); }
+    if (lt_ui_icon_button(ui, LT_UI_LUCIDE(LT_ICON_SETTINGS), lt_hk_tip(app, "Settings", "app.settings"), 0)) { lt_app_settings_dialog(app); }
     lt_ui_pop_id(ui);
     lt_ui_toolbar_end(ui);
     LT_UNUSED(t);
@@ -200,6 +201,7 @@ static int tab_icon(const char *kind)
     if (strncmp(kind, "datalog", 7) == 0) { return LT_ICON_SCROLL_TEXT; }
     if (strcmp(kind, "autotune") == 0) { return LT_ICON_WAND_SPARKLES; }
     if (strcmp(kind, "special") == 0) { return LT_ICON_ACTIVITY; }
+    if (strcmp(kind, "manual") == 0) { return LT_ICON_BOOK_OPEN; }
     return LT_ICON_SETTINGS_2;
 }
 
@@ -296,13 +298,13 @@ static void menu_file(lt_app *app)
     int i, online = (app->conn == LT_APP_ONLINE || app->conn == LT_APP_DEMO);
     int has = app->ini != NULL;
     char lab[600];
-    if (lt_ui_menu_item(ui, "&New Project...", "Ctrl+N", 0)) { lt_app_new_project_dialog(app); }
-    if (lt_ui_menu_item(ui, "&Open Project...", NULL, 0)) {
+    if (lt_ui_menu_item(ui, lt_tr("&New Project..."), lt_hk_text(app, "file.new"), 0)) { lt_app_new_project_dialog(app); }
+    if (lt_ui_menu_item(ui, lt_tr("&Open Project..."), NULL, 0)) {
         lt_app_file_dialog(app, LT_APP_FD_OPEN_PROJECT, LT_UI_FILE_OPEN,
                            app->settings.last_project[0] ? NULL : NULL, "project.json",
                            "Project|project.json|All files|*");
     }
-    if (lt_ui_submenu_begin(ui, "Open &Recent", app->settings.n_recent ? 0 : LT_UI_MENU_DISABLED)) {
+    if (lt_ui_submenu_begin(ui, lt_tr("Open &Recent"), app->settings.n_recent ? 0 : LT_UI_MENU_DISABLED)) {
         for (i = 0; i < app->settings.n_recent; i++) {
             lt_snprintf(lab, sizeof(lab), "%s", lt_path_base(app->settings.recent[i]));
             lt_ui_push_id_int(ui, i);
@@ -311,33 +313,33 @@ static void menu_file(lt_app *app)
         }
         lt_ui_submenu_end(ui);
     }
-    if (lt_ui_menu_item(ui, "&Import TunerStudio Project...", NULL, 0)) {
+    if (lt_ui_menu_item(ui, lt_tr("&Import TunerStudio Project..."), NULL, 0)) {
         lt_app_file_dialog(app, LT_APP_FD_IMPORT_TS, LT_UI_FILE_OPEN, NULL, "", "All files|*");
     }
-    if (lt_ui_menu_item(ui, "Demo mode (simulated ECU)", NULL, 0)) { lt_app_start_demo(app, NULL); }
+    if (lt_ui_menu_item(ui, lt_tr("Demo mode (simulated ECU)"), NULL, 0)) { lt_app_start_demo(app, NULL); }
     if (has) {
-        if (lt_ui_menu_item(ui, "&Close Project", NULL, 0)) {
+        if (lt_ui_menu_item(ui, lt_tr("&Close Project"), NULL, 0)) {
             if (app->modified) { app->close_proj_open = 1; } else { lt_app_close_project(app); }
         }
     }
     lt_ui_menu_separator(ui);
     if (has) {
-        if (lt_ui_menu_item(ui, "Connect ECU...", "Ctrl+Shift+C", 0)) { lt_app_connect_dialog(app); }
-        if (lt_ui_menu_item(ui, "Disconnect", "Ctrl+Shift+D", online ? 0 : LT_UI_MENU_DISABLED)) {
+        if (lt_ui_menu_item(ui, lt_tr("Connect ECU..."), lt_hk_text(app, "conn.connect"), 0)) { lt_app_connect_dialog(app); }
+        if (lt_ui_menu_item(ui, lt_tr("Disconnect"), lt_hk_text(app, "conn.disconnect"), online ? 0 : LT_UI_MENU_DISABLED)) {
             lt_app_disconnect(app);
         }
         lt_ui_menu_separator(ui);
-        if (lt_ui_menu_item(ui, "&Load Tune...", "Ctrl+O", 0)) {
+        if (lt_ui_menu_item(ui, lt_tr("&Load Tune..."), lt_hk_text(app, "file.load_tune"), 0)) {
             lt_app_file_dialog(app, LT_APP_FD_LOAD_TUNE, LT_UI_FILE_OPEN, NULL, "",
                                "Tune files|*.msq;*.xml|All files|*");
         }
-        if (lt_ui_menu_item(ui, "&Save Tune", "Ctrl+S", 0)) { lt_app_save_tune(app); }
-        if (lt_ui_menu_item(ui, "Save Tune &As...", "Ctrl+Shift+S", 0)) {
+        if (lt_ui_menu_item(ui, lt_tr("&Save Tune"), lt_hk_text(app, "file.save"), 0)) { lt_app_save_tune(app); }
+        if (lt_ui_menu_item(ui, lt_tr("Save Tune &As..."), lt_hk_text(app, "file.save_as"), 0)) {
             lt_app_file_dialog(app, LT_APP_FD_SAVE_TUNE, LT_UI_FILE_SAVE, NULL, "tune.msq",
                                "Tune files|*.msq;*.xml|All files|*");
         }
         lt_ui_menu_separator(ui);
-        if (lt_ui_menu_item(ui, "Create Restore Point", NULL, app->has_project ? 0 : LT_UI_MENU_DISABLED)) {
+        if (lt_ui_menu_item(ui, lt_tr("Create Restore Point"), NULL, app->has_project ? 0 : LT_UI_MENU_DISABLED)) {
             char *p = NULL;
             if (app->mem != NULL) { lt_tune_from_mem(app->tune, app->mem); }
             if (lt_restore_create(&app->project, &p) == 0) {
@@ -345,17 +347,17 @@ static void menu_file(lt_app *app)
                 lt_free(p);
             } else { lt_app_toast(app, 3, "Restore point failed: %s", lt_err_get()); }
         }
-        if (lt_ui_menu_item(ui, "Restore Points...", NULL, app->has_project ? 0 : LT_UI_MENU_DISABLED)) {
+        if (lt_ui_menu_item(ui, lt_tr("Restore Points..."), NULL, app->has_project ? 0 : LT_UI_MENU_DISABLED)) {
             lt_app_restore_points_dialog(app);
         }
         lt_ui_menu_separator(ui);
-        if (lt_ui_menu_item(ui, "&Burn to ECU", "Ctrl+B", lt_app_can_burn(app) ? 0 : LT_UI_MENU_DISABLED)) {
+        if (lt_ui_menu_item(ui, lt_tr("&Burn to ECU"), lt_hk_text(app, "file.burn"), lt_app_can_burn(app) ? 0 : LT_UI_MENU_DISABLED)) {
             app->burn_open = 1;
         }
         lt_ui_menu_separator(ui);
     }
     if (lt_ext_menu_draw(app, LT_EXT_MENU_FILE, 0) > 0) { lt_ui_menu_separator(ui); }
-    if (lt_ui_menu_item(ui, "E&xit", "Ctrl+Q", 0)) { lt_app_request_quit(app); }
+    if (lt_ui_menu_item(ui, lt_tr("E&xit"), lt_hk_text(app, "file.quit"), 0)) { lt_app_request_quit(app); }
 }
 
 static void menu_view(lt_app *app)
@@ -363,19 +365,19 @@ static void menu_view(lt_app *app)
     lt_ui *ui = app->ui;
     int i;
     if (app->ini != NULL) {
-        if (lt_ui_menu_item(ui, "&Dashboard", "Ctrl+D", 0)) { lt_app_dashboard_tab_open(app); }
+        if (lt_ui_menu_item(ui, lt_tr("&Dashboard"), lt_hk_text(app, "view.dashboard"), 0)) { lt_app_dashboard_tab_open(app); }
     }
-    if (lt_ui_menu_item(ui, "Toggle &Sidebar", "F9", app->settings.sidebar_on ? LT_UI_MENU_CHECKED : 0)) {
+    if (lt_ui_menu_item(ui, lt_tr("Toggle &Sidebar"), lt_hk_text(app, "view.sidebar"), app->settings.sidebar_on ? LT_UI_MENU_CHECKED : 0)) {
         app->settings.sidebar_on = !app->settings.sidebar_on;
         lt_app_settings_save(app);
     }
-    if (lt_ui_menu_item(ui, "Show ECU menus in menu bar", NULL,
+    if (lt_ui_menu_item(ui, lt_tr("Show ECU menus in menu bar"), NULL,
                         app->settings.show_ecu_menus ? LT_UI_MENU_CHECKED : 0)) {
         app->settings.show_ecu_menus = !app->settings.show_ecu_menus;
         lt_app_settings_save(app);
     }
     lt_ui_menu_separator(ui);
-    if (lt_ui_submenu_begin(ui, "&Theme", 0)) {
+    if (lt_ui_submenu_begin(ui, lt_tr("&Theme"), 0)) {
         for (i = 0; i < N_THEMES; i++) {
             int on = strcmp(app->settings.theme, theme_names[i]) == 0;
             if (lt_ui_menu_item(ui, theme_names[i], NULL, on ? LT_UI_MENU_CHECKED : 0)) {
@@ -385,12 +387,12 @@ static void menu_view(lt_app *app)
         }
         lt_ui_submenu_end(ui);
     }
-    if (lt_ui_submenu_begin(ui, "&Units", 0)) {
-        if (lt_ui_menu_item(ui, "Metric", NULL, app->settings.metric ? LT_UI_MENU_CHECKED : 0)) {
+    if (lt_ui_submenu_begin(ui, lt_tr("&Units"), 0)) {
+        if (lt_ui_menu_item(ui, lt_tr("Metric"), NULL, app->settings.metric ? LT_UI_MENU_CHECKED : 0)) {
             app->settings.metric = 1; app->settings.temp_unit = 0; app->settings.press_unit = 0;
             lt_app_settings_save(app);
         }
-        if (lt_ui_menu_item(ui, "Imperial", NULL, app->settings.metric ? 0 : LT_UI_MENU_CHECKED)) {
+        if (lt_ui_menu_item(ui, lt_tr("Imperial"), NULL, app->settings.metric ? 0 : LT_UI_MENU_CHECKED)) {
             app->settings.metric = 0; app->settings.temp_unit = 1; app->settings.press_unit = 1;
             lt_app_settings_save(app);
         }
@@ -404,21 +406,21 @@ static void menu_tools(lt_app *app)
     lt_ui *ui = app->ui;
     const lt_ini *ini = app->ini;
     int rec = app->rec != NULL && lt_rec_is_recording(app->rec);
-    if (lt_ui_menu_item(ui, "&AutoTune", "Ctrl+Shift+A", 0)) { lt_app_autotune_open(app); }
+    if (lt_ui_menu_item(ui, lt_tr("&AutoTune"), lt_hk_text(app, "tools.autotune"), 0)) { lt_app_autotune_open(app); }
     if (ini->n_dl_entries > 0 || ini->n_channels > 0) {
         if (lt_ui_menu_item(ui, rec ? "Stop Data &Logging" : "Start Data &Logging", "Ctrl+L", 0)) {
             lt_app_log_toggle(app);
         }
-        if (lt_ui_menu_item(ui, "Datalog &Viewer...", NULL, 0)) { lt_app_datalog_open(app, 1); }
-        if (lt_ui_menu_item(ui, "&Output Channel Status", NULL, 0)) { lt_app_special_open(app, "och-status"); }
+        if (lt_ui_menu_item(ui, lt_tr("Datalog &Viewer..."), NULL, 0)) { lt_app_datalog_open(app, 1); }
+        if (lt_ui_menu_item(ui, lt_tr("&Output Channel Status"), NULL, 0)) { lt_app_special_open(app, "och-status"); }
     }
     if (ini->n_loggers > 0) {
-        if (lt_ui_menu_item(ui, "Tooth Logger", NULL, 0)) { lt_app_special_open(app, "tooth-logger"); }
-        if (lt_ui_menu_item(ui, "Composite Logger", NULL, 0)) { lt_app_special_open(app, "composite-logger"); }
+        if (lt_ui_menu_item(ui, lt_tr("Tooth Logger"), NULL, 0)) { lt_app_special_open(app, "tooth-logger"); }
+        if (lt_ui_menu_item(ui, lt_tr("Composite Logger"), NULL, 0)) { lt_app_special_open(app, "composite-logger"); }
     }
     lt_ui_menu_separator(ui);
-    if (lt_ui_menu_item(ui, "ECU &Connection...", "Ctrl+Shift+C", 0)) { lt_app_connect_dialog(app); }
-    if (lt_ui_menu_item(ui, "&Settings...", "Ctrl+,", 0)) { lt_app_settings_dialog(app); }
+    if (lt_ui_menu_item(ui, lt_tr("ECU &Connection..."), lt_hk_text(app, "conn.connect"), 0)) { lt_app_connect_dialog(app); }
+    if (lt_ui_menu_item(ui, lt_tr("&Settings..."), lt_hk_text(app, "app.settings"), 0)) { lt_app_settings_dialog(app); }
     lt_ext_menu_draw(app, LT_EXT_MENU_TOOLS, 1);
 }
 
@@ -435,7 +437,7 @@ static void menu_ini(lt_app *app)
     }
     group = (int)total > lt_ui_surface(ui).w - lt_ui_px(ui, 520);
     if (group) {
-        if (lt_ui_menu_begin(ui, "&Tuning")) {
+        if (lt_ui_menu_begin(ui, lt_tr("&Tuning"))) {
             for (i = 0; i < ini->n_menus; i++) {
                 clean_label(lab, sizeof(lab), ini->menus[i].title);
                 if (lt_ui_submenu_begin(ui, lab, 0)) {
@@ -459,25 +461,27 @@ static void menubar(lt_app *app)
 {
     lt_ui *ui = app->ui;
     if (!lt_ui_menubar_begin(ui)) { return; }
-    if (lt_ui_menu_begin(ui, "&File")) { menu_file(app); lt_ui_menu_end(ui); }
-    if (app->ini != NULL && lt_ui_menu_begin(ui, "&Edit")) {
-        if (lt_ui_menu_item(ui, "Undo", "Ctrl+Z", 0) || lt_ui_menu_item(ui, "Redo", "Ctrl+Y", 0) ||
-            lt_ui_menu_item(ui, "Cut", "Ctrl+X", 0) || lt_ui_menu_item(ui, "Copy", "Ctrl+C", 0) ||
-            lt_ui_menu_item(ui, "Paste", "Ctrl+V", 0)) {
-            lt_app_toast(app, 0, "Use the table-specific controls for undo/redo/copy/paste");
-        }
+    if (lt_ui_menu_begin(ui, lt_tr("&File"))) { menu_file(app); lt_ui_menu_end(ui); }
+    if (app->ini != NULL && lt_ui_menu_begin(ui, lt_tr("&Edit"))) {
+        if (lt_ui_menu_item(ui, lt_tr("&Undo"), lt_hk_text(app, "edit.undo"), 0)) { lt_feat_edit_do(app, "edit.undo"); }
+        if (lt_ui_menu_item(ui, lt_tr("&Redo"), lt_hk_text(app, "edit.redo"), 0)) { lt_feat_edit_do(app, "edit.redo"); }
         lt_ui_menu_separator(ui);
-        if (lt_ui_menu_item(ui, "Reset Tune to &Defaults", NULL, 0)) { lt_app_reset_defaults(app); }
+        if (lt_ui_menu_item(ui, lt_tr("Cu&t"), lt_hk_text(app, "edit.cut"), 0)) { lt_feat_edit_do(app, "edit.cut"); }
+        if (lt_ui_menu_item(ui, lt_tr("&Copy"), lt_hk_text(app, "edit.copy"), 0)) { lt_feat_edit_do(app, "edit.copy"); }
+        if (lt_ui_menu_item(ui, lt_tr("&Paste"), lt_hk_text(app, "edit.paste"), 0)) { lt_feat_edit_do(app, "edit.paste"); }
+        if (lt_ui_menu_item(ui, lt_tr("Select &All"), lt_hk_text(app, "edit.select_all"), 0)) { lt_feat_edit_do(app, "edit.select_all"); }
+        lt_ui_menu_separator(ui);
+        if (lt_ui_menu_item(ui, lt_tr("Reset Tune to &Defaults"), NULL, 0)) { lt_app_reset_defaults(app); }
         lt_ui_menu_end(ui);
     }
-    if (lt_ui_menu_begin(ui, "&View")) { menu_view(app); lt_ui_menu_end(ui); }
-    if (app->ini != NULL && lt_ui_menu_begin(ui, "&Tools")) { menu_tools(app); lt_ui_menu_end(ui); }
+    if (lt_ui_menu_begin(ui, lt_tr("&View"))) { menu_view(app); lt_ui_menu_end(ui); }
+    if (app->ini != NULL && lt_ui_menu_begin(ui, lt_tr("&Tools"))) { menu_tools(app); lt_ui_menu_end(ui); }
     if (app->ini != NULL && app->settings.show_ecu_menus && app->ini->n_menus > 0) {
         lt_ui_menubar_separator(ui);
         menu_ini(app);
     }
     lt_ui_menubar_separator(ui);
-    if (lt_ui_menu_begin(ui, "&Help")) {
+    if (lt_ui_menu_begin(ui, lt_tr("&Help"))) {
         lt_ext_menu_draw(app, LT_EXT_MENU_HELP, 0);
         lt_ui_menu_end(ui);
     }
@@ -596,17 +600,17 @@ static void sidebar(lt_app *app, lt_rect r)
         lt_ui_text_style(ui, (int)LT_FONT_SANS, LT_UI_FS_SM);
         lt_ui_text(ui, "search", app->search, sizeof(app->search), 0);
         lt_ui_text_style_reset(ui);
-        if (ini != NULL && lt_ui_key_pressed(ui, 'k', LT_MOD_CTRL)) { lt_ui_set_focus(ui, lt_ui_last_id(ui)); }
+        if (ini != NULL && lt_hk_pressed(app, "sidebar.search")) { lt_ui_set_focus(ui, lt_ui_last_id(ui)); }
         if (app->search[0] == '\0' && !lt_ui_text_focused(ui)) {
             lt_rect sr = lt_ui_last_rect(ui);
             lt_ui_draw_text_in_f(ui, lt_rect_make(sr.x + t->pad_x, sr.y, sr.w - 2 * t->pad_x, sr.h),
-                                 "Search... (Ctrl+K)", t->muted, 0, (int)LT_FONT_SANS, LT_UI_FS_SM);
+                                 lt_hk_tip(app, "Search...", "sidebar.search"), t->muted, 0, (int)LT_FONT_SANS, LT_UI_FS_SM);
         } else if (app->search[0] != '\0') {
             lt_rect cr = lt_rect_make(sin.x + sin.w - lt_ui_px(ui, 20), sin.y + 2, lt_ui_px(ui, 18), sin.h - 4);
             lt_ui_region_begin(ui, cr, 0);
             lt_ui_layout_row_px(ui, 1, &w1, cr.h);
             lt_ui_layout_gap(ui, 0, 0);
-            if (lt_ui_icon_button(ui, cell ? LT_UI_ICON_CLOSE : LT_UI_LUCIDE(LT_ICON_X), "Clear search", 0)) { app->search[0] = '\0'; }
+            if (lt_ui_icon_button(ui, cell ? LT_UI_ICON_CLOSE : LT_UI_LUCIDE(LT_ICON_X), lt_tr("Clear search"), 0)) { app->search[0] = '\0'; }
             lt_ui_region_end(ui);
         }
         lt_ui_region_end(ui);
@@ -728,7 +732,7 @@ static void statusbar_cell(lt_app *app)
         x -= 56 + 8;
         used += 7;
         lt_ui_layout_set_rect(ui, br);
-        if (lt_ui_button_ex(ui, "Burn", burn ? LT_UI_BTN_ACCENT : LT_UI_BTN_DISABLED) && burn) { app->burn_open = 1; }
+        if (lt_ui_button_ex(ui, lt_tr("Burn"), burn ? LT_UI_BTN_ACCENT : LT_UI_BTN_DISABLED) && burn) { app->burn_open = 1; }
     }
     if (used + n_proj + 20 < cols) {
         x -= n_proj * 8; used += n_proj;
@@ -806,7 +810,7 @@ static void statusbar(lt_app *app)
     lt_ui_draw_circle_fill(ui, r.x + (double)lt_ui_px(ui, 6), r.y + r.h / 2.0, 3.5 * (double)lt_ui_scale_pct(ui) / 100.0, cc);
     lt_ui_draw_text_in(ui, lt_rect_make(r.x + lt_ui_px(ui, 16), r.y, r.w - lt_ui_px(ui, 16), r.h), conn, t->text2, 0);
     lt_ui_layout_set_rect(ui, r);                       /* click: connection metrics (G-06) */
-    if (lt_ui_button_ex(ui, "", LT_UI_BTN_FLAT)) { lt_feat_connset_metrics(app); }
+    if (lt_ui_button_ex(ui, lt_tr(""), LT_UI_BTN_FLAT)) { lt_feat_connset_metrics(app); }
     lt_ui_tooltip(ui, "Connection metrics");
     r = lt_ui_layout_next(ui);
     lt_ui_draw_text_in(ui, r, mid, t->muted, 1);
@@ -853,21 +857,21 @@ static void welcome_cell(lt_app *app, lt_rect area)
     lt_ui_region_begin(ui, r, 0);
     w2[0] = -1; w2[1] = -1;
     lt_ui_layout_row(ui, 2, w2, rh * 2);
-    if (lt_ui_button_ex(ui, "Demo mode (simulated ECU)", LT_UI_BTN_PRIMARY)) { lt_app_start_demo(app, NULL); }
-    if (lt_ui_button(ui, "New Project...")) { lt_app_new_project_dialog(app); }
+    if (lt_ui_button_ex(ui, lt_tr("Demo mode (simulated ECU)"), LT_UI_BTN_PRIMARY)) { lt_app_start_demo(app, NULL); }
+    if (lt_ui_button(ui, lt_tr("New Project..."))) { lt_app_new_project_dialog(app); }
     lt_ui_layout_row(ui, 2, w2, 0);
-    if (lt_ui_button(ui, "Open Project...")) {
+    if (lt_ui_button(ui, lt_tr("Open Project..."))) {
         lt_app_file_dialog(app, LT_APP_FD_OPEN_PROJECT, LT_UI_FILE_OPEN, NULL, "project.json",
                            "Project|project.json|All files|*");
     }
-    if (lt_ui_button(ui, "Import TunerStudio Project...")) {
+    if (lt_ui_button(ui, lt_tr("Import TunerStudio Project..."))) {
         lt_app_file_dialog(app, LT_APP_FD_IMPORT_TS, LT_UI_FILE_OPEN, NULL, "", "All files|*");
     }
     lt_ui_layout_space(ui, 12);
     lt_ui_layout_row(ui, 1, &w1, 0);
-    lt_ui_heading(ui, "Recent Projects");
+    lt_ui_heading(ui, lt_tr("Recent Projects"));
     if (app->settings.n_recent == 0) {
-        lt_ui_label_ex(ui, "No recent projects yet.", t->muted, LT_UI_ALIGN_LEFT);
+        lt_ui_label_ex(ui, lt_tr("No recent projects yet."), t->muted, LT_UI_ALIGN_LEFT);
     }
     for (i = 0; i < app->settings.n_recent; i++) {
         int w3[2];
@@ -923,8 +927,8 @@ static void welcome(lt_app *app, lt_rect area)
     lt_ui_layout_row_px(ui, 2, w2, bh);
     lt_ui_layout_gap_px(ui, gap, 0);
     lt_ui_text_style(ui, (int)LT_FONT_SANS_MEDIUM, LT_UI_FS_XL);
-    if (lt_ui_button_ex(ui, "New Project", LT_UI_BTN_PRIMARY)) { lt_app_new_project_dialog(app); }
-    if (lt_ui_button(ui, "Open Project")) {
+    if (lt_ui_button_ex(ui, lt_tr("New Project"), LT_UI_BTN_PRIMARY)) { lt_app_new_project_dialog(app); }
+    if (lt_ui_button(ui, lt_tr("Open Project"))) {
         lt_app_file_dialog(app, LT_APP_FD_OPEN_PROJECT, LT_UI_FILE_OPEN, NULL, "project.json",
                            "Project|project.json|All files|*");
     }
@@ -936,8 +940,8 @@ static void welcome(lt_app *app, lt_rect area)
     lt_ui_region_begin(ui, r, 0);
     lt_ui_layout_row_px(ui, 2, w2, lt_ui_px(ui, 26));
     lt_ui_layout_gap_px(ui, gap, 0);
-    if (lt_ui_button_ex(ui, "Demo mode", LT_UI_BTN_FLAT)) { lt_app_start_demo(app, NULL); }
-    if (lt_ui_button_ex(ui, "Import TunerStudio", LT_UI_BTN_FLAT)) {
+    if (lt_ui_button_ex(ui, lt_tr("Demo mode"), LT_UI_BTN_FLAT)) { lt_app_start_demo(app, NULL); }
+    if (lt_ui_button_ex(ui, lt_tr("Import TunerStudio"), LT_UI_BTN_FLAT)) {
         lt_app_file_dialog(app, LT_APP_FD_IMPORT_TS, LT_UI_FILE_OPEN, NULL, "", "All files|*");
     }
     lt_ui_region_end(ui);
@@ -1005,13 +1009,14 @@ static void welcome(lt_app *app, lt_rect area)
 
 /* ------------------------------------------------------------------ */
 /* tab area                                                            */
+#define TAB_RECTS 64
 static void tab_area(lt_app *app, lt_rect main_r)
 {
     lt_ui *ui = app->ui;
     const lt_theme *t = lt_ui_theme(ui);
     int cell = lt_ui_cell_mode(ui);
     int w1 = -1, i, closed = -1, k;
-    lt_rect inner, body;
+    lt_rect inner, body, tab_r[TAB_RECTS];
     lt_app_tab *at;
     lt_ui_draw_fill(ui, main_r, t->bg_app);
     inner = cell ? lt_rect_inset(main_r, t->padding, 0) : main_r;
@@ -1019,13 +1024,16 @@ static void tab_area(lt_app *app, lt_rect main_r)
     lt_ui_layout_gap(ui, 0, 0);
     lt_ui_layout_row(ui, 1, &w1, 0);
     lt_ui_tabbar_begin(ui, "tabs", &app->active_tab);
-    for (i = 0; i < app->n_tabs; i++) {
-        int fl = (app->tabs[i]->closable ? LT_UI_TAB_CLOSABLE : 0) | (app->tabs[i]->dirty ? LT_UI_TAB_DIRTY : 0);
+    for (i = 0; i < app->n_tabs && i < TAB_RECTS; i++) {
+        int fl = ((app->tabs[i]->closable && !app->tabs[i]->pinned) ? LT_UI_TAB_CLOSABLE : 0) | (app->tabs[i]->dirty ? LT_UI_TAB_DIRTY : 0);
+        int ic = app->tabs[i]->pinned ? LT_ICON_LOCK : tab_icon(app->tabs[i]->kind);
         lt_ui_push_id_int(ui, i);
-        if (lt_ui_tab_icon(ui, app->tabs[i]->title, cell ? 0 : LT_UI_LUCIDE(tab_icon(app->tabs[i]->kind)), fl) & LT_UI_TAB_CLOSED) { closed = i; }
+        if (lt_ui_tab_icon(ui, app->tabs[i]->title, cell ? 0 : LT_UI_LUCIDE(ic), fl) & LT_UI_TAB_CLOSED) { closed = i; }
+        tab_r[i] = lt_ui_last_rect(ui);
         lt_ui_pop_id(ui);
     }
     lt_ui_tabbar_end(ui);
+    lt_feat_tabs_bar(app, tab_r, app->n_tabs < TAB_RECTS ? app->n_tabs : TAB_RECTS);
     lt_ui_layout_row(ui, 1, &w1, -1);
     body = lt_ui_layout_next(ui);
     at = lt_app_tab_active(app);
@@ -1037,7 +1045,7 @@ static void tab_area(lt_app *app, lt_rect main_r)
         lt_ui_region_end(ui);
     }
     lt_ui_region_end(ui);
-    if (closed >= 0 && closed < app->n_tabs) { lt_app_tab_close(app, app->tabs[closed]); }
+    if (closed >= 0 && closed < app->n_tabs && !app->tabs[closed]->pinned) { lt_app_tab_close(app, app->tabs[closed]); }
 }
 
 /* ------------------------------------------------------------------ */
@@ -1056,36 +1064,35 @@ static void shortcuts(lt_app *app)
 {
     lt_ui *ui = app->ui;
     int i;
-    if (lt_ui_key_pressed(ui, 'q', LT_MOD_CTRL)) { lt_app_request_quit(app); }
-    if (lt_ui_key_pressed(ui, 'n', LT_MOD_CTRL)) { lt_app_new_project_dialog(app); }
-    if (lt_ui_key_pressed(ui, LT_KEY_F9, 0)) { app->settings.sidebar_on = !app->settings.sidebar_on; }
+    if (lt_hk_pressed(app, "file.quit")) { lt_app_request_quit(app); }
+    if (lt_hk_pressed(app, "file.new")) { lt_app_new_project_dialog(app); }
+    if (lt_hk_pressed(app, "view.sidebar")) { app->settings.sidebar_on = !app->settings.sidebar_on; }
     lt_ext_shortcuts(app);
     if (app->ini == NULL) { return; }
-    if (lt_ui_key_pressed(ui, 'o', LT_MOD_CTRL)) {
+    if (lt_hk_pressed(app, "file.load_tune")) {
         lt_app_file_dialog(app, LT_APP_FD_LOAD_TUNE, LT_UI_FILE_OPEN, NULL, "", "Tune files|*.msq;*.xml|All files|*");
     }
-    if (lt_ui_key_pressed(ui, 's', LT_MOD_CTRL)) { lt_app_save_tune(app); }
-    if (lt_ui_key_pressed(ui, 's', LT_MOD_CTRL | LT_MOD_SHIFT)) {
+    if (lt_hk_pressed(app, "file.save")) { lt_app_save_tune(app); }
+    if (lt_hk_pressed(app, "file.save_as")) {
         lt_app_file_dialog(app, LT_APP_FD_SAVE_TUNE, LT_UI_FILE_SAVE, NULL, "tune.msq", "Tune files|*.msq;*.xml|All files|*");
     }
-    if (lt_ui_key_pressed(ui, 'b', LT_MOD_CTRL) && lt_app_can_burn(app)) { app->burn_open = 1; }
-    if (lt_ui_key_pressed(ui, 'c', LT_MOD_CTRL | LT_MOD_SHIFT)) { lt_app_connect_dialog(app); }
-    if (lt_ui_key_pressed(ui, 'd', LT_MOD_CTRL | LT_MOD_SHIFT)) { lt_app_disconnect(app); }
-    if (lt_ui_key_pressed(ui, 'd', LT_MOD_CTRL)) { lt_app_dashboard_tab_open(app); }
-    if (lt_ui_key_pressed(ui, 'l', LT_MOD_CTRL)) { lt_app_log_toggle(app); }
-    if (lt_ui_key_pressed(ui, ',', LT_MOD_CTRL)) { lt_app_settings_dialog(app); }
-    if (lt_ui_key_pressed(ui, 'w', LT_MOD_CTRL)) {
-        lt_app_tab *a = lt_app_tab_active(app);
-        if (a != NULL && a->closable) { lt_app_tab_close(app, a); }
-    }
-    if (lt_ui_key_pressed(ui, LT_KEY_TAB, LT_MOD_CTRL) && app->n_tabs > 0) {
+    if (lt_hk_pressed(app, "file.burn") && lt_app_can_burn(app)) { app->burn_open = 1; }
+    if (lt_hk_pressed(app, "conn.connect")) { lt_app_connect_dialog(app); }
+    if (lt_hk_pressed(app, "conn.disconnect")) { lt_app_disconnect(app); }
+    if (lt_hk_pressed(app, "view.dashboard")) { lt_app_dashboard_tab_open(app); }
+    if (lt_hk_pressed(app, "tools.log")) { lt_app_log_toggle(app); }
+    if (lt_hk_pressed(app, "app.settings")) { lt_app_settings_dialog(app); }
+    if (lt_hk_pressed(app, "tab.close")) { lt_feat_tabs_close_active(app); }
+    if (lt_hk_pressed(app, "tab.next") && app->n_tabs > 0) {
         app->active_tab = (app->active_tab + 1) % app->n_tabs;
     }
-    if (lt_ui_key_pressed(ui, LT_KEY_TAB, LT_MOD_CTRL | LT_MOD_SHIFT) && app->n_tabs > 0) {
+    if (lt_hk_pressed(app, "tab.prev") && app->n_tabs > 0) {
         app->active_tab = (app->active_tab + app->n_tabs - 1) % app->n_tabs;
     }
-    for (i = 1; i <= 9; i++) {
-        if (lt_ui_key_pressed(ui, '0' + i, LT_MOD_CTRL) && i <= app->n_tabs) { app->active_tab = i - 1; }
+    if (!lt_hk_capturing(app)) {
+        for (i = 1; i <= 9; i++) {
+            if (lt_ui_key_pressed(ui, '0' + i, LT_MOD_CTRL) && i <= app->n_tabs) { app->active_tab = i - 1; }
+        }
     }
 }
 
