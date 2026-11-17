@@ -230,3 +230,34 @@ int lt_uconv_digits(const lt_uconv *c, int digits)
     }
     return digits;
 }
+
+/* ---- lambda preview of an AFR table (G-27) ---- */
+static const char *const g_fuel_label[LT_LAMBDA_FUELS] = { "E0", "E10", "E30", "E85", "E100" };
+static const double g_fuel_stoich[LT_LAMBDA_FUELS] = { 14.7, 14.13, 12.99, 9.85, 9.0 };
+
+const char *lt_lambda_fuel_label(int i)
+{
+    return g_fuel_label[(i >= 0 && i < LT_LAMBDA_FUELS) ? i : 0];
+}
+
+double lt_lambda_fuel_stoich(int i)
+{
+    return g_fuel_stoich[(i >= 0 && i < LT_LAMBDA_FUELS) ? i : 0];
+}
+
+double lt_lambda_preview_value(double v, int shown_lambda, double stoich)
+{
+    if (!(stoich > 0.0)) return v;
+    return shown_lambda ? v * stoich : v / stoich;
+}
+
+int lt_lambda_blend_percent(double afr, double lambda)
+{
+    double stoich, e;
+    if (!(lambda > 0.01) || !(afr > 0.0)) return -1;
+    stoich = afr / lambda;
+    e = (14.7 - stoich) / (14.7 - 9.0) * 100.0;
+    if (e < 0.0) e = 0.0;
+    if (e > 100.0) e = 100.0;
+    return (int)(e + 0.5);
+}

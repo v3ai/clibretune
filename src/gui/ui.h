@@ -157,6 +157,8 @@ lt_point lt_ui_mouse(const lt_ui *ui);
 lt_bool lt_ui_mouse_down(const lt_ui *ui, int button);
 /* LT_MOD_* held at the last mouse/key event */
 int lt_ui_mods(const lt_ui *ui);
+/* wheel notches (+1 up) received this frame and not consumed by a scroll area */
+int lt_ui_wheel(const lt_ui *ui);
 lt_u32 lt_ui_focus(const lt_ui *ui);
 void   lt_ui_set_focus(lt_ui *ui, lt_u32 id);
 lt_rect lt_ui_last_rect(const lt_ui *ui);       /* rect of the last widget */

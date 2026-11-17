@@ -228,22 +228,25 @@ Orig = path under `ref/LibreTune/crates/`. `app/` = `libretune-app/src/component
 - Orig: `app/curves/CurveEditor.tsx`, `cmd/curve_ops.rs`.
 
 ### G-26 3D view parity
-- Status: PARTIAL | Priority: P2 | Effort: M
+- Status: DONE | Priority: P2 | Effort: M
 - Have: software 3D surface with rotate, live point, trail.
 - Missing: zoom, pan, keyboard controls, surface style / wireframe / grid options, click-to-select cell from 3D,
   edit-in-3D (README "no zoom/pan").
 - Orig: `app/tables/TableEditor3D.tsx`, `tables/3d/SceneComponents.tsx`, `docs/src/features/table-editing/3d-visualization.md`.
+- Status update: DONE: zoom (wheel, PageUp/PageDown, [ ], + / -), pan (right drag), orbit (left drag, arrow keys), Home reset; surface style solid / wireframe / points, colour by value / by change from the values at open / single colour, grid lines toggle (toolbar + right-click menu); click picks the nearest vertex and selects that cell (edit it with the table keys, e.g. + / -). Camera, pick and world mapping are `src/app/tables_3d.c` (tests/test_tools.c). `LT_TABLE_VIEW=3d,wire,pick...` previews a view.
 
 ### G-27 Lambda preview table
-- Status: MISSING | Priority: P2 | Effort: S
+- Status: DONE | Priority: P2 | Effort: S
 - Missing: companion read-only table showing the lambda equivalent of an AFR table (and reverse), honouring the
   AFR/lambda unit setting (G-90). Conversions exist (`lt_afr_to_lambda`).
 - Orig: `app/tables/LambdaPreviewTable.tsx`.
+- Status update: DONE: Target AFR tables show a read-only lambda companion beside the grid (toolbar toggle; E0/E10/E30/E85/E100 stoich, live lambda / AFR / calculated-fuel readouts); when the AFR unit preference is lambda it shows AFR instead. `src/app/tables_lambda.c`, helpers in the unit layer (`lt_lambda_*` in tableops_units.c).
 
 ### G-28 Large-change alert on table edits
-- Status: MISSING | Priority: P2 | Effort: S
+- Status: DONE | Priority: P2 | Effort: S
 - Missing: warn when an edit/paste/op changes a cell beyond absolute or percent thresholds (settings in G-96).
 - Orig: settings `alert_large_change_*`, `docs/src/features/alert-rules.md`.
+- Status update: DONE: `lt_tabs_check_change` (every table / curve / AutoTune commit, including paste, ops, undo and 3D-selected edits) toasts the largest change beyond the absolute or percent thresholds of Settings > Logging (`alert_large_change`); covered by tests/test_tools.c.
 
 ---------------------------------------------------------------------------------------------------
 
@@ -290,11 +293,12 @@ Orig = path under `ref/LibreTune/crates/`. `app/` = `libretune-app/src/component
 - Orig: `app/dialogs/PanelComponents.tsx`, `DialogRenderer.tsx`, `hardware/WidebandLiveStatus.tsx`, `DialogValueSource.tsx`.
 
 ### G-35 Performance / economy calculator
-- Status: MISSING | Priority: P2 | Effort: M
+- Status: DONE | Priority: P2 | Effort: M
 - Missing: vehicle specs dialog (weight, frontal area, Cd, gearing), HP/torque, acceleration times,
   fuel-economy figures from live channels.
 - Orig: `app/dialogs/PerformanceFieldsDialog.tsx` (565 lines), `docs/src/features/performance-calculator.md`.
 - Ours: `src/app/dlg_perf.c` (pure math, no deps).
+- Status update: DONE: Tools > Performance Calculator: vehicle specs (saved to vehicle_specs.properties), wheel HP / torque / kW from live or typed rpm, speed and acceleration, drag and rolling resistance, 0-60 / quarter mile estimates, gearing table, fuel economy from live pulse width (cc/min, mpg, l/100 km, km/l, per-hour and trip totals, US/imperial/litres, speed in the preferred unit). `src/app/dlg_perf.c` (maths) + `feat_perf.c`.
 
 ---------------------------------------------------------------------------------------------------
 
@@ -462,22 +466,25 @@ Orig = path under `ref/LibreTune/crates/`. `app/` = `libretune-app/src/component
 ## 9. Tools
 
 ### G-80 Table comparison
-- Status: MISSING | Priority: P2 | Effort: M
+- Status: DONE | Priority: P2 | Effort: M
 - Missing: compare two tables (current vs restore point / other tune / ECU), difference and percent views, heat map.
 - Orig: `app/dialogs/TableComparisonDialog.tsx`, `cmd/table_compare.rs`, `docs/src/features/tools.md`.
+- Status update: DONE: Tools > Compare Tables: table A against another table of the open tune (as the original), or against any table of a tune file / restore point; summary, difference / percent / values view with heat map, changed cells grouped by variance. `src/tableops/tablecmp.c` + `feat_tablecmp.c`.
 
 ### G-81 Dyno overlay
-- Status: MISSING (core present) | Priority: P2 | Effort: M
+- Status: DONE | Priority: P2 | Effort: M
 - Have: `lt_dyno_from_csv/compare/compute_peaks/map_to_table`.
 - Missing: load dyno CSV (header detection), compare runs, peaks, overlay on VE table.
 - Orig: `app/tuner-ui/DynoOverlay.tsx`, `cmd/dyno.rs`.
+- Status update: DONE: Tools > Dyno Overlay: import CSV runs (header detection shown), power / torque chart with peaks, up to 6 runs, compare two runs (gain/loss shading, averages), overlay a run on a table (VE) with cell HP/AFR. `lt_dyno_chart_range` + `feat_dyno.c`.
 
 ### G-82 Action recorder / manager (action scripting)
-- Status: MISSING (core present) | Priority: P2 | Effort: M
+- Status: DONE | Priority: P2 | Effort: M
 - Have: `project/action.c` (`lt_action_*`, record/validate/serialize).
 - Missing: recorder UI, record while editing tables/constants, action list, tags, compatible-ECU metadata,
   playback with INI validation, export/import.
 - Orig: `app/ActionRecorder.tsx`, `ActionManagement.ts`, `core/action_scripting.rs`, `docs/src/reference/action-scripting.md`.
+- Status update: DONE: Tools > Action Recorder: record table and dialog-constant edits (also with the dialog closed), name / description / tags / compatible ECU, action sets stored in the project `actions/` folder, timeline with remove / add pause / add Lua step, validate against the ECU definition, play back on the open tune (pause speed 0.5-5x, SendCommand and Lua steps skipped with a warning), import / export `.ltaction`. Not done: action triggers / user actions of ActionManagement.ts, recording curve edits. `actions_logic.c` + `feat_actions.c`.
 
 ---------------------------------------------------------------------------------------------------
 

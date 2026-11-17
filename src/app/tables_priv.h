@@ -86,6 +86,10 @@ int  lt_tabs_io_fit(const lt_table_file *tf, const double *xb, size_t cols, cons
 int  lt_tabs_io_save(const char *path, const char *xname, const char *yname, const double *x,
                      size_t cols, const double *y, size_t rows, const double *z);
 
+/* ---- lambda preview companion of an AFR table (tables_lambda.c, G-27) ----
+ * Draws into the next layout cell: header, live lambda/AFR readouts, fuel blend combo, read-only grid */
+void lt_tabs_lambda_draw(lt_app *app, const lt_tblview *v, int ybottom);
+
 /* saved AFR delay model of the project (afr_delay_model.json); 0 when present (dlg_afrdelay.c) */
 int  lt_tabs_delay_model_load(lt_app *app, double *floor_ms, double *anchor_ms);
 

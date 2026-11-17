@@ -209,6 +209,10 @@ typedef struct lt_dyno_cmp {
     double *hp_diff, *tq_diff; size_t n_hp, n_tq;             /* pairs (rpm, diff) flattened: 2*n doubles */
     lt_bool has_total_hp, has_total_tq; double hp_change_sum, tq_change_sum;
 } lt_dyno_cmp;
+/* Chart scale for the runs (power and torque share the vertical axis): rpm rounded outward to 500,
+ * the value maximum rounded up to 50. LT_FALSE (outputs untouched) when no run has a usable span. */
+lt_bool lt_dyno_chart_range(const lt_dyno_run *runs, size_t n, double *rpm0, double *rpm1,
+                            double *vmax);
 int  lt_dyno_compare(const lt_dyno_run *a, const lt_dyno_run *b, lt_dyno_cmp *out);
 void lt_dyno_cmp_free(lt_dyno_cmp *c);
 

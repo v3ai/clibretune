@@ -84,4 +84,21 @@ int  lt_feat_prefs_session_record(lt_app *app);
 void lt_feat_prefs_project_opened(lt_app *app);   /* a project was (re)opened: restore its tabs */
 void lt_feat_statusbar_defaults(lt_prefs *p, char *const *names, size_t n);
 
+
+/* tools batch (G-80, G-81, G-82, G-35) */
+void lt_feat_tablecmp_register(lt_app_ext *reg);  /* Table Comparison */
+void lt_feat_dyno_register(lt_app_ext *reg);      /* Dyno Overlay */
+void lt_feat_actions_register(lt_app_ext *reg);   /* Action Recorder / manager */
+void lt_feat_perf_register(lt_app_ext *reg);      /* Performance Calculator */
+/* action recording: the editors report their edits (v: cells changed since the last commit are
+ * recorded, display units; constants with the old and new value); no-ops unless recording */
+int  lt_feat_actions_recording(lt_app *app);
+void lt_feat_actions_note_table(lt_app *app, const char *table, const lt_tblview *v);
+void lt_feat_actions_note_constant(lt_app *app, const char *name, double old_v, double new_v);
+/* scripting: start recording (0 / error), stop and save the set into the actions folder (count = recorded),
+ * play a saved .ltaction on the open tune with the pauses shortened (applied = actions applied) */
+int  lt_feat_actions_start(lt_app *app, const char *name, const char *desc);
+int  lt_feat_actions_stop(lt_app *app, size_t *count);
+int  lt_feat_actions_play_file(lt_app *app, const char *path, size_t *applied);
+
 #endif

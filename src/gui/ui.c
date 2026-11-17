@@ -351,6 +351,7 @@ lt_bool lt_ui_key_pressed(lt_ui *ui, int key, int mods)
 lt_bool lt_ui_text_focused(const lt_ui *ui) { return ui->edit.id != 0 ? LT_TRUE : LT_FALSE; }
 lt_point lt_ui_mouse(const lt_ui *ui) { lt_point p; p.x = ui->mx; p.y = ui->my; return p; }
 int lt_ui_mods(const lt_ui *ui) { return ui->mods; }
+int lt_ui_wheel(const lt_ui *ui) { return ui->wheel; }
 lt_bool lt_ui_mouse_down(const lt_ui *ui, int b) { return (ui->mbtn & (1 << b)) ? LT_TRUE : LT_FALSE; }
 lt_u32 lt_ui_focus(const lt_ui *ui) { return ui->focus; }
 void lt_ui_set_focus(lt_ui *ui, lt_u32 id) { ui->focus = id; ui_request(ui); }

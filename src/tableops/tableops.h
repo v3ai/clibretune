@@ -246,4 +246,17 @@ int    lt_uconv_digits(const lt_uconv *c, int digits);
 /* Convert a (lo,hi) range to display units, keeping lo <= hi. */
 void   lt_uconv_range(const lt_uconv *c, double *lo, double *hi);
 
+/* ---- lambda preview of an AFR table (G-27) ----
+ * Ethanol blends E0, E10, E30, E85, E100 with their stoichiometric AFR (linear gasoline/ethanol
+ * mix, 14.7 .. 9.0). The preview shows the other AFR unit than the table is displayed in. */
+#define LT_LAMBDA_FUELS 5
+const char *lt_lambda_fuel_label(int i);       /* "E0" ... (out of range: E0) */
+double lt_lambda_fuel_stoich(int i);           /* 14.7 ... */
+/* value of an AFR table cell as shown by the companion: shown_lambda != 0 means the table is
+ * displayed in lambda (the preview then shows AFR), else the preview shows lambda */
+double lt_lambda_preview_value(double v, int shown_lambda, double stoich);
+/* ethanol percent (0..100) implied by a live AFR / lambda pair (stoich = afr / lambda); -1 when
+ * the pair is unusable */
+int    lt_lambda_blend_percent(double afr, double lambda);
+
 #endif /* LT_TABLEOPS_H */

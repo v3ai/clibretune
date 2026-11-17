@@ -4,8 +4,10 @@
  */
 #include <string.h>
 #include <math.h>
+#include <stdlib.h>
 #include "tables_priv.h"
 #include "view_kit.h"
+#include "tables_3d.h"
 #include "feat.h"
 
 #define TRAIL_N 20
@@ -17,7 +19,7 @@ typedef struct tbl_tab {
     const lt_ini_table *t;
     int zdig, xdig, ydig;
     double lo, hi;                /* constant limits (display units) */
-    int show3d, follow, shading, ybottom;
+    int show3d, follow, shading, ybottom, lambda_on, is_afr;
     unsigned char *sel;           /* rows*cols mask in data coordinates */
     size_t sel_cap;
     int cur_r, cur_c;             /* cursor in data coordinates */
@@ -41,12 +43,12 @@ typedef struct tbl_tab {
     lt_tabs_gen_dlg gen_dlg;
     lt_tabs_io_dlg io_dlg;
     int rebin_open, rebin_interp; char xtxt[1024], ytxt[1024];
-    double yaw, pitch;
-    int drag3d, lmx, lmy, prev_down;
+    lt_t3d t3;
+    int drag3d, lmx, lmy, prev_down, prev_rdown3, drag_moved, drag_x0, drag_y0, hover3d;
+    int pick_pending, pick_r, pick_c, picked;   /* click-to-select from the 3D view */
     int frame;
     lt_color *cellcol;            /* rows*cols colours for the 3D view */
     lt_color col_edge, col_live, col_cur, col_text, col_trail;
-    double zoom;
     int dark3d;
     const lt_app *app_;
     lt_rect r3d;
@@ -123,6 +125,7 @@ static void tbl_load(lt_app *app, lt_app_tab *tab, tbl_tab *st)
     st->orig = (double *)lt_calloc(n, sizeof(double));
     memcpy(st->orig, st->v.z, n * sizeof(double));
     st->orig_n = n;
+    st->is_afr = st->t->role == LT_ROLE_AFR_TARGET;
     st->resizable = st->t->rows_size_const != NULL && st->t->rows_size_const[0] != '\0';
     st->xlab[0] = st->ylab[0] = '\0';
     if (st->t->x_label != NULL && st->t->x_label[0] != '{') { lt_strlcpy(st->xlab, st->t->x_label, sizeof(st->xlab)); }
@@ -168,6 +171,7 @@ static void tbl_commit(lt_app *app, lt_app_tab *tab, tbl_tab *st)
     lt_pagesrc dst = lt_app_pages(app);
     int n;
     (void)lt_tabs_check_change(app, &st->v);
+    lt_feat_actions_note_table(app, st->t->name, &st->v);
     n = lt_tblview_commit(&st->v, app->ini, &dst);
     if (n > 0) { lt_app_edited(app); tab->dirty = 1; }
     else if (n < 0) { lt_app_toast(app, 3, "Write failed: %s", lt_err_get()); }
@@ -466,67 +470,22 @@ static void rebin_apply(lt_app *app, lt_app_tab *tab, tbl_tab *st)
  * Perspective orbit camera around the table centre; the surface is drawn far
  * to near (painter's order for a height field), shaded by a directional
  * light, over a floor grid and a faint bounding box with axis captions. */
-#define W3_SIZE 10.0
-#define W3_H 5.0
 
-typedef struct cam3 {
-    double ex, ey, ez;            /* eye */
-    double rx, ry, rz, ux, uy, uz, fx, fy, fz;   /* right, up, forward */
-    double f, cx, cy;             /* focal length in px, screen centre */
-} cam3;
-
-static void cam3_setup(const tbl_tab *st, lt_rect r, cam3 *c)
-{
-    double tx = W3_SIZE * 0.5, ty = W3_H * 0.35, tz = W3_SIZE * 0.5;
-    double dist = 19.0 * (st->zoom > 0.2 ? st->zoom : 1.0);
-    double cp = cos(st->pitch), sp = sin(st->pitch), cyw = cos(st->yaw), syw = sin(st->yaw);
-    double fl, rl;
-    c->ex = tx + dist * cp * syw; c->ey = ty + dist * sp; c->ez = tz + dist * cp * cyw;
-    c->fx = tx - c->ex; c->fy = ty - c->ey; c->fz = tz - c->ez;
-    fl = sqrt(c->fx * c->fx + c->fy * c->fy + c->fz * c->fz);
-    c->fx /= fl; c->fy /= fl; c->fz /= fl;
-    /* right = forward x worldUp(0,1,0) */
-    c->rx = c->fy * 0.0 - c->fz * 1.0; c->ry = c->fz * 0.0 - c->fx * 0.0; c->rz = c->fx * 1.0 - c->fy * 0.0;
-    rl = sqrt(c->rx * c->rx + c->ry * c->ry + c->rz * c->rz);
-    if (rl < 1e-9) { c->rx = 1.0; c->ry = 0.0; c->rz = 0.0; rl = 1.0; }
-    c->rx /= rl; c->ry /= rl; c->rz /= rl;
-    /* up = right x forward */
-    c->ux = c->ry * c->fz - c->rz * c->fy;
-    c->uy = c->rz * c->fx - c->rx * c->fz;
-    c->uz = c->rx * c->fy - c->ry * c->fx;
-    c->f = (double)(r.h < r.w ? r.h : r.w) * 1.0;
-    c->cx = (double)r.x + (double)r.w * 0.5;
-    c->cy = (double)r.y + (double)r.h * 0.5;
-}
-
-/* world -> screen; returns the depth along the view direction */
-static double cam3_proj(const cam3 *c, double x, double y, double z, double *sx, double *sy)
-{
-    double vx = x - c->ex, vy = y - c->ey, vz = z - c->ez;
-    double xc = vx * c->rx + vy * c->ry + vz * c->rz;
-    double yc = vx * c->ux + vy * c->uy + vz * c->uz;
-    double zc = vx * c->fx + vy * c->fy + vz * c->fz;
-    if (zc < 0.1) { zc = 0.1; }
-    *sx = c->cx + c->f * xc / zc;
-    *sy = c->cy - c->f * yc / zc;
-    return zc;
-}
-
-static void w3_line(lt_gfx *g, const cam3 *c, double x0, double y0, double z0, double x1, double y1,
+static void w3_line(lt_gfx *g, const lt_cam3 *c, double x0, double y0, double z0, double x1, double y1,
                     double z1, double w, lt_color col)
 {
     double ax, ay, bx, by;
-    cam3_proj(c, x0, y0, z0, &ax, &ay);
-    cam3_proj(c, x1, y1, z1, &bx, &by);
+    lt_cam3_proj(c, x0, y0, z0, &ax, &ay);
+    lt_cam3_proj(c, x1, y1, z1, &bx, &by);
     lt_gfx_line(g, ax, ay, bx, by, w, col);
 }
 
-static void w3_label(lt_gfx *g, const cam3 *c, double x, double y, double z, const char *s,
+static void w3_label(lt_gfx *g, const lt_cam3 *c, double x, double y, double z, const char *s,
                      lt_color col, int align)
 {
     double sx, sy;
     lt_font *f = lt_font_get(LT_FONT_SANS_MEDIUM);
-    cam3_proj(c, x, y, z, &sx, &sy);
+    lt_cam3_proj(c, x, y, z, &sx, &sy);
     if (f == NULL) { lt_gfx_text(g, (int)sx, (int)sy - 8, s, col, 1); return; }
     {
         double fp = lt_gfx_fpx(g, 11.0);
@@ -539,7 +498,7 @@ static void w3_label(lt_gfx *g, const cam3 *c, double x, double y, double z, con
 static double st_wx(const tbl_tab *st, int c)
 {
     LT_UNUSED(st);
-    return W3_SIZE * (double)c;
+    return LT_T3D_W * (double)c;
 }
 
 static void draw3d(lt_gfx *g, lt_rect r, void *user)
@@ -547,7 +506,7 @@ static void draw3d(lt_gfx *g, lt_rect r, void *user)
     tbl_tab *st = (tbl_tab *)user;
     int rows = (int)st->v.rows, cols = (int)st->v.cols, i, j, k;
     double zlo = 1e300, zhi = -1e300, span, rr, cc;
-    cam3 cam;
+    lt_cam3 cam;
     size_t n;
     int ri_first, ri_step, ci_first, ci_step, qi, qj;
     double lx = 0.50, ly = 0.78, lz = 0.37;   /* light direction (normalised below) */
@@ -564,7 +523,7 @@ static void draw3d(lt_gfx *g, lt_rect r, void *user)
         if (st->v.z[n] > zhi) { zhi = st->v.z[n]; }
     }
     span = zhi > zlo ? zhi - zlo : 1.0;
-    cam3_setup(st, r, &cam);
+    lt_cam3_setup(&st->t3, r.x, r.y, r.w, r.h, &cam);
 
     /* floor grid + bounding box */
     {
@@ -572,31 +531,31 @@ static void draw3d(lt_gfx *g, lt_rect r, void *user)
         lt_color bx = st->dark3d ? LT_RGBA(255, 255, 255, 70) : LT_RGBA(0, 0, 0, 80);
         for (i = 0; i <= 10; i++) {
             double t = (double)i;
-            w3_line(g, &cam, t, 0.0, 0.0, t, 0.0, W3_SIZE, 1.0, gl);
-            w3_line(g, &cam, 0.0, 0.0, t, W3_SIZE, 0.0, t, 1.0, gl);
+            w3_line(g, &cam, t, 0.0, 0.0, t, 0.0, LT_T3D_W, 1.0, gl);
+            w3_line(g, &cam, 0.0, 0.0, t, LT_T3D_W, 0.0, t, 1.0, gl);
         }
-        w3_line(g, &cam, 0.0, 0.0, 0.0, W3_SIZE, 0.0, 0.0, 1.0, bx);
-        w3_line(g, &cam, W3_SIZE, 0.0, 0.0, W3_SIZE, 0.0, W3_SIZE, 1.0, bx);
-        w3_line(g, &cam, W3_SIZE, 0.0, W3_SIZE, 0.0, 0.0, W3_SIZE, 1.0, bx);
-        w3_line(g, &cam, 0.0, 0.0, W3_SIZE, 0.0, 0.0, 0.0, 1.0, bx);
+        w3_line(g, &cam, 0.0, 0.0, 0.0, LT_T3D_W, 0.0, 0.0, 1.0, bx);
+        w3_line(g, &cam, LT_T3D_W, 0.0, 0.0, LT_T3D_W, 0.0, LT_T3D_W, 1.0, bx);
+        w3_line(g, &cam, LT_T3D_W, 0.0, LT_T3D_W, 0.0, 0.0, LT_T3D_W, 1.0, bx);
+        w3_line(g, &cam, 0.0, 0.0, LT_T3D_W, 0.0, 0.0, 0.0, 1.0, bx);
         /* back verticals: the two corners farthest from the eye */
         for (i = 0; i < 2; i++) {
             for (j = 0; j < 2; j++) {
-                double x = i ? W3_SIZE : 0.0, z = j ? W3_SIZE : 0.0;
+                double x = i ? LT_T3D_W : 0.0, z = j ? LT_T3D_W : 0.0;
                 double dx = x - cam.ex, dz = z - cam.ez;
-                if (dx * dx + dz * dz > (W3_SIZE * 0.5 + 8.0) * (W3_SIZE * 0.5 + 8.0) * 0.98) {
-                    w3_line(g, &cam, x, 0.0, z, x, W3_H, z, 1.0, bx);
+                if (dx * dx + dz * dz > (LT_T3D_W * 0.5 + 8.0) * (LT_T3D_W * 0.5 + 8.0) * 0.98) {
+                    w3_line(g, &cam, x, 0.0, z, x, LT_T3D_H, z, 1.0, bx);
                 }
             }
         }
     }
 
     /* far-to-near order of rows/columns */
-    ci_first = cam.ex > W3_SIZE * 0.5 ? 0 : cols - 2; ci_step = ci_first == 0 ? 1 : -1;
+    ci_first = cam.ex > LT_T3D_W * 0.5 ? 0 : cols - 2; ci_step = ci_first == 0 ? 1 : -1;
     {
         /* world z of row index: ybottom puts the lowest Y bin nearest the eye */
         int zflip = st->ybottom ? 1 : 0;
-        int low_row_far = (cam.ez > W3_SIZE * 0.5) ? (zflip ? 0 : 1) : (zflip ? 1 : 0);
+        int low_row_far = (cam.ez > LT_T3D_W * 0.5) ? (zflip ? 0 : 1) : (zflip ? 1 : 0);
         /* low_row_far == 1: row 0 is the farthest row from the eye */
         ri_first = low_row_far ? 0 : rows - 2; ri_step = low_row_far ? 1 : -1;
     }
@@ -611,11 +570,11 @@ static void draw3d(lt_gfx *g, lt_rect r, void *user)
                 double v = st->v.z[(size_t)cr[k] * (size_t)cols + (size_t)ccn[k]];
                 rr = (double)cr[k] / (double)(rows - 1);
                 cc = (double)ccn[k] / (double)(cols - 1);
-                wx[k] = st_wx(st, 0) + cc * W3_SIZE;
-                wz[k] = st->ybottom ? (1.0 - rr) * W3_SIZE : rr * W3_SIZE;
-                wy[k] = (v - zlo) / span * W3_H;
+                wx[k] = st_wx(st, 0) + cc * LT_T3D_W;
+                wz[k] = st->ybottom ? (1.0 - rr) * LT_T3D_W : rr * LT_T3D_W;
+                wy[k] = (v - zlo) / span * LT_T3D_H;
                 avg += v;
-                cam3_proj(&cam, wx[k], wy[k], wz[k], &px[k], &py[k]);
+                lt_cam3_proj(&cam, wx[k], wy[k], wz[k], &px[k], &py[k]);
                 poly[k * 2] = px[k]; poly[k * 2 + 1] = py[k];
             }
             /* normal from the two diagonals */
@@ -632,8 +591,22 @@ static void draw3d(lt_gfx *g, lt_rect r, void *user)
             base = st->cellcol[(size_t)i * (size_t)cols + (size_t)j];
             col = lt_color_mix(LT_RGB(0, 0, 0), base, (int)((0.50 + 0.50 * lam) * 256.0));
             if (!st->dark3d) { col = lt_color_mix(base, LT_RGB(255, 255, 255), (int)((1.0 - lam) * 40.0)); }
-            lt_gfx_fill_poly(g, poly, 4, col);
-            if (rows * cols <= 1300) {
+            if (st->t3.style == LT_T3D_SOLID) {
+                lt_gfx_fill_poly(g, poly, 4, col);
+            } else {
+                /* wireframe / points: hide what lies behind with the background tone */
+                lt_gfx_fill_poly(g, poly, 4, st->dark3d ? LT_RGB(0x12, 0x14, 0x19) : LT_RGB(0xE8, 0xEA, 0xEF));
+            }
+            if (st->t3.style == LT_T3D_WIRE) {
+                for (k = 0; k < 4; k++) {
+                    int n2 = (k + 1) & 3;
+                    lt_gfx_line(g, px[k], py[k], px[n2], py[n2], 1.2, st->cellcol[(size_t)cr[k] * (size_t)cols + (size_t)ccn[k]]);
+                }
+            } else if (st->t3.style == LT_T3D_POINTS) {
+                for (k = 0; k < 4; k++) {
+                    lt_gfx_fill_circle(g, px[k], py[k], 2.5, st->cellcol[(size_t)cr[k] * (size_t)cols + (size_t)ccn[k]]);
+                }
+            } else if (st->t3.grid && rows * cols <= 1300) {
                 lt_color el = st->dark3d ? LT_RGBA(255, 255, 255, 60) : LT_RGBA(0, 0, 0, 55);
                 for (k = 0; k < 4; k++) {
                     int n2 = (k + 1) & 3;
@@ -647,31 +620,31 @@ static void draw3d(lt_gfx *g, lt_rect r, void *user)
     /* axis captions */
     {
         lt_color cx_ = LT_RGB(0xFF, 0x88, 0x88), cy_ = LT_RGB(0x88, 0xFF, 0x88), cz_ = LT_RGB(0x88, 0x99, 0xFF);
-        double near_z = (cam.ez > W3_SIZE * 0.5) ? W3_SIZE + 0.9 : -0.9;
-        double near_x = (cam.ex > W3_SIZE * 0.5) ? W3_SIZE + 0.9 : -0.9;
+        double near_z = (cam.ez > LT_T3D_W * 0.5) ? LT_T3D_W + 0.9 : -0.9;
+        double near_x = (cam.ex > LT_T3D_W * 0.5) ? LT_T3D_W + 0.9 : -0.9;
         lt_color dim = st->dark3d ? LT_RGB(0x9A, 0xA0, 0xAC) : LT_RGB(0x55, 0x5B, 0x66);
-        w3_label(g, &cam, W3_SIZE * 0.5, -0.2, near_z + (near_z > 0 ? 0.8 : -0.8),
+        w3_label(g, &cam, LT_T3D_W * 0.5, -0.2, near_z + (near_z > 0 ? 0.8 : -0.8),
                  st->xlab[0] ? st->xlab : "X", cx_, 1);
-        w3_label(g, &cam, near_x + (near_x > 0 ? 0.8 : -0.8), -0.2, W3_SIZE * 0.5,
+        w3_label(g, &cam, near_x + (near_x > 0 ? 0.8 : -0.8), -0.2, LT_T3D_W * 0.5,
                  st->ylab[0] ? st->ylab : "Y", cy_, 1);
-        w3_label(g, &cam, (cam.ex > W3_SIZE * 0.5 ? 0.0 : W3_SIZE) - 0.1, W3_H * 0.5,
-                 (cam.ez > W3_SIZE * 0.5 ? 0.0 : W3_SIZE) - 0.1, "Z", cz_, 1);
+        w3_label(g, &cam, (cam.ex > LT_T3D_W * 0.5 ? 0.0 : LT_T3D_W) - 0.1, LT_T3D_H * 0.5,
+                 (cam.ez > LT_T3D_W * 0.5 ? 0.0 : LT_T3D_W) - 0.1, "Z", cz_, 1);
         lt_tabs_fmt(b, sizeof(b), st->v.x[0], st->xdig);
         w3_label(g, &cam, 0.0, -0.1, near_z, b, dim, 1);
         lt_tabs_fmt(b, sizeof(b), st->v.x[cols - 1], st->xdig);
-        w3_label(g, &cam, W3_SIZE, -0.1, near_z, b, dim, 1);
+        w3_label(g, &cam, LT_T3D_W, -0.1, near_z, b, dim, 1);
         if (st->v.y != NULL) {
             lt_tabs_fmt(b, sizeof(b), st->v.y[0], st->ydig);
-            w3_label(g, &cam, near_x, -0.1, st->ybottom ? W3_SIZE : 0.0, b, dim, 1);
+            w3_label(g, &cam, near_x, -0.1, st->ybottom ? LT_T3D_W : 0.0, b, dim, 1);
             lt_tabs_fmt(b, sizeof(b), st->v.y[rows - 1], st->ydig);
-            w3_label(g, &cam, near_x, -0.1, st->ybottom ? 0.0 : W3_SIZE, b, dim, 1);
+            w3_label(g, &cam, near_x, -0.1, st->ybottom ? 0.0 : LT_T3D_W, b, dim, 1);
         }
         lt_tabs_fmt(b, sizeof(b), zlo, st->zdig);
-        w3_label(g, &cam, (cam.ex > W3_SIZE * 0.5 ? 0.0 : W3_SIZE) - 0.1, 0.0,
-                 (cam.ez > W3_SIZE * 0.5 ? 0.0 : W3_SIZE) - 0.1, b, dim, 2);
+        w3_label(g, &cam, (cam.ex > LT_T3D_W * 0.5 ? 0.0 : LT_T3D_W) - 0.1, 0.0,
+                 (cam.ez > LT_T3D_W * 0.5 ? 0.0 : LT_T3D_W) - 0.1, b, dim, 2);
         lt_tabs_fmt(b, sizeof(b), zhi, st->zdig);
-        w3_label(g, &cam, (cam.ex > W3_SIZE * 0.5 ? 0.0 : W3_SIZE) - 0.1, W3_H,
-                 (cam.ez > W3_SIZE * 0.5 ? 0.0 : W3_SIZE) - 0.1, b, dim, 2);
+        w3_label(g, &cam, (cam.ex > LT_T3D_W * 0.5 ? 0.0 : LT_T3D_W) - 0.1, LT_T3D_H,
+                 (cam.ez > LT_T3D_W * 0.5 ? 0.0 : LT_T3D_W) - 0.1, b, dim, 2);
     }
 
     /* markers: cursor cell, trail, live position */
@@ -681,9 +654,9 @@ static void draw3d(lt_gfx *g, lt_rect r, void *user)
         if ((k == 1 && !st->live_ok) || mr < 0 || mc < 0 || mr >= rows || mc >= cols) { continue; }
         v = st->v.z[(size_t)mr * (size_t)cols + (size_t)mc];
         rr = (double)mr / (double)(rows - 1); cc = (double)mc / (double)(cols - 1);
-        fx0 = cc * W3_SIZE; fz0 = st->ybottom ? (1.0 - rr) * W3_SIZE : rr * W3_SIZE;
-        h = (v - zlo) / span * W3_H;
-        cam3_proj(&cam, fx0, h + 0.12, fz0, &sx, &sy);
+        fx0 = cc * LT_T3D_W; fz0 = st->ybottom ? (1.0 - rr) * LT_T3D_W : rr * LT_T3D_W;
+        h = (v - zlo) / span * LT_T3D_H;
+        lt_cam3_proj(&cam, fx0, h + 0.12, fz0, &sx, &sy);
         if (k) {
             lt_color gc = st->col_live;
             w3_line(g, &cam, fx0, 0.0, fz0, fx0, h + 0.12, fz0, 1.5, (gc & 0x00FFFFFFUL) | 0x90000000UL);
@@ -716,8 +689,8 @@ static void draw3d(lt_gfx *g, lt_rect r, void *user)
             if (mr < 0 || mc < 0 || mr >= rows || mc >= cols) { continue; }
             v = st->v.z[(size_t)mr * (size_t)cols + (size_t)mc];
             rr = (double)mr / (double)(rows - 1); cc = (double)mc / (double)(cols - 1);
-            cam3_proj(&cam, cc * W3_SIZE, (v - zlo) / span * W3_H + 0.1,
-                      st->ybottom ? (1.0 - rr) * W3_SIZE : rr * W3_SIZE, &sx, &sy);
+            lt_cam3_proj(&cam, cc * LT_T3D_W, (v - zlo) / span * LT_T3D_H + 0.1,
+                      st->ybottom ? (1.0 - rr) * LT_T3D_W : rr * LT_T3D_W, &sx, &sy);
             if (have) {
                 int a = 220 - k * 170 / TRAIL_N;
                 lt_gfx_line(g, pxo, pyo, sx, sy, 2.0, (st->col_trail & 0x00FFFFFFUL) | ((lt_u32)(a > 40 ? a : 40) << 24));
@@ -750,7 +723,8 @@ static void draw3d(lt_gfx *g, lt_rect r, void *user)
         lt_font *f = lt_font_get(LT_FONT_SANS);
         if (f != NULL) {
             lt_gfx_text_bl(g, f, 11.0, (double)r.x + 10.0, r.y + r.h - 9,
-                           "Drag to rotate", st->dark3d ? LT_RGB(0x78, 0x7E, 0x8A) : LT_RGB(0x70, 0x76, 0x80));
+                           "Drag: rotate   Right-drag: pan   Wheel: zoom   Click: select cell   Home: reset",
+                           st->dark3d ? LT_RGB(0x78, 0x7E, 0x8A) : LT_RGB(0x70, 0x76, 0x80));
         }
     }
 }
@@ -792,6 +766,72 @@ static void tbl_pct(lt_app *app, lt_app_tab *tab, tbl_tab *st, int dir)
 {
     double f = 1.0 + (double)dir * st->step_pct / 100.0;
     tbl_op(app, tab, st, OP_SCALE, f);
+}
+
+/* ---- 3D input ---- */
+static int in_rect(lt_point m, lt_rect r)
+{
+    return m.x >= r.x && m.x < r.x + r.w && m.y >= r.y && m.y < r.y + r.h;
+}
+
+/* keys over the 3D view (run before the 2D keys so they take the arrows): arrows rotate, Home
+ * resets, PageUp/PageDown and [ ] zoom, + / - zoom while no cell was picked in 3D (afterwards they
+ * adjust the picked cell like in the grid) */
+static void tbl_3d_keys(lt_ui *ui, tbl_tab *st)
+{
+    double a = 0.08;
+    if (!st->show3d || lt_ui_text_focused(ui) || lt_ui_popup_open(ui) || !in_rect(lt_ui_mouse(ui), st->r3d)) { return; }
+    if (lt_ui_key_pressed(ui, LT_KEY_LEFT, 0)) { lt_t3d_orbit(&st->t3, a, 0.0); }
+    if (lt_ui_key_pressed(ui, LT_KEY_RIGHT, 0)) { lt_t3d_orbit(&st->t3, -a, 0.0); }
+    if (lt_ui_key_pressed(ui, LT_KEY_UP, 0)) { lt_t3d_orbit(&st->t3, 0.0, a); }
+    if (lt_ui_key_pressed(ui, LT_KEY_DOWN, 0)) { lt_t3d_orbit(&st->t3, 0.0, -a); }
+    if (lt_ui_key_pressed(ui, LT_KEY_HOME, 0)) { lt_t3d_reset_view(&st->t3); st->picked = 0; }
+    if (lt_ui_key_pressed(ui, LT_KEY_PAGEUP, 0) || lt_ui_key_pressed(ui, ']', 0)) { lt_t3d_zoom(&st->t3, 0.9); }
+    if (lt_ui_key_pressed(ui, LT_KEY_PAGEDOWN, 0) || lt_ui_key_pressed(ui, '[', 0)) { lt_t3d_zoom(&st->t3, 1.0 / 0.9); }
+    if (!st->picked) {
+        if (lt_tabs_key(ui, '+') || lt_ui_key_pressed(ui, '=', LT_MOD_SHIFT)) { lt_t3d_zoom(&st->t3, 0.9); }
+        if (lt_tabs_key(ui, '-') || lt_tabs_key(ui, '_')) { lt_t3d_zoom(&st->t3, 1.0 / 0.9); }
+    }
+}
+
+/* mouse over the 3D rect: left drag orbits, right drag pans, a left click (no drag) picks the
+ * nearest vertex and selects that cell, the wheel zooms */
+static void tbl_3d_mouse(lt_ui *ui, tbl_tab *st, lt_rect r3)
+{
+    lt_point m = lt_ui_mouse(ui);
+    int down = lt_ui_mouse_down(ui, LT_MB_LEFT) ? 1 : 0, rdown = lt_ui_mouse_down(ui, LT_MB_RIGHT) ? 1 : 0;
+    int inside = in_rect(m, r3), dx = m.x - st->lmx, dy = m.y - st->lmy;
+    st->r3d = r3;
+    if (down && !st->prev_down && inside) { st->drag3d = 1; st->drag_moved = 0; st->drag_x0 = m.x; st->drag_y0 = m.y; }
+    if (rdown && !st->prev_rdown3 && inside) { st->drag3d = 2; }
+    if (!down && st->drag3d == 1) {
+        if (!st->drag_moved && inside && !lt_ui_cell_mode(ui)) {
+            int pr = 0, pc = 0;
+            lt_cam3 cam;
+            double zlo = 1e300, zhi = -1e300, span;
+            size_t k, n = st->v.rows * st->v.cols;
+            for (k = 0; k < n; k++) {
+                if (st->v.z[k] < zlo) { zlo = st->v.z[k]; }
+                if (st->v.z[k] > zhi) { zhi = st->v.z[k]; }
+            }
+            span = zhi > zlo ? zhi - zlo : 1.0;
+            lt_cam3_setup(&st->t3, r3.x, r3.y, r3.w, r3.h, &cam);
+            if (lt_t3d_pick(&cam, (int)st->v.rows, (int)st->v.cols, st->ybottom, st->v.z, zlo, span, m.x, m.y,
+                            (double)lt_ui_px(ui, 22), &pr, &pc)) {
+                st->pick_pending = 1; st->pick_r = pr; st->pick_c = pc; st->picked = 1;
+            }
+        }
+        st->drag3d = 0;
+    }
+    if (!rdown && st->drag3d == 2) { st->drag3d = 0; }
+    if (st->drag3d == 1) {
+        if (abs(m.x - st->drag_x0) + abs(m.y - st->drag_y0) > 3) { st->drag_moved = 1; }
+        if (st->drag_moved) { lt_t3d_orbit(&st->t3, -(double)dx * 0.01, (double)dy * 0.01); }
+    } else if (st->drag3d == 2) {
+        lt_t3d_pan(&st->t3, (double)dx, (double)dy, r3.w < r3.h ? r3.w : r3.h);
+    }
+    if (inside && lt_ui_wheel(ui) != 0) { lt_t3d_wheel(&st->t3, lt_ui_wheel(ui)); }
+    st->lmx = m.x; st->lmy = m.y; st->prev_down = down; st->prev_rdown3 = rdown;
 }
 
 static void tbl_keys(lt_app *app, lt_app_tab *tab, tbl_tab *st)
@@ -842,10 +882,11 @@ static void tbl_keys(lt_app *app, lt_app_tab *tab, tbl_tab *st)
     if (lt_ui_key_pressed(ui, '3', 0)) { st->show3d = !st->show3d; }
 }
 
+
 /* ---- UI pieces ---- */
 enum { TB_EQ, TB_UP, TB_DOWN, TB_SCALE, TB_INTERP, TB_SMOOTH, TB_REBIN, TB_COPY, TB_PASTE,
        TB_UNDO, TB_REDO, TB_REVERT, TB_FILLR, TB_FILLD, TB_LIVE, TB_FOLLOW, TB_SHADE, TB_YBOT,
-       TB_3D, TB_RESET3D, TB_BURN, TB_SIZE, TB_GEN, TB_LOAD, TB_SAVE, TB_PSPECIAL, TB_STEPS, TB_N };
+       TB_3D, TB_RESET3D, TB_STYLE3D, TB_COLOR3D, TB_GRID3D, TB_LAMBDA, TB_BURN, TB_SIZE, TB_GEN, TB_LOAD, TB_SAVE, TB_PSPECIAL, TB_STEPS, TB_N };
 
 static int gen_ok(const tbl_tab *st)
 {
@@ -935,9 +976,22 @@ static void tbl_toolbar(lt_app *app, lt_app_tab *tab, tbl_tab *st)
            st->ybottom ? "Y axis: zero at the bottom (click for zero at the top)"
                        : "Y axis: zero at the top (click for zero at the bottom)");
     it[n - 1].on = st->ybottom;
+    if (st->is_afr) {
+        TB_ADD(TB_LAMBDA, LT_ICON_EQUAL, cell ? "Lambda" : NULL, NULL, "Lambda preview table next to the AFR table");
+        it[n - 1].on = st->lambda_on;
+    }
     TB_ADD(TB_3D, LT_ICON_BOX, cell ? "3D" : NULL, NULL, "Toggle the 3D view");
     it[n - 1].on = st->show3d;
-    if (st->show3d) { TB_ADD(TB_RESET3D, LT_ICON_ROTATE_CW, cell ? "Reset3D" : NULL, NULL, "Reset the 3D camera"); }
+    if (st->show3d) {
+        static const char *const sty[LT_T3D_STYLES] = { "Surface style: solid (click for wireframe)",
+            "Surface style: wireframe (click for points)", "Surface style: points (click for solid)" };
+        static const char *const cm[LT_T3D_MODES] = { "Colour: by value (click for by change)",
+            "Colour: by change from the values at open (click for a single colour)",
+            "Colour: single colour (click for by value)" };
+        TB_ADD(TB_STYLE3D, LT_ICON_BOXES, cell ? "Style" : NULL, NULL, sty[st->t3.style]);
+        TB_ADD(TB_COLOR3D, LT_ICON_LAYERS, cell ? "Color" : NULL, NULL, cm[st->t3.color_mode]);
+        TB_ADD(TB_RESET3D, LT_ICON_ROTATE_CW, cell ? "Reset3D" : NULL, "Home", "Reset the 3D camera (Home)");
+    }
     TB_SEP();
     TB_ADD(TB_BURN, LT_ICON_FLAME, "Burn", NULL, "Write the changes to ECU flash");
     it[n - 1].accent = 1;
@@ -972,7 +1026,11 @@ static void tbl_toolbar(lt_app *app, lt_app_tab *tab, tbl_tab *st)
     case TB_SHADE: st->shading = !st->shading; break;
     case TB_YBOT: st->ybottom = !st->ybottom; break;
     case TB_3D: st->show3d = !st->show3d; break;
-    case TB_RESET3D: st->yaw = 0.6; st->pitch = 0.55; break;
+    case TB_LAMBDA: st->lambda_on = !st->lambda_on; break;
+    case TB_RESET3D: lt_t3d_reset_view(&st->t3); break;
+    case TB_STYLE3D: st->t3.style = (st->t3.style + 1) % LT_T3D_STYLES; break;
+    case TB_COLOR3D: st->t3.color_mode = (st->t3.color_mode + 1) % LT_T3D_MODES; break;
+    case TB_GRID3D: st->t3.grid = !st->t3.grid; break;
     case TB_BURN: lt_app_burn(app); tab->dirty = 0; break;
     default: break;
     }
@@ -1233,7 +1291,7 @@ static void tbl_grid(lt_app *app, lt_app_tab *tab, tbl_tab *st, int vh)
     chars += 1;
     cw = chars * 8 + (cell ? 8 : 12);
     if (cw < 48) { cw = 48; }
-    if (!cell && !st->show3d && cols > 0) {
+    if (!cell && !st->show3d && !st->lambda_on && cols > 0) {
         /* stretch the columns to the viewport like the stock "fit" mode (not for tiny tables) */
         int avail = lt_ui_unpx(ui, lt_ui_layout_width(ui) - lt_ui_theme(ui)->scrollbar_w) - rhw - 2;
         int fit = avail / cols;
@@ -1295,6 +1353,14 @@ static void tbl_grid(lt_app *app, lt_app_tab *tab, tbl_tab *st, int vh)
             lt_ui_grid_select(ui, 0, 0, rows - 1, cols - 1);
             st->select_all = 0;
         }
+        if (st->pick_pending) {
+            int pr = st->ybottom ? rows - 1 - st->pick_r : st->pick_r;
+            if (pr >= 0 && pr < rows && st->pick_c >= 0 && st->pick_c < cols) {
+                lt_ui_grid_select(ui, pr, st->pick_c, pr, st->pick_c);
+                lt_ui_grid_set_cursor(ui, pr, st->pick_c);
+            }
+            st->pick_pending = 0;
+        }
         /* right click on a cell outside the selection selects it first (like the original) */
         {
             int rd = lt_ui_mouse_down(ui, LT_MB_RIGHT) ? 1 : 0, hr, hc;
@@ -1335,8 +1401,27 @@ static void tbl_grid(lt_app *app, lt_app_tab *tab, tbl_tab *st, int vh)
     }
     /* colours for the 3D view */
     if (st->show3d) {
+        double dmax = 0.0;
+        int have_orig = st->orig != NULL && st->orig_n == st->v.rows * st->v.cols;
+        if (st->t3.color_mode == LT_T3D_BY_CHANGE && have_orig) {
+            for (k = 0; k < st->orig_n; k++) {
+                double d = fabs(st->v.z[k] - st->orig[k]);
+                if (d > dmax) { dmax = d; }
+            }
+        }
         for (k = 0; k < st->v.rows * st->v.cols; k++) {
-            st->cellcol[k] = lt_tabs_heat(app, th, zlo, zhi, st->v.z[k]);
+            if (st->t3.color_mode == LT_T3D_SOLIDCOL) {
+                st->cellcol[k] = th->accent;
+            } else if (st->t3.color_mode == LT_T3D_BY_CHANGE) {
+                /* grey = unchanged, red = raised, blue = lowered (relative to the values at open) */
+                double d = have_orig ? st->v.z[k] - st->orig[k] : 0.0;
+                double t = dmax > 0.0 ? fabs(d) / dmax : 0.0;
+                lt_color grey = LT_RGB(0x80, 0x84, 0x8C);
+                st->cellcol[k] = lt_color_mix(grey, d >= 0.0 ? LT_RGB(0xE5, 0x48, 0x4D) : LT_RGB(0x3B, 0x82, 0xF6),
+                                              (int)(t * 255.0));
+            } else {
+                st->cellcol[k] = lt_tabs_heat(app, th, zlo, zhi, st->v.z[k]);
+            }
         }
         st->col_edge = LT_RGBA(0, 0, 0, 90);
         st->col_live = th->cursor_live;
@@ -1459,7 +1544,42 @@ static void tbl_context(lt_app *app, lt_app_tab *tab, tbl_tab *st, lt_rect area)
     lt_ui_menu_separator(ui);
     if (lt_ui_menu_item(ui, "Cell color by value", NULL, st->shading ? LT_UI_MENU_CHECKED : 0)) { st->shading = !st->shading; }
     if (lt_ui_menu_item(ui, "3D view", "3", st->show3d ? LT_UI_MENU_CHECKED : 0)) { st->show3d = !st->show3d; }
+    if (st->show3d) {
+        static const char *const sty[LT_T3D_STYLES] = { "3D style: solid", "3D style: wireframe", "3D style: points" };
+        static const char *const cm[LT_T3D_MODES] = { "3D colour: by value", "3D colour: by change", "3D colour: single" };
+        int i;
+        for (i = 0; i < LT_T3D_STYLES; i++) {
+            if (lt_ui_menu_item(ui, sty[i], NULL, st->t3.style == i ? LT_UI_MENU_CHECKED : 0)) { st->t3.style = i; }
+        }
+        for (i = 0; i < LT_T3D_MODES; i++) {
+            if (lt_ui_menu_item(ui, cm[i], NULL, st->t3.color_mode == i ? LT_UI_MENU_CHECKED : 0)) { st->t3.color_mode = i; }
+        }
+        if (lt_ui_menu_item(ui, "3D grid lines", NULL, st->t3.grid ? LT_UI_MENU_CHECKED : 0)) { st->t3.grid = !st->t3.grid; }
+        if (lt_ui_menu_item(ui, "Reset 3D view", "Home", 0)) { lt_t3d_reset_view(&st->t3); }
+    }
     lt_ui_context_end(ui);
+}
+
+/* scripted preview (screenshots): LT_TABLE_VIEW=3d[,wire|points][,change|single][,nogrid][,zoom][,pick],
+ * lambda */
+static void tbl_preview_env(tbl_tab *st)
+{
+    char *e = lt_plat_getenv("LT_TABLE_VIEW");
+    if (e == NULL) { return; }
+    if (strstr(e, "3d") != NULL) { st->show3d = 1; }
+    if (strstr(e, "nolambda") != NULL) { st->lambda_on = 0; }
+    else if (strstr(e, "lambda") != NULL) { st->lambda_on = st->is_afr; }
+    if (strstr(e, "wire") != NULL) { st->t3.style = LT_T3D_WIRE; }
+    if (strstr(e, "points") != NULL) { st->t3.style = LT_T3D_POINTS; }
+    if (strstr(e, "change") != NULL) { st->t3.color_mode = LT_T3D_BY_CHANGE; }
+    if (strstr(e, "single") != NULL) { st->t3.color_mode = LT_T3D_SOLIDCOL; }
+    if (strstr(e, "nogrid") != NULL) { st->t3.grid = 0; }
+    if (strstr(e, "zoom") != NULL) { lt_t3d_zoom(&st->t3, 0.6); }
+    if (strstr(e, "pick") != NULL && st->loaded) {
+        st->pick_pending = 1; st->picked = 1;
+        st->pick_r = (int)st->v.rows / 2; st->pick_c = (int)st->v.cols / 2;
+    }
+    lt_free(e);
 }
 
 static void tbl_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
@@ -1467,15 +1587,17 @@ static void tbl_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
     tbl_tab *st = (tbl_tab *)tab->data;
     lt_ui *ui = app->ui;
     const lt_theme *th = lt_ui_theme(ui);
-    int w1 = -1, w2[2];
+    int w1 = -1, w2[2], w3[3];
     LT_UNUSED(r);
     if (st == NULL) {
         st = (tbl_tab *)lt_calloc(1, sizeof(*st));
         tab->data = st;
-        st->shading = 1; st->ybottom = app->settings.prefs.y_bottom ? 1 : 0; st->yaw = 0.6; st->pitch = 0.55;
+        st->shading = 1; st->ybottom = app->settings.prefs.y_bottom ? 1 : 0; lt_t3d_init(&st->t3);
         st->rebin_interp = 1; st->scale_val = 1.05; st->cur_r = st->cur_c = 0;
         st->step = 1.0; st->step_mult = 5.0; st->step_pct = 5.0;
         tbl_load(app, tab, st);
+        st->lambda_on = st->is_afr && !lt_ui_cell_mode(ui);
+        tbl_preview_env(st);
     }
     st->frame++;
     if (!st->loaded) {
@@ -1488,13 +1610,17 @@ static void tbl_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
     if (st->frame % 15 == 0) { tbl_check_external(app, tab, st); }
     if (!st->loaded) { return; }
     tbl_live(app, st);
+    tbl_3d_keys(ui, st);
     tbl_keys(app, tab, st);
     tbl_header(app, tab, st);
     tbl_toolbar(app, tab, st);
-    if (st->show3d && !lt_ui_cell_mode(ui)) {
-        w2[0] = -3; w2[1] = -2;
-        lt_ui_layout_row(ui, 2, w2, -28);
-    } else if (st->show3d) {
+    if ((st->show3d || st->lambda_on) && !lt_ui_cell_mode(ui)) {
+        int n2 = 1;
+        w3[0] = -3;
+        if (st->lambda_on) { w3[n2++] = -2; }
+        if (st->show3d) { w3[n2++] = -2; }
+        lt_ui_layout_row(ui, n2, w3, -28);
+    } else if (st->show3d || st->lambda_on) {
         w2[0] = -1; w2[1] = -1;
         lt_ui_layout_row_px(ui, 2, w2, -(lt_ui_row_height(ui) + 2));
     } else {
@@ -1502,20 +1628,10 @@ static void tbl_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
     }
     tbl_grid(app, tab, st, 0);
     tbl_context(app, tab, st, st->grid_area);
+    if (st->lambda_on) { lt_tabs_lambda_draw(app, &st->v, st->ybottom); }
     if (st->show3d) {
         lt_rect r3 = lt_ui_layout_next(ui);
-        lt_point m = lt_ui_mouse(ui);
-        int down = lt_ui_mouse_down(ui, LT_MB_LEFT) ? 1 : 0;
-        int inside = m.x >= r3.x && m.x < r3.x + r3.w && m.y >= r3.y && m.y < r3.y + r3.h;
-        if (down && !st->prev_down && inside) { st->drag3d = 1; }
-        if (!down) { st->drag3d = 0; }
-        if (st->drag3d) {
-            st->yaw -= (double)(m.x - st->lmx) * 0.01;
-            st->pitch += (double)(m.y - st->lmy) * 0.01;
-            if (st->pitch < 0.08) { st->pitch = 0.08; }
-            if (st->pitch > 1.45) { st->pitch = 1.45; }
-        }
-        st->lmx = m.x; st->lmy = m.y; st->prev_down = down;
+        tbl_3d_mouse(ui, st, r3);
         lt_ui_draw_box(ui, r3, th->table_bg, th->border_subtle, 0);
         if (lt_ui_cell_mode(ui)) {
             lt_ui_draw_text_in(ui, r3, "3D view needs pixel mode", th->muted, 1);
