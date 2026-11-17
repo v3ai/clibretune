@@ -75,8 +75,8 @@ int lt_posix_wait_fd(int fd, int rw, int timeout_ms)
     FD_ZERO(&set);
     FD_SET(fd, &set);
     if (timeout_ms < 0) timeout_ms = 0;
-    tv.tv_sec = (long)(timeout_ms / 1000);
-    tv.tv_usec = (long)(timeout_ms % 1000) * 1000L;
+    tv.tv_sec = (time_t)(timeout_ms / 1000);
+    tv.tv_usec = (suseconds_t)((timeout_ms % 1000) * 1000);
     r = select(fd + 1, rw ? NULL : &set, rw ? &set : NULL, NULL, &tv);
     if (r < 0 && errno == EINTR) return 0;
     return r;
@@ -420,8 +420,8 @@ int lt_plat_wait(lt_stream **streams, lt_server **servers, int extra_fd, int tim
         if (extra_fd > maxfd) maxfd = extra_fd;
     }
     if (timeout_ms < 0) timeout_ms = 0;
-    tv.tv_sec = (long)(timeout_ms / 1000);
-    tv.tv_usec = (long)(timeout_ms % 1000) * 1000L;
+    tv.tv_sec = (time_t)(timeout_ms / 1000);
+    tv.tv_usec = (suseconds_t)((timeout_ms % 1000) * 1000);
     r = select(maxfd + 1, maxfd >= 0 ? &set : NULL, NULL, NULL, &tv);
     return r > 0 ? r : 0;
 }

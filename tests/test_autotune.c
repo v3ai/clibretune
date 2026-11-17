@@ -592,7 +592,7 @@ LT_TEST(rejection_counting)
     for (i = 0; i < 2; i++) {
         lt_ve_point p;
         lt_ve_point_default(&p);
-        p.rpm = 1000; p.load = 50; p.clt = 100; p.timestamp_ms = i * 100;
+        p.rpm = 1000; p.load = 50; p.clt = 100; p.timestamp_ms = (unsigned long)(i * 100);
         lt_at_add_data_point(x.s, &p, xb, 1, yb, 1, &x.set, &x.f, &x.a);
     }
     {

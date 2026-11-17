@@ -264,7 +264,7 @@ LT_TEST(delay_clean_step)
     static const double pa[5] = {14.7, 14.68, 14.72, 14.7, 14.69};
     static const double qa[15] = {14.70, 14.70, 14.70, 14.60, 14.40, 14.15, 13.95, 13.80, 13.72,
                                   13.70, 13.70, 13.70, 13.70};
-    size_t i;
+    unsigned long i;
     for (i = 0; i < 5; i++) {
         mk(pre, i, i * 40, pa[i]);
     }
@@ -285,7 +285,7 @@ LT_TEST(delay_interpolation_subsample)
 {
     lt_afr_sample pre[4], post[16];
     lt_delay_measurement m;
-    size_t i, n = 0;
+    unsigned long i, n = 0;
     for (i = 0; i < 4; i++) {
         mk(pre, i, i * 60, 14.70);
     }
@@ -305,7 +305,7 @@ LT_TEST(delay_rejections)
     lt_afr_sample pre[8], post[24];
     lt_delay_measurement m;
     lt_delay_rejection why = LT_DR_NO_RESPONSE;
-    size_t i, n;
+    unsigned long i, n;
     static const double wander[5] = {13.2, 15.4, 12.9, 15.8, 13.5};
     for (i = 0; i < 4; i++) {
         mk(pre, i, i * 40, 14.7);
@@ -362,7 +362,7 @@ LT_TEST(delay_pre_step_drift)
 {
     lt_afr_sample pre[4], post[16];
     lt_delay_measurement m;
-    size_t i, n = 0;
+    unsigned long i, n = 0;
     for (i = 0; i < 4; i++) {
         mk(pre, i, i * 60, 14.70);
     }
@@ -383,7 +383,7 @@ LT_TEST(delay_sustained_after_spike)
 {
     lt_afr_sample pre[4], post[16];
     lt_delay_measurement m;
-    size_t i, n = 0;
+    unsigned long i, n = 0;
     for (i = 0; i < 4; i++) {
         mk(pre, i, i * 40, 14.7);
     }
@@ -408,7 +408,7 @@ LT_TEST(delay_half_after_leading)
     lt_delay_measurement m;
     static const double a[13] = {14.70, 14.60, 14.45, 14.25, 14.05, 13.90, 13.78, 13.72, 13.70,
                                  13.70, 13.70, 13.70, 13.70};
-    size_t i;
+    unsigned long i;
     for (i = 0; i < 4; i++) {
         mk(pre, i, i * 40, 14.70);
     }

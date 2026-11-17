@@ -658,8 +658,8 @@ LT_TEST(clone_and_save_load)
     s1 = save_str(t); s2 = save_str(c);
     LT_CHECK_STR(s1, s2);
     lt_free(s1); lt_free(s2);
-    LT_CHECK_INT(lt_tune_save(c, "/tmp/lt_tune_test_out.msq"), 0);
-    l = lt_tune_load("/tmp/lt_tune_test_out.msq");
+    LT_CHECK_INT(lt_tune_save(c, "build/lt_tune_test_out.msq"), 0);
+    l = lt_tune_load("build/lt_tune_test_out.msq");
     LT_CHECK(l != NULL);
     if (l) {
         d = lt_tune_diff_compare(t, l);
@@ -667,7 +667,7 @@ LT_TEST(clone_and_save_load)
         lt_tune_diff_free(d);
         LT_CHECK(lt_tune_get_page(l, 1, NULL) != NULL);
     }
-    LT_CHECK(lt_tune_save(c, "/tmp/x.json") < 0);
+    LT_CHECK(lt_tune_save(c, "build/x.json") < 0);
     lt_tune_free(t); lt_tune_free(c); lt_tune_free(l);
 }
 
@@ -681,8 +681,8 @@ LT_TEST(pc_variable_file)
     size_t n;
     lt_tune_set_pc_variable(t, "rpmhigh", &v);
     lt_tune_set_pc_variable(t, "name", &s);
-    LT_CHECK_INT(lt_tune_save_pc_variables(t, "/tmp/lt_pcvars_test.msq", "sig<1>"), 0);
-    txt = lt_file_read("/tmp/lt_pcvars_test.msq", &n);
+    LT_CHECK_INT(lt_tune_save_pc_variables(t, "build/lt_pcvars_test.msq", "sig<1>"), 0);
+    txt = lt_file_read("build/lt_pcvars_test.msq", &n);
     LT_CHECK(txt != NULL);
     if (txt) {
         LT_CHECK(strstr(txt, "<versionInfo fileFormat=\"4.0\" signature=\"sig&lt;1&gt;\"/>") != NULL);
@@ -690,7 +690,7 @@ LT_TEST(pc_variable_file)
         LT_CHECK(strstr(txt, "<bibliography author=\"LibreTune\" writeDate=\"") != NULL);
         lt_free(txt);
     }
-    LT_CHECK_INT(lt_tune_load_pc_variables(u, "/tmp/lt_pcvars_test.msq"), 0);
+    LT_CHECK_INT(lt_tune_load_pc_variables(u, "build/lt_pcvars_test.msq"), 0);
     LT_CHECK(lt_tune_get_pc_variable(u, "rpmhigh") != NULL);
     LT_CHECK_NEAR(lt_tune_get_pc_variable(u, "rpmhigh")->value.scalar, 7000, 0);
     LT_CHECK_STR(lt_tune_get_pc_variable(u, "name")->value.str, "hello");
@@ -698,8 +698,8 @@ LT_TEST(pc_variable_file)
     /* empty pc variable set still loads (signature present) */
     {
         lt_tune *e = lt_tune_new("sig");
-        LT_CHECK_INT(lt_tune_save_pc_variables(e, "/tmp/lt_pcvars_empty.msq", "sig"), 0);
-        LT_CHECK_INT(lt_tune_load_pc_variables(u, "/tmp/lt_pcvars_empty.msq"), 0);
+        LT_CHECK_INT(lt_tune_save_pc_variables(e, "build/lt_pcvars_empty.msq", "sig"), 0);
+        LT_CHECK_INT(lt_tune_load_pc_variables(u, "build/lt_pcvars_empty.msq"), 0);
         lt_tune_free(e);
     }
     lt_tune_value_clear(&s);

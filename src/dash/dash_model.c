@@ -181,7 +181,7 @@ lt_color lt_color_from_argb(lt_s32 v)
 lt_s32 lt_color_to_argb(lt_color c)
 {
     lt_u32 u = (lt_u32)c & LT_U32_MASK;
-    if (u >= 0x80000000UL) return (lt_s32)((long)u - 4294967296L);
+    if (u >= 0x80000000UL) return (lt_s32)(-(long)(0xFFFFFFFFUL - u) - 1L);
     return (lt_s32)u;
 }
 

@@ -93,7 +93,7 @@ typedef long          lt_s64;
 #elif defined(__GNUC__)
 __extension__ typedef unsigned long long lt_u64;
 __extension__ typedef long long          lt_s64;
-#  define LT_U64_C(c) c##ULL
+#  define LT_U64_C(c) (__extension__ c##ULL)
 #  define LT_HAS_64 1
 #elif defined(_MSC_VER)
 typedef unsigned __int64 lt_u64;

@@ -72,7 +72,7 @@ int lt_gauge_stagger_slot(const char *channel, int *counter)
         long sh;
         const unsigned char *p = (const unsigned char *)channel;
         for (; *p; p++) h = ((h * 33UL) + (lt_u32)*p) & LT_U32_MASK;
-        sh = (h >= 0x80000000UL) ? (long)h - 4294967296L : (long)h;
+        sh = (h >= 0x80000000UL) ? -(long)(0xFFFFFFFFUL - h) - 1L : (long)h;
         if (sh < 0) sh = -sh;
         return (int)(sh % 16L);
     }

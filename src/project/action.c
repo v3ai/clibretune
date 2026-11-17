@@ -685,7 +685,7 @@ static void validate_constant(const lt_ini_const *c, const lt_action *a, size_t 
                               size_t *ne)
 {
     char msg[600], vs[40], ms[40];
-    double v = a->new_value, lo, hi;
+    double v = a->new_value, lo = 0.0, hi = 0.0;
     const char *units = c->units ? c->units : "";
     fmt_num(vs, sizeof vs, v);
     if (c->range_resolved && v < c->min) {

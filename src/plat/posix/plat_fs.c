@@ -32,8 +32,8 @@ void lt_plat_sleep_ms(int ms)
 {
     struct timeval tv;
     if (ms <= 0) return;
-    tv.tv_sec = (long)(ms / 1000);
-    tv.tv_usec = (long)(ms % 1000) * 1000L;
+    tv.tv_sec = (time_t)(ms / 1000);
+    tv.tv_usec = (suseconds_t)((ms % 1000) * 1000);
     select(0, NULL, NULL, NULL, &tv);
 }
 

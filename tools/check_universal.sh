@@ -133,6 +133,9 @@ MINGW=""
 if [ "$TARGET" != windows ] && have x86_64-w64-mingw32-gcc && [ -n "$WINPLAT" ]; then
     MINGW=x86_64-w64-mingw32-gcc
     add_jobs "$MINGW" univ $WINPLAT
+    # universal files too: Windows is LLP64 (32-bit long), which gcc/clang on
+    # Linux (LP64) cannot catch -- e.g. 4294967296L does not fit in a long.
+    add_jobs "$MINGW" univ $UNIV
 fi
 nuniv=$(echo $UNIV | wc -w); nplat=$(echo $HOSTPLAT $EXTRAPLAT | wc -w)
 echo "compile: $nuniv universal + $nplat platform + $(echo $WINPLAT | wc -w) windows files, $(wc -l < "$TMP/jobs.txt") jobs on $JOBS cpus"
@@ -245,7 +248,7 @@ echo
 for cc in $HOSTCCS $MINGW; do
     have "$cc" || continue
     label=$cc
-    [ "$cc" = "$MINGW" ] && label="mingw-gcc (win32 files)"
+    [ "$cc" = "$MINGW" ] && label="mingw-gcc (LLP64)"
     printf '%-26s' "$label"
     for s in $STDS; do
         c=$(count_cell "$cc" "$s")

@@ -652,7 +652,7 @@ static void post_table_sizes(lt_ini *ini)
         const lt_ini_const *mp = t->z_const ? lt_ini_find_const(ini, t->z_const) : NULL;
         size_t xs = xb ? lt_shape_x_size(&xb->shape) : 0;
         size_t ys = (t->y_const && yb) ? lt_shape_x_size(&yb->shape) : 1;
-        size_t fx, fy;
+        size_t fx = 0, fy = 0;
         int have_dyn = 0;
 
         if (mp && mp->dyn && mp->dyn->cols_const) {

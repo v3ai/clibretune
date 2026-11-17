@@ -653,7 +653,7 @@ int ui_fit_text(const lt_ui *ui, const char *s, int maxw, char *out, size_t cap,
         memcpy(out, s, n);
         o = n;
         if (maxw >= (int)ell && o + 4 <= cap) {
-            out[o++] = (char)0xE2; out[o++] = (char)0x80; out[o++] = (char)0xA6;
+            memcpy(out + o, "\xE2\x80\xA6", 3); o += 3;
         }
         out[o] = '\0';
         return 1;
@@ -676,7 +676,7 @@ int ui_fit_text(const lt_ui *ui, const char *s, int maxw, char *out, size_t cap,
             fit--;
         }
         if (maxw >= 2 * fw && o + 4 <= cap) {
-            out[o++] = (char)0xE2; out[o++] = (char)0x80; out[o++] = (char)0xA6;
+            memcpy(out + o, "\xE2\x80\xA6", 3); o += 3;
         }
         out[o] = '\0';
     }
