@@ -129,6 +129,7 @@ static int serve(int port)
     int got = 0, ok_md = 0, ok_kd = 0, ok_tx = 0, ok_wh = 0, ok_rs = 0, ok_mm = 0;
     double t0;
 
+    LT_UNUSED(got);
     putenv(putenv_buf);
     b = lt_backend_web_create(port);
     if (b == NULL || b->open(b, "Serve Title", 640, 480) != 0) return 2;

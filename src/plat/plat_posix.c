@@ -47,6 +47,9 @@ typedef int lt_plat_posix_unused_;
 #include <netdb.h>
 #include <sys/wait.h>
 
+#if defined(__APPLE__) && !defined(__COSMOPOLITAN__)
+#include <mach-o/dyld.h>   /* _NSGetExecutablePath */
+#endif
 #ifdef __COSMOPOLITAN__
 #include <libc/dce.h>
 #include <cosmo.h>
@@ -327,6 +330,11 @@ char *lt_plat_exe_path(void)
 #ifdef __COSMOPOLITAN__
     const char *p = GetProgramExecutableName();
     if (p != NULL && p[0] != '\0') return lt_strdup(p);
+    return NULL;
+#elif defined(__APPLE__)
+    char buf[1024];
+    uint32_t sz = (uint32_t)sizeof buf;
+    if (_NSGetExecutablePath(buf, &sz) == 0) return lt_strdup(buf);
     return NULL;
 #else
     static const char *const links[] = {
