@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: ${{ matrix.os }} / ${{ matrix.cc }} / ${{ matrix.std }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        cc: [gcc, clang]
+        std: ["1", "23"]   # STRICT=1 -> -std=c89 -pedantic, STRICT=23 -> -std=c2x
+        include:
+          - os: macos-latest
+            cc: clang
+            std: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test (strict, warnings are errors)
+        env:
+          CC: ${{ matrix.cc }}
+          STRICT: ${{ matrix.std }}
+        run: |
+          ./build.sh test
+          ./build.sh app
+          ./build/libretune --version

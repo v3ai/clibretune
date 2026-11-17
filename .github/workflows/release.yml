@@ -1,0 +1,95 @@
+name: Release
+
+# Tag push (v*)    -> versioned release with the single portable binary
+# Push to main     -> rolling "nightly" pre-release, rebuilt on every commit
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  COSMOCC_VERSION: "4.0.2"
+  COSMOCC_SHA256: "85b8c37a406d862e656ad4ec14be9f6ce474c1b436b9615e91a55208aced3f44"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache cosmocc
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: .toolchain/cosmocc
+          key: cosmocc-${{ env.COSMOCC_VERSION }}
+
+      - name: Download cosmocc
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          curl -fsSL -o cosmocc.zip \
+            "https://github.com/jart/cosmopolitan/releases/download/${COSMOCC_VERSION}/cosmocc-${COSMOCC_VERSION}.zip"
+          echo "${COSMOCC_SHA256}  cosmocc.zip" | sha256sum -c -
+          mkdir -p .toolchain/cosmocc
+          unzip -q cosmocc.zip -d .toolchain/cosmocc
+          rm cosmocc.zip
+
+      # GitHub runners register a binfmt handler for MZ executables (mono),
+      # which hijacks APE binaries. Register cosmo's APE loader instead.
+      - name: Register APE loader
+        run: |
+          sudo cp .toolchain/cosmocc/bin/ape-x86_64.elf /usr/bin/ape
+          sudo chmod +x /usr/bin/ape
+          sudo sh -c "echo ':APE:M::MZqFpD::/usr/bin/ape:' >/proc/sys/fs/binfmt_misc/register" || true
+          sudo sh -c "echo ':APE-jart:M::jartsr::/usr/bin/ape:' >/proc/sys/fs/binfmt_misc/register" || true
+
+      - name: Build portable binary
+        run: ./build_cosmo.sh
+
+      - name: Test with cosmocc
+        run: |
+          CC=.toolchain/cosmocc/bin/cosmocc ./build.sh test
+          ./build/libretune.com --version
+
+      - name: Package
+        run: |
+          mkdir -p dist
+          cp build/libretune.com dist/libretune.com
+          cp build/libretune.com dist/libretune.exe
+          cp tests/fixtures/ini/demo.ini dist/demo.ini
+          cd dist && sha256sum libretune.com libretune.exe demo.ini > SHA256SUMS
+
+      - name: Publish tagged release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" dist/* \
+            --title "LibreTune-C ${GITHUB_REF_NAME}" \
+            --notes-file .github/release-notes.md \
+            --generate-notes
+
+      - name: Publish nightly
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete nightly --yes --cleanup-tag || true
+          {
+            cat .github/release-notes.md
+            echo
+            echo "Nightly build of \`${GITHUB_SHA::7}\` — rebuilt on every push to main."
+          } > nightly-notes.md
+          gh release create nightly dist/* \
+            --prerelease \
+            --target "${GITHUB_SHA}" \
+            --title "Nightly ($(date -u +%Y-%m-%d) ${GITHUB_SHA::7})" \
+            --notes-file nightly-notes.md
