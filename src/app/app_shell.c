@@ -1346,7 +1346,7 @@ int lt_app_screenshot(lt_app *app, const char *ppm_path, int w, int h, int frame
 {
     int i;
     char *click = lt_plat_getenv("LT_SHOT_CLICK");
-    int cx = -1, cy = -1;
+    int cx = -1, cy = -1, button = LT_MB_LEFT;
     lt_event ev;
     app->cell_mode = 0;
     app->headless = 1;
@@ -1357,6 +1357,10 @@ int lt_app_screenshot(lt_app *app, const char *ppm_path, int w, int h, int frame
         lt_free(se);
     }
     init_surface(app, w, h);
+    if (click == NULL) {
+        click = lt_plat_getenv("LT_SHOT_RCLICK");   /* same, with the right mouse button */
+        if (click != NULL) { button = LT_MB_RIGHT; }
+    }
     if (click != NULL) { sscanf(click, "%d,%d", &cx, &cy); lt_free(click); }
     for (i = 0; i < frames; i++) {
         lt_app_service(app);
@@ -1364,7 +1368,7 @@ int lt_app_screenshot(lt_app *app, const char *ppm_path, int w, int h, int frame
             memset(&ev, 0, sizeof(ev));
             ev.type = LT_EV_MOUSE_MOVE; ev.x = cx; ev.y = cy; lt_ui_input(app->ui, &ev);
             run_frame(app);
-            ev.type = LT_EV_MOUSE_DOWN; ev.button = LT_MB_LEFT; lt_ui_input(app->ui, &ev);
+            ev.type = LT_EV_MOUSE_DOWN; ev.button = button; lt_ui_input(app->ui, &ev);
             run_frame(app);
             ev.type = LT_EV_MOUSE_UP; lt_ui_input(app->ui, &ev);
         }

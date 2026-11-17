@@ -54,6 +54,29 @@ void lt_tbl_copy(const double *z, size_t rows, size_t cols, const lt_tcell *sel,
 void lt_tbl_paste(double *z, size_t rows, size_t cols, size_t y0, size_t x0,
                   const double *src, size_t bh, size_t bw);
 
+/* ---- editor operations (tableops_edit.c) ---- */
+/* Copy the selected cells back from orig (same shape as z): "Esc = revert selection". */
+void lt_tbl_restore(double *z, size_t rows, size_t cols, const lt_tcell *sel, size_t n,
+                    const double *orig);
+/* Delete/Backspace: set the selection to 0 clamped into [lo,hi] (no clamp when hi <= lo). */
+void lt_tbl_clear(double *z, size_t rows, size_t cols, const lt_tcell *sel, size_t n, double lo,
+                  double hi);
+#define LT_TBL_PASTE_REPLACE 0
+#define LT_TBL_PASTE_ADD     1
+#define LT_TBL_PASTE_SUB     2
+#define LT_TBL_PASTE_MUL     3
+#define LT_TBL_PASTE_MIN     4
+#define LT_TBL_PASTE_MAX     5
+/* Paste special: like lt_tbl_paste but combines each pasted value with the cell. */
+void lt_tbl_paste_op(double *z, size_t rows, size_t cols, size_t y0, size_t x0,
+                     const double *src, size_t bh, size_t bw, int mode);
+/* Keep a dragged axis point x[i] between its neighbours (curve editor X drag). */
+double lt_tbl_clamp_between(const double *x, size_t n, size_t i, double v);
+/* New axes: nnx/nny points evenly spaced between the old end points; z bilinearly resampled.
+ * out_x holds nnx, out_y nny, out_z nny*nnx doubles. */
+int  lt_tbl_resize(const double *xb, size_t nx, const double *yb, size_t ny, const double *z,
+                   size_t nnx, size_t nny, double *out_x, double *out_y, double *out_z);
+
 /* Bilinear lookup of z (ny rows x nx cols) at (tx,ty), clamping at the edges. */
 double lt_tbl_bilinear(double tx, double ty, const double *xb, size_t nx, const double *yb,
                        size_t ny, const double *z);
@@ -145,6 +168,10 @@ int  lt_table_size_apply(const lt_ini *ini, const lt_ini_table *t, lt_pagesrc *d
 /* Other tables that use the same pair of size constants (they resize together). */
 size_t lt_tables_sharing_size(const lt_ini *ini, const char *cols_const, const char *rows_const,
                               const lt_ini_table **out, size_t cap);
+/* Resize t and every table sharing its size constants: resample axes/Z, write the size
+ * constants and the new data into dst. Needs the table's size limits (LT_ENOENT if fixed). */
+int  lt_table_resize(const lt_ini *ini, const lt_ini_table *t, lt_pagesrc *dst, size_t cols,
+                     size_t rows);
 /* Re-pack a row-major rows x cols grid into an allocation-sized flat buffer
  * with stride = active cols, preserving the unused tail (spec 08 3). */
 void lt_dyn_pack(double *alloc, size_t alloc_n, const double *z, size_t rows, size_t cols);

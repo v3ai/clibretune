@@ -480,6 +480,36 @@ LT_TEST(dynamic_size_bad_bounds)
     fx_free(&f);
 }
 
+LT_TEST(resize_shared_tables)
+{
+    fx f;
+    lt_ini_table *t, *t2;
+    lt_tblview v;
+    fx_init(&f);
+    t = add_dyn(&f);
+    t2 = add_table(&f, "dynTbl2", "dynX", "dynY", "dynZ", 8, 8);
+    t2->cols_size_const = lt_strdup("dynCols");
+    t2->rows_size_const = lt_strdup("dynRows");
+    t2->max_elements = 40;
+    LT_CHECK(lt_table_resize(&f.ini, f.ini.tables[0], &f.src, 5, 4) == LT_ENOENT);
+    LT_CHECK(lt_table_resize(&f.ini, t, &f.src, 8, 8) == LT_ERANGE);
+    LT_CHECK(f.page[100] == 3);
+    LT_CHECK(lt_table_resize(&f.ini, t, &f.src, 5, 4) == 0);
+    LT_CHECK(f.page[100] == 5 && f.page[101] == 4);
+    lt_tblview_init(&v);
+    LT_CHECK(lt_tblview_load_table(&v, &f.ini, t2, &f.src) == 0);
+    LT_CHECK(v.cols == 5 && v.rows == 4);
+    LT_CHECK_NEAR(v.x[0], 1.0, 1e-9);
+    LT_CHECK_NEAR(v.x[4], 3.0, 1e-9);
+    LT_CHECK_NEAR(v.y[0], 11.0, 1e-9);
+    LT_CHECK_NEAR(v.y[3], 12.0, 1e-9);
+    /* corners keep their original values: (row0,col0)=200, (row1,col2)=205 */
+    LT_CHECK_NEAR(lt_tblview_get(&v, 0, 0), 200.0, 1e-9);
+    LT_CHECK_NEAR(lt_tblview_get(&v, 3, 4), 205.0, 1e-9);
+    lt_tblview_free(&v);
+    fx_free(&f);
+}
+
 int main(void)
 {
     LT_RUN(load_table);
@@ -495,5 +525,6 @@ int main(void)
     LT_RUN(dynamic_size_info_and_load);
     LT_RUN(dynamic_size_apply_and_budget);
     LT_RUN(dynamic_size_bad_bounds);
+    LT_RUN(resize_shared_tables);
     LT_TEST_MAIN_END
 }

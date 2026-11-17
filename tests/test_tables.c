@@ -102,8 +102,80 @@ LT_TEST(curve_and_autotune_tabs)
     lt_app_free(app);
 }
 
+static void click(lt_app *app, int x, int y, int button)
+{
+    lt_event ev;
+    memset(&ev, 0, sizeof(ev));
+    ev.type = LT_EV_MOUSE_MOVE; ev.x = x; ev.y = y; lt_ui_input(app->ui, &ev);
+    frame(app);
+    ev.type = LT_EV_MOUSE_DOWN; ev.button = button; lt_ui_input(app->ui, &ev);
+    frame(app);
+    ev.type = LT_EV_MOUSE_UP; lt_ui_input(app->ui, &ev);
+    frame(app);
+}
+
+LT_TEST(table_selection_keys)
+{
+    char buf[512];
+    lt_app *app = lt_app_new();
+    size_t rows = 0, cols = 0;
+    double a, b, c, d, e, f;
+    const lt_ini_table *t;
+    lt_pagesrc ps;
+    lt_tblview v;
+    LT_CHECK(lt_app_find_demo_ini(buf, sizeof(buf)) != NULL);
+    LT_CHECK(lt_app_start_demo(app, buf) == 0);
+    LT_CHECK(lt_app_table_editor_open(app, "veTableTbl") == 0);
+    lt_app_screenshot(app, "build/lt_test_tables3.ppm", 1100, 800, 3);
+    t = lt_ini_find_table(app->ini, "veTableTbl");
+    ps = lt_app_pages(app);
+    lt_tblview_init(&v);
+    LT_CHECK(lt_tblview_load_table(&v, app->ini, t, &ps) == 0);
+    rows = v.rows; cols = v.cols;
+    lt_tblview_free(&v);
+    click(app, 500, 300, LT_MB_LEFT);
+    press(app, LT_KEY_HOME, LT_MOD_CTRL);              /* cursor to display (0,0) = data (rows-1,0) */
+    a = cell0(app, "veTableTbl", rows - 1, 0);
+    b = cell0(app, "veTableTbl", rows - 1, 1);
+    c = cell0(app, "veTableTbl", rows - 2, 1);
+    d = cell0(app, "veTableTbl", rows - 1, 2);
+    /* Shift+arrows extend the selection to a 2x2 block; '+' adds 1 to all four */
+    press(app, LT_KEY_RIGHT, LT_MOD_SHIFT);
+    press(app, LT_KEY_DOWN, LT_MOD_SHIFT);
+    press(app, '+', 0);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 0), a + 1.0, 0.051);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 1), b + 1.0, 0.051);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 2, 1), c + 1.0, 0.051);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 2), d, 1e-9);
+    /* Escape reverts the selection to the values at open */
+    press(app, LT_KEY_ESCAPE, 0);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 0), a, 1e-9);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 2, 1), c, 1e-9);
+    /* Ctrl+A selects everything */
+    e = cell0(app, "veTableTbl", 0, cols - 1);
+    f = cell0(app, "veTableTbl", rows / 2, cols / 2);
+    press(app, 'a', LT_MOD_CTRL);
+    press(app, '-', 0);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", 0, cols - 1), e - 1.0, 0.051);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows / 2, cols / 2), f - 1.0, 0.051);
+    press(app, LT_KEY_ESCAPE, 0);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", 0, cols - 1), e, 1e-9);
+    /* Delete clears the cursor cell to zero */
+    press(app, LT_KEY_HOME, LT_MOD_CTRL);
+    press(app, LT_KEY_DELETE, 0);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 0), 0.0, 1e-9);
+    press(app, 'z', LT_MOD_CTRL);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 0), a, 1e-9);
+    /* right click opens the context menu without changing values */
+    click(app, 500, 300, LT_MB_RIGHT);
+    LT_CHECK(lt_ui_popup_open(app->ui));
+    press(app, LT_KEY_ESCAPE, 0);
+    lt_app_free(app);
+}
+
 int main(void)
 {
+    LT_RUN(table_selection_keys);
     LT_RUN(table_keys_edit_undo);
     LT_RUN(curve_and_autotune_tabs);
     LT_TEST_MAIN_END
