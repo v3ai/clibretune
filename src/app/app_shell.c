@@ -1133,11 +1133,19 @@ static void sidebar_split(lt_app *app, lt_rect cr, lt_rect *side, lt_rect *main_
     lt_ui *ui = app->ui;
     int dev = lt_ui_px(ui, app->settings.sidebar_w), old = dev;
     if (lt_ui_cell_mode(ui)) {
-        /* terminal: a quarter of the width, 22..36 columns; draggable but never saved */
-        static int cell_w = 0;
-        int cols = cr.w / 8;
-        if (cell_w <= 0) { cell_w = LT_CLAMP(cols * 24 / 100, 22, 36) * 8; }
-        lt_ui_splitter(ui, "sidebar", cr, 1, &cell_w, 8 * 16, LT_MAX(8 * 16, cr.w / 2), side, main_r);
+        /* terminal: a quarter of the width (22..36 columns) until the user sets one: drag the
+         * border or press Ctrl+Left / Ctrl+Right; the choice is kept in the settings */
+        static int dirty = 0;
+        int cols = cr.w / 8, cell_w, before;
+        cell_w = app->settings.sidebar_cols > 0 ? app->settings.sidebar_cols * 8
+                                                : LT_CLAMP(cols * 24 / 100, 22, 36) * 8;
+        before = cell_w;
+        if (lt_ui_key_pressed(ui, LT_KEY_LEFT, LT_MOD_CTRL) && !lt_ui_text_focused(ui)) { cell_w -= 16; }
+        if (lt_ui_key_pressed(ui, LT_KEY_RIGHT, LT_MOD_CTRL) && !lt_ui_text_focused(ui)) { cell_w += 16; }
+        cell_w = LT_CLAMP(cell_w, 14 * 8, LT_MAX(14 * 8, LT_MIN(cr.w / 2, 80 * 8)));
+        lt_ui_splitter(ui, "sidebar", cr, 1, &cell_w, 14 * 8, LT_MAX(14 * 8, LT_MIN(cr.w / 2, 80 * 8)), side, main_r);
+        if (cell_w != before) { app->settings.sidebar_cols = cell_w / 8; dirty = 1; lt_ui_request_redraw(ui); }
+        if (dirty && !lt_ui_mouse_down(ui, LT_MB_LEFT) && !app->headless) { dirty = 0; lt_app_settings_save(app); }
         return;
     }
     lt_ui_splitter(ui, "sidebar", cr, 1, &dev, lt_ui_px(ui, 160), cr.w / 2, side, main_r);
@@ -1427,6 +1435,11 @@ int lt_app_screenshot(lt_app *app, const char *ppm_path, int w, int h, int frame
         if (click != NULL) { button = LT_MB_RIGHT; }
     }
     if (click != NULL) { sscanf(click, "%d,%d", &cx, &cy); lt_free(click); }
+    if (tty) {
+        char *fr = lt_plat_getenv("LT_SHOT_FRAMES");      /* more frames = longer gauge history */
+        if (fr != NULL && atoi(fr) > 0) { frames = atoi(fr); }
+        lt_free(fr);
+    }
     for (i = 0; i < frames; i++) {
         lt_app_service(app);
         if (cx >= 0 && i == frames - 3) {

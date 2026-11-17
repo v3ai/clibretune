@@ -1018,6 +1018,9 @@ static void row_start(lt_ui *ui, ui_layout *L)
         L->row_h = ui->theme.row_h;
     } else {
         int avail = L->body.y + L->body.h - L->row_y - (-L->spec_h - 1);
+        if (ui->cell && ui->nmodal > 0 && ui->nlay - 1 == ui->modal_lay[ui->nmodal - 1]) {
+            ui->modal_fill[ui->nmodal - 1]++;
+        }
         L->row_h = LT_MAX(avail, ui->theme.row_h);
         if (ui->cell) { L->row_h = LT_MAX(16, L->row_h / 16 * 16); }
     }

@@ -80,6 +80,7 @@ typedef struct lt_app_settings {
     char theme[24];
     int  metric;            /* 1 metric, 0 imperial */
     int  sidebar_w, sidebar_on;
+    int  sidebar_cols;      /* terminal UI sidebar width in columns (0 = automatic) */
     int  show_ecu_menus;
     int  scale_pct;         /* 0 = auto (display hint), else 100..300 percent */
     int  win_w, win_h;      /* saved window size in LOGICAL px (0 = none) */

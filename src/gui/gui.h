@@ -164,6 +164,13 @@ void lt_gfx_cell_vbar(lt_gfx *g, lt_rect r, double frac, lt_color fg, lt_color t
 /* sparkline of the newest samples, 8 levels per row of r */
 void lt_gfx_cell_spark(lt_gfx *g, lt_rect r, const double *v, int n, double lo, double hi,
                        lt_color fg, lt_color bg);
+void lt_cell_ellipsize_mid(const char *s, int cols, char *out, size_t cap);
+/* braille line plot (2x4 dots per cell); flags below */
+#define LT_PLOT_CLEAR 1      /* reset the rect to bg first (else merge into existing braille) */
+#define LT_PLOT_FILL 2       /* fill under the line */
+#define LT_PLOT_STRETCH 4    /* spread the samples over the full width */
+void lt_gfx_cell_plot(lt_gfx *g, lt_rect r, const double *v, int n, double lo, double hi,
+                      lt_color fg, lt_color bg, int flags);
 /* darken the cells under the dx,dy-cell offset copy of r that r does not cover */
 void lt_gfx_cell_shadow(lt_gfx *g, lt_rect r, int dx, int dy);
 
