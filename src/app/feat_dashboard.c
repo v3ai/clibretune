@@ -16,7 +16,7 @@ static char *cfg_path(lt_app *app)
 
 static void cfg_defaults(dash_cfg *c)
 {
-    c->refresh_hz = 30;
+    c->refresh_hz = 60;
     c->right_align = 0;
     c->ind_cols = 0; c->ind_fill = 0; c->ind_wrap = 0;
     c->snap = 1; c->free_move = 0; c->lock = 0; c->auto_sync = 1;
@@ -164,7 +164,7 @@ static void settings_page(lt_app *app)
 {
     lt_ui *ui = app->ui;
     dash_cfg *c = lt_dashx_cfg(app);
-    static const char *const hz[6] = { "10 Hz (battery saver)", "15 Hz", "20 Hz", "25 Hz", "30 Hz (default)", "60 Hz (smoothest)" };
+    static const char *const hz[6] = { "10 Hz (battery saver)", "15 Hz", "20 Hz", "25 Hz", "30 Hz", "60 Hz (default, smoothest)" };
     static const char *const fit[2] = { "Scale to fit", "Wrap onto two lines" };
     int w1 = -1, w2[2], ch = 0, sel = c->refresh_hz >= 60 ? 5 : (c->refresh_hz - 10) / 5, t;
     double d;

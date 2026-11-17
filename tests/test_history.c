@@ -53,6 +53,17 @@ static void unique_name(char *out, size_t cap, const char *prefix)
     lt_snprintf(out, cap, "%s%s_%lu", prefix, ts, (unsigned long)lt_plat_now_ms());
 }
 
+LT_TEST(content_equal_ignores_write_date)
+{
+    static const char a[] = "<msq><bibliography writeDate=\"Mon Nov 17 10:00:00 2026\"/><v>1</v></msq>";
+    static const char b[] = "<msq><bibliography writeDate=\"Mon Nov 17 10:00:01 2026\"/><v>1</v></msq>";
+    static const char c[] = "<msq><bibliography writeDate=\"Mon Nov 17 10:00:01 2026\"/><v>2</v></msq>";
+    LT_CHECK(lt_snap_content_equal(a, strlen(a), b, strlen(b)) == 1);
+    LT_CHECK(lt_snap_content_equal(a, strlen(a), c, strlen(c)) == 0);
+    LT_CHECK(lt_snap_content_equal(a, strlen(a), a, strlen(a) - 1) == 0);
+    LT_CHECK(lt_snap_content_equal("", 0, "", 0) == 1);
+}
+
 LT_TEST(branches)
 {
     char dir[96];
@@ -389,6 +400,7 @@ LT_TEST(restore_reloads_config)
 
 int main(void)
 {
+    LT_RUN(content_equal_ignores_write_date);
     LT_RUN(branches);
     LT_RUN(commit_format);
     LT_RUN(annotations);

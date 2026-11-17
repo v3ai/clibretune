@@ -143,6 +143,8 @@ typedef struct lt_snap_diff {
 int  lt_snap_commit(const char *proj_dir, const char *message, const char *annotation,
                     const char *author, char id_out[9]);
 int  lt_snap_has_changes(const char *proj_dir);
+/* content equality that ignores writeDate="..." stamps (1 equal, 0 different) */
+int lt_snap_content_equal(const char *a, size_t la, const char *b, size_t lb);
 int  lt_snap_history(const char *proj_dir, size_t max, lt_snap_info **out, size_t *n);   /* newest first */
 void lt_snap_info_free(lt_snap_info *v, size_t n);
 /* to == NULL compares with the working copy */

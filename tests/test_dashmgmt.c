@@ -469,7 +469,7 @@ LT_TEST(tab_edit_undo_kiosk)
     LT_CHECK(st != NULL && st->file != NULL);
     if (st == NULL || st->file == NULL) { lt_app_free(app); return; }
     cfg = lt_dashx_cfg(app);
-    LT_CHECK(cfg->refresh_hz == 30 && cfg->snap && !cfg->lock);
+    LT_CHECK(cfg->refresh_hz == 60 && cfg->snap && !cfg->lock);
     n0 = st->file->cluster.n_comps;
     LT_CHECK(n0 > 0);
     /* add, undo, redo */

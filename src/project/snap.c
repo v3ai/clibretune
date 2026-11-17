@@ -65,11 +65,32 @@ static void collect(const char *base, char ***v, size_t *n)
     if (*n > 1) qsort(*v, *n, sizeof(char *), lt_proj_cmp_str);
 }
 
+/* Byte comparison that ignores the values of writeDate="..." attributes: every save
+ * stamps the time, so two saves of identical content a second apart must still count
+ * as unchanged (no empty history commits). */
+int lt_snap_content_equal(const char *da, size_t la, const char *db, size_t lb)
+{
+    static const char key[] = "writeDate=\"";
+    size_t i = 0, j = 0, kl = sizeof(key) - 1;
+    while (i < la && j < lb) {
+        if (la - i >= kl && lb - j >= kl && memcmp(da + i, key, kl) == 0 &&
+            memcmp(db + j, key, kl) == 0) {
+            i += kl; j += kl;
+            while (i < la && da[i] != '"') i++;
+            while (j < lb && db[j] != '"') j++;
+            continue;
+        }
+        if (da[i] != db[j]) return 0;
+        i++; j++;
+    }
+    return i == la && j == lb;
+}
+
 static int files_equal(const char *a, const char *b)
 {
     size_t la = 0, lb = 0;
     char *da = lt_file_read(a, &la), *db = lt_file_read(b, &lb);
-    int eq = (da != NULL && db != NULL && la == lb && (la == 0 || memcmp(da, db, la) == 0));
+    int eq = (da != NULL && db != NULL && lt_snap_content_equal(da, la, db, lb));
     lt_free(da);
     lt_free(db);
     return eq;

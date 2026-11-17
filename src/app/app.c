@@ -685,7 +685,11 @@ int lt_app_service(lt_app *app)
     lt_ext_tick(app);
     if ((app->conn != LT_APP_ONLINE && app->conn != LT_APP_DEMO) || app->proto == NULL) { return 0; }
     now = lt_plat_now_ms();
-    if (now - app->last_poll_ms < 1000.0 / (double)LT_CLAMP(app->settings.poll_hz, 5, 100)) { return 0; }
+    /* the demo simulator runs in-process (no link to saturate): poll it at display rate */
+    if (now - app->last_poll_ms < 1000.0 / (app->conn == LT_APP_DEMO ? 60.0
+                                            : (double)LT_CLAMP(app->settings.poll_hz, 5, 100))) {
+        return 0;
+    }
     app->last_poll_ms = now;
     lt_buf_clear(&app->rtbuf);
     rc = lt_proto_get_realtime(app->proto, &app->rtbuf);
