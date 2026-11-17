@@ -1,6 +1,8 @@
 /* test_gfx.c - rasterizer tests; writes build/test_gfx.ppm */
 #include <stdio.h>
 #include <time.h>
+#include <string.h>
+#include <math.h>
 #include "lt_test.h"
 #include "../src/gui/gui.h"
 
@@ -188,6 +190,88 @@ LT_TEST(test_speed)
 
 static lt_cell *C(lt_cells *c, int x, int y) { return &c->cells[y * c->cols + x]; }
 
+/* reference annular-sector coverage (the original atan2/fmod formulation) */
+static double ref_clamp01(double v) { return v < 0.0 ? 0.0 : (v > 1.0 ? 1.0 : v); }
+static double ref_arc_cov(double cx, double cy, double rin, double rout, double a0,
+                          double sweep, double x, double y)
+{
+    double dx = x - cx, dy = y - cy, d = sqrt(dx * dx + dy * dy), cv, th, m;
+    double tp = 6.283185307179586;
+    cv = ref_clamp01(rout + 0.5 - d);
+    if (rin > 0.0) {
+        cv = cv + ref_clamp01(d - rin + 0.5) - 1.0;
+        if (cv < 0.0) { cv = 0.0; }
+    }
+    if (cv <= 0.0 || sweep >= tp - 1.0e-9) { return cv; }
+    th = fmod(atan2(dy, dx) - a0, tp);
+    if (th < 0.0) { th += tp; }
+    if (th <= sweep) { m = (th < sweep - th ? th : sweep - th) * d; return cv * ref_clamp01(m + 0.5); }
+    m = (th - sweep < tp - th ? th - sweep : tp - th) * d;
+    return cv * ref_clamp01(0.5 - m);
+}
+
+LT_TEST(test_arc_matches_reference)
+{
+    static const double sw[8][4] = {
+        { 40.0, 52.0, 0.5, 4.2 }, { 0.0, 30.0, -1.0, 2.0 }, { 20.0, 26.0, 2.0, 2.3 },
+        { 30.0, 44.0, 1.0, 6.0 }, { 0.0, 35.0, 3.0, 3.14159 }, { 45.0, 50.0, -3.0, 0.4 },
+        { 10.0, 12.0, 0.0, 6.28318530718 }, { 0.0, 40.0, 5.5, 1.2 } };
+    lt_canvas cv;
+    lt_gfx g;
+    int k, x, y, maxd = 0, bad = 0;
+    lt_canvas_init(&cv, 128, 128);
+    lt_gfx_init_canvas(&g, &cv);
+    for (k = 0; k < 8; k++) {
+        double rin = sw[k][0], rout = sw[k][1], a0 = sw[k][2], sweep = sw[k][3];
+        lt_gfx_clear(&g, LT_RGB(0, 0, 0));
+        lt_gfx_fill_arc(&g, 63.7, 64.3, rin, rout, a0, a0 + sweep, LT_RGB(255, 255, 255));
+        for (y = 0; y < 128; y++) {
+            for (x = 0; x < 128; x++) {
+                double rc = ref_arc_cov(63.7, 64.3, rin, rout, a0, sweep, x + 0.5, y + 0.5);
+                int want = (int)(rc * 255.0 + 0.5), got = (int)(P(&cv, x, y) & 255), df;
+                df = want > got ? want - got : got - want;
+                if (df > maxd) { maxd = df; }
+                if (df > 40) { bad++; }
+            }
+        }
+    }
+    printf("arc vs reference: max diff %d/255, >40: %d px\n", maxd, bad);
+    LT_CHECK(bad <= 2 && maxd <= 64); /* apex pixel of a pie wedge may differ */
+    lt_canvas_free(&cv);
+}
+
+LT_TEST(test_diff_rects)
+{
+    lt_canvas cv;
+    lt_diff d;
+    lt_rect r[8];
+    int n;
+    memset(&d, 0, sizeof d);
+    lt_canvas_init(&cv, 300, 200);
+    n = lt_diff_rects(&d, &cv, lt_rect_make(0, 0, 300, 200), r, 8);
+    LT_CHECK(n == 1 && r[0].w == 300 && r[0].h == 200);            /* first frame: everything */
+    n = lt_diff_rects(&d, &cv, lt_rect_make(0, 0, 300, 200), r, 8);
+    LT_CHECK(n == 0);                                              /* unchanged */
+    cv.px[70 * cv.pitch + 70] = 0xFF123456UL;                      /* one pixel: one 64x64 tile */
+    n = lt_diff_rects(&d, &cv, lt_rect_make(0, 0, 300, 200), r, 8);
+    LT_CHECK(n == 1 && r[0].x == 64 && r[0].y == 64 && r[0].w == 64 && r[0].h == 64);
+    n = lt_diff_rects(&d, &cv, lt_rect_make(0, 0, 300, 200), r, 8);
+    LT_CHECK(n == 0);                                              /* reported once */
+    cv.px[5 * cv.pitch + 299] = 1; cv.px[199 * cv.pitch + 5] = 2;  /* edge tiles are clipped */
+    cv.px[70 * cv.pitch + 140] = 3; cv.px[130 * cv.pitch + 140] = 3;
+    n = lt_diff_rects(&d, &cv, lt_rect_make(0, 0, 300, 200), r, 8);
+    LT_CHECK(n == 3);                                              /* (2,1) and (2,2) merge vertically */
+    LT_CHECK(r[0].x + r[0].w <= 300 && r[2].y + r[2].h <= 200 && r[1].h == 128);
+    cv.px[5 * cv.pitch + 5] = 9;                                   /* outside `area`: not seen */
+    n = lt_diff_rects(&d, &cv, lt_rect_make(100, 100, 50, 50), r, 8);
+    LT_CHECK(n == 0);
+    lt_diff_invalidate(&d);
+    n = lt_diff_rects(&d, &cv, lt_rect_make(0, 0, 1, 1), r, 8);
+    LT_CHECK(n == 1 && r[0].w == 300);
+    lt_diff_free(&d);
+    lt_canvas_free(&cv);
+}
+
 LT_TEST(test_cells)
 {
     lt_cells cl;
@@ -242,6 +326,8 @@ int main(void)
     LT_RUN(test_huge_circle);
     LT_RUN(test_dirty_translate);
     LT_RUN(test_speed);
+    LT_RUN(test_arc_matches_reference);
+    LT_RUN(test_diff_rects);
     LT_RUN(test_cells);
     LT_TEST_MAIN_END
 }

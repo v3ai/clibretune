@@ -1045,6 +1045,9 @@ static void dash_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
         double interval = 1000.0 / (double)(cfg->refresh_hz > 0 ? cfg->refresh_hz : 30);
         st->refresh_now = lt_ui_cell_mode(ui) || st->cache_w == 0 || now - st->cache_ms >= interval ||
                           now < st->cache_ms;
+        if (app->conn == LT_APP_ONLINE || app->conn == LT_APP_DEMO) {
+            if (app->anim_ms <= 0.0 || interval < app->anim_ms) { app->anim_ms = interval; }
+        }
         if (st->refresh_now) {
             lt_dash_view_update(st->view, now, st->env);
             st->cache_ms = now;

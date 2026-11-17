@@ -334,7 +334,7 @@ void lt_dash_view_free(lt_dash_view *v)
 
 void lt_dash_view_set_redraw_hz(lt_dash_view *v, int hz)
 {
-    static const int ok[] = { 10, 15, 20, 25, 30 };
+    static const int ok[] = { 10, 15, 20, 25, 30, 60 };
     size_t i;
     int best = 30, bd = 1000;
     for (i = 0; i < LT_COUNTOF(ok); i++) {

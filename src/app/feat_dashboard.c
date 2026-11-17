@@ -24,9 +24,9 @@ static void cfg_defaults(dash_cfg *c)
 
 static int clamp_hz(int hz)
 {
-    static const int ok[5] = { 10, 15, 20, 25, 30 };
+    static const int ok[6] = { 10, 15, 20, 25, 30, 60 };
     int i, best = 4;
-    for (i = 0; i < 5; i++) {
+    for (i = 0; i < 6; i++) {
         int d = hz > ok[i] ? hz - ok[i] : ok[i] - hz;
         int bd = hz > ok[best] ? hz - ok[best] : ok[best] - hz;
         if (d < bd) { best = i; }
@@ -164,9 +164,9 @@ static void settings_page(lt_app *app)
 {
     lt_ui *ui = app->ui;
     dash_cfg *c = lt_dashx_cfg(app);
-    static const char *const hz[5] = { "10 Hz (battery saver)", "15 Hz", "20 Hz", "25 Hz", "30 Hz (default)" };
+    static const char *const hz[6] = { "10 Hz (battery saver)", "15 Hz", "20 Hz", "25 Hz", "30 Hz (default)", "60 Hz (smoothest)" };
     static const char *const fit[2] = { "Scale to fit", "Wrap onto two lines" };
-    int w1 = -1, w2[2], ch = 0, sel = (c->refresh_hz - 10) / 5, t;
+    int w1 = -1, w2[2], ch = 0, sel = c->refresh_hz >= 60 ? 5 : (c->refresh_hz - 10) / 5, t;
     double d;
     lt_ui_layout_row(ui, 1, &w1, 0);
     lt_ui_text_style(ui, (int)LT_FONT_SANS_SEMIBOLD, LT_UI_FS_BASE);
@@ -176,8 +176,8 @@ static void settings_page(lt_app *app)
     lt_ui_layout_row(ui, 2, w2, 0);
     lt_ui_label(ui, "Gauge refresh rate");
     if (sel < 0) { sel = 0; }
-    if (sel > 4) { sel = 4; }
-    if (lt_ui_combo(ui, "dx_hz", &sel, hz, 5)) { c->refresh_hz = 10 + 5 * sel; ch = 1; }
+    if (sel > 5) { sel = 5; }
+    if (lt_ui_combo(ui, "dx_hz", &sel, hz, 6)) { c->refresh_hz = sel >= 5 ? 60 : 10 + 5 * sel; ch = 1; }
     lt_ui_layout_row(ui, 1, &w1, 0);
     lt_ui_label_wrap(ui, "Caps how often gauges are redrawn. Lower rates use less CPU.", lt_ui_theme(ui)->muted);
     lt_ui_layout_row(ui, 1, &w1, 0);

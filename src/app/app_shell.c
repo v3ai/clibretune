@@ -1337,16 +1337,86 @@ static void save_geometry(lt_app *app)
     }
 }
 
+/* Present the frame. Backends that take rectangles get only the 64x64 tiles that differ from the
+ * previously presented frame (as a few merged rectangles); the others get the drawn bounding box.
+ * Returns the number of pixels handed to the backend. */
+#define PRESENT_MAX_RECTS 48
+static double present_frame(lt_app *app)
+{
+    lt_backend *be = app->backend;
+    lt_rect rects[PRESENT_MAX_RECTS];
+    int n, i;
+    double px = 0.0;
+    if (app->cell_mode) {
+        be->present(be, NULL, &app->cells, app->gfx.dirty);
+        return 0.0;
+    }
+    if (!be->rect_present) {
+        be->present(be, &app->canvas, NULL, app->gfx.dirty);
+        return (double)app->gfx.dirty.w * (double)app->gfx.dirty.h;
+    }
+    n = lt_diff_rects(&app->diff, &app->canvas, app->gfx.dirty, rects, PRESENT_MAX_RECTS);
+    for (i = 0; i < n; i++) {
+        be->present(be, &app->canvas, NULL, rects[i]);
+        px += (double)rects[i].w * (double)rects[i].h;
+    }
+    return px;
+}
+
+/* LT_PERF=1: per-second frame statistics on stderr (draw ms avg/max, present ms, bytes handed to
+ * the backend per second); in screenshot mode one summary line at the end. */
+typedef struct perf_stats {
+    int on, init;
+    double t0, draw_sum, draw_max, pres_sum;
+    double bytes;
+    long frames;
+} perf_stats;
+static perf_stats g_perf;
+
+static void perf_report(perf_stats *p, double now)
+{
+    if (p->frames > 0) {
+        double span = now - p->t0;
+        if (span < 1.0) { span = 1.0; }
+        fprintf(stderr, "perf: %ld frames, draw avg %.2f ms max %.2f ms, present avg %.2f ms, "
+                "%.2f MB/s presented\n", p->frames, p->draw_sum / (double)p->frames, p->draw_max,
+                p->pres_sum / (double)p->frames, p->bytes / (span / 1000.0) / 1048576.0);
+    }
+    p->t0 = now; p->draw_sum = 0.0; p->draw_max = 0.0; p->pres_sum = 0.0;
+    p->bytes = 0.0; p->frames = 0;
+}
+
 static void run_frame(lt_app *app)
 {
-    lt_ui_begin(app->ui, &app->gfx, lt_plat_now_ms());
+    perf_stats *p = &g_perf;
+    double t0, t1, t2, pixels = 0.0;
+    if (!p->init) {
+        char *e = lt_plat_getenv("LT_PERF");
+        p->init = 1;
+        p->on = (e != NULL && e[0] != '\0' && e[0] != '0') ? 1 : 0;
+        lt_free(e);
+        p->t0 = lt_plat_now_ms();
+    }
+    t0 = lt_plat_now_ms();
+    lt_ui_begin(app->ui, &app->gfx, t0);
     lt_app_frame(app);
     lt_ui_end(app->ui);
+    t1 = lt_plat_now_ms();
     if (app->backend != NULL) {
-        app->backend->present(app->backend, app->cell_mode ? NULL : &app->canvas,
-                              app->cell_mode ? &app->cells : NULL, app->gfx.dirty);
+        pixels = present_frame(app);
+    } else if (p->on && !app->cell_mode) {      /* headless: still measure what would be presented */
+        lt_rect rs[PRESENT_MAX_RECTS];
+        int n = lt_diff_rects(&app->diff, &app->canvas, app->gfx.dirty, rs, PRESENT_MAX_RECTS), i;
+        for (i = 0; i < n; i++) { pixels += (double)rs[i].w * (double)rs[i].h; }
     }
     lt_gfx_reset_dirty(&app->gfx);
+    t2 = lt_plat_now_ms();
+    if (p->on) {
+        p->draw_sum += t1 - t0; p->pres_sum += t2 - t1; p->bytes += pixels * 4.0;
+        if (t1 - t0 > p->draw_max) { p->draw_max = t1 - t0; }
+        p->frames++;
+        if (!app->headless && t2 - p->t0 >= 1000.0) { perf_report(p, t2); }
+    }
 }
 
 int lt_app_run(lt_app *app)
@@ -1363,6 +1433,12 @@ int lt_app_run(lt_app *app)
         if (app->conn == LT_APP_ONLINE || app->conn == LT_APP_DEMO) {
             if (timeout < 0 || timeout > 25) { timeout = 25; }
         }
+        if (app->anim_ms > 0.0 && timeout != 0) {
+            /* a live gauge view animates: wake when its next frame is due (no fixed sleep) */
+            double left = app->anim_ms - (lt_plat_now_ms() - last_frame_ms);
+            int lt = left <= 0.0 ? 0 : (int)left;
+            if (timeout < 0 || lt < timeout) { timeout = lt; }
+        }
         got = be->poll(be, &ev, timeout);
         while (got) {
             if (ev.type == LT_EV_QUIT) {
@@ -1376,6 +1452,9 @@ int lt_app_run(lt_app *app)
                     apply_min_size(app);
                     lt_ui_request_redraw(app->ui);
                 }
+            } else if (ev.type == LT_EV_EXPOSE) {
+                lt_diff_invalidate(&app->diff);      /* the window contents were lost */
+                lt_ui_request_redraw(app->ui);
             } else if (ev.type == LT_EV_RESIZE) {
                 if (app->cell_mode) {
                     lt_cells_resize(&app->cells, ev.x, ev.y);
@@ -1396,8 +1475,10 @@ int lt_app_run(lt_app *app)
          * blink) has come due. Redrawing unconditionally every poll tick made
          * the app CPU-bound and input laggy. */
         if (lt_ui_needs_redraw(app->ui) ||
-            (hint >= 0 && lt_plat_now_ms() - last_frame_ms >= (double)hint)) {
+            (hint >= 0 && lt_plat_now_ms() - last_frame_ms >= (double)hint) ||
+            (app->anim_ms > 0.0 && lt_plat_now_ms() - last_frame_ms >= app->anim_ms - 1.0)) {
             last_frame_ms = lt_plat_now_ms();
+            app->anim_ms = 0.0;
             run_frame(app);
             frames++;
             if (max_frames > 0 && frames >= max_frames) { app->quit = 1; }
@@ -1491,6 +1572,7 @@ int lt_app_screenshot(lt_app *app, const char *ppm_path, int w, int h, int frame
         }
         return lt_app_shot_write(&app->cells);
     }
+    if (g_perf.on) { perf_report(&g_perf, lt_plat_now_ms()); }
     write_ppm(&app->canvas, ppm_path);
     return 0;
 }

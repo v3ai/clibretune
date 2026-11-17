@@ -118,6 +118,17 @@ void lt_gfx_reset_dirty(lt_gfx *g);
 
 /* primitives (alpha-blended when color alpha < 255) */
 void lt_gfx_clear(lt_gfx *g, lt_color c);
+/* ---- frame differencing (gfx_diff.c): which parts of a canvas changed since the last call ---- */
+typedef struct lt_diff { lt_u32 *prev; int w, h; } lt_diff;
+void lt_diff_free(lt_diff *d);
+void lt_diff_invalidate(lt_diff *d);      /* force the next lt_diff_rects to report everything */
+/* Compare `cur` with the previous frame inside `area` per 64x64 tile; writes up to max_out merged
+ * rectangles of changed tiles to out and returns their count (0 = nothing changed). The stored
+ * copy is updated, so each change is reported once. */
+int lt_diff_rects(lt_diff *d, const lt_canvas *cur, lt_rect area, lt_rect *out, int max_out);
+
+/* composite a premultiplied-ARGB canvas (alpha in the top byte) at (x, y); pixel mode only */
+void lt_gfx_blit_premul(lt_gfx *g, int x, int y, const lt_canvas *src);
 void lt_gfx_fill_rect(lt_gfx *g, lt_rect r, lt_color c);
 void lt_gfx_rect(lt_gfx *g, lt_rect r, lt_color c);           /* 1px outline */
 void lt_gfx_fill_round_rect(lt_gfx *g, lt_rect r, int radius, lt_color c);
@@ -297,6 +308,8 @@ typedef struct lt_backend lt_backend;
 struct lt_backend {
     const char *name;           /* "x11", "win32", "web", "tty" */
     lt_bool cell_mode;          /* tty: draws into lt_cells */
+    lt_bool rect_present;       /* present() may be called several times per frame with disjoint
+                                 * rectangles and sends only each rectangle (x11, win32) */
     /* open a window/session of the requested pixel size; 0 = ok */
     int  (*open)(lt_backend *b, const char *title, int w, int h);
     void (*close)(lt_backend *b);

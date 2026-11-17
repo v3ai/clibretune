@@ -80,15 +80,25 @@ static void icon_segment(lt_u8 *mask, int mw, int mh, double ax, double ay, doub
     }
 }
 
+/* Rasterised icon masks are cached (direct-mapped) by icon, size, stroke and the sub-pixel
+ * position quantised to 1/16 px: the stroke rasteriser is far costlier than a blit. */
+#define ICON_CACHE 192
+typedef struct icon_cached {
+    int icon, fxq, fyq, mw;
+    double size_px, stk;
+    lt_u8 *mask;
+} icon_cached;
+static icon_cached icon_cache[ICON_CACHE];
+
 void lt_gfx_icon(lt_gfx *g, int icon, double x, double y, double size_px, double stroke_px,
                  lt_color c)
 {
     const lt_s16 *d = lt_icon_data(icon);
-    lt_u8 stack_mask[SMALL_MASK];
-    lt_u8 *mask = stack_mask;
     double scale, r, fx, fy;
-    int margin, ix, iy, mw, mh;
+    int margin, ix, iy, mw, mh, fxq, fyq;
     size_t cells;
+    icon_cached *e;
+    unsigned h;
     if (d == NULL || g->canvas == NULL || g->cells != NULL) { return; }
     if (!(size_px >= 1.0) || size_px > (double)ICON_MAX_PX) { return; }
     if (!(fabs(x) < 1.0e6) || !(fabs(y) < 1.0e6)) { return; }
@@ -98,32 +108,40 @@ void lt_gfx_icon(lt_gfx *g, int icon, double x, double y, double size_px, double
     margin = (int)ceil(r) + 1;
     ix = (int)floor(x);
     iy = (int)floor(y);
-    fx = x - (double)ix + (double)margin;
-    fy = y - (double)iy + (double)margin;
+    fxq = (int)((x - (double)ix) * 16.0 + 0.5);
+    fyq = (int)((y - (double)iy) * 16.0 + 0.5);
+    fx = (double)fxq / 16.0 + (double)margin;
+    fy = (double)fyq / 16.0 + (double)margin;
     mw = (int)ceil(size_px) + 1 + 2 * margin;
     mh = mw;
     cells = (size_t)mw * (size_t)mh;
-    if (cells > sizeof(stack_mask)) {
-        mask = (lt_u8 *)lt_malloc(cells);
-    }
-    memset(mask, 0, cells);
-    while (d[0] != 0) {
-        int n = (int)(d[0] & 0x3FFF), closed = (d[0] & 0x4000) != 0, k;
-        const lt_s16 *p = d + 1;
-        double px0 = (double)p[0] / ICON_UNIT * scale + fx;
-        double py0 = (double)p[1] / ICON_UNIT * scale + fy;
-        double lx = px0, ly = py0;
-        for (k = 1; k < n; k++) {
-            double qx = (double)p[2 * k] / ICON_UNIT * scale + fx;
-            double qy = (double)p[2 * k + 1] / ICON_UNIT * scale + fy;
-            icon_segment(mask, mw, mh, lx, ly, qx, qy, r);
-            lx = qx; ly = qy;
+    h = ((unsigned)icon * 73856093U) ^ ((unsigned)fxq * 19349663U) ^ ((unsigned)fyq * 83492791U) ^
+        ((unsigned)(size_px * 8.0) * 2654435761U);
+    e = &icon_cache[h % ICON_CACHE];
+    if (e->mask == NULL || e->icon != icon || e->fxq != fxq || e->fyq != fyq || e->mw != mw ||
+        e->size_px != size_px || e->stk != stroke_px) {
+        if (e->mask != NULL) { lt_free(e->mask); }
+        e->mask = (lt_u8 *)lt_malloc(cells);
+        e->icon = icon; e->fxq = fxq; e->fyq = fyq; e->mw = mw;
+        e->size_px = size_px; e->stk = stroke_px;
+        memset(e->mask, 0, cells);
+        while (d[0] != 0) {
+            int n = (int)(d[0] & 0x3FFF), closed = (d[0] & 0x4000) != 0, k;
+            const lt_s16 *p = d + 1;
+            double px0 = (double)p[0] / ICON_UNIT * scale + fx;
+            double py0 = (double)p[1] / ICON_UNIT * scale + fy;
+            double lx = px0, ly = py0;
+            for (k = 1; k < n; k++) {
+                double qx = (double)p[2 * k] / ICON_UNIT * scale + fx;
+                double qy = (double)p[2 * k + 1] / ICON_UNIT * scale + fy;
+                icon_segment(e->mask, mw, mh, lx, ly, qx, qy, r);
+                lx = qx; ly = qy;
+            }
+            if (closed && n > 1) {
+                icon_segment(e->mask, mw, mh, lx, ly, px0, py0, r);
+            }
+            d += 1 + 2 * n;
         }
-        if (closed && n > 1) {
-            icon_segment(mask, mw, mh, lx, ly, px0, py0, r);
-        }
-        d += 1 + 2 * n;
     }
-    lt_gfx_blit_mask(g, ix - margin, iy - margin, mask, mw, mh, mw, c, lt_gfx_contrast_lut(c));
-    if (mask != stack_mask) { lt_free(mask); }
+    lt_gfx_blit_mask(g, ix - margin, iy - margin, e->mask, mw, mh, mw, c, lt_gfx_contrast_lut(c));
 }

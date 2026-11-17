@@ -89,12 +89,28 @@ double lt_font_x_height(lt_font *f, double px)
     return (double)lt_ttf_x_height(f) * px / (double)lt_ttf_units_per_em(f);
 }
 
+/* direct-mapped cache of kerning pairs: the GPOS lookup is far costlier than a probe */
+#define KERN_SLOTS 1024
+typedef struct kern_slot { const lt_font *f; int a, b, v, used; } kern_slot;
+static kern_slot kern_cache[KERN_SLOTS];
+
+static int kern_cached(lt_font *f, int a, int b)
+{
+    kern_slot *k = &kern_cache[(((unsigned)a * 40503U) ^ ((unsigned)b * 2654435761U) ^
+                                (unsigned)(((size_t)f >> 4) & 0xFFFFU)) % KERN_SLOTS];
+    if (!(k->used && k->f == f && k->a == a && k->b == b)) {
+        k->v = lt_ttf_kern(f, a, b);
+        k->f = f; k->a = a; k->b = b; k->used = 1;
+    }
+    return k->v;
+}
+
 /* advance of the glyph for cp, kerned against prev (pixels, unrounded) */
 static double glyph_step(lt_font *f, double s, lt_u32 cp, int *prev, int *gid_out)
 {
     int gid = lt_ttf_glyph_index(f, cp);
     double w = (double)lt_ttf_advance(f, gid) * s;
-    if (*prev != 0) { w += (double)lt_ttf_kern(f, *prev, gid) * s; }
+    if (*prev != 0) { w += (double)kern_cached(f, *prev, gid) * s; }
     *prev = gid;
     *gid_out = gid;
     return w;

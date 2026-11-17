@@ -16,7 +16,7 @@
 /* ---- persistent dashboard settings (<config dir>/dashboard.conf) ---- */
 typedef struct dash_cfg {
     int loaded;
-    int refresh_hz;          /* 10, 15, 20, 25, 30 */
+    int refresh_hz;          /* 10, 15, 20, 25, 30, 60 */
     int right_align;         /* right-align numeric values */
     int ind_cols;            /* indicator columns, 0 = auto */
     int ind_fill;            /* stretch the last indicator row */

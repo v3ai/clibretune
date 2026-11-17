@@ -313,6 +313,42 @@ static void put_span(lt_gfx *g, int x, int y, int w, lt_color col, int cov)
     }
 }
 
+/* Composite a premultiplied-ARGB layer (alpha in the top byte, colour already multiplied by it)
+ * over the canvas at (x, y) in the current translation; honours the clip. */
+void lt_gfx_blit_premul(lt_gfx *g, int x, int y, const lt_canvas *src)
+{
+    lt_canvas *c = g->canvas;
+    lt_rect r;
+    int yy, xx;
+    if (c == NULL || src == NULL || src->px == NULL) { return; }
+    x += g->ox; y += g->oy;
+    r = lt_rect_intersect(lt_rect_make(x, y, src->w, src->h), g->clip);
+    r = lt_rect_intersect(r, lt_rect_make(0, 0, c->w, c->h));
+    if (r.w <= 0 || r.h <= 0) { return; }
+    for (yy = r.y; yy < r.y + r.h; yy++) {
+        const lt_u32 *sp = src->px + (size_t)(yy - y) * (size_t)src->pitch + (size_t)(r.x - x);
+        lt_u32 *dp = c->px + (size_t)yy * (size_t)c->pitch + (size_t)r.x;
+        for (xx = 0; xx < r.w; xx++) {
+            lt_u32 s = sp[xx];
+            lt_u32 a = s >> 24;
+            if (a == 255) {
+                dp[xx] = s | 0xFF000000UL;
+            } else if (a != 0) {
+                lt_u32 d = dp[xx];
+                int ia = 255 - (int)a;
+                int rr = (int)((s >> 16) & 0xFF) + DIV255((int)((d >> 16) & 0xFF) * ia);
+                int gg = (int)((s >> 8) & 0xFF) + DIV255((int)((d >> 8) & 0xFF) * ia);
+                int bb = (int)(s & 0xFF) + DIV255((int)(d & 0xFF) * ia);
+                if (rr > 255) { rr = 255; }
+                if (gg > 255) { gg = 255; }
+                if (bb > 255) { bb = 255; }
+                dp[xx] = (lt_u32)(0xFF000000UL | ((lt_u32)rr << 16) | ((lt_u32)gg << 8) | (lt_u32)bb);
+            }
+        }
+    }
+    mark_clipped(g, r.x, r.y, r.w, r.h);
+}
+
 /* ------------------------------------------------------------------ */
 /* cell primitives                                                     */
 static lt_cell *cell_at(lt_gfx *g, int cx, int cy)
@@ -718,76 +754,111 @@ typedef struct arc_ctx {
     int bx0, by0, bx1, by1; /* pixel bounding box of the sector (inclusive) */
 } arc_ctx;
 
-static double arc_cov(const arc_ctx *a, double x, double y)
-{
-    double dx = x - a->cx, dy = y - a->cy, d = sqrt(dx * dx + dy * dy), cv, th, m, ac;
-    cv = clamp01(a->rout + 0.5 - d);
-    if (a->rin > 0.0) {
-        cv = cv + clamp01(d - a->rin + 0.5) - 1.0;
-        if (cv < 0.0) { cv = 0.0; }
-    }
-    if (cv <= 0.0 || a->full) { return cv; }
-    th = atan2(dy, dx) - a->a0;
-    th = fmod(th, TWO_PI);
-    if (th < 0.0) { th += TWO_PI; }
-    if (th <= a->sweep) {
-        m = LT_MIN(th, a->sweep - th) * d;
-        ac = clamp01(m + 0.5);
-    } else {
-        m = LT_MIN(th - a->sweep, TWO_PI - th) * d;
-        ac = clamp01(0.5 - m);
-    }
-    return cv * ac;
-}
-
-static void arc_pixels(lt_gfx *g, const arc_ctx *a, int py, int xa, int xb, lt_color c)
-{
-    int px;
-    double yc = py + 0.5;
-    if (xa < g->clip.x) { xa = g->clip.x; }
-    if (xb >= g->clip.x + g->clip.w) { xb = g->clip.x + g->clip.w - 1; }
-    if (xa < a->bx0) { xa = a->bx0; }
-    if (xb > a->bx1) { xb = a->bx1; }
-    for (px = xa; px <= xb; px++) {
-        double cv = arc_cov(a, px + 0.5, yc);
-        if (cv > 0.0) { put_span(g, px, py, 1, c, cov255(cv)); }
-    }
-}
-
+/* Per-row scanline fill of an annular sector. Radial coverage comes from the pixel's distance to
+ * the centre (sqrt only in the 1 px fringes; the fully covered band is found from per-row spans);
+ * angular coverage is the signed perpendicular distance to the two edge lines (linear in x, so no
+ * atan2/fmod): convex wedges (sweep <= 180 deg) intersect the two half-planes, reflex ones unite
+ * them. Fully covered runs are filled as one span. */
 static void arc_draw(lt_gfx *g, const arc_ctx *a, lt_color c)
 {
-    int py, ya, yb;
-    double ro = a->rout + 1.0, ri = a->rin - 1.0;
+    int py, ya, yb, convex;
+    double ro = a->rout + 1.0;
+    double u0x = 0.0, u0y = 0.0, u1x = 0.0, u1y = 0.0;
+    double rof = a->rout - 0.5, rif = a->rin + 0.5;
+    if (!a->full) {
+        u0x = cos(a->a0); u0y = sin(a->a0);
+        u1x = cos(a->a0 + a->sweep); u1y = sin(a->a0 + a->sweep);
+    }
+    convex = a->sweep <= LT_PI;
     ya = ifloor(a->cy - ro); yb = iceil(a->cy + ro);
     if (ya < a->by0) { ya = a->by0; }
     if (yb > a->by1 + 1) { yb = a->by1 + 1; }
     if (ya < g->clip.y) { ya = g->clip.y; }
     if (yb > g->clip.y + g->clip.h) { yb = g->clip.y + g->clip.h; }
     for (py = ya; py < yb; py++) {
-        double dy = py + 0.5 - a->cy, o2 = ro * ro - dy * dy, xo, xi;
-        int xl, xr;
+        double dy = py + 0.5 - a->cy, o2 = ro * ro - dy * dy, xo, xs = -1.0, xi = 0.0, xh = -1.0;
+        double c0, c1, cb0 = 0.0, cb1 = 0.0;
+        int xl, xr, px, sg, nseg, sx0[2], sx1[2];
         if (o2 < 0.0) { continue; }
         xo = sqrt(o2);
         xl = ifloor(a->cx - xo); xr = iceil(a->cx + xo);
-        if (a->rin <= 0.0 && a->full) {
-            double s2 = (a->rout - 0.5) * (a->rout - 0.5) - dy * dy;
-            if (s2 > 0.0) {
-                double xs = sqrt(s2);
-                int sl = iceil(a->cx - xs - 0.5), sr = ifloor(a->cx + xs - 0.5);
-                if (sl <= sr) {
-                    put_span(g, sl, py, sr - sl + 1, c, 255);
-                    arc_pixels(g, a, py, xl, sl - 1, c);
-                    arc_pixels(g, a, py, sr + 1, xr, c);
-                    continue;
+        if (rof > 0.0 && rof * rof > dy * dy) { xs = sqrt(rof * rof - dy * dy); }
+        if (rif > 0.0 && rif * rif > dy * dy) { xi = sqrt(rif * rif - dy * dy); }
+        if (a->rin - 0.5 > 0.0 && (a->rin - 0.5) * (a->rin - 0.5) > dy * dy) {
+            xh = sqrt((a->rin - 0.5) * (a->rin - 0.5) - dy * dy);
+        }
+        if (xl < g->clip.x) { xl = g->clip.x; }
+        if (xr >= g->clip.x + g->clip.w) { xr = g->clip.x + g->clip.w - 1; }
+        if (xl < a->bx0) { xl = a->bx0; }
+        if (xr > a->bx1) { xr = a->bx1; }
+        c0 = 0.0; c1 = 0.0;
+        nseg = 1; sx0[0] = xl; sx1[0] = xr;
+        if (!a->full) {
+            double k0 = -u0y, k1 = u1y, lo = -1.0e30, hi = 1.0e30, t;
+            cb0 = u0x * dy; cb1 = -dy * u1x;
+            /* columns (relative to cx) where c0 > -0.5 / c1 > -0.5; reflex wedges: the gap is
+             * where both are <= -0.5 */
+            if (convex) {
+                if (k0 > 1.0e-12) { t = (-0.5 - cb0) / k0; if (t > lo) { lo = t; } }
+                else if (k0 < -1.0e-12) { t = (-0.5 - cb0) / k0; if (t < hi) { hi = t; } }
+                else if (cb0 <= -0.5) { hi = -1.0e30; }
+                if (k1 > 1.0e-12) { t = (-0.5 - cb1) / k1; if (t > lo) { lo = t; } }
+                else if (k1 < -1.0e-12) { t = (-0.5 - cb1) / k1; if (t < hi) { hi = t; } }
+                else if (cb1 <= -0.5) { hi = -1.0e30; }
+                if (lo > hi) { continue; }
+                { int pl = iceil(a->cx + lo - 0.5) - 1, pr = ifloor(a->cx + hi - 0.5) + 1;
+                  if (pl > sx0[0]) { sx0[0] = pl; }
+                  if (pr < sx1[0]) { sx1[0] = pr; } }
+            } else {
+                /* gap = { c0 <= -0.5 } and { c1 <= -0.5 }: an interval in dx */
+                if (k0 > 1.0e-12) { t = (-0.5 - cb0) / k0; if (t < hi) { hi = t; } }
+                else if (k0 < -1.0e-12) { t = (-0.5 - cb0) / k0; if (t > lo) { lo = t; } }
+                else if (cb0 > -0.5) { lo = 1.0e30; }
+                if (k1 > 1.0e-12) { t = (-0.5 - cb1) / k1; if (t < hi) { hi = t; } }
+                else if (k1 < -1.0e-12) { t = (-0.5 - cb1) / k1; if (t > lo) { lo = t; } }
+                else if (cb1 > -0.5) { lo = 1.0e30; }
+                if (lo <= hi) {
+                    int gl = iceil(a->cx + lo - 0.5) + 1, gr = ifloor(a->cx + hi - 0.5) - 1;
+                    if (gl <= gr) {
+                        sx0[1] = gr + 1; sx1[1] = xr; sx1[0] = gl - 1; nseg = 2;
+                    }
                 }
             }
-            arc_pixels(g, a, py, xl, xr, c);
-        } else if (ri > 0.0 && ri * ri > dy * dy) {
-            xi = sqrt(ri * ri - dy * dy);
-            arc_pixels(g, a, py, xl, ifloor(a->cx - xi), c);
-            arc_pixels(g, a, py, iceil(a->cx + xi), xr, c);
-        } else {
-            arc_pixels(g, a, py, xl, xr, c);
+        }
+        for (sg = 0; sg < nseg; sg++) {
+        int run = -1;
+        for (px = sx0[sg]; px <= sx1[sg]; px++) {
+            double dx = px + 0.5 - a->cx, adx = fabs(dx), cv, ac;
+            if (adx < xh) {                 /* inside the hole: nothing to draw */
+                int nx = iceil(a->cx + xh - 0.5);
+                if (run >= 0) { put_span(g, run, py, px - run, c, 255); run = -1; }
+                if (nx > px) { px = nx - 1; continue; }
+            }
+            if (adx <= xs && adx >= xi) {
+                cv = 1.0;
+            } else {
+                double d = sqrt(dx * dx + dy * dy);
+                cv = clamp01(a->rout + 0.5 - d);
+                if (a->rin > 0.0) {
+                    cv = cv + clamp01(d - a->rin + 0.5) - 1.0;
+                    if (cv < 0.0) { cv = 0.0; }
+                }
+            }
+            if (cv > 0.0 && !a->full) {
+                double m;
+                c0 = cb0 - u0y * dx; c1 = dx * u1y + cb1;
+                m = convex ? (c0 < c1 ? c0 : c1) : (c0 > c1 ? c0 : c1);
+                ac = clamp01(m + 0.5);
+                cv *= ac;
+            }
+            if (cv >= 1.0) {
+                if (run < 0) { run = px; }
+                continue;
+            }
+            if (run >= 0) { put_span(g, run, py, px - run, c, 255); run = -1; }
+            if (cv > 0.0) { put_span(g, px, py, 1, c, cov255(cv)); }
+        }
+        if (run >= 0) { put_span(g, run, py, sx1[sg] + 1 - run, c, 255); }
         }
     }
     mark_clipped(g, ifloor(a->cx - ro), ifloor(a->cy - ro), iceil(2.0 * ro) + 1,

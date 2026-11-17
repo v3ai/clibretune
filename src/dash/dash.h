@@ -197,7 +197,7 @@ void lt_dash_gauge_from_ini(const lt_ini_gauge *src, lt_dash_gauge *dst, const l
 typedef struct lt_dash_view lt_dash_view;
 lt_dash_view *lt_dash_view_new(const lt_dash_file *d);
 void   lt_dash_view_free(lt_dash_view *v);
-void   lt_dash_view_set_redraw_hz(lt_dash_view *v, int hz);          /* 10,15,20,25,30 (default 30) */
+void   lt_dash_view_set_redraw_hz(lt_dash_view *v, int hz);          /* 10,15,20,25,30,60 (default 30) */
 /* Pull current values from env (get_var by output_channel), advance smoothing
  * (EMA tau 120 ms), peak hold, spike flash, history rings. Also resolves
  * {expr} limits lazily (cached by expression text). */

@@ -396,6 +396,7 @@ void lt_app_free(lt_app *app)
     lt_buf_free(&app->rtbuf);
     if (app->ui != NULL) { lt_ui_destroy(app->ui); }
     if (app->cell_mode) { lt_cells_free(&app->cells); } else { lt_canvas_free(&app->canvas); }
+    lt_diff_free(&app->diff);
     if (app->backend != NULL) { lt_backend_destroy(app->backend); }
     lt_free(app->config_dir);
     lt_free(app);

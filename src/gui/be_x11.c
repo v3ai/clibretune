@@ -1149,35 +1149,38 @@ static void x_present(lt_backend *be, lt_canvas *c, lt_cells *cells, lt_rect dir
             p16(x, &b, (lt_u32)sw); p16(x, &b, (lt_u32)sh);
             p16(x, &b, (lt_u32)x0); p16(x, &b, (lt_u32)y0);
             p8(&b, 0); p8(&b, x->depth); p8(&b, 0); p8(&b, 0);
-            lt_buf_reserve(&b, (size_t)rowbytes * (size_t)sh);
+            lt_buf_reserve(&b, (size_t)rowbytes * (size_t)sh + 8);
             for (yy = 0; yy < sh; yy++) {
                 const lt_u32 *src = c->px + (size_t)(y0 + yy) * (size_t)c->pitch + (size_t)x0;
-                lt_u8 *dst;
-                size_t base = b.len;
-                int written = 0;
-                for (xx = 0; xx < rowbytes; xx++) lt_buf_putc(&b, 0);
-                dst = (lt_u8 *)b.data + base;
-                for (xx = 0; xx < sw; xx++) {
-                    lt_u32 px = src[xx];
-                    int rr = (int)((px >> 16) & 0xFF), gg = (int)((px >> 8) & 0xFF);
-                    int bb = (int)(px & 0xFF);
-                    if (x->bpp == 32) {
-                        if (x->img_msb) {
+                lt_u8 *dst = (lt_u8 *)b.data + b.len;
+                memset(dst, 0, (size_t)rowbytes);
+                if (x->bpp == 32 && !x->img_msb) {
+                    for (xx = 0; xx < sw; xx++) {       /* B G R pad: little-endian 0x00RRGGBB */
+                        lt_u32 px = src[xx];
+                        dst[0] = (lt_u8)px; dst[1] = (lt_u8)(px >> 8);
+                        dst[2] = (lt_u8)(px >> 16);
+                        dst += 4;
+                    }
+                } else {
+                    int written = 0;
+                    for (xx = 0; xx < sw; xx++) {
+                        lt_u32 px = src[xx];
+                        int rr = (int)((px >> 16) & 0xFF), gg = (int)((px >> 8) & 0xFF);
+                        int bb = (int)(px & 0xFF);
+                        if (x->bpp == 32) {
                             dst[written] = 0; dst[written + 1] = (lt_u8)rr;
                             dst[written + 2] = (lt_u8)gg; dst[written + 3] = (lt_u8)bb;
+                            written += 4;
                         } else {
-                            dst[written] = (lt_u8)bb; dst[written + 1] = (lt_u8)gg;
-                            dst[written + 2] = (lt_u8)rr; dst[written + 3] = 0;
+                            lt_u32 v = ((lt_u32)(rr >> 3) << 11) | ((lt_u32)(gg >> 2) << 5) |
+                                       (lt_u32)(bb >> 3);
+                            if (x->img_msb) { dst[written] = (lt_u8)(v >> 8); dst[written + 1] = (lt_u8)v; }
+                            else { dst[written] = (lt_u8)v; dst[written + 1] = (lt_u8)(v >> 8); }
+                            written += 2;
                         }
-                        written += 4;
-                    } else {
-                        lt_u32 v = ((lt_u32)(rr >> 3) << 11) | ((lt_u32)(gg >> 2) << 5) |
-                                   (lt_u32)(bb >> 3);
-                        if (x->img_msb) { dst[written] = (lt_u8)(v >> 8); dst[written + 1] = (lt_u8)v; }
-                        else { dst[written] = (lt_u8)v; dst[written + 1] = (lt_u8)(v >> 8); }
-                        written += 2;
                     }
                 }
+                b.len += (size_t)rowbytes;
             }
             if (req_end(x, &b) < 0) { lt_buf_free(&b); return; }
         }
@@ -1238,6 +1241,7 @@ lt_backend *lt_backend_x11_create(void) {
     if (x->dead) { x_free(x); return NULL; }
     be = (lt_backend *)lt_calloc(1, sizeof *be);
     be->name = "x11";
+    be->rect_present = LT_TRUE;
     be->cell_mode = LT_FALSE;
     be->open = x_open;
     be->close = x_close;

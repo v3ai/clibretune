@@ -608,27 +608,165 @@ static double dial_angle(const gp *p, const lt_gauge_arc *a, double pc)
     return rad(d);
 }
 
-static void paint_dial(gp *p)
+/* ====================================================================== */
+/* Static-layer cache. Dial-like painters render everything that does not move with the value
+ * (bezel, face, zones, ticks, labels, title) once into an offscreen layer and blit it each frame.
+ * The layer is rendered over black and over white and stored as premultiplied ARGB so it
+ * composites correctly over whatever the dashboard draws behind the gauge. It is keyed by every
+ * input the static part reads (size, range, limits, colours, arc, ticks, title, units, font mode,
+ * UI scale); any change re-renders it. A layer is only built when the same key was seen on two
+ * consecutive paints of a gauge, so a gauge whose inputs change every frame never pays for it. */
+typedef struct layer_key {
+    int painter, bitmap, pct, label_digits, border_width, major_ticks, minor_ticks;
+    int has_lw, has_hw, has_lc, has_hc, ccw, full_circle;
+    double w, h, mn, mx, lw, hw, lc, hc;
+    double start_deg, sweep_deg, face_start_deg, face_deg;
+    lt_u32 bc, fc, tc, wc, cc;
+    char title[96], unit[48];
+} layer_key;
+
+#define LAYER_SLOTS 24
+#define LAYER_MAX_BYTES (96UL * 1024UL * 1024UL)
+typedef struct layer_slot {
+    const void *owner;
+    layer_key key;
+    lt_canvas cv;
+    int have;               /* cv holds the rendered layer for key */
+    lt_u32 stamp;
+} layer_slot;
+static layer_slot g_layers[LAYER_SLOTS];
+static lt_u32 g_layer_clock = 0;
+
+static void layer_key_common(const gp *p, layer_key *k, const lt_gauge_arc *a)
 {
-    double size = LT_MIN(p->W, p->H), cx = p->W / 2, cy = p->H / 2;
-    double radius = size / 2 - LT_MAX(3.0, size * 0.02), bezelW, faceR, zr, zw;
+    const lt_dash_limits *l = &p->s->lim;
+    k->painter = (int)p->c->painter; k->bitmap = p->g->bitmap_text; k->pct = p->g->ui_pct;
+    k->label_digits = (int)p->c->label_digits; k->border_width = (int)p->c->border_width;
+    k->major_ticks = (int)p->c->major_ticks; k->minor_ticks = (int)p->c->minor_ticks;
+    k->has_lw = l->has_lw ? 1 : 0; k->has_hw = l->has_hw ? 1 : 0;
+    k->has_lc = l->has_lc ? 1 : 0; k->has_hc = l->has_hc ? 1 : 0;
+    k->lw = l->lw; k->hw = l->hw; k->lc = l->lc; k->hc = l->hc;
+    k->w = p->W; k->h = p->H; k->mn = p->mn; k->mx = p->mx;
+    if (a != NULL) {
+        k->ccw = a->ccw ? 1 : 0; k->full_circle = a->full_circle ? 1 : 0;
+        k->start_deg = a->start_deg; k->sweep_deg = a->sweep_deg;
+        k->face_start_deg = a->face_start_deg; k->face_deg = a->face_deg;
+    }
+    k->bc = (lt_u32)p->bc; k->fc = (lt_u32)p->fc; k->tc = (lt_u32)p->tc;
+    k->wc = (lt_u32)p->wc; k->cc = (lt_u32)p->cc;
+    resolve_text(p->c->title, k->title, sizeof k->title);
+    gauge_units(p, k->unit, sizeof k->unit);
+}
+
+static void layer_render(gp *p, lt_canvas *dst, void (*paint)(gp *))
+{
+    lt_canvas white;
+    lt_gfx og;
+    gp q;
+    size_t i, n;
+    q = *p;
+    lt_canvas_init(dst, p->r.w, p->r.h);
+    lt_canvas_init(&white, p->r.w, p->r.h);
+    lt_gfx_init_canvas(&og, dst);
+    og.bitmap_text = p->g->bitmap_text; og.ui_pct = p->g->ui_pct;
+    q.g = &og; q.r = lt_rect_make(0, 0, p->r.w, p->r.h);
+    lt_gfx_clear(&og, LT_RGB(0, 0, 0));
+    paint(&q);
+    lt_gfx_init_canvas(&og, &white);
+    og.bitmap_text = p->g->bitmap_text; og.ui_pct = p->g->ui_pct;
+    q.g = &og;
+    lt_gfx_clear(&og, LT_RGB(255, 255, 255));
+    paint(&q);
+    n = (size_t)p->r.w * (size_t)p->r.h;
+    for (i = 0; i < n; i++) {
+        lt_u32 b = dst->px[i], w = white.px[i];
+        int db = (int)(w & 255) - (int)(b & 255);
+        int dg = (int)((w >> 8) & 255) - (int)((b >> 8) & 255);
+        int dr = (int)((w >> 16) & 255) - (int)((b >> 16) & 255);
+        int al = 255 - (dr + dg + db) / 3;
+        if (al < 0) { al = 0; } else if (al > 255) { al = 255; }
+        dst->px[i] = (b & 0x00FFFFFFUL) | ((lt_u32)al << 24);
+    }
+    lt_canvas_free(&white);
+}
+
+/* draw the static layer of a gauge: from the cache when valid, else directly */
+static void layer_paint(gp *p, const layer_key *k, void (*paint)(gp *))
+{
+    int i, slot = -1, oldest = 0;
+    size_t bytes = 0;
+    layer_slot *s;
+    if (p->r.w < 8 || p->r.h < 8 || p->r.w > 4096 || p->r.h > 4096) { paint(p); return; }
+    g_layer_clock++;
+    for (i = 0; i < LAYER_SLOTS; i++) {
+        if (g_layers[i].owner == (const void *)p->c) { slot = i; break; }
+    }
+    if (slot < 0) {
+        for (i = 0; i < LAYER_SLOTS; i++) {
+            if (g_layers[i].owner == NULL) { slot = i; break; }
+            if (g_layers[i].stamp < g_layers[oldest].stamp) { oldest = i; }
+        }
+        if (slot < 0) { slot = oldest; }
+        if (g_layers[slot].have) { lt_canvas_free(&g_layers[slot].cv); }
+        memset(&g_layers[slot], 0, sizeof g_layers[slot]);
+    }
+    s = &g_layers[slot];
+    s->stamp = g_layer_clock;
+    if (s->owner == (const void *)p->c && s->have && memcmp(&s->key, k, sizeof *k) == 0 &&
+        s->cv.w == p->r.w && s->cv.h == p->r.h) {
+        lt_gfx_blit_premul(p->g, p->r.x, p->r.y, &s->cv);
+        return;
+    }
+    if (s->have) { lt_canvas_free(&s->cv); s->have = 0; }
+    if (s->owner == (const void *)p->c && memcmp(&s->key, k, sizeof *k) == 0) {
+        /* second consecutive paint with this key: build the layer */
+        for (i = 0; i < LAYER_SLOTS; i++) {
+            if (g_layers[i].have) { bytes += (size_t)g_layers[i].cv.w * (size_t)g_layers[i].cv.h * 4U; }
+        }
+        if (bytes + (size_t)p->r.w * (size_t)p->r.h * 4U <= LAYER_MAX_BYTES) {
+            layer_render(p, &s->cv, paint);
+            s->have = 1;
+            lt_gfx_blit_premul(p->g, p->r.x, p->r.y, &s->cv);
+            return;
+        }
+    }
+    s->owner = (const void *)p->c;
+    memcpy(&s->key, k, sizeof *k);
+    paint(p);
+}
+
+typedef struct dial_geo {
+    double size, cx, cy, radius, bezelW, faceR, fs, fe, mid, dirx, diry;
     lt_gauge_arc a;
-    double fs, fe, mid, dirx, diry, pc, ang, len, w, major, range = p->mx - p->mn;
+} dial_geo;
+
+static void dial_geom(const gp *p, dial_geo *d)
+{
+    d->size = LT_MIN(p->W, p->H); d->cx = p->W / 2; d->cy = p->H / 2;
+    d->radius = d->size / 2 - LT_MAX(3.0, d->size * 0.02);
+    lt_gauge_resolve_arc(p->c, &d->a);
+    d->fs = rad(d->a.face_start_deg); d->fe = d->fs + rad(d->a.face_deg);
+    d->mid = (d->fs + d->fe) / 2.0; d->dirx = -cos(d->mid); d->diry = -sin(d->mid);
+    d->bezelW = p->c->border_width > 0 ? LT_MIN(d->radius * 0.3, (double)p->c->border_width)
+                                       : LT_MAX(5.0, d->radius * 0.07);
+    d->faceR = d->radius - d->bezelW - 1;
+}
+
+/* static layer of a dial: bezel, face, zones, ticks, tick labels, title */
+static void dial_static(gp *p)
+{
+    dial_geo d;
+    double cx, cy, radius, faceR, zr, zw, dirx, diry, range = p->mx - p->mn, major, tickR, ang, lh;
+    double fs, fe;
+    lt_gauge_arc a;
     int nMajor, i, minorPer, total;
-    double tickR;
-    char buf[64], t[96], u[48];
+    char t[96];
     lt_dash_limits *lim = (lt_dash_limits *)&p->s->lim;
     lt_color tc = p->tc;
     lt_gfx *g = p->g;
-    double lh;
-
-    lt_gauge_resolve_arc(p->c, &a);
-    fs = rad(a.face_start_deg); fe = fs + rad(a.face_deg);
-    mid = (fs + fe) / 2.0; dirx = -cos(mid); diry = -sin(mid);
-    bezelW = p->c->border_width > 0 ? LT_MIN(radius * 0.3, (double)p->c->border_width)
-                                      : LT_MAX(5.0, radius * 0.07);
-    if (radius < 10) { return; }
-    faceR = radius - bezelW - 1;
+    dial_geom(p, &d);
+    a = d.a; cx = d.cx; cy = d.cy; radius = d.radius; faceR = d.faceR; dirx = d.dirx; diry = d.diry;
+    fs = d.fs; fe = d.fe;
     /* face */
     if (a.full_circle) {
         p_disc(p, cx, cy, radius, LT_RGB(18, 18, 20));
@@ -703,14 +841,38 @@ static void paint_dial(gp *p)
     }
     /* texts */
     resolve_text(p->c->title, t, sizeof t);
+    {
+        double tx, ty;
+        if (a.full_circle) { tx = cx; ty = cy + faceR * 0.34; }
+        else { tx = cx + dirx * faceR * 0.1; ty = cy + diry * faceR * 0.1; }
+        p_text(p, tx, ty, t, LT_MAX(9.0, faceR * 0.12), 1, 1, p->fc, faceR * 0.72);
+    }
+}
+
+static void paint_dial(gp *p)
+{
+    dial_geo d;
+    double cx, cy, faceR, dirx, diry, range = p->mx - p->mn, pc, ang, len, w;
+    lt_gauge_arc a;
+    char buf[64], u[48], t[96];
+    lt_dash_limits *lim = (lt_dash_limits *)&p->s->lim;
+    lt_color tc = p->tc;
+    lt_gfx *g = p->g;
+    layer_key k;
+    dial_geom(p, &d);
+    if (d.radius < 10) { return; }
+    a = d.a; cx = d.cx; cy = d.cy; faceR = d.faceR; dirx = d.dirx; diry = d.diry;
+    memset(&k, 0, sizeof k);
+    layer_key_common(p, &k, &a);
+    layer_paint(p, &k, dial_static);
+    resolve_text(p->c->title, t, sizeof t);
     gauge_units(p, u, sizeof u);
     fmt_val(p, p->v, vdig(p), buf, sizeof buf);
     if (u[0]) { lt_snprintf(buf + strlen(buf), sizeof buf - strlen(buf), " %s", u); }
     {
-        double tx, ty, vx, vy, vh = LT_MAX(11.0, faceR * 0.17), bw;
-        if (a.full_circle) { tx = cx; ty = cy + faceR * 0.34; vx = cx; vy = cy + faceR * 0.64; }
-        else { tx = cx + dirx * faceR * 0.1; ty = cy + diry * faceR * 0.1; vx = cx + dirx * faceR * 0.34; vy = cy + diry * faceR * 0.34; }
-        p_text(p, tx, ty, t, LT_MAX(9.0, faceR * 0.12), 1, 1, p->fc, faceR * 0.72);
+        double vx, vy, vh = LT_MAX(11.0, faceR * 0.17), bw;
+        if (a.full_circle) { vx = cx; vy = cy + faceR * 0.64; }
+        else { vx = cx + dirx * faceR * 0.34; vy = cy + diry * faceR * 0.34; }
         bw = lt_gfx_vtext_width(buf, vh * VS);
         if (bw > faceR * 0.75) { vh = vh * faceR * 0.75 / bw; bw = faceR * 0.75; }
         p_round(p, vx - bw / 2 - 5, vy - vh / 2 - 3, bw + 10, vh + 6, 4, alpha(LT_RGB(0, 0, 0), 110));
@@ -804,14 +966,13 @@ static void paint_sweep(gp *p)
 }
 
 /* ---- tachometer ---- */
-static void paint_tach(gp *p)
+static void tach_static(gp *p)
 {
     double P = LT_MIN(p->W, p->H) * 0.05, radius = LT_MIN(p->W, p->H) / 2 - P, cx = p->W / 2, cy = p->H / 2;
-    double sa = rad(135.0), sw = rad(270.0), range = p->mx - p->mn, pc, ang;
+    double sa = rad(135.0), sw = rad(270.0), range = p->mx - p->mn;
     int n, i;
     double step = 1000.0;
-    char buf[48], t[96];
-    if (radius < 12) { return; }
+    char t[96];
     p_disc(p, cx, cy, radius, LT_RGB(12, 12, 12));
     p_metal(p, cx, cy, radius * 0.93, radius, 0, 2 * LT_PI, p->tc);
     p_disc(p, cx, cy, radius * 0.93, LT_RGB(22, 22, 25));
@@ -847,6 +1008,19 @@ static void paint_tach(gp *p)
     }
     resolve_text(p->c->title, t, sizeof t);
     p_text(p, cx, cy + radius * 0.30, t, LT_MAX(8.0, radius * 0.11), 1, 1, p->tc, radius);
+}
+
+static void paint_tach(gp *p)
+{
+    double P = LT_MIN(p->W, p->H) * 0.05, radius = LT_MIN(p->W, p->H) / 2 - P, cx = p->W / 2, cy = p->H / 2;
+    double sa = rad(135.0), sw = rad(270.0), range = p->mx - p->mn, pc, ang;
+    char buf[48];
+    layer_key k;
+    if (radius < 12) { return; }
+    memset(&k, 0, sizeof k);
+    layer_key_common(p, &k, NULL);
+    layer_paint(p, &k, tach_static);
+    if (range <= 0.0) { return; }
     fmt_val(p, p->v, vdig(p), buf, sizeof buf);
     p_round(p, cx - radius * 0.34, cy + radius * 0.42, radius * 0.68, radius * 0.24, 4, LT_RGB(0, 0, 0));
     p_val(p, cx, cy + radius * 0.54, buf, LT_MAX(10.0, radius * 0.17), 1, 1, p->vc, radius * 0.6);

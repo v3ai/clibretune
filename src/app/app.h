@@ -110,10 +110,12 @@ struct lt_app {
     /* platform */
     lt_backend *backend;
     lt_canvas   canvas;
+    lt_diff     diff;       /* last presented frame, for dirty-tile presenting */
     lt_cells    cells;
     lt_gfx      gfx;
     lt_ui      *ui;
     int         cell_mode;
+    double      anim_ms;             /* >0: a live view wants a frame this often (set while drawing) */
     int         scale_pct;           /* effective UI scale in percent */
     int         quit, quit_asked, headless;
     lt_app_settings settings;

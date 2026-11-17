@@ -281,6 +281,31 @@ static void wb_blit(wb_state *w, HDC dc)
                             c->px, &bmi, DIB_RGB_COLORS);
 }
 
+/* blit one rectangle of the canvas: the sub-image is addressed through a pointer offset and the
+ * canvas pitch, so no bottom-up/top-down source origin arithmetic is involved */
+static void wb_blit_rect(wb_state *w, HDC dc, lt_rect r)
+{
+    BITMAPINFO bmi;
+    lt_canvas *c = w->canvas;
+    if (c == NULL || c->px == NULL) {
+        return;
+    }
+    r = lt_rect_intersect(r, lt_rect_make(0, 0, c->w, c->h));
+    if (r.w <= 0 || r.h <= 0) {
+        return;
+    }
+    memset(&bmi, 0, sizeof(bmi));
+    bmi.bmiHeader.biSize = (DWORD)sizeof(BITMAPINFOHEADER);
+    bmi.bmiHeader.biWidth = c->pitch;
+    bmi.bmiHeader.biHeight = -r.h;
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 32;
+    bmi.bmiHeader.biCompression = BI_RGB;
+    (void)SetDIBitsToDevice(dc, r.x, r.y, (DWORD)r.w, (DWORD)r.h, 0, 0, 0, (UINT)r.h,
+                            c->px + (size_t)r.y * (size_t)c->pitch + (size_t)r.x, &bmi,
+                            DIB_RGB_COLORS);
+}
+
 /* ---- window procedure ---- */
 static LRESULT CALLBACK wb_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {
@@ -580,7 +605,7 @@ static void wb_present(lt_backend *b, lt_canvas *canvas, lt_cells *cells, lt_rec
     if (dc == NULL) {
         return;
     }
-    wb_blit(w, dc);
+    wb_blit_rect(w, dc, dirty);
     (void)ReleaseDC(w->hwnd, dc);
 }
 
@@ -790,6 +815,7 @@ lt_backend *lt_backend_win32_create(void)
     w->dpi = wb_system_dpi();
     b = (lt_backend *)lt_calloc(1, sizeof(*b));
     b->name = "win32";
+    b->rect_present = LT_TRUE;
     b->cell_mode = LT_FALSE;
     b->open = wb_open;
     b->close = wb_close;
