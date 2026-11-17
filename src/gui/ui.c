@@ -673,6 +673,35 @@ void lt_ui_draw_vtext(lt_ui *ui, double x, double y, const char *s, double heigh
     k->i[0] = align; k->i[1] = valign; k->c = c; k->off = arena_text(ui, s);
 }
 
+static int cell_attr_underline = LT_CELL_UNDERLINE;
+static int cell_attr_bold = LT_CELL_BOLD;
+
+static void cell_attr_cb(lt_gfx *g, lt_rect r, void *user)
+{
+    lt_gfx_cell_attr(g, r, *(const int *)user, 1);
+}
+
+static void cell_shadow_cb(lt_gfx *g, lt_rect r, void *user)
+{
+    LT_UNUSED(user);
+    lt_gfx_cell_shadow(g, r, 2, 1);
+}
+
+void ui_cell_shadow(lt_ui *ui, lt_rect r)
+{
+    if (ui->cell) { lt_ui_draw_custom(ui, r, cell_shadow_cb, NULL); }
+}
+
+void ui_cell_underline(lt_ui *ui, lt_rect r)
+{
+    if (ui->cell) { lt_ui_draw_custom(ui, r, cell_attr_cb, &cell_attr_underline); }
+}
+
+void ui_cell_bold(lt_ui *ui, lt_rect r)
+{
+    if (ui->cell) { lt_ui_draw_custom(ui, r, cell_attr_cb, &cell_attr_bold); }
+}
+
 void lt_ui_draw_custom(lt_ui *ui, lt_rect r, lt_ui_draw_fn fn, void *user)
 {
     ui_cmd *k = ui_cmd_push(ui, UC_CUSTOM);
@@ -860,28 +889,27 @@ void lt_ui_draw_icon(lt_ui *ui, lt_rect r, int icon, lt_color c)
         }
     }
     if (ui->cell) {
-        char ch[4];
-        ch[1] = '\0';
+        const char *ch;
         switch (icon) {
-        case LT_UI_ICON_ARROW_RIGHT: ch[0] = '>'; break;
-        case LT_UI_ICON_ARROW_DOWN: ch[0] = 'v'; break;
-        case LT_UI_ICON_ARROW_UP: ch[0] = '^'; break;
-        case LT_UI_ICON_ARROW_LEFT: ch[0] = '<'; break;
-        case LT_UI_ICON_CHECK: ch[0] = 'x'; break;
-        case LT_UI_ICON_CLOSE: ch[0] = 'x'; break;
-        case LT_UI_ICON_FOLDER: ch[0] = '#'; break;
-        case LT_UI_ICON_FILE: ch[0] = '-'; break;
-        case LT_UI_ICON_PLUS: ch[0] = '+'; break;
-        case LT_UI_ICON_MINUS: ch[0] = '-'; break;
-        case LT_UI_ICON_DOT: ch[0] = '*'; break;
-        case LT_UI_ICON_MENU: ch[0] = '='; break;
-        case LT_UI_ICON_PLAY: ch[0] = '>'; break;
-        case LT_UI_ICON_STOP: ch[0] = '#'; break;
-        case LT_UI_ICON_WARN: ch[0] = '!'; break;
-        case LT_UI_ICON_INFO: ch[0] = 'i'; break;
-        case LT_UI_ICON_SEARCH: ch[0] = '?'; break;
-        case LT_UI_ICON_TABLE: ch[0] = '#'; break;
-        case LT_UI_ICON_GAUGE: ch[0] = 'o'; break;
+        case LT_UI_ICON_ARROW_RIGHT: ch = "\xE2\x96\xB8"; break;        /* U+25B8 */
+        case LT_UI_ICON_ARROW_DOWN: ch = "\xE2\x96\xBE"; break;         /* U+25BE */
+        case LT_UI_ICON_ARROW_UP: ch = "\xE2\x96\xB4"; break;           /* U+25B4 */
+        case LT_UI_ICON_ARROW_LEFT: ch = "\xE2\x97\x82"; break;         /* U+25C2 */
+        case LT_UI_ICON_CHECK: ch = "\xE2\x9C\x93"; break;              /* U+2713 */
+        case LT_UI_ICON_CLOSE: ch = "\xC3\x97"; break;                      /* U+00D7 */
+        case LT_UI_ICON_FOLDER: ch = "\xE2\x96\xB8"; break;
+        case LT_UI_ICON_FILE: ch = "\xC2\xB7"; break;
+        case LT_UI_ICON_PLUS: ch = "+"; break;
+        case LT_UI_ICON_MINUS: ch = "-"; break;
+        case LT_UI_ICON_DOT: ch = "\xE2\x97\x8F"; break;                /* U+25CF */
+        case LT_UI_ICON_MENU: ch = "\xE2\x89\xA1"; break;               /* U+2261 */
+        case LT_UI_ICON_PLAY: ch = "\xE2\x96\xB6"; break;
+        case LT_UI_ICON_STOP: ch = "\xE2\x96\xA0"; break;
+        case LT_UI_ICON_WARN: ch = "!"; break;
+        case LT_UI_ICON_INFO: ch = "i"; break;
+        case LT_UI_ICON_SEARCH: ch = "/"; break;
+        case LT_UI_ICON_TABLE: ch = "\xE2\x96\xA6"; break;
+        case LT_UI_ICON_GAUGE: ch = "\xE2\x97\x8B"; break;
         default: return;
         }
         ui_text_in(ui, r, ch, c, 1);
@@ -919,10 +947,20 @@ void lt_ui_draw_icon(lt_ui *ui, lt_rect r, int icon, lt_color c)
 /* layout                                                              */
 ui_layout *ui_lay(lt_ui *ui) { return &ui->lay[ui->nlay > 0 ? ui->nlay - 1 : 0]; }
 
+/* cell mode: layouts live on the character grid (8x16 px cells) */
+static int cell_snap_h(int h) { return LT_MAX(16, (h + 4) / 16 * 16); }
+static int cell_snap_w(int w) { return LT_MAX(8, (w + 3) / 8 * 8); }
+
 void ui_layout_push(lt_ui *ui, lt_rect body)
 {
     ui_layout *L;
     if (ui->nlay >= UI_MAX_LAYOUTS) { return; }
+    if (ui->cell) {
+        int x0 = (body.x + 7) / 8 * 8, y0 = (body.y + 15) / 16 * 16;
+        int x1 = (body.x + body.w) / 8 * 8, y1 = (body.y + body.h) / 16 * 16;
+        if (body.x < 0 || body.y < 0) { x0 = body.x; y0 = body.y; x1 = body.x + body.w; y1 = body.y + body.h; }
+        body = lt_rect_make(x0, y0, LT_MAX(0, x1 - x0), LT_MAX(0, y1 - y0));
+    }
     L = &ui->lay[ui->nlay++];
     memset(L, 0, sizeof(*L));
     L->body = body;
@@ -974,12 +1012,13 @@ static void row_start(lt_ui *ui, ui_layout *L)
     if (L->started) { L->row_y += L->row_h + L->sp_y; } else { L->row_y = L->body.y; }
     L->started = 1;
     if (L->spec_h > 0) {
-        L->row_h = L->spec_h;
+        L->row_h = ui->cell ? cell_snap_h(L->spec_h) : L->spec_h;
     } else if (L->spec_h == 0) {
         L->row_h = ui->theme.row_h;
     } else {
         int avail = L->body.y + L->body.h - L->row_y - (-L->spec_h - 1);
         L->row_h = LT_MAX(avail, ui->theme.row_h);
+        if (ui->cell) { L->row_h = LT_MAX(16, L->row_h / 16 * 16); }
     }
     L->x = L->body.x + L->indent;
     L->col = 0;
@@ -1018,6 +1057,10 @@ lt_rect ui_next(lt_ui *ui, int pref_w)
         if (L->col + 1 == L->ncols) { w = right - L->x; }
     }
     if (w < 1) { w = 1; }
+    if (ui->cell) {
+        w = cell_snap_w(w);
+        if (L->col + 1 == L->ncols && cw <= 0 && right - L->x >= 8) { w = LT_MAX(8, (right - L->x) / 8 * 8); }
+    }
     r = lt_rect_make(L->x, L->row_y, w, L->row_h);
     L->x += w + L->sp_x;
     L->col++;
@@ -1062,6 +1105,7 @@ void lt_ui_layout_set_rect(lt_ui *ui, lt_rect r)
 void ui_layout_space_dev(lt_ui *ui, int px)
 {
     ui_layout *L = ui_lay(ui);
+    if (ui->cell) { px = (px + 4) / 16 * 16; }
     if (L->started) {
         L->row_h += px;
     } else {

@@ -183,9 +183,21 @@ static lt_bool button_impl(lt_ui *ui, const char *label, int icon, int flags)
         border = (flags & LT_UI_BTN_FLAT) ? 0 : t->border_subtle;
         fg = t->disabled;
     }
-    if (focused && ui->kbd_nav) {
+    if (ui->cell) {
+        /* text-mode button: a tinted pill; the focused one is solid with a marker */
+        int plain = !(flags & (LT_UI_BTN_PRIMARY | LT_UI_BTN_DEFAULT | LT_UI_BTN_SELECTED | LT_UI_BTN_DANGER |
+                               LT_UI_BTN_ACCENT | LT_UI_BTN_FLAT));
+        if (plain && !dis) {
+            fill = (res & UI_ACTIVE) ? t->primary_active
+                 : ((res & UI_HOVER) ? lt_color_mix(t->elevated, t->primary, 120) : lt_color_mix(t->elevated, t->primary, 64));
+            fg = t->text;
+        }
+        if (focused && ui->kbd_nav) {
+            fill = t->primary; fg = t->primary_text;
+        }
+        border = 0;
+    } else if (focused && ui->kbd_nav) {
         border = t->focus;
-        if (ui->cell && fill == 0) { fill = t->hover; }
     }
     if (fill != 0 || border != 0) { lt_ui_draw_box(ui, r, fill, border, t->radius); }
     if (icon) {
@@ -196,6 +208,10 @@ static lt_bool button_impl(lt_ui *ui, const char *label, int icon, int flags)
         }
     } else {
         ui_text_in_f(ui, r, vis, fg, 1, fid, 0);
+        if (ui->cell && !dis && (flags & (LT_UI_BTN_PRIMARY | LT_UI_BTN_DEFAULT | LT_UI_BTN_SELECTED) ||
+                                  (focused && ui->kbd_nav))) {
+            ui_cell_bold(ui, r);
+        }
     }
     if (dis) { ui->disabled--; }
     ui_set_last(ui, id, r);
@@ -242,7 +258,7 @@ lt_bool lt_ui_checkbox(lt_ui *ui, const char *label, int *v)
         lt_color c = on ? t->primary_hover : ((res & UI_HOVER) ? t->text : t->text2);
         box = lt_rect_make(r.x, r.y + (r.h - 16) / 2, 24, 16);
         if (ui->focus == id && ui->kbd_nav) { lt_ui_draw_fill(ui, r, t->hover); }
-        lt_ui_draw_text(ui, box.x, box.y, on ? "[x]" : "[ ]", ui->disabled ? t->disabled : c);
+        lt_ui_draw_text(ui, box.x, box.y, on ? "[\xE2\x9C\x93]" : "[ ]", ui->disabled ? t->disabled : c);
     } else {
         lt_color fill, border;
         box = lt_rect_make(r.x, r.y + (r.h - bw) / 2, bw, bw);
@@ -278,7 +294,7 @@ lt_bool lt_ui_radio(lt_ui *ui, const char *label, int *v, int value)
     if (ui->cell) {
         lt_color c = on ? t->primary_hover : ((res & UI_HOVER) ? t->text : t->text2);
         if (ui->focus == id && ui->kbd_nav) { lt_ui_draw_fill(ui, r, t->hover); }
-        lt_ui_draw_text(ui, r.x, r.y + (r.h - 16) / 2, on ? "(o)" : "( )", c);
+        lt_ui_draw_text(ui, r.x, r.y + (r.h - 16) / 2, on ? "(\xE2\x97\x8F)" : "( )", c);
     } else {
         double cx = r.x + bw / 2.0, cy = r.y + r.h / 2.0, rr = bw / 2.0;
         lt_color border = (ui->focus == id && ui->kbd_nav) ? t->focus :
@@ -334,10 +350,11 @@ lt_bool lt_ui_slider(lt_ui *ui, const char *label, double *v, double mn, double 
     if (*v != old) { changed = 1; }
     frac = (mx > mn) ? (*v - mn) / (mx - mn) : 0.0;
     if (ui->cell) {
-        int kx = track.x + (int)(frac * (track.w - 8));
-        lt_ui_draw_fill(ui, lt_rect_make(track.x, r.y, track.w, r.h), t->input);
-        lt_ui_draw_fill(ui, lt_rect_make(track.x, r.y, kx - track.x + 8, r.h), t->primary_active);
-        lt_ui_draw_text(ui, kx, r.y, "|", t->text);
+        int kx = track.x + (int)(frac * (double)(track.w - 8) / 8.0 + 0.5) * 8;
+        lt_color tc = (ui->focus == id && ui->kbd_nav) ? t->primary_hover : t->primary;
+        lt_ui_draw_hline(ui, track.x, track.x + track.w - 1, r.y + 8, t->border);
+        if (kx > track.x) { lt_ui_draw_hline(ui, track.x, kx - 1, r.y + 8, tc); }
+        lt_ui_draw_text(ui, kx, r.y, "\xE2\x97\x8F", (res & UI_ACTIVE) ? t->text : tc);
     } else {
         int ty = r.y + r.h / 2 - 2, kx = track.x + (int)(frac * (double)(track.w - 1));
         lt_color knob = (res & UI_ACTIVE) ? t->primary_hover : ((res & UI_HOVER) ? t->text : t->text2);

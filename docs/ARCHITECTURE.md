@@ -356,3 +356,27 @@ Each feature owns its own files, so parallel work merges without conflicts.
 
 Dialog sources: `dialogs_connect.c`, `dialogs_settings.c`, `dialogs_newproj.c` (one dialog each),
 registered from `dialogs_reg.c`.
+
+## Terminal UI (tty backend, cell mode)
+
+`be_tty.c` draws the toolkit into an `lt_cells` grid (one cell = 8x16 layout px) and emits only
+the changed cells, wrapped in synchronized-output (mode 2026), with the cursor hidden, alt screen,
+SGR 1006 mouse (clicks, drag, wheel, hover) and focus events. It restores the terminal on exit,
+SIGINT/SIGTERM/SIGHUP and crashes; Ctrl-C becomes `LT_EV_QUIT` (the app may prompt). Resize
+(SIGWINCH / console size) sends `LT_EV_RESIZE` with columns and rows.
+Capability detection (`COLORTERM`, `TERM`, `LC_ALL/LC_CTYPE/LANG`): truecolor, xterm-256, 16
+(backgrounds limited to the 8 normal colors), monochrome (highlights reversed); charset full
+Unicode, Linux-console subset (`TERM=linux`: square corners, no eighth blocks) or ASCII.
+
+Cell-mode look lives in the toolkit's `ui->cell` branches: rounded frames merged with box-line
+junctions (`gfx_cell.c`: `lt_cell_line_merge`), text-mode shadows, eighth-block bars and sparklines
+(`lt_gfx_cell_hbar/vbar/spark`), a layout snapped to the cell grid (`ui_layout_push/ui_next`),
+framed gauge panels (`app/gauges_cell.c`), heat-mapped text grid with an inverted cursor.
+
+Snapshot harness (headless, no terminal needed): `LT_SHOT_TTY=out.ppm` (image, Plex Mono + procedural
+box/block glyphs, 10x20 px per cell; convert with `tools/ppm2png.py`), `LT_SHOT_TEXT=out.txt`
+(plain text), `LT_SHOT_ANSI=out.ans` (the exact escape stream), `LT_SHOT_SIZE=COLSxROWS`,
+`LT_SHOT_COLORS=24|256|16|1`, `LT_SHOT_ASCII=1` / `LT_SHOT_BASIC=1`, `LT_SHOT_OPEN=target`,
+`LT_SHOT_KEYS="alt+f,down,enter,text:abc,click:10/3,wheel:20/10/-1,ctrl+comma"`:
+`LT_SHOT_TTY=a.ppm LT_SHOT_SIZE=120x40 build/libretune --demo`. Tests: `tests/test_tty.c`
+(parsing, modes, diff output), `tests/test_ttyshot.c` (screens at 80x24 / 120x40).

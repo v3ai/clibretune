@@ -18,6 +18,11 @@ int lt_gfx_vtext_plex(lt_gfx *g, double x, double y, const char *s, double heigh
                       double rotation, int align, int valign, lt_color c);
 int lt_gfx_vtext_width_plex(const char *s, double height, double *w);
 
+/* box-line merging for cell mode: bits 1 left, 2 right, 4 up, 8 down; add the bits to the
+ * light box glyph already in a cell (rounded corners when round and the cell was empty) */
+lt_u32 lt_cell_line_merge(lt_u32 old, int add, int round);
+int lt_cell_line_bits(lt_u32 ch);
+
 /* coverage remapping table (256 entries) for text/icons of color c: boosts
  * light-on-dark and tames dark-on-light so stroke weight looks the same */
 const lt_u8 *lt_gfx_contrast_lut(lt_color c);

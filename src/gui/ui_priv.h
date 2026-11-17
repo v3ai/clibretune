@@ -311,6 +311,9 @@ int       ui_prefix_w(const lt_ui *ui, const char *s, int nbytes);       /* widt
 lt_rect   ui_text_rect(const lt_ui *ui, lt_rect r, int pad);
 void      ui_field_box(lt_ui *ui, lt_rect r, lt_color fill, lt_color border, int focused);
 void      ui_request(lt_ui *ui);       /* ask for an extra frame */
+void      ui_cell_shadow(lt_ui *ui, lt_rect r);      /* cell mode: text-mode drop shadow below/right of r */
+void      ui_cell_underline(lt_ui *ui, lt_rect r);   /* cell mode: underline the cells of r */
+void      ui_cell_bold(lt_ui *ui, lt_rect r);        /* cell mode: bold text in the cells of r */
 void      ui_animate(lt_ui *ui, int ms);
 
 /* interaction */

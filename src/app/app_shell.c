@@ -6,6 +6,7 @@
 #include <string.h>
 #include "app.h"
 #include "app_ext.h"
+#include "app_ttyshot.h"
 
 
 static const char *const theme_names[] = { "dark", "light", "midnight", "carbon", "synthwave",
@@ -659,49 +660,92 @@ static void sidebar(lt_app *app, lt_rect r)
 
 /* ------------------------------------------------------------------ */
 /* status bar                                                          */
+/* terminal status bar: connection | activity ...... project | [Burn] | rate | units | version.
+ * Optional items drop out (rightmost first) when the terminal is narrow. */
 static void statusbar_cell(lt_app *app)
 {
     lt_ui *ui = app->ui;
     const lt_theme *t = lt_ui_theme(ui);
-    int w[7];
-    char buf[200];
+    char conn[200], mid[200], proj[120], rate[24], ver[24];
+    const char *units = app->settings.metric ? "Metric" : "Imperial";
+    const char *sep = "\xE2\x94\x82";
     lt_color cc;
-    lt_rect dr;
     lt_bool burn = lt_app_can_burn(app);
+    lt_rect sf = lt_ui_surface(ui), left;
+    int y = sf.h - 16, x, cols = sf.w / 8, used, n_units, n_rate, n_ver, n_proj;
+    int rec = app->rec != NULL && lt_rec_is_recording(app->rec);
+
     lt_ui_statusbar_begin(ui);
-    w[0] = 8 * 36; w[1] = -1; w[2] = 8 * 18; w[3] = 8 * 11; w[4] = 8 * 9; w[5] = 8 * 10; w[6] = 8 * 7;
-    lt_ui_layout_row(ui, 7, w, 0);
-    lt_ui_layout_indent(ui, 0);
     switch (app->conn) {
     case LT_APP_ONLINE: cc = t->success; break;
     case LT_APP_DEMO: cc = t->accent; break;
     case LT_APP_CONNECTING: cc = t->warning; break;
     default: cc = t->error; break;
     }
-    if (app->conn == LT_APP_OFFLINE) { lt_snprintf(buf, sizeof(buf), "  Disconnected"); }
-    else { lt_snprintf(buf, sizeof(buf), "  %s: %s", lt_app_conn_label(app), app->signature); }
-    lt_ui_label_ex(ui, buf, cc, LT_UI_ALIGN_LEFT);
-    dr = lt_ui_last_rect(ui);
-    lt_ui_draw_icon(ui, lt_rect_make(dr.x - lt_ui_px(ui, 2), dr.y, lt_ui_px(ui, 16), dr.h), LT_UI_ICON_DOT, cc);
+    if (app->conn == LT_APP_OFFLINE) { lt_snprintf(conn, sizeof(conn), "Disconnected"); }
+    else { lt_snprintf(conn, sizeof(conn), "%s: %s", lt_app_conn_label(app), app->signature); }
+    mid[0] = '\0';
     if (app->conn == LT_APP_ONLINE || app->conn == LT_APP_DEMO) {
         double rpm = 0.0;
         if (lt_app_channel(app, "RPMValue", &rpm) || lt_app_channel(app, "rpm", &rpm)) {
-            lt_snprintf(buf, sizeof(buf), "RPM %.0f  %s", rpm, app->status);
-        } else { lt_snprintf(buf, sizeof(buf), "%s", app->status); }
-    } else { lt_snprintf(buf, sizeof(buf), "%s", app->status); }
-    lt_ui_label_ex(ui, buf, t->text2, LT_UI_ALIGN_LEFT);
-    lt_snprintf(buf, sizeof(buf), "%s%s", app->has_project ? app->project.cfg.name : "(no project)",
-                app->modified ? " *" : "");
-    lt_ui_label_ex(ui, buf, app->modified ? t->warning : t->text2, LT_UI_ALIGN_RIGHT);
-    if (lt_ui_button_ex(ui, "Burn", burn ? LT_UI_BTN_ACCENT : LT_UI_BTN_DISABLED) && burn) {
-        app->burn_open = 1;
+            lt_snprintf(mid, sizeof(mid), "RPM %.0f  %s", rpm, app->status);
+        }
     }
-    if (app->conn == LT_APP_ONLINE || app->conn == LT_APP_DEMO) {
-        lt_snprintf(buf, sizeof(buf), "%.0f Hz", app->data_rate);
-    } else { buf[0] = '\0'; }
-    lt_ui_label_ex(ui, buf, t->muted, LT_UI_ALIGN_RIGHT);
-    lt_ui_label_ex(ui, app->settings.metric ? "Metric" : "Imperial", t->muted, LT_UI_ALIGN_RIGHT);
-    lt_ui_label_ex(ui, "v" LT_APP_VERSION, t->muted, LT_UI_ALIGN_RIGHT);
+    if (mid[0] == '\0') { lt_snprintf(mid, sizeof(mid), "%s", app->status); }
+    lt_snprintf(proj, sizeof(proj), "%s%s", app->has_project ? app->project.cfg.name : "(no project)",
+                app->modified ? " *" : "");
+    if (app->conn == LT_APP_ONLINE || app->conn == LT_APP_DEMO) { lt_snprintf(rate, sizeof(rate), "%.0f Hz", app->data_rate); }
+    else { rate[0] = '\0'; }
+    lt_snprintf(ver, sizeof(ver), "v%s", LT_APP_VERSION);
+    n_units = (int)strlen(units) + 3;
+    n_rate = rate[0] != '\0' ? (int)strlen(rate) + 3 : 0;
+    n_ver = (int)strlen(ver) + 3;
+    n_proj = (int)strlen(proj) + 3;
+    if (rec) { lt_snprintf(conn + strlen(conn), sizeof(conn) - strlen(conn), "  \xE2\x97\x8F REC"); }
+    /* right side, built from the edge inwards; what does not fit is dropped */
+    x = sf.w;
+    used = 0;
+    if (cols >= 60 && used + n_ver + 8 < cols / 2) {
+        x -= n_ver * 8; used += n_ver;
+        lt_ui_draw_text(ui, x, y, sep, t->border_subtle);
+        lt_ui_draw_text(ui, x + 16, y, ver, t->muted);
+    }
+    if (cols >= 80 && used + n_units + 8 < cols / 2) {
+        x -= n_units * 8; used += n_units;
+        lt_ui_draw_text(ui, x, y, sep, t->border_subtle);
+        lt_ui_draw_text(ui, x + 16, y, units, t->muted);
+    }
+    if (n_rate > 0 && cols >= 70 && used + n_rate + 8 < cols / 2) {
+        x -= n_rate * 8; used += n_rate;
+        lt_ui_draw_text(ui, x, y, sep, t->border_subtle);
+        lt_ui_draw_text(ui, x + 16, y, rate, t->muted);
+    }
+    {
+        lt_rect br = lt_rect_make(x - 56, y, 48, 16);
+        x -= 56 + 8;
+        used += 7;
+        lt_ui_layout_set_rect(ui, br);
+        if (lt_ui_button_ex(ui, "Burn", burn ? LT_UI_BTN_ACCENT : LT_UI_BTN_DISABLED) && burn) { app->burn_open = 1; }
+    }
+    if (used + n_proj + 20 < cols) {
+        x -= n_proj * 8; used += n_proj;
+        lt_ui_draw_text(ui, x + 16, y, proj, app->modified ? t->warning : t->text2);
+        lt_ui_draw_text(ui, x, y, sep, t->border_subtle);
+    }
+    left = lt_rect_make(8, y, x - 8, 16);
+    lt_ui_draw_text(ui, 8, y, "\xE2\x97\x8F", cc);
+    {
+        char both[420];
+        lt_snprintf(both, sizeof(both), "%s", conn);
+        lt_ui_draw_text_in(ui, lt_rect_make(left.x + 16, left.y, left.w - 16, left.h), both, t->text, 0);
+        if (mid[0] != '\0') {
+            int cw = (int)strlen(conn) * 8 + 16 + 8;
+            if (cw + 40 < left.w) {
+                lt_ui_draw_text(ui, left.x + cw, y, sep, t->border_subtle);
+                lt_ui_draw_text_in(ui, lt_rect_make(left.x + cw + 16, y, left.w - cw - 16, 16), mid, t->text2, 0);
+            }
+        }
+    }
     lt_ui_statusbar_end(ui);
 }
 
@@ -1077,6 +1121,14 @@ static void sidebar_split(lt_app *app, lt_rect cr, lt_rect *side, lt_rect *main_
 {
     lt_ui *ui = app->ui;
     int dev = lt_ui_px(ui, app->settings.sidebar_w), old = dev;
+    if (lt_ui_cell_mode(ui)) {
+        /* terminal: a quarter of the width, 22..36 columns; draggable but never saved */
+        static int cell_w = 0;
+        int cols = cr.w / 8;
+        if (cell_w <= 0) { cell_w = LT_CLAMP(cols * 24 / 100, 22, 36) * 8; }
+        lt_ui_splitter(ui, "sidebar", cr, 1, &cell_w, 8 * 16, LT_MAX(8 * 16, cr.w / 2), side, main_r);
+        return;
+    }
     lt_ui_splitter(ui, "sidebar", cr, 1, &dev, lt_ui_px(ui, 160), cr.w / 2, side, main_r);
     if (dev != old) { app->settings.sidebar_w = (int)((lt_s64)dev * 100 / lt_ui_scale_pct(ui)); }
 }
@@ -1348,7 +1400,8 @@ int lt_app_screenshot(lt_app *app, const char *ppm_path, int w, int h, int frame
     char *click = lt_plat_getenv("LT_SHOT_CLICK");
     int cx = -1, cy = -1, button = LT_MB_LEFT;
     lt_event ev;
-    app->cell_mode = 0;
+    lt_bool tty = lt_app_shot_is_tty();
+    app->cell_mode = tty ? 1 : 0;
     app->headless = 1;
     {
         char *se = lt_plat_getenv("LT_SCALE");
@@ -1374,6 +1427,21 @@ int lt_app_screenshot(lt_app *app, const char *ppm_path, int w, int h, int frame
         }
         run_frame(app);
         lt_plat_sleep_ms(60);
+    }
+    if (tty) {
+        char *keys = lt_plat_getenv("LT_SHOT_KEYS");
+        if (keys != NULL) {
+            lt_event evs[256];
+            int n = lt_app_shot_parse(keys, evs, 256), k;
+            for (k = 0; k < n; k++) {
+                lt_ui_input(app->ui, &evs[k]);
+                run_frame(app);
+            }
+            lt_free(keys);
+            run_frame(app);
+            run_frame(app);
+        }
+        return lt_app_shot_write(&app->cells);
     }
     write_ppm(&app->canvas, ppm_path);
     return 0;

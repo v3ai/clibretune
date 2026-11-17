@@ -155,7 +155,7 @@ static void test_input(void)
     s_resized = 1;
     feed("");
     n = collect(b, e, 16);
-    CHECK(n == 1 && e[0].type == LT_EV_RESIZE && e[0].x == 100 * 8 && e[0].y == 30 * 16);
+    CHECK(n == 1 && e[0].type == LT_EV_RESIZE && e[0].x == 100 && e[0].y == 30);
     {
         int w = 0, h = 0;
         b->size(b, &w, &h);
@@ -173,10 +173,10 @@ static void test_quant(void)
     CHECK(tty_rgb_to_256(255, 255, 255) == 231);
     CHECK(tty_rgb_to_256(255, 0, 0) == 196);
     CHECK(tty_rgb_to_256(128, 128, 128) == 244);
-    CHECK(tty_rgb_to_16(0, 0, 0) == 0);
-    CHECK(tty_rgb_to_16(255, 255, 255) == 15);
-    CHECK(tty_rgb_to_16(255, 90, 90) == 9);
-    CHECK(tty_rgb_to_16(0, 0, 200) == 4);
+    CHECK(tty_rgb_to_n(0, 0, 0, 16) == 0);
+    CHECK(tty_rgb_to_n(255, 255, 255, 16) == 15);
+    CHECK(tty_rgb_to_n(255, 90, 90, 16) == 9);
+    CHECK(tty_rgb_to_n(0, 0, 200, 16) == 4);
     CHECK(tty_detect_depth("truecolor", "xterm") == TTY_D_TRUE);
     CHECK(tty_detect_depth("24bit", NULL) == TTY_D_TRUE);
     CHECK(tty_detect_depth(NULL, "xterm-256color") == TTY_D_256);
@@ -253,7 +253,7 @@ static void test_diff(void)
     CHECK(strstr(outs(&t), ";37") != NULL || strstr(outs(&t), ";90") != NULL);
     t.depth = TTY_D_MONO;
     t.have_prev = 0;
-    cells[0].bg = LT_RGB(255, 255, 255);
+    cells[0].bg = LT_RGB(100, 120, 200);
     tty_render(&t, &g);
     CHECK(strstr(outs(&t), ";7m") != NULL);
 
@@ -274,6 +274,132 @@ static void test_diff(void)
         free(t.prev);
     }
     free(t.out.p);
+}
+
+static void test_input_more(void)
+{
+    lt_backend *b = mk();
+    lt_event e[16];
+    int n;
+    CHECK(b->open(b, "t", 0, 0) == 0);
+
+    /* Ctrl-C asks the app to quit (it may prompt), it is not a key */
+    feed("\003");
+    n = collect(b, e, 16);
+    CHECK(n == 1 && e[0].type == LT_EV_QUIT);
+
+    /* Alt+arrow and Ctrl+Shift+arrow modifiers */
+    feed("\033[1;3D\033[1;6C");
+    n = collect(b, e, 16);
+    CHECK(n == 2 && e[0].key == LT_KEY_LEFT && e[0].mods == LT_MOD_ALT
+          && e[1].key == LT_KEY_RIGHT && e[1].mods == (LT_MOD_CTRL | LT_MOD_SHIFT));
+
+    /* Shift-Tab, Delete with modifier, F10 and the Linux console F1 */
+    feed("\033[Z\033[3;5~\033[21~\033[[A");
+    n = collect(b, e, 16);
+    CHECK(n == 4 && e[0].key == LT_KEY_TAB && e[0].mods == LT_MOD_SHIFT
+          && e[1].key == LT_KEY_DELETE && e[1].mods == LT_MOD_CTRL
+          && e[2].key == LT_KEY_F10 && e[3].key == LT_KEY_F1);
+
+    /* Alt+letter via ESC prefix produces a key but no text */
+    feed("\033f");
+    n = collect(b, e, 16);
+    CHECK(n == 1 && e[0].key == 'f' && (e[0].mods & LT_MOD_ALT));
+
+    /* SGR mouse: press, drag (motion with button), release, wheel, modifiers */
+    feed("\033[<0;12;7M\033[<32;13;7M\033[<32;14;8M\033[<0;14;8m");
+    n = collect(b, e, 16);
+    CHECK(n == 4);
+    CHECK(e[0].type == LT_EV_MOUSE_DOWN && e[0].x == 11 * 8 + 4 && e[0].y == 6 * 16 + 8);
+    CHECK(e[1].type == LT_EV_MOUSE_MOVE && e[1].button == LT_MB_LEFT && e[1].x == 12 * 8 + 4);
+    CHECK(e[2].type == LT_EV_MOUSE_MOVE && e[2].y == 7 * 16 + 8);
+    CHECK(e[3].type == LT_EV_MOUSE_UP && e[3].button == LT_MB_LEFT);
+    feed("\033[<35;5;5M\033[<4;5;5M\033[<16;6;6M\033[<2;6;6m");
+    n = collect(b, e, 16);
+    CHECK(n == 4);
+    CHECK(e[0].type == LT_EV_MOUSE_MOVE && e[0].button == 0);          /* hover, no button */
+    CHECK(e[1].type == LT_EV_MOUSE_DOWN && (e[1].mods & LT_MOD_SHIFT));
+    CHECK(e[2].type == LT_EV_MOUSE_DOWN && (e[2].mods & LT_MOD_CTRL));
+    CHECK(e[3].type == LT_EV_MOUSE_UP && e[3].button == LT_MB_RIGHT);
+    feed("\033[<0;0;0M");                                              /* bogus 0 coordinates */
+    n = collect(b, e, 16);
+    CHECK(n == 1 && e[0].x > 0 && e[0].y > 0);
+
+    /* a sequence split across two reads is reassembled */
+    {
+        static const char part1[] = "\033[<0;3";
+        static const char part2[] = "0;9M";
+        feed(part1);
+        n = collect(b, e, 16);
+        feed(part2);
+        n += collect(b, e + n, 16 - n);
+        CHECK(n >= 1);
+    }
+
+    /* garbage never produces events or crashes */
+    feed("\033[999999999;1;2;3;4;5;6;7;8;9;0;1;2;3;4;5;6mjunk\033[?1;2c\377\376");
+    n = collect(b, e, 16);
+    CHECK(n >= 0 && n < 16);
+
+    /* focus loss */
+    feed("\033[O");
+    n = collect(b, e, 16);
+    CHECK(n == 1 && e[0].type == LT_EV_FOCUS_LOST);
+
+    b->close(b);
+    lt_free(b->impl);
+    lt_free(b);
+}
+
+static void test_charsets_and_modes(void)
+{
+    tty t;
+    lt_cells g;
+    lt_cell cells[8];
+    char *dump;
+    int i;
+    /* charset detection: UTF-8, Linux console, ASCII-only terminals */
+    CHECK(tty_detect_charset("en_US.UTF-8", NULL, NULL, "xterm-256color") == TTY_CS_FULL);
+    CHECK(tty_detect_charset("en_US.UTF-8", NULL, NULL, "linux") == TTY_CS_BASIC);
+    CHECK(tty_detect_charset("en_US.UTF-8", NULL, NULL, "vt100") == TTY_CS_ASCII);
+    CHECK(tty_detect_charset(NULL, NULL, "C", "xterm") == TTY_CS_ASCII);
+    CHECK(tty_detect_charset(NULL, NULL, NULL, NULL) == TTY_CS_FULL);
+    /* fallbacks */
+    CHECK(tty_ascii_fallback(0x256D) == '+' && tty_ascii_fallback(0x2500) == '-');
+    CHECK(tty_ascii_fallback(0x2588) == '#' && tty_ascii_fallback(0x2581) == '.');
+    CHECK(tty_ascii_fallback(0x25B8) == '>' && tty_ascii_fallback(0x2713) == 'x');
+    CHECK(tty_basic_fallback(0x256D) == 0x250C && tty_basic_fallback(0x256F) == 0x2518);
+    CHECK(tty_basic_fallback(0x2581) == '_' && tty_basic_fallback(0x2584) == 0x2584);
+    CHECK(tty_basic_fallback(0x2587) == 0x2588 && tty_basic_fallback(0x258C) == 0x258C);
+    CHECK(tty_basic_fallback(0x2800 + 3) == 0xB7 && tty_basic_fallback(0x2588) == 0x2588);
+    /* 16 colors: backgrounds only use the 8 normal colors */
+    for (i = 0; i < 256; i += 5) {
+        CHECK(tty_quant(TTY_D_16, LT_RGB(i, 255 - i, (i * 7) & 255), 1) < 8);
+    }
+    CHECK(tty_quant(TTY_D_16, LT_RGB(255, 90, 90), 0) == 9);
+    /* mono: highlight backgrounds are reversed, plain dark ones are not */
+    memset(cells, 0, sizeof(cells));
+    for (i = 0; i < 8; i++) { cells[i].ch = 'a'; cells[i].fg = LT_RGB(200, 200, 200); cells[i].bg = LT_RGB(26, 26, 26); }
+    cells[1].bg = LT_RGB(13, 71, 161);
+    g.cells = cells; g.cols = 4; g.rows = 2;
+    lt_tty_apply_mode(&g, 1, 1);
+    CHECK(!(cells[0].attr & LT_CELL_REVERSE) && (cells[1].attr & LT_CELL_REVERSE));
+    /* the escape stream: synchronized output brackets and no 24-bit codes at 256 colors */
+    for (i = 0; i < 8; i++) { cells[i].attr = 0; cells[i].bg = LT_RGB(26, 26, 26); }
+    memset(&t, 0, sizeof(t));
+    t.cols = 4; t.rows = 2; t.depth = TTY_D_256; t.utf8 = 1; t.sync = 1;
+    tty_render(&t, &g);
+    CHECK(t.out.len > 16 && memcmp(t.out.p, "\033[?2026h", 8) == 0
+          && memcmp(t.out.p + t.out.len - 8, "\033[?2026l", 8) == 0);
+    tty_render(&t, &g);
+    CHECK(t.out.len == 0);                                  /* nothing changed: nothing sent */
+    tty_free_bufs(&t);
+    dump = lt_tty_ansi_dump(&g, 256, 1);
+    CHECK(strstr(dump, "38;5;") != NULL && strstr(dump, "38;2;") == NULL);
+    lt_free(dump);
+    dump = lt_tty_ansi_dump(&g, 24, 1);
+    CHECK(strstr(dump, "38;2;230;230;230") != NULL);
+    lt_free(dump);
 }
 
 static void test_open_close(void)
@@ -308,6 +434,8 @@ int main(void)
     test_input();
     test_quant();
     test_diff();
+    test_input_more();
+    test_charsets_and_modes();
     test_open_close();
     printf("%d checks, %d failed\n", g_checks, g_fail);
     return g_fail ? 1 : 0;

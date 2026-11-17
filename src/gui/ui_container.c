@@ -344,15 +344,23 @@ static void draw_window_frame(lt_ui *ui, lt_rect r, const char *title, int show_
         lt_ui_draw_fill(ui, lt_rect_make(r.x + 1, r.y + title_h - 6, r.w - 2, 6), t->elevated);
         lt_ui_draw_hline(ui, r.x + 1, r.x + r.w - 2, r.y + title_h, t->border_subtle);
     } else {
+        /* text-mode window: rounded frame with the title set into the top edge */
+        char cap[200];
+        ui_cell_shadow(ui, r);
         lt_ui_draw_fill(ui, r, t->surface);
-        lt_ui_draw_fill(ui, tb, t->primary_active);
+        lt_ui_draw_rect(ui, r, t->focus);
+        lt_snprintf(cap, sizeof(cap), " %s ", title);
+        ui_text_in_f(ui, lt_rect_make(tb.x + 16, tb.y, tb.w - 64, tb.h), cap, t->text, 0,
+                     (int)LT_FONT_SANS_SEMIBOLD, LT_UI_FS_LG);
+        ui_cell_bold(ui, lt_rect_make(tb.x + 16, tb.y, (int)strlen(cap) * 8, tb.h));
+        if (show_close) { *close_out = lt_rect_make(tb.x + tb.w - 32, tb.y, 24, tb.h); }
+        return;
     }
-    ui_text_in_f(ui, lt_rect_make(tb.x + (ui->cell ? 8 : lt_ui_px(ui, 16)), tb.y, tb.w - 2 * t->pad_x - 30, tb.h), title,
-                 ui->cell ? t->primary_text : t->text, 0, (int)LT_FONT_SANS_SEMIBOLD, LT_UI_FS_LG);
+    ui_text_in_f(ui, lt_rect_make(tb.x + lt_ui_px(ui, 16), tb.y, tb.w - 2 * t->pad_x - 30, tb.h), title,
+                 t->text, 0, (int)LT_FONT_SANS_SEMIBOLD, LT_UI_FS_LG);
     if (show_close) {
-        int cs = ui->cell ? 24 : lt_ui_px(ui, 24);
-        *close_out = lt_rect_make(tb.x + tb.w - (ui->cell ? 24 : cs + lt_ui_px(ui, 10)), tb.y + (tb.h - (ui->cell ? tb.h : cs)) / 2,
-                                  ui->cell ? 24 : cs, ui->cell ? tb.h : cs);
+        int cs = lt_ui_px(ui, 24);
+        *close_out = lt_rect_make(tb.x + tb.w - (cs + lt_ui_px(ui, 10)), tb.y + (tb.h - cs) / 2, cs, cs);
     }
 }
 
@@ -362,7 +370,7 @@ lt_bool lt_ui_window_begin(lt_ui *ui, const char *title, lt_rect *r, int *open, 
     char vis[160];
     const char *v = ui_label_visible(title, vis, sizeof(vis));
     lt_u32 id = lt_ui_id(ui, title) ^ 0x57494EUL;
-    int i, rank = -1, z, pad = ui->cell ? 8 : t->padding;
+    int i, rank = -1, z, pad = ui->cell ? 16 : t->padding;
     ui_layer *L;
     lt_rect close = lt_rect_make(0, 0, 0, 0), tb, grip;
     int res, th = t->title_h;
@@ -383,7 +391,7 @@ lt_bool lt_ui_window_begin(lt_ui *ui, const char *title, lt_rect *r, int *open, 
     /* title bar drag + close + resize before drawing so there is no lag */
     if (!(flags & LT_UI_WIN_NOCLOSE)) {
         int cs = lt_ui_px(ui, 24);
-        close = lt_rect_make(tb.x + tb.w - (ui->cell ? 24 : cs + lt_ui_px(ui, 10)), tb.y + (ui->cell ? 0 : (tb.h - cs) / 2),
+        close = lt_rect_make(tb.x + tb.w - (ui->cell ? 32 : cs + lt_ui_px(ui, 10)), tb.y + (ui->cell ? 0 : (tb.h - cs) / 2),
                              ui->cell ? 24 : cs, ui->cell ? tb.h : cs);
         res = ui_interact(ui, id ^ 0xC10EUL, close, 0);
         if ((res & UI_CLICK) && open != NULL) { *open = 0; ui_request(ui); }
@@ -424,9 +432,10 @@ lt_bool lt_ui_window_begin(lt_ui *ui, const char *title, lt_rect *r, int *open, 
         }
     }
     lt_ui_push_id(ui, title);
-    lt_ui_clip_push(ui, lt_rect_make(r->x + 1, r->y + th + 1, r->w - 2, r->h - th - 2));
+    lt_ui_clip_push(ui, ui->cell ? lt_rect_make(r->x + 8, r->y + th, r->w - 16, r->h - th - 16)
+                                 : lt_rect_make(r->x + 1, r->y + th + 1, r->w - 2, r->h - th - 2));
     ui_layout_push(ui, lt_rect_make(r->x + pad, r->y + th + (ui->cell ? 0 : lt_ui_px(ui, 6)), r->w - 2 * pad,
-                                    r->h - th - (ui->cell ? 0 : lt_ui_px(ui, 12))));
+                                    r->h - th - (ui->cell ? 16 : lt_ui_px(ui, 12))));
     return LT_TRUE;
 }
 
@@ -453,7 +462,7 @@ lt_bool ui_modal_begin_dev(lt_ui *ui, const char *title, int w, int h, int *open
     lt_u32 id = lt_ui_id(ui, title) ^ 0x4D4F44UL;
     ui_state *st;
     lt_rect dlg, close;
-    int z, res, pad = ui->cell ? 8 : t->padding + lt_ui_px(ui, 8), th = t->title_h, fresh;
+    int z, res, pad = ui->cell ? 16 : t->padding + lt_ui_px(ui, 8), th = t->title_h, fresh;
     if (open == NULL || !*open || ui->nmodal >= 4) { return LT_FALSE; }
     st = ui_state_get(ui, id);
     fresh = (st->i[0] != ui->frame_no - 1 && st->i[0] != ui->frame_no);
@@ -478,9 +487,10 @@ lt_bool ui_modal_begin_dev(lt_ui *ui, const char *title, int w, int h, int *open
         ui_request(ui);
     }
     lt_ui_push_id(ui, title);
-    lt_ui_clip_push(ui, lt_rect_make(dlg.x + 1, dlg.y + th + 1, dlg.w - 2, dlg.h - th - 2));
+    lt_ui_clip_push(ui, ui->cell ? lt_rect_make(dlg.x + 8, dlg.y + th, dlg.w - 16, dlg.h - th - 16)
+                                 : lt_rect_make(dlg.x + 1, dlg.y + th + 1, dlg.w - 2, dlg.h - th - 2));
     ui_layout_push(ui, lt_rect_make(dlg.x + pad, dlg.y + th + (ui->cell ? 0 : lt_ui_px(ui, 12)), dlg.w - 2 * pad,
-                                    dlg.h - th - (ui->cell ? 0 : lt_ui_px(ui, 24))));
+                                    dlg.h - th - (ui->cell ? 16 : lt_ui_px(ui, 24))));
     return LT_TRUE;
 }
 
@@ -524,9 +534,9 @@ int lt_ui_msgbox(lt_ui *ui, const char *id, const char *title, const char *messa
         p = e + 1;
     }
     if (n == 0) { strcpy(names[0], "OK"); n = 1; }
-    w = ui->cell ? 400 : lt_ui_px(ui, 440);
-    nlines = ui_wrap_lines(ui, message, w - 2 * (ui->cell ? 8 : t->padding), starts, lens, 64);
-    h = t->title_h + nlines * ui_line_h(ui) + t->row_h + (ui->cell ? 32 : lt_ui_px(ui, 48));
+    w = ui->cell ? LT_MIN(448, ui->sw - 16) : lt_ui_px(ui, 440);
+    nlines = ui_wrap_lines(ui, message, w - 2 * (ui->cell ? 16 : t->padding), starts, lens, 64);
+    h = t->title_h + nlines * ui_line_h(ui) + t->row_h + (ui->cell ? 48 : lt_ui_px(ui, 48));
     if (ui->cell) { h = ((h + 15) / 16) * 16; }
     if (!ui_modal_begin_dev(ui, title, w, h, open)) { return 0; }
     lt_ui_label_wrap(ui, message, t->text);
@@ -617,7 +627,8 @@ int lt_ui_tree_node_ex(lt_ui *ui, const char *label, int icon, lt_color icon_col
     if (!leaf) {
         lt_rect er = lt_rect_make(r.x + (ui->cell ? 0 : lt_ui_px(ui, 2)), r.y, ex - (ui->cell ? 0 : lt_ui_px(ui, 2)), r.h);
         if (ui->cell) {
-            lt_ui_draw_icon(ui, er, open ? LT_UI_ICON_ARROW_DOWN : LT_UI_ICON_ARROW_RIGHT, t->text2);
+            lt_ui_draw_icon(ui, er, open ? LT_UI_ICON_ARROW_DOWN : LT_UI_ICON_ARROW_RIGHT,
+                            (flags & LT_UI_TREE_SELECTED) ? t->primary_text : t->text2);
         } else {
             double cx = (double)er.x + (double)er.w / 2.0, cy = (double)er.y + (double)er.h / 2.0;
             double q = 3.0 * (double)ui->pct / 100.0, pts[6];
@@ -633,12 +644,21 @@ int lt_ui_tree_node_ex(lt_ui *ui, const char *label, int icon, lt_color icon_col
     }
     {
         int tx = r.x + ex + (ui->cell ? 0 : lt_ui_px(ui, 2));
-        if (icon != 0) {
+        if (icon != 0 && ui->cell) {
+            if (leaf) {       /* a bullet in the node's kind color keeps leaves aligned and scannable */
+                lt_ui_draw_icon(ui, lt_rect_make(tx, r.y, 8, r.h), LT_UI_ICON_DOT,
+                                dis ? t->muted : ((flags & LT_UI_TREE_SELECTED) ? t->primary_text : icon_color));
+                tx += 16;
+            }
+        } else if (icon != 0) {
             lt_ui_draw_icon(ui, lt_rect_make(tx, r.y, ui->cell ? 16 : lt_ui_px(ui, 14), r.h), icon,
                               dis ? t->muted : ((flags & LT_UI_TREE_SELECTED) ? t->primary_text : icon_color));
             tx += ui->cell ? 16 : lt_ui_px(ui, 18);
         }
-        ui_text_in_f(ui, lt_rect_make(tx, r.y, full.x + full.w - tx - 4, r.h), v, fg, 0, ui->tfont, LT_UI_FS_SM);
+        ui_text_in_f(ui, lt_rect_make(tx, r.y, full.x + full.w - tx - (ui->cell ? 0 : 4), r.h), v, fg, 0, ui->tfont, LT_UI_FS_SM);
+        if (ui->cell && (!leaf || (flags & LT_UI_TREE_SELECTED))) {
+            ui_cell_bold(ui, lt_rect_make(tx, r.y, ui_text_w(ui, v, ui->tfont, LT_UI_FS_SM), r.h));
+        }
     }
     ui_set_last(ui, id, full);
     if (open) {
@@ -733,6 +753,7 @@ int lt_ui_tab_icon(lt_ui *ui, const char *title, int icon, int flags)
     if (ui->cell) {
         lt_ui_draw_fill(ui, r, active ? t->primary_active : bg);
         if (active) { fg = t->primary_text; }
+        if (!active && idx > 0) { lt_ui_draw_vline(ui, r.x, r.y, r.y + r.h - 1, t->border_subtle); }
     } else {
         lt_ui_draw_fill(ui, r, bg);
         lt_ui_draw_vline(ui, r.x + r.w - 1, r.y, r.y + r.h - 1, t->border_subtle);
@@ -750,6 +771,7 @@ int lt_ui_tab_icon(lt_ui *ui, const char *title, int icon, int flags)
         }
         ui_text_in_f(ui, lt_rect_make(tx, r.y, r.x + r.w - tx - (closable ? cw : padx), r.h),
                      v, fg, 0, ui->tfont, LT_UI_FS_SM);
+        if (active) { ui_cell_bold(ui, lt_rect_make(tx, r.y, tw, r.h)); }
     }
     if (closable && (active || (res & UI_HOVER) || (cres & UI_HOVER) || ui->cell)) {
         if (cres & UI_HOVER) {

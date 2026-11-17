@@ -512,7 +512,7 @@ static void dash_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
     area = lt_rect_make(r.x, lt_ui_layout_body(ui).y, r.w, 0);
     {
         lt_rect lr = lt_ui_last_rect(ui);
-        area.y = lr.y + lr.h + 4;
+        area.y = lr.y + lr.h + (lt_ui_cell_mode(ui) ? 0 : 4);
         area.h = r.y + r.h - area.y;
     }
     if (area.h < 20) { return; }
