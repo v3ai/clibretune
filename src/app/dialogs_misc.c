@@ -1,5 +1,5 @@
 /* dialogs_misc.c - base map wizard, restore points dialog and special tabs
- * (output channel status, console; logger tabs are placeholders).
+ * (output channel status; the loggers and the console are in feat_loggers.c).
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 #include <stdio.h>
@@ -364,72 +364,6 @@ static void och_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
     }
 }
 
-#define CON_LINES 200
-typedef struct con_state {
-    char lines[CON_LINES][160];
-    int n, last_n;
-    char input[160];
-} con_state;
-
-static void con_add(con_state *s, const char *text)
-{
-    char tmp[160];
-    const char *p = text;
-    while (*p != '\0') {
-        size_t len = 0;
-        while (p[len] != '\0' && p[len] != '\n' && p[len] != '\r' && len < sizeof(tmp) - 1) { len++; }
-        memcpy(tmp, p, len); tmp[len] = '\0';
-        p += len;
-        while (*p == '\n' || *p == '\r') { p++; }
-        if (s->n >= CON_LINES) {
-            memmove(s->lines[0], s->lines[1], (CON_LINES - 1) * sizeof(s->lines[0]));
-            s->n = CON_LINES - 1;
-        }
-        lt_strlcpy(s->lines[s->n++], tmp, sizeof(s->lines[0]));
-    }
-}
-
-static void console_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
-{
-    lt_ui *ui = app->ui;
-    const lt_theme *t = lt_ui_theme(ui);
-    con_state *s = (con_state *)tab->data;
-    int w1 = -1, w2[2], i, fl;
-    int online = (app->conn == LT_APP_ONLINE || app->conn == LT_APP_DEMO) && app->proto != NULL;
-    LT_UNUSED(r);
-    if (s == NULL) {
-        s = (con_state *)lt_calloc(1, sizeof(*s));
-        tab->data = s;
-        con_add(s, "ECU console (rusEFI / FOME / epicEFI). Type 'help' and press Enter.");
-    }
-    lt_ui_layout_row(ui, 1, &w1, -2);
-    if (lt_ui_scroll_begin(ui, "con")) {
-        lt_ui_layout_row(ui, 1, &w1, 0);
-        for (i = 0; i < s->n; i++) {
-            lt_ui_label_ex(ui, s->lines[i], s->lines[i][0] == '>' ? t->accent : t->text, LT_UI_ALIGN_LEFT);
-        }
-        if (s->n != s->last_n) { lt_ui_scroll_set(ui, 0, 1 << 20); s->last_n = s->n; }
-        lt_ui_scroll_end(ui);
-    }
-    w2[0] = -1; w2[1] = CH * 10;
-    lt_ui_layout_row(ui, 2, w2, 0);
-    fl = lt_ui_text(ui, "cmd", s->input, sizeof(s->input), 0);
-    if ((lt_ui_button(ui, "Send") || (fl & LT_UI_SUBMIT)) && s->input[0] != '\0') {
-        char *out = NULL;
-        char echo[170];
-        lt_snprintf(echo, sizeof(echo), "> %s", s->input);
-        con_add(s, echo);
-        if (!online) { con_add(s, "Not connected."); }
-        else if (lt_proto_console(app->proto, s->input, 1500, &out) < 0) {
-            lt_snprintf(echo, sizeof(echo), "error: %s", lt_err_get());
-            con_add(s, echo);
-        } else if (out != NULL) { con_add(s, out); }
-        lt_free(out);
-        s->input[0] = '\0';
-        lt_ui_set_focus(ui, lt_ui_last_id(ui));
-    }
-}
-
 static void tab_free_data(lt_app *app, lt_app_tab *tab)
 {
     LT_UNUSED(app);
@@ -441,7 +375,6 @@ static void tab_free_data(lt_app *app, lt_app_tab *tab)
 static void special_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
 {
     if (strcmp(tab->target, "och-status") == 0) { och_draw(app, tab, r); }
-    else if (strcmp(tab->target, "console") == 0) { console_draw(app, tab, r); }
     else { lt_app_placeholder_draw(app, tab, r); }
 }
 

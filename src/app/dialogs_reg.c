@@ -48,12 +48,12 @@ int lt_app_datalog_open(lt_app *app, int viewer)
 
 int lt_app_special_open(lt_app *app, const char *id)
 {
-    const char *title = id;
+    const char *title = id, *kind = "special";
     if (strcmp(id, "och-status") == 0) { title = "Channel Status"; }
-    else if (strcmp(id, "console") == 0) { title = "Console"; }
-    else if (strcmp(id, "tooth-logger") == 0) { title = "Tooth Logger"; }
-    else if (strcmp(id, "composite-logger") == 0) { title = "Composite Logger"; }
-    return lt_app_tab_open(app, "special", id, title, 1) != NULL ? 0 : -1;
+    else if (strcmp(id, "console") == 0) { title = "Console"; kind = "console"; }
+    else if (strcmp(id, "tooth-logger") == 0) { title = "Tooth Logger"; kind = "toothlog"; }
+    else if (strcmp(id, "composite-logger") == 0) { title = "Composite Logger"; kind = "complog"; }
+    return lt_app_tab_open(app, kind, id, title, 1) != NULL ? 0 : -1;
 }
 
 int lt_app_connect_dialog(lt_app *app)

@@ -18,6 +18,9 @@ void lt_feat_reconnect_register(lt_app_ext *reg); /* automatic reconnect, auto-c
 void lt_feat_inilib_register(lt_app_ext *reg);    /* Settings > ECU Definitions (INI library) */
 void lt_feat_migrate_register(lt_app_ext *reg);   /* Update Project INI, migration report */
 void lt_feat_tunediff_register(lt_app_ext *reg);  /* Compare Tune Files, selective merge */
+void lt_feat_loggers_register(lt_app_ext *reg);   /* tooth logger, composite logger, ECU console */
+/* ask before sending an INI [ControllerCommands] entry (confirmation dialog unless "Always Allow") */
+void lt_app_controller_command(lt_app *app, const char *name, const char *label, const char *desc);
 /* switch the open project to another INI (tune re-resolved, project reopened); tests and scripts */
 int  lt_feat_migrate_apply(lt_app *app, const char *new_ini);
 

@@ -5,6 +5,7 @@
 #include "sim.h"
 
 #include <string.h>
+#include "sim_logger.h"
 
 #define SIM_FRAME_TIMEOUT_MS 400.0
 #define SIM_MAX_PACKET 65535UL
@@ -44,6 +45,8 @@ struct lt_ecusim {
     lt_bool ve_gen_valid;
     double (*now_fn)(void *ud);
     void *now_ud;
+    lt_simlog trig;            /* trigger logger state */
+    lt_buf con_out;            /* pending console reply text */
 };
 
 static double now_ms(const lt_ecusim *s)
@@ -213,6 +216,7 @@ lt_ecusim *lt_ecusim_new(const lt_ini *ini)
     lt_buf_init(&s->cmd);
     lt_buf_init(&s->rsp);
     lt_buf_init(&s->och);
+    lt_buf_init(&s->con_out);
     s->auto_tick = LT_TRUE;
     s->hint = LT_ENV_BIG;
     s->cmd_le = LT_FALSE;
@@ -317,6 +321,7 @@ void lt_ecusim_free(lt_ecusim *s)
     lt_buf_free(&s->cmd);
     lt_buf_free(&s->rsp);
     lt_buf_free(&s->och);
+    lt_buf_free(&s->con_out);
     lt_simengine_free(s->eng);
     lt_free(s);
 }
@@ -388,6 +393,8 @@ static void respond(lt_ecusim *s, const lt_u8 *cmd, size_t n, lt_bool env, lt_bu
     lt_u8 c = cmd[0];
     int pg;
     size_t off, cnt;
+    lt_sim_snapshot sn;
+    lt_buf lg_data;
 
     if (c == s->query_cmd) {
         put_status(out, env, LT_RC_OK);
@@ -408,8 +415,6 @@ static void respond(lt_ecusim *s, const lt_u8 *cmd, size_t n, lt_bool env, lt_bu
         auto_tick(s);
         put_status(out, env, LT_RC_OK);
         if (s->och.len == 0) {
-            lt_sim_snapshot sn;
-
             lt_simengine_snapshot(s->eng, &sn);
             lt_buf_putc(out, sn.secl & 0xFF);
         } else {
@@ -495,7 +500,42 @@ static void respond(lt_ecusim *s, const lt_u8 *cmd, size_t n, lt_bool env, lt_bu
         auto_tick(s);
         put_window(s, out, off, cnt);
         return;
+    case 'E':      /* console line (rusEFI): reply text is queued for the 'G' polls */
+        if (env && n >= 2) {
+            auto_tick(s);
+            lt_simengine_snapshot(s->eng, &sn);
+            lt_buf_clear(&s->con_out);
+            lt_buf_append(&s->con_out, cmd + 1, n - 1);
+            lt_buf_putc(&s->con_out, 0);
+            {
+                lt_buf txt;
+                lt_buf_init(&txt);
+                lt_sim_console(s->con_out.data, (double)sn.rpm, s->sig, &txt);
+                lt_buf_clear(&s->con_out);
+                lt_buf_append(&s->con_out, txt.data, txt.len);
+                lt_buf_free(&txt);
+            }
+            put_status(out, env, LT_RC_OK);
+            return;
+        }
+        put_status(out, env, LT_RC_UNKNOWN_CMD);
+        return;
+    case 'G':
+        put_status(out, env, LT_RC_OK);
+        lt_buf_append(out, s->con_out.data, s->con_out.len);
+        lt_buf_clear(&s->con_out);
+        return;
     default:
+        auto_tick(s);
+        lt_simengine_snapshot(s->eng, &sn);
+        lt_buf_init(&lg_data);
+        if (lt_simlog_command(&s->trig, s->ini, cmd, n, (double)sn.rpm, &lg_data)) {
+            put_status(out, env, LT_RC_OK);
+            lt_buf_append(out, lg_data.data, lg_data.len);
+            lt_buf_free(&lg_data);
+            return;
+        }
+        lt_buf_free(&lg_data);
         put_status(out, env, LT_RC_UNKNOWN_CMD);
         return;
     }

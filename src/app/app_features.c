@@ -16,4 +16,5 @@ void lt_app_features_register(lt_app_ext *reg)
     lt_feat_tunediff_register(reg);
     lt_feat_logging_register(reg);
     lt_feat_math_register(reg);
+    lt_feat_loggers_register(reg);
 }
