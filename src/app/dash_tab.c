@@ -1034,6 +1034,7 @@ static void dash_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
     if (area.h < 20) { return; }
     st->area = area;
     lt_dash_view_set_redraw_hz(st->view, cfg->refresh_hz);
+    lt_dash_view_set_cell_auto(st->view, lt_ui_cell_mode(ui) && !st->designer);
     st->env = pick_env(app, st, now);
     lt_gauges_install();
     lt_gauges_set_env(&st->cache, st->env);

@@ -256,6 +256,7 @@ struct lt_dash_view {
     lt_expr_cache cache;
     int hz;
     double now_ms;
+    int cell_auto;                 /* terminal UI: lay the components out as a grid */
 };
 
 static void series_setup(lt_dash_gstate *s, const lt_dash_gauge *g)
@@ -487,6 +488,140 @@ static int iround(double x)
     return (int)lt_round(x);
 }
 
+
+/* ---- terminal (cell) layout --------------------------------------------- */
+/* gauges become a grid of panels that fills the area (columns chosen for the best panel shape),
+ * indicators fixed width pills below it, the lit ones first; what does not fit is counted in a
+ * "+N more" pill. Sets v->rects (w = 0 for hidden components) and returns the hidden count
+ * of indicators; *more_r is the rect of the note (w = 0 when there is none). */
+static int ind_label_cols(const lt_dash_indicator *in, lt_bool on)
+{
+    const char *t = on ? in->on_text : in->off_text;
+    int n = 0;
+    if (t == NULL) { return 0; }
+    while (lt_utf8_next(&t) != 0) { n++; }
+    return n;
+}
+
+static int cell_layout(lt_dash_view *v, lt_rect cr, lt_rect *more_r)
+{
+    const lt_dash_cluster *cl = &v->d->cluster;
+    size_t i, j, ng = 0, ni = 0, *gi, *ii;
+    int W = cr.w / 8, H = cr.h / 16, x0 = cr.x / 8, y0 = cr.y / 16;
+    int gh, ind_rows = 0, per = 1, pw = 10, shown_i = 0, hidden = 0, longest = 0, k, cols = 1, rws = 1;
+    int shown_g = 0;
+    double best = -1.0;
+    more_r->x = more_r->y = more_r->w = more_r->h = 0;
+    gi = (size_t *)lt_malloc(sizeof(size_t) * (v->n + 1));
+    ii = (size_t *)lt_malloc(sizeof(size_t) * (v->n + 1));
+    for (i = 0; i < v->n; i++) {
+        lt_rect z;
+        z.x = z.y = z.w = z.h = 0;
+        v->rects[i] = z;
+        if (!v->st[i].enabled) { continue; }
+        if (cl->comps[i].gauge) {
+            /* reading order: row bands of the file's layout, then left to right */
+            double key = floor(cl->comps[i].gauge->relative_y * 6.0) * 10.0 + cl->comps[i].gauge->relative_x;
+            size_t p = ng;
+            while (p > 0) {
+                const lt_dash_gauge *o = cl->comps[gi[p - 1]].gauge;
+                double ok = floor(o->relative_y * 6.0) * 10.0 + o->relative_x;
+                if (ok <= key) { break; }
+                gi[p] = gi[p - 1];
+                p--;
+            }
+            gi[p] = i;
+            ng++;
+        } else {
+            ii[ni++] = i;
+        }
+    }
+    /* lit indicators first (stable) */
+    {
+        size_t *tmp = (size_t *)lt_malloc(sizeof(size_t) * (ni + 1));
+        size_t n2 = 0;
+        for (j = 0; j < ni; j++) { if (v->st[ii[j]].on) { tmp[n2++] = ii[j]; } }
+        for (j = 0; j < ni; j++) { if (!v->st[ii[j]].on) { tmp[n2++] = ii[j]; } }
+        for (j = 0; j < ni; j++) { ii[j] = tmp[j]; }
+        lt_free(tmp);
+    }
+    if (W < 4 || H < 2) { lt_free(gi); lt_free(ii); return 0; }
+    /* indicator block */
+    if (ni > 0) {
+        int max_rows, need;
+        for (j = 0; j < ni; j++) {
+            const lt_dash_indicator *in = cl->comps[ii[j]].indicator;
+            int a = ind_label_cols(in, 1), b = ind_label_cols(in, 0);
+            if (a > longest) { longest = a; }
+            if (b > longest) { longest = b; }
+        }
+        pw = longest + 4;
+        if (pw < 11) { pw = 11; }
+        if (pw > 18) { pw = 18; }
+        if (pw > W) { pw = W; }
+        per = (W + 1 + (pw + 1) / 3) / (pw + 1);      /* pills may shrink to two thirds */
+        if (per < 1) { per = 1; }
+        pw = (W - (per - 1)) / per;          /* stretch to fill the row */
+        need = (int)((ni + (size_t)per - 1) / (size_t)per);
+        max_rows = ng > 0 ? H / 5 : H;
+        if (max_rows < 1) { max_rows = 1; }
+        ind_rows = need < max_rows ? need : max_rows;
+        shown_i = (int)ni;
+        if (need > max_rows) {
+            shown_i = per * ind_rows - 1;        /* the last slot carries the note */
+            if (shown_i < 0) { shown_i = 0; }
+            hidden = (int)ni - shown_i;
+        }
+    }
+    gh = H - ind_rows;
+    if (ng > 0 && gh < 3) { gh = H; ind_rows = 0; shown_i = 0; hidden = (int)ni; }
+    /* gauge grid: best panel shape */
+    if (ng > 0) {
+        for (k = 1; k <= (int)ng && k <= W / 10 + 1; k++) {
+            int rr = ((int)ng + k - 1) / k;
+            double pwid = (double)W / (double)k, ph = (double)gh / (double)rr;
+            double sc = pwid / 26.0 < ph / 9.0 ? pwid / 26.0 : ph / 9.0;
+            if (ph < 5.0) { sc *= 0.35; }
+            if (pwid < 14.0) { sc *= 0.5; }
+            if (sc > best) { best = sc; cols = k; rws = rr; }
+        }
+        if ((double)gh / (double)rws < 5.0 && gh >= 5) {
+            rws = gh / 5;
+            cols = ((int)ng + rws - 1) / rws;
+            if (cols > W / 10 + 1) { cols = W / 10 + 1; }
+        }
+        shown_g = (int)ng < cols * rws ? (int)ng : cols * rws;
+        rws = (shown_g + cols - 1) / cols;
+        for (k = 0; k < shown_g; k++) {
+            int row = k / cols, col = k % cols, cnt = shown_g - row * cols;
+            int ya, yb, xa, xb;
+            if (cnt > cols) { cnt = cols; }
+            ya = gh * row / rws;
+            yb = gh * (row + 1) / rws;
+            xa = W * col / cnt;
+            xb = W * (col + 1) / cnt - (col < cnt - 1 ? 1 : 0);
+            v->rects[gi[k]] = lt_rect_make((x0 + xa) * 8, (y0 + ya) * 16, (xb - xa) * 8, (yb - ya) * 16);
+        }
+    }
+    /* indicator pills */
+    for (k = 0; k < shown_i; k++) {
+        int row = k / per, col = k % per;
+        v->rects[ii[k]] = lt_rect_make((x0 + col * (pw + 1)) * 8, (y0 + gh + row) * 16, pw * 8, 16);
+    }
+    if (hidden > 0) {
+        int last = shown_i;
+        *more_r = lt_rect_make((x0 + (last % per) * (pw + 1)) * 8, (y0 + gh + last / per) * 16, pw * 8, 16);
+    }
+    lt_free(gi);
+    lt_free(ii);
+    return hidden;
+}
+
+void lt_dash_view_set_cell_auto(lt_dash_view *v, int on)
+{
+    v->cell_auto = on;
+}
+
 void lt_dash_view_render(lt_dash_view *v, lt_gfx *g, lt_rect area, const lt_expr_env *env)
 {
     const lt_dash_cluster *cl = &v->d->cluster;
@@ -512,6 +647,34 @@ void lt_dash_view_render(lt_dash_view *v, lt_gfx *g, lt_rect area, const lt_expr
     prev = lt_gfx_push_clip(g, area);
     lt_gfx_fill_rect(g, cr, cl->background_color | 0xFF000000UL);
     show = lt_expr_cache_test(&v->cache, cl->enabled_condition, env);
+    if (v->cell_auto && lt_gfx_cell_mode(g)) {
+        lt_rect more;
+        int hidden;
+        char note[40];
+        for (i = 0; i < v->n; i++) {
+            const lt_dash_comp *c = &cl->comps[i];
+            v->st[i].enabled = lt_expr_cache_test(&v->cache, c->gauge ? c->gauge->enabled_condition
+                                                                      : c->indicator->enabled_condition, env);
+        }
+        hidden = show ? cell_layout(v, area, &more) : 0;
+        if (!show) {
+            more.x = more.y = more.w = more.h = 0;
+            for (i = 0; i < v->n; i++) { v->rects[i].w = v->rects[i].h = 0; }
+        }
+        for (i = 0; i < v->n; i++) {
+            const lt_dash_comp *c = &cl->comps[i];
+            if (!show || v->rects[i].w <= 0) { continue; }
+            if (c->gauge) paint_gauge(g, v->rects[i], c->gauge, &v->st[i], v->now_ms);
+            else paint_indicator(g, v->rects[i], c->indicator, v->st[i].on);
+        }
+        if (hidden > 0 && more.w > 0) {
+            lt_snprintf(note, sizeof note, " +%d more", hidden);
+            lt_gfx_fill_rect(g, more, LT_RGB(26, 29, 35));
+            lt_gfx_cell_text(g, more.x, more.y, note, LT_RGB(150, 160, 180), 0, 0);
+        }
+        lt_gfx_pop_clip(g, prev);
+        return;
+    }
     for (i = 0; i < v->n; i++) {
         const lt_dash_comp *c = &cl->comps[i];
         lt_dash_gstate *s = &v->st[i];

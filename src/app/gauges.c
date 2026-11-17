@@ -1037,7 +1037,12 @@ static void paint_cells(gp *p)
     gc.value = p->v; gc.frac = clamp01(pct_of(p, p->v)); gc.lo = p->mn; gc.hi = p->mx; gc.now_ms = p->now;
     gc.zone = p->s->zone;
     gc.back = p->bc; gc.title_fg = p->tc; gc.value_fg = p->vc; gc.bar = level_color(p);
-    gc.warn = p->wc; gc.crit = p->cc;
+    gc.warn = p->wc; gc.crit = p->cc; gc.base = p->nc;
+    gc.digits = p->c->value_digits < 0 ? 0 : (p->c->value_digits > 4 ? 4 : p->c->value_digits);
+    gc.zone_at[0] = p->s->lim.has_lw ? clamp01(pct_of(p, p->s->lim.lw)) : -1.0;
+    gc.zone_at[1] = p->s->lim.has_hw ? clamp01(pct_of(p, p->s->lim.hw)) : -1.0;
+    gc.zone_at[2] = p->s->lim.has_lc ? clamp01(pct_of(p, p->s->lim.lc)) : -1.0;
+    gc.zone_at[3] = p->s->lim.has_hc ? clamp01(pct_of(p, p->s->lim.hc)) : -1.0;
     if (LT_COLOR_R(gc.title_fg) + LT_COLOR_G(gc.title_fg) + LT_COLOR_B(gc.title_fg) < 240) {
         gc.title_fg = LT_RGB(170, 180, 200);
     }

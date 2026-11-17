@@ -244,6 +244,164 @@ void lt_gfx_cell_spark(lt_gfx *g, lt_rect r, const double *v, int n, double lo, 
     }
 }
 
+/* ---- ellipsis ----------------------------------------------------------- */
+/* cut the middle out of s so that at most cols columns remain and both the start and the end
+ * stay readable ("Target AFR Warm...ent(CLT)"); ASCII only, others are cut at the end */
+void lt_cell_ellipsize_mid(const char *s, int cols, char *out, size_t cap)
+{
+    size_t n = 0, o = 0;
+    int ascii = 1, head, tail, i;
+    const char *p;
+    if (cap == 0) { return; }
+    for (p = s; *p != '\0'; p++) {
+        if ((unsigned char)*p >= 0x80) { ascii = 0; }
+        n++;
+    }
+    if (!ascii) {
+        /* count code points */
+        const char *q = s;
+        n = 0;
+        while (lt_utf8_next(&q) != 0) { n++; }
+    }
+    if ((int)n <= cols || cols < 3) {
+        if ((int)n <= cols) { lt_strlcpy(out, s, cap); return; }
+    }
+    if (cap < n + 8 || cols < 1) { if (cap > 0) { out[0] = '\0'; } return; }
+    if (!ascii || cols < 5) {
+        const char *q = s;
+        int k = 0;
+        while (k < cols - 1 && *q != '\0') {
+            const char *b = q;
+            (void)lt_utf8_next(&q);
+            while (b < q) { out[o++] = *b++; }
+            k++;
+        }
+        out[o++] = '\xE2'; out[o++] = '\x80'; out[o++] = '\xA6';
+        out[o] = '\0';
+        return;
+    }
+    tail = (cols - 1) / 2;
+    head = cols - 1 - tail;
+    for (i = 0; i < head; i++) { out[o++] = s[i]; }
+    out[o++] = '\xE2'; out[o++] = '\x80'; out[o++] = '\xA6';
+    for (i = 0; i < tail; i++) { out[o++] = s[(int)n - tail + i]; }
+    out[o] = '\0';
+}
+
+/* ---- braille plots ------------------------------------------------------ */
+/* braille dot bit for (dot column 0..1, dot row 0..3) */
+static const lt_u8 braille_bit[2][4] = { { 0x01, 0x02, 0x04, 0x40 }, { 0x08, 0x10, 0x20, 0x80 } };
+
+static void braille_dot(lt_u8 *m, int cols, int x, int y)
+{
+    m[(y / 4) * cols + x / 2] = (lt_u8)(m[(y / 4) * cols + x / 2] | braille_bit[x & 1][y & 3]);
+}
+
+/* line plot (2x4 dots per cell) of v[0..n-1] scaled lo..hi into r; without LT_PLOT_STRETCH one
+ * sample takes one dot column (newest samples if there are more than columns), with it the
+ * samples are spread over the whole width. LT_PLOT_CLEAR resets the rect's cells to bg first,
+ * otherwise dots merge into the braille already there (several series in one plot). */
+void lt_gfx_cell_plot(lt_gfx *g, lt_rect r, const double *v, int n, double lo, double hi,
+                      lt_color fg, lt_color bg, int flags)
+{
+    int cx0, cx1, cy0, cy1, cols, rows, dw, dh, x, y, first, prev_y = -1, cx, cy;
+    lt_u8 *m;
+    if (g->cells == NULL || r.w <= 0 || r.h <= 0) { return; }
+    cx0 = fdiv(r.x + g->ox, CELL_W);
+    cx1 = fdiv(r.x + g->ox + r.w - 1, CELL_W);
+    cy0 = fdiv(r.y + g->oy, CELL_H);
+    cy1 = fdiv(r.y + g->oy + r.h - 1, CELL_H);
+    cols = cx1 - cx0 + 1;
+    rows = cy1 - cy0 + 1;
+    if (cols > 400) { cols = 400; }
+    if (rows > 120) { rows = 120; }
+    dw = cols * 2;
+    dh = rows * 4;
+    m = (lt_u8 *)lt_calloc((size_t)(cols * rows) + 1, 1);
+    first = (n > dw && !(flags & LT_PLOT_STRETCH)) ? n - dw : 0;
+    for (x = 0; x < dw && v != NULL && n > 0; x++) {
+        double val, f;
+        if (flags & LT_PLOT_STRETCH) {
+            double pos = n > 1 ? (double)x * (double)(n - 1) / (double)(dw - 1) : 0.0;
+            int i0 = (int)pos;
+            double fr = pos - (double)i0;
+            if (i0 >= n - 1) { i0 = n - 1; fr = 0.0; }
+            val = i0 < n - 1 ? v[i0] * (1.0 - fr) + v[i0 + 1] * fr : v[i0];
+        } else {
+            if (first + x >= n) { break; }
+            val = v[first + x];
+        }
+        f = hi > lo ? (val - lo) / (hi - lo) : 0.5;
+        if (!(f > 0.0)) { f = 0.0; }
+        if (f > 1.0) { f = 1.0; }
+        y = (int)((1.0 - f) * (double)(dh - 1) + 0.5);
+        if (flags & LT_PLOT_FILL) {
+            int yy;
+            for (yy = y; yy < dh; yy++) { braille_dot(m, cols, x, yy); }
+        } else {
+            int a = y, b = y, yy;
+            if (prev_y >= 0) { a = LT_MIN(y, prev_y); b = LT_MAX(y, prev_y); }
+            for (yy = a; yy <= b; yy++) { braille_dot(m, cols, x, yy); }
+        }
+        prev_y = y;
+    }
+    for (cy = 0; cy < rows; cy++) {
+        for (cx = 0; cx < cols; cx++) {
+            lt_cell *k = cell_ptr(g, cx0 + cx, cy0 + cy);
+            lt_u8 bits = m[cy * cols + cx];
+            if (k == NULL) { continue; }
+            if (flags & LT_PLOT_CLEAR) {
+                k->bg = (bg | OPAQUE) & LT_U32_MASK;
+                k->ch = ' ';
+                k->attr = 0;
+            }
+            if (bits != 0) {
+                if (!(flags & LT_PLOT_CLEAR) && k->ch >= 0x2800UL && k->ch <= 0x28FFUL) {
+                    bits = (lt_u8)(bits | (lt_u8)(k->ch - 0x2800UL));
+                }
+                k->ch = 0x2800UL + (lt_u32)bits;
+                k->fg = (fg | OPAQUE) & LT_U32_MASK;
+            }
+            mark_cell(g, cx0 + cx, cy0 + cy);
+        }
+    }
+    lt_free(m);
+}
+
+/* ---- thin lines as braille dots ------------------------------------------ */
+static void braille_put(lt_gfx *g, int dx, int dy, lt_color c)
+{
+    int cx = fdiv(dx, 2), cy = fdiv(dy, 4), bx = dx - cx * 2, by = dy - cy * 4;
+    lt_cell *k = cell_ptr(g, cx, cy);
+    lt_u32 bits;
+    if (k == NULL) { return; }
+    if (k->ch >= 0x2800UL && k->ch <= 0x28FFUL) { bits = (lt_u32)(k->ch - 0x2800UL); }
+    else if (k->ch == ' ' || k->ch == 0 || (k->ch >= 0x2500UL && k->ch <= 0x257FUL)) { bits = 0; }
+    else { return; }
+    bits |= (lt_u32)braille_bit[bx][by];
+    k->ch = 0x2800UL + bits;
+    k->fg = (c | OPAQUE) & LT_U32_MASK;
+    mark_cell(g, cx, cy);
+}
+
+void lt_cell_braille_line(lt_gfx *g, double x0, double y0, double x1, double y1, lt_color c)
+{
+    int ax = (int)(x0 / 4.0 - (x0 < 0.0 ? 1.0 : 0.0)), ay = (int)(y0 / 4.0 - (y0 < 0.0 ? 1.0 : 0.0));
+    int bx = (int)(x1 / 4.0 - (x1 < 0.0 ? 1.0 : 0.0)), by = (int)(y1 / 4.0 - (y1 < 0.0 ? 1.0 : 0.0));
+    int dx = bx > ax ? bx - ax : ax - bx, dy = by > ay ? by - ay : ay - by;
+    int sx = ax < bx ? 1 : -1, sy = ay < by ? 1 : -1, err = dx - dy, guard = 0;
+    if (LT_COLOR_A(c) == 0) { return; }
+    for (;;) {
+        braille_put(g, ax, ay, c);
+        if ((ax == bx && ay == by) || ++guard > 4000) { break; }
+        {
+            int e2 = 2 * err;
+            if (e2 > -dy) { err -= dy; ax += sx; }
+            if (e2 < dx) { err += dx; ay += sy; }
+        }
+    }
+}
+
 /* ---- shadows ---------------------------------------------------------------- */
 /* dim the cells covered by r offset by (dx, dy) cells but not by r itself: the
  * classic text-mode drop shadow (background and glyphs are darkened) */

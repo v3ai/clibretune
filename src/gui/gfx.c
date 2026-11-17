@@ -662,6 +662,7 @@ void lt_gfx_line(lt_gfx *g, double x0, double y0, double x1, double y1, double w
         char ch = line_char(dx, dy, width);
         int n, i;
         if (len > 1.0e6) { return; }
+        if (width < 3.0 && dx != 0.0 && dy != 0.0) { lt_cell_braille_line(g, x0, y0, x1, y1, c); return; }
         n = (int)(len / 4.0) + 1;
         for (i = 0; i <= n; i++) {
             double t = (double)i / (double)n;

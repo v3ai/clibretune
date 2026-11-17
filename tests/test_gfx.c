@@ -217,6 +217,8 @@ LT_TEST(test_cells)
     tri[0] = 8; tri[1] = 100; tri[2] = 100; tri[3] = 100; tri[4] = 8; tri[5] = 180;
     lt_gfx_fill_poly(&g, tri, 3, LT_RGB(9, 9, 9));
     LT_CHECK(C(&cl, 2, 8)->bg == LT_RGB(9, 9, 9));
+    lt_gfx_line(&g, 8, 160, 72, 128, 1, LT_RGB(255, 0, 255));       /* diagonal: braille dots */
+    LT_CHECK(C(&cl, 3, 9)->ch >= 0x2800 && C(&cl, 3, 9)->ch <= 0x28FF && C(&cl, 3, 9)->ch != 0x2800);
     lt_gfx_rect(&g, lt_rect_make(160, 112, 64, 48), LT_RGB(255, 255, 255));
     LT_CHECK(C(&cl, 20, 7)->ch == 0x256D && C(&cl, 27, 9)->ch == 0x256F       /* rounded corners */
               && C(&cl, 22, 7)->ch == 0x2500 && C(&cl, 20, 8)->ch == 0x2502);

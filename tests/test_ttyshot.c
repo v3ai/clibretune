@@ -7,6 +7,7 @@
 #include "lt_test.h"
 #include "../src/app/app.h"
 #include "../src/app/app_ttyshot.h"
+#include "../src/app/gauges_cell.h"
 
 #define MAXTXT 200000UL
 
@@ -204,6 +205,117 @@ LT_TEST(dashboard_bars)
     LT_CHECK(strstr(g_txt, "Throttle position") != NULL);
 }
 
+static int has_braille(const char *s)
+{
+    for (; *s != '\0'; s++) {
+        if ((unsigned char)*s == 0xE2 && ((unsigned char)s[1] & 0xFC) == 0xA0) { return 1; }
+    }
+    return 0;
+}
+
+LT_TEST(dashboard_dense_panels)
+{
+    char l[1024];
+    int i, w, sizes[3][2];
+    sizes[0][0] = 80; sizes[0][1] = 24;
+    sizes[1][0] = 120; sizes[1][1] = 40;
+    sizes[2][0] = 160; sizes[2][1] = 50;
+    for (i = 0; i < 3; i++) {
+        int row;
+        render(sizes[i][0], sizes[i][1], NULL, NULL, NULL, 0, NULL);
+        LT_CHECK(count_lines() == sizes[i][1]);
+        for (row = 0; row < sizes[i][1]; row++) {
+            line_of(row, l, sizeof(l));
+            LT_CHECK(utf8_cols(l) <= sizes[i][0]);
+        }
+        LT_CHECK(strstr(g_txt, "\xE2\x97\x8B") != NULL);       /* indicator pills */
+        LT_CHECK(strstr(g_txt, " more") != NULL);               /* what did not fit is counted */
+        LT_CHECK(strstr(g_txt, "Config\xE2\x80\xA6Settin") == NULL);   /* no glued truncations */
+    }
+    render(120, 40, NULL, NULL, NULL, 0, "build/ttyshot_dash120.ppm");
+    LT_CHECK(strstr(g_txt, "hi ") != NULL && strstr(g_txt, "avg ") != NULL && strstr(g_txt, "lo ") != NULL);
+    LT_CHECK(strstr(g_txt, "\xE2\x96\x80") != NULL || strstr(g_txt, "\xE2\x96\x88") != NULL);   /* block digits */
+    LT_CHECK(has_braille(g_txt));                                /* trend plots */
+    /* the panels fill the area: no empty band above the indicators at 160x50 */
+    render(160, 50, NULL, NULL, NULL, 0, "build/ttyshot_dash160.ppm");
+    w = 0;
+    for (i = 4; i < 40; i++) {
+        line_of(i, l, sizeof(l));
+        if (strlen(l) > 60) { w++; }
+    }
+    LT_CHECK(w >= 34);
+}
+
+LT_TEST(label_shortening)
+{
+    char o[256];
+    lt_cell_abbrev("Config Error", 20, o, sizeof(o));
+    LT_CHECK_STR(o, "Config Error");
+    lt_cell_abbrev("Not decel fuel cut", 12, o, sizeof(o));
+    LT_CHECK(utf8_cols(o) <= 12 && o[0] == 'N');
+    lt_cell_abbrev("Settings saved to flash memory", 10, o, sizeof(o));
+    LT_CHECK(utf8_cols(o) <= 10 && o[0] == 'S');
+    lt_cell_abbrev("ABCDEFGHIJKLMNOP", 6, o, sizeof(o));
+    LT_CHECK(utf8_cols(o) == 6 && strcmp(o + strlen(o) - 3, "\xE2\x80\xA6") == 0);
+    lt_cell_ellipsize_mid("Target AFR Warmup enrichment(CLT)", 20, o, sizeof(o));
+    LT_CHECK(utf8_cols(o) == 20);
+    LT_CHECK(strncmp(o, "Target AFR", 10) == 0 && strcmp(o + strlen(o) - 9, "ment(CLT)") == 0);
+    lt_cell_ellipsize_mid("short", 20, o, sizeof(o));
+    LT_CHECK_STR(o, "short");
+}
+
+LT_TEST(braille_plot)
+{
+    lt_cells cl;
+    lt_gfx g;
+    double v[16];
+    int i;
+    lt_cells_init(&cl, 10, 4);
+    lt_gfx_init_cells(&g, &cl);
+    for (i = 0; i < 16; i++) { v[i] = (double)i; }
+    lt_gfx_cell_plot(&g, lt_rect_make(0, 0, 80, 64), v, 16, 0.0, 15.0, LT_RGB(255, 0, 0), LT_RGB(0, 0, 0),
+                     LT_PLOT_CLEAR | LT_PLOT_STRETCH);
+    LT_CHECK(cl.cells[3 * 10 + 0].ch >= 0x2801 && cl.cells[3 * 10 + 0].ch <= 0x28FF);   /* low left */
+    LT_CHECK(cl.cells[0 * 10 + 9].ch >= 0x2801 && cl.cells[0 * 10 + 9].ch <= 0x28FF);   /* high right */
+    LT_CHECK(cl.cells[0 * 10 + 0].ch == ' ' && cl.cells[3 * 10 + 9].ch == ' ');
+    lt_cells_free(&cl);
+}
+
+LT_TEST(modal_fits_content)
+{
+    char l[1024];
+    int row = -1, i;
+    render(120, 40, NULL, "ctrl+comma", NULL, 0, "build/ttyshot_dlg120.ppm");
+    for (i = 0; i < 40; i++) {
+        line_of(i, l, sizeof(l));
+        if (strstr(l, "Close") != NULL) { row = i; }
+    }
+    LT_CHECK(row > 0 && row < 26);        /* the settings form no longer fills the whole screen */
+    LT_CHECK(strstr(g_txt, "\xE2\x95\xB0") != NULL);
+}
+
+LT_TEST(sidebar_resize_keys)
+{
+    render(120, 40, NULL, NULL, NULL, 0, NULL);
+    LT_CHECK(strstr(g_txt, "Odd Fire Cylinder offsets") == NULL);
+    LT_CHECK(strstr(g_txt, "Odd Fire Cy\xE2\x80\xA6") != NULL);          /* middle ellipsis keeps the end */
+    render(120, 40, NULL, "ctrl+right,ctrl+right,ctrl+right,ctrl+right,ctrl+right,ctrl+right", NULL, 0, NULL);
+    LT_CHECK(strstr(g_txt, "Odd Fire Cylinder offsets") != NULL);
+}
+
+LT_TEST(logger_screens)
+{
+    render(120, 40, "tooth-logger", "click:79/3", NULL, 0, "build/ttyshot_tooth120.ppm");
+    LT_CHECK(strstr(g_txt, "Tooth Logger") != NULL);
+    LT_CHECK(strstr(g_txt, "Detected RPM") != NULL);
+    render(120, 40, "composite-logger", "click:33/3", NULL, 0, "build/ttyshot_comp120.ppm");
+    LT_CHECK(strstr(g_txt, "Primary pulses") != NULL);
+    render(120, 40, "datalog", NULL, NULL, 0, "build/ttyshot_log120.ppm");
+    LT_CHECK(strstr(g_txt, "Data Logging") != NULL);
+    render(120, 40, "console", NULL, NULL, 0, "build/ttyshot_console120.ppm");
+    LT_CHECK(strstr(g_txt, "onsole") != NULL);
+}
+
 LT_TEST(deterministic)
 {
     char first[8192];
@@ -242,6 +354,12 @@ int main(void)
     LT_RUN(ve_table_16_colors_ascii);
     LT_RUN(dialog_frame);
     LT_RUN(dashboard_bars);
+    LT_RUN(dashboard_dense_panels);
+    LT_RUN(label_shortening);
+    LT_RUN(braille_plot);
+    LT_RUN(modal_fits_content);
+    LT_RUN(sidebar_resize_keys);
+    LT_RUN(logger_screens);
     LT_RUN(deterministic);
     LT_RUN(keys_script_parser);
     LT_TEST_MAIN_END

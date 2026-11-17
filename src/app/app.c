@@ -39,6 +39,7 @@ static void settings_defaults(lt_app_settings *s)
     s->metric = 1;
     s->sidebar_w = 260;
     s->sidebar_on = 1;
+    s->sidebar_cols = 0;
     s->show_ecu_menus = 1;
     s->scale_pct = 0;
     lt_strlcpy(s->backend, "auto", sizeof(s->backend));
@@ -74,6 +75,7 @@ void lt_app_settings_load(lt_app *app)
         lt_props_get_i32(&p, "units_metric", &s->metric);
         lt_props_get_i32(&p, "sidebar_w", &s->sidebar_w);
         lt_props_get_i32(&p, "sidebar_on", &s->sidebar_on);
+        lt_props_get_i32(&p, "sidebar_cols", &s->sidebar_cols);
         lt_props_get_i32(&p, "show_ecu_menus", &s->show_ecu_menus);
         v = lt_props_get(&p, "scale");
         if (v != NULL) {
@@ -120,6 +122,7 @@ void lt_app_settings_load(lt_app *app)
     lt_props_free(&p);
     lt_free(path);
     s->sidebar_w = LT_CLAMP(s->sidebar_w, 160, 600);
+    if (s->sidebar_cols != 0) { s->sidebar_cols = LT_CLAMP(s->sidebar_cols, 14, 80); }
     if (s->scale_pct != 0) { s->scale_pct = LT_CLAMP(s->scale_pct, 100, 300); }
     if (s->win_w < 320 || s->win_h < 240 || s->win_w > 16384 || s->win_h > 16384) { s->win_w = s->win_h = 0; }
     s->win_max = s->win_max ? 1 : 0;
@@ -140,6 +143,7 @@ void lt_app_settings_save(lt_app *app)
     lt_snprintf(num, sizeof(num), "%d", s->metric); lt_props_set(&p, "units_metric", num);
     lt_snprintf(num, sizeof(num), "%d", s->sidebar_w); lt_props_set(&p, "sidebar_w", num);
     lt_snprintf(num, sizeof(num), "%d", s->sidebar_on); lt_props_set(&p, "sidebar_on", num);
+    lt_snprintf(num, sizeof(num), "%d", s->sidebar_cols); lt_props_set(&p, "sidebar_cols", num);
     lt_snprintf(num, sizeof(num), "%d", s->show_ecu_menus); lt_props_set(&p, "show_ecu_menus", num);
     if (s->scale_pct == 0) { lt_props_set(&p, "scale", "auto"); }
     else { lt_snprintf(num, sizeof(num), "%d", s->scale_pct); lt_props_set(&p, "scale", num); }

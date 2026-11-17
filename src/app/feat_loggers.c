@@ -266,7 +266,7 @@ static void teeth_plot(lt_app *app, lg_view *v, lt_rect r, int click_l, int clic
 {
     lt_ui *ui = app->ui;
     const lt_theme *th = lt_ui_theme(ui);
-    int padl = lt_ui_px(ui, 58), padr = lt_ui_px(ui, 10), padt = lt_ui_px(ui, 8), padb = lt_ui_px(ui, 22);
+    int padl = lt_ui_px(ui, 58), padr = lt_ui_px(ui, 10), padt = lt_ui_cell_mode(ui) ? 16 : lt_ui_px(ui, 8), padb = lt_ui_cell_mode(ui) ? 32 : lt_ui_px(ui, 22);
     int rh = lt_ui_row_height(ui), i, bw;
     lt_rect pl;
     size_t s, c, k;
@@ -376,7 +376,7 @@ static void comp_plot(lt_app *app, lg_view *v, lt_rect r, int click_l, int click
     };
     lt_ui *ui = app->ui;
     const lt_theme *th = lt_ui_theme(ui);
-    int padl = lt_ui_px(ui, 78), padr = lt_ui_px(ui, 10), padt = lt_ui_px(ui, 8), padb = lt_ui_px(ui, 22);
+    int padl = lt_ui_cell_mode(ui) ? 104 : lt_ui_px(ui, 78), padr = lt_ui_px(ui, 10), padt = lt_ui_cell_mode(ui) ? 16 : lt_ui_px(ui, 8), padb = lt_ui_cell_mode(ui) ? 32 : lt_ui_px(ui, 22);
     int rh = lt_ui_row_height(ui), i, nch = 0, ch[LT_COMP_CHANNELS], row;
     unsigned mask = lt_logcap_comp_mask(&v->cap);
     lt_rect pl;

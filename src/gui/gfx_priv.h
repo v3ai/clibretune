@@ -22,6 +22,9 @@ int lt_gfx_vtext_width_plex(const char *s, double height, double *w);
  * light box glyph already in a cell (rounded corners when round and the cell was empty) */
 lt_u32 lt_cell_line_merge(lt_u32 old, int add, int round);
 int lt_cell_line_bits(lt_u32 ch);
+/* thin line as braille dots (2x4 per cell) between two absolute pixel points; dots merge into
+ * braille already in the cells, blank and box-drawing cells are taken over, text is kept */
+void lt_cell_braille_line(lt_gfx *g, double x0, double y0, double x1, double y1, lt_color c);
 
 /* coverage remapping table (256 entries) for text/icons of color c: boosts
  * light-on-dark and tames dark-on-light so stroke weight looks the same */

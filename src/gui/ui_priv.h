@@ -84,6 +84,7 @@ typedef struct ui_scroll {
     int ovr, ovr_w, ovr_h;
     int vbar, hbar;
     int base_clip;
+    int fill_top;        /* cell mode: a fill-height row of the enclosing modal's own layout */
 } ui_scroll;
 
 typedef struct ui_popup {
@@ -258,6 +259,9 @@ struct lt_ui {
     int ngrp;
     int *modal_stack[4];
     int nmodal;
+    /* cell mode: fit a modal to its content (measured while it is drawn, used next frame) */
+    lt_u32 modal_id[4];
+    int modal_lay[4], modal_fill[4], modal_slackn[4], modal_slack[4];
     lt_u32 prev_tree;
     /* grids */
     ui_grid grids[4];

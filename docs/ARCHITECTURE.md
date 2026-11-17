@@ -373,10 +373,27 @@ junctions (`gfx_cell.c`: `lt_cell_line_merge`), text-mode shadows, eighth-block 
 (`lt_gfx_cell_hbar/vbar/spark`), a layout snapped to the cell grid (`ui_layout_push/ui_next`),
 framed gauge panels (`app/gauges_cell.c`), heat-mapped text grid with an inverted cursor.
 
+Dashboard in cell mode (`lt_dash_view_set_cell_auto`, set by `dash_tab.c` unless the designer is open):
+`dash_view.c` ignores the file's positions and lays the gauges out as a grid that fills the area (the
+column count with the best panel shape) and the indicators as fixed-width pills below it, lit ones first,
+with a "+N more" pill for what does not fit. A gauge panel (`gauges_cell.c`) is a rounded frame with the
+unit in the title border, the value in 3-row block digits (half blocks; plain bold text when too narrow),
+observed hi/avg/lo, an eighth-block bar whose cells and track follow the INI warning/critical zones,
+min/max labels and a braille trend (`lt_gfx_cell_plot`) filling the remaining rows. Pill labels are
+shortened with `lt_cell_abbrev` (drops inner vowels, then spaces) and long tree labels with
+`lt_cell_ellipsize_mid`. Thin diagonal `lt_gfx_line`s are drawn as braille dots, so the logger and
+datalog charts get sub-cell resolution.
+
+Modals in cell mode (`ui_container.c`): the pixel width is widened by 20% (proportional-font designs)
+and the height shrinks to the content measured on earlier frames (fill-height scroll areas report their
+slack; any other fill row keeps the requested height). The sidebar is resized with Ctrl+Left/Right or
+by dragging its border and the width is stored in the settings (`sidebar_cols`).
+`LT_SHOT_FRAMES=n` runs more frames before the snapshot (longer gauge history).
+
 Snapshot harness (headless, no terminal needed): `LT_SHOT_TTY=out.ppm` (image, Plex Mono + procedural
 box/block glyphs, 10x20 px per cell; convert with `tools/ppm2png.py`), `LT_SHOT_TEXT=out.txt`
 (plain text), `LT_SHOT_ANSI=out.ans` (the exact escape stream), `LT_SHOT_SIZE=COLSxROWS`,
 `LT_SHOT_COLORS=24|256|16|1`, `LT_SHOT_ASCII=1` / `LT_SHOT_BASIC=1`, `LT_SHOT_OPEN=target`,
 `LT_SHOT_KEYS="alt+f,down,enter,text:abc,click:10/3,wheel:20/10/-1,ctrl+comma"`:
 `LT_SHOT_TTY=a.ppm LT_SHOT_SIZE=120x40 build/libretune --demo`. Tests: `tests/test_tty.c`
-(parsing, modes, diff output), `tests/test_ttyshot.c` (screens at 80x24 / 120x40).
+(parsing, modes, diff output), `tests/test_ttyshot.c` (screens at 80x24 / 120x40 / 160x50).

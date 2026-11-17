@@ -211,6 +211,9 @@ void   lt_dash_render_indicator(lt_gfx *g, lt_rect r, const lt_dash_indicator *i
 /* Hit test: component index under (x,y) of the last render, or -1 (designer selection, click actions). */
 int    lt_dash_view_hit(const lt_dash_view *v, int x, int y);
 lt_rect lt_dash_view_component_rect(const lt_dash_view *v, size_t index);
+/* terminal (cell) UI: lay gauges out as a filling grid of panels and indicators as pills,
+ * ignoring the file's positions (view mode only) */
+void   lt_dash_view_set_cell_auto(lt_dash_view *v, int on);
 /* Zone helpers used by painters (spec 5.2): colour for value with threshold hysteresis. */
 lt_color lt_dash_value_color(const lt_dash_gauge *g, double v, int *prev_zone);
 /* Arc geometry of the analog dial (spec 5.4). */
