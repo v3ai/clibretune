@@ -354,6 +354,7 @@ Orig = path under `ref/LibreTune/crates/`. `app/` = `libretune-app/src/component
 - Missing: primary + secondary tables in one session, load-source selection (MAP / TPS / Alpha-N detection),
   keeping per-slot recommendations when switching, "Send & Switch / Discard & Switch / Cancel" guard, update
   mode (send to RAM vs send+burn).
+- Status update: DONE: secondary table runs in parallel with per-slot recommendations, Send/Discard/Cancel guard, load-source detection, RAM vs RAM+burn update mode
 - Orig: `app/tuner-ui/AutoTune.tsx` (2144 lines), `cmd/start_autotune.rs`, `cmd/autotune_misc.rs`.
 
 ### G-51 AFR delay test
@@ -361,6 +362,7 @@ Orig = path under `ref/LibreTune/crates/`. `app/` = `libretune-app/src/component
 - Have: `lt_detect_delay`, `lt_fit_flow_delay`, `lt_delay_table_*`.
 - Missing: dialog that drives a controlled fuel step through the ECU (reqFuel read, abort, safety limits),
   delay trace overlay, per-flow delay map, save model for AutoTune.
+- Status update: DONE: Tools > AFR Delay Test (warmup-slot step, trace overlay, per-flow map, afr_delay_model.json read by AutoTune); the demo simulator has no AFR response so steps reject there
 - Orig: `app/dialogs/AfrDelayTestDialog.tsx`, `DelayTraceOverlay.tsx`, `cmd/afr_delay_test.rs`, `cmd/autotune_preflight.rs` (`save_delay_model`), `core/autotune/delay_measure.rs`.
 - Ours: `src/app/dlg_afrdelay.c` (owned with G-50, same autotune files).
 
@@ -368,6 +370,7 @@ Orig = path under `ref/LibreTune/crates/`. `app/` = `libretune-app/src/component
 - Status: PARTIAL | Priority: P2 | Effort: S
 - Have: recommendation grid with heat colouring, strip.
 - Missing: switchable weighting / change / coverage maps, zoom and pan, trace line of visited cells in the grid, Y flip.
+- Status update: PARTIAL: value/weighting/change/coverage views, trace line, Y flip; zoom and pan not done
 - Orig: `docs/src/features/autotune/recommendations.md`, CHANGELOG 2026-11-02.
 
 ### G-53 Tune health, anomalies, predicted fills
@@ -375,11 +378,13 @@ Orig = path under `ref/LibreTune/crates/`. `app/` = `libretune-app/src/component
 - Have: health card (`lt_health_score`).
 - Missing: anomaly list/overlay (`lt_anomaly_detect`), predicted fills for empty cells (`lt_predict_cells`),
   dyno table overlay, "Tune Health" tab.
+- Status update: PARTIAL: anomaly outline and list, predicted fills (show/apply); dyno overlay not done
 - Orig: `app/tuner-ui/TuneHealth.tsx`, `cmd/tune_health.rs`, `core/autotune/{anomaly,predictor,health}.rs`.
 
 ### G-54 AutoTune export and proposals
 - Status: MISSING | Priority: P2 | Effort: S
 - Missing: CSV export of recommendations, build/save a proposal file, send-only vs burn actions.
+- Status update: DONE: CSV export, proposal JSON, send-only vs send+burn
 - Orig: `cmd/autotune_export.rs`, `cmd/autotune_misc.rs`.
 
 ### G-55 Offline log analysis report
@@ -387,6 +392,7 @@ Orig = path under `ref/LibreTune/crates/`. `app/` = `libretune-app/src/component
 - Have: "Replay log..." applies a log through AutoTune (`lt_replay`).
 - Missing: analysis report (sample weighting, "which samples count", why dropped, validation against unseen
   samples), accel-enrichment analysis (`lt_ae_*` unused), declared analyze filters from INI.
+- Status update: PARTIAL: replay report (counted/dropped/validation), accel-enrichment analysis, INI filter count; per-sample verdict table not shown
 - Orig: `app/tuner-ui/DatalogViewer.tsx`, `cmd/analyse_log.rs`, `cmd/analyze_filters.rs`, `core/autotune/{replay,accel_enrich}.rs`.
 
 ---------------------------------------------------------------------------------------------------

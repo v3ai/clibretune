@@ -28,6 +28,9 @@ lt_bool lt_tabs_live_index(lt_app *app, const char *channel, const double *bins,
                            double *value, size_t *idx);
 
 
+/* before a commit: warn (toast) when the largest pending cell change is large (logging alert) */
+int  lt_tabs_check_change(lt_app *app, const lt_tblview *v);
+
 /* ---- Set table size dialog (tables_size.c) ---- */
 typedef struct lt_tabs_size_dlg {
     int open;
@@ -82,6 +85,9 @@ int  lt_tabs_io_fit(const lt_table_file *tf, const double *xb, size_t cols, cons
 /* Write v's table to a TunerStudio .table file; 0 or <0 */
 int  lt_tabs_io_save(const char *path, const char *xname, const char *yname, const double *x,
                      size_t cols, const double *y, size_t rows, const double *z);
+
+/* saved AFR delay model of the project (afr_delay_model.json); 0 when present (dlg_afrdelay.c) */
+int  lt_tabs_delay_model_load(lt_app *app, double *floor_ms, double *anchor_ms);
 
 /* autotune service (feeds samples each realtime frame while a session runs) */
 void lt_tabs_autotune_service(lt_app *app);

@@ -289,6 +289,9 @@ lt_ecusim *lt_ecusim_new(const lt_ini *ini)
             if (lt_sim_seed_ve_table(ini, &src)) {
                 seeded = LT_TRUE;
             }
+            if (lt_sim_seed_afr_target(ini, &src)) {
+                seeded = LT_TRUE;
+            }
             if (seeded) {
                 for (i = 0; i < s->n_pages; i++) {
                     memcpy(s->pages[i].flash, s->pages[i].ram, s->pages[i].size);

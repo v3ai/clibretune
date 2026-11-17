@@ -76,7 +76,9 @@ static void crv_ranges(crv_tab *st)
 static void crv_commit(lt_app *app, lt_app_tab *tab, crv_tab *st)
 {
     lt_pagesrc dst = lt_app_pages(app);
-    int n = lt_tblview_commit(&st->v, app->ini, &dst);
+    int n;
+    (void)lt_tabs_check_change(app, &st->v);
+    n = lt_tblview_commit(&st->v, app->ini, &dst);
     if (n > 0) { lt_app_edited(app); tab->dirty = 1; }
     else if (n < 0) { lt_app_toast(app, 3, "Write failed: %s", lt_err_get()); }
 }
