@@ -116,5 +116,7 @@ struct lt_ag_env;
 void lt_feat_assistant_register(lt_app_ext *reg);
 int  lt_feat_assistant_env(lt_app *app, struct lt_ag_env *env);   /* tool view of the app; 0 = ini open */
 int  lt_feat_mcp_stdio(lt_app *app);                              /* `libretune --mcp`: serve stdin/stdout */
+/* Lua console (G-120) and the rusEFI ECU script editor (G-121) */
+void lt_feat_lua_register(lt_app_ext *reg);
 
 #endif

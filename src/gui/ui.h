@@ -505,4 +505,30 @@ void lt_ui_filedlg_open(lt_ui_filedlg *d, int mode, const char *start_dir,
  * chosen (d->path), -1 when cancelled, 0 otherwise. */
 int  lt_ui_file_dialog(lt_ui *ui, lt_ui_filedlg *d, const char *title);
 
+/* ------------------------------------------------------------------ */
+/* Multi-line text editor (ui_multi.c). The caller owns the NUL terminated buffer (capacity cap)
+ * and a lt_ui_multi (caret, selection, undo snapshots). The widget fills the next layout cell,
+ * so give the row a height (or <0 to fill). Returns LT_UI_CHANGED when the text was edited.
+ * classify (optional) writes one class per byte of text: 0 text, 1 keyword, 2 string,
+ * 3 comment, 4 number, 5 builtin name, 6 error. Ctrl+Enter is not used by the editor. */
+#define LT_UI_MULTI_READONLY 1   /* selectable, not editable */
+#define LT_UI_MULTI_LINENUMS 2   /* line number gutter */
+#define LT_UI_MULTI_UNDO 24
+typedef void (*lt_ui_classify_fn)(const char *text, size_t len, unsigned char *cls, void *user);
+typedef struct lt_ui_multi {
+    int cursor, anchor;          /* byte offsets, selection = [min, max) */
+    int want_col;                /* column kept while moving up and down, -1 = none */
+    int dragging, follow;
+    int last_kind, last_pos;     /* undo grouping */
+    int nsnap;
+    char *snap[LT_UI_MULTI_UNDO];
+    int snap_cur[LT_UI_MULTI_UNDO];
+    double blink0;
+} lt_ui_multi;
+void lt_ui_multi_init(lt_ui_multi *m);
+void lt_ui_multi_free(lt_ui_multi *m);
+void lt_ui_multi_reset(lt_ui_multi *m, const char *text);   /* new text: caret to start, undo cleared */
+int  lt_ui_text_multi(lt_ui *ui, const char *id, lt_ui_multi *m, char *buf, size_t cap, int flags,
+                      lt_ui_classify_fn classify, void *user);
+
 #endif /* LT_UI_H */
