@@ -18,6 +18,7 @@ void lt_feat_reconnect_register(lt_app_ext *reg); /* automatic reconnect, auto-c
 void lt_feat_inilib_register(lt_app_ext *reg);    /* Settings > ECU Definitions (INI library) */
 void lt_feat_migrate_register(lt_app_ext *reg);   /* Update Project INI, migration report */
 void lt_feat_tunediff_register(lt_app_ext *reg);  /* Compare Tune Files, selective merge */
+void lt_feat_dashboard_register(lt_app_ext *reg); /* dashboard settings, full screen, kiosk */
 /* switch the open project to another INI (tune re-resolved, project reopened); tests and scripts */
 int  lt_feat_migrate_apply(lt_app *app, const char *new_ini);
 

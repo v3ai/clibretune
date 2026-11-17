@@ -293,6 +293,8 @@ struct lt_backend {
     void (*set_initial_geometry)(lt_backend *b, int x, int y, int flags);
     /* current top-left of the client area and maximized state; returns 1 if known */
     int  (*get_geometry)(lt_backend *b, int *x, int *y, int *maximized);
+    /* switch the window to/from full screen (kiosk dashboard); NULL = unsupported */
+    void (*set_fullscreen)(lt_backend *b, int on);
     void *impl;
 };
 
@@ -304,6 +306,8 @@ void   lt_backend_set_min_size(lt_backend *b, int w, int h);
 int    lt_backend_screen_size(lt_backend *b, int *w, int *h);
 void   lt_backend_set_initial_geometry(lt_backend *b, int x, int y, int flags);
 int    lt_backend_get_geometry(lt_backend *b, int *x, int *y, int *maximized);
+/* returns 1 when the backend supports full screen (and applied it), else 0 */
+int    lt_backend_set_fullscreen(lt_backend *b, int on);
 /* "Xft.dpi: N" from an X resource-manager string; 0.0 if absent (exposed for tests) */
 double lt_x11_parse_xft_dpi(const char *resources);
 

@@ -41,6 +41,9 @@ typedef struct wb_state {
     UINT dpi;                   /* current window/system dpi (96 = 100%) */
     int min_w, min_h;           /* minimum client size, 0 = none */
     int init_x, init_y, init_flags;
+    int fullscreen;             /* borderless monitor-sized mode active */
+    LONG_PTR fs_style;          /* style to restore */
+    WINDOWPLACEMENT fs_place;   /* placement to restore */
 } wb_state;
 
 /* ---- dynamically bound user32 DPI entry points (Win10+; absent earlier) ---- */
@@ -702,6 +705,43 @@ static int wb_screen_size(lt_backend *b, int *pw, int *ph)
     return 1;
 }
 
+/* Full screen: borderless popup covering the monitor the window is on; restores style + placement */
+static void wb_set_fullscreen(lt_backend *b, int on)
+{
+    wb_state *w = (wb_state *)b->impl;
+    MONITORINFO mi;
+    HMONITOR mon;
+    if (w == NULL || !w->opened || (on ? 1 : 0) == w->fullscreen) {
+        return;
+    }
+    if (on) {
+        memset(&w->fs_place, 0, sizeof(w->fs_place));
+        w->fs_place.length = (UINT)sizeof(w->fs_place);
+        if (!GetWindowPlacement(w->hwnd, &w->fs_place)) {
+            return;
+        }
+        memset(&mi, 0, sizeof(mi));
+        mi.cbSize = (DWORD)sizeof(mi);
+        mon = MonitorFromWindow(w->hwnd, MONITOR_DEFAULTTONEAREST);
+        if (!GetMonitorInfoW(mon, &mi)) {
+            return;
+        }
+        w->fs_style = GetWindowLongPtrW(w->hwnd, GWL_STYLE);
+        (void)SetWindowLongPtrW(w->hwnd, GWL_STYLE, (LONG_PTR)((DWORD)w->fs_style & ~(DWORD)WS_OVERLAPPEDWINDOW) | (LONG_PTR)WS_POPUP);
+        (void)SetWindowPos(w->hwnd, HWND_TOP, (int)mi.rcMonitor.left, (int)mi.rcMonitor.top,
+                           (int)(mi.rcMonitor.right - mi.rcMonitor.left),
+                           (int)(mi.rcMonitor.bottom - mi.rcMonitor.top),
+                           SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+        w->fullscreen = 1;
+    } else {
+        (void)SetWindowLongPtrW(w->hwnd, GWL_STYLE, w->fs_style);
+        (void)SetWindowPlacement(w->hwnd, &w->fs_place);
+        (void)SetWindowPos(w->hwnd, NULL, 0, 0, 0, 0,
+                           SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+        w->fullscreen = 0;
+    }
+}
+
 static void wb_set_initial_geometry(lt_backend *b, int x, int y, int flags)
 {
     wb_state *w = (wb_state *)b->impl;
@@ -764,6 +804,7 @@ lt_backend *lt_backend_win32_create(void)
     b->screen_size = wb_screen_size;
     b->set_initial_geometry = wb_set_initial_geometry;
     b->get_geometry = wb_get_geometry;
+    b->set_fullscreen = wb_set_fullscreen;
     b->impl = w;
     return b;
 }

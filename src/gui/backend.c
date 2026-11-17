@@ -127,3 +127,10 @@ int lt_backend_get_geometry(lt_backend *b, int *x, int *y, int *maximized)
     if (b == NULL || b->get_geometry == NULL) { return 0; }
     return b->get_geometry(b, x, y, maximized);
 }
+
+int lt_backend_set_fullscreen(lt_backend *b, int on)
+{
+    if (b == NULL || b->set_fullscreen == NULL) { return 0; }
+    b->set_fullscreen(b, on);
+    return 1;
+}

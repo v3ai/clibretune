@@ -889,6 +889,23 @@ static int lc_get_geometry(lt_backend *b, int *px, int *py, int *maxd)
     return 1;
 }
 
+/* Full screen: NSWindow toggleFullScreen: toggles, so only send it when the state differs
+ * (styleMask bit NSWindowStyleMaskFullScreen = 1 << 14). */
+static void lc_set_fullscreen(lt_backend *b, int on)
+{
+    lc_state *s = (lc_state *)b->impl;
+    unsigned long mask;
+    int is_fs;
+    if (s == NULL || !s->opened || s->window == NULL) {
+        return;
+    }
+    mask = CO_SEND(lc_f_ul0)(s->window, lc_sel_of("styleMask"));
+    is_fs = (mask & (1UL << 14)) != 0UL;
+    if ((on ? 1 : 0) != is_fs) {
+        lc_send_void_id(s->window, "toggleFullScreen:", NULL);
+    }
+}
+
 static void lc_close(lt_backend *b)
 {
     lc_state *s = (lc_state *)b->impl;
@@ -1093,6 +1110,7 @@ lt_backend *lt_backend_cocoa_create(void)
     b->screen_size = lc_screen_size;
     b->set_initial_geometry = lc_set_initial_geometry;
     b->get_geometry = lc_get_geometry;
+    b->set_fullscreen = lc_set_fullscreen;
     b->impl = s;
     return b;
 }
