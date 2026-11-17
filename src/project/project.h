@@ -188,6 +188,22 @@ double lt_therm_temp_at_adc(const lt_therm_fit *f, int adc);
 /* 32 temperature samples at the given ADC bins (for the Speeduino thermistor table upload). */
 void   lt_therm_sample_at_bins(const lt_therm_fit *f, const double adc_bins[32], double out[32]);
 
+/* Calibration dialog builders (calib_build.c) */
+double lt_calib_c_to_f(double c);
+double lt_calib_f_to_c(double f);
+/* 3-point Steinhart-Hart fit -> 32 degC samples at the ADC bins of the protocol (modern = x*33,
+ * legacy = x*32). LT_EDATA with a message on a bad bias/point set. */
+int  lt_calib_therm_curve(double bias, const double temp_c[3], const double ohms[3],
+                          lt_bool modern, double temps[32]);
+/* AFR curve of an INI preset (preset != NULL) or the two-point line lin = {v1, afr1, v2, afr2}
+ * (preset == NULL), then an optional reference correction of ncorr (0..2) {measured, expected}
+ * pairs in corr. desc gets a one-line transfer-function description. */
+int  lt_calib_afr_build(const lt_ini_ref_table *t, const char *preset, lt_inc_cache *cache,
+                        const double lin[4], int ncorr, const double corr[4], double afr[1024],
+                        char *desc, size_t cap);
+/* true when the curve leaves the 0.0-25.5 AFR the one-byte wire format carries */
+lt_bool lt_calib_afr_clips(const double afr[1024]);
+
 /* ====================================================================== */
 /* Pin conflict detection (spec 7)                                         */
 /* ====================================================================== */
