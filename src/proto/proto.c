@@ -1990,7 +1990,21 @@ static int blob_send(lt_proto *p, const lt_ini_blob *b)
     }
     lt_buf_init(&c);
     lt_cmd_parse_string(b->p, b->n, &c);
-    rc = lt_proto_send_raw(p, (const lt_u8 *)c.data, c.len);
+    if (p->modern && c.len > 0) {
+        /* every framed command is answered: consume the reply, or it would be taken for the
+         * answer to the next command; an ECU that stays silent is not an error */
+        lt_buf r;
+
+        lt_buf_init(&r);
+        rc = lt_proto_send_raw_response(p, (const lt_u8 *)c.data, c.len,
+                                        lt_proto_effective_timeout_ms(p), &r);
+        lt_buf_free(&r);
+        if (rc == LT_ETIMEOUT) {
+            rc = LT_OK;
+        }
+    } else {
+        rc = lt_proto_send_raw(p, (const lt_u8 *)c.data, c.len);
+    }
     lt_buf_free(&c);
     return rc;
 }
