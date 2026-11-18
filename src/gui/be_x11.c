@@ -32,6 +32,7 @@ typedef struct x11 {
     double xs_dpi;           /* XSETTINGS Xft/DPI, 0 = none */
     int xs_wscale;           /* XSETTINGS Gdk/WindowScalingFactor, 0 = none */
     int mm_w;                /* root screen width in millimetres (0 = unknown) */
+    int scale_logged;        /* LT_SCALE_DEBUG report already printed */
     int n_mon;               /* RandR monitors (connected outputs with a CRTC) */
     struct { int x, y, w, h, mm_w, mm_h, primary; } mon[8];
     int minw, minh;          /* WM_NORMAL_HINTS minimum, 0 = none */
@@ -900,7 +901,8 @@ static double x_scale_hint(lt_backend *be) {
     if (desk > 1.01) s = desk;
     else if (phys > 0.0) s = phys;
     else s = lt_x11_pick_scale(0.0, 0.0, 0, 0.0, 0.0, x->root_w, x->mm_w);
-    if (getenv("LT_SCALE_DEBUG") != NULL) {
+    if (!x->scale_logged && getenv("LT_SCALE_DEBUG") != NULL) {
+        x->scale_logged = 1;                    /* once: the hint is queried repeatedly */
         fprintf(stderr, "x11 scale: Xft.dpi=%.0f xsettings dpi=%.0f window-scale=%d GDK_SCALE=%.2f "
                 "QT_SCALE_FACTOR=%.2f -> desktop %.2f\n", x->xft_dpi, x->xs_dpi, x->xs_wscale, gdk, qt, desk);
         for (m = 0; m < x->n_mon; m++) {

@@ -14,6 +14,11 @@
 #include "app/app_ttyshot.h"
 #include "app/feat.h"
 
+/* the build system passes the git commit when it compiles this file (see build.sh) */
+#ifndef LT_BUILD_ID
+#define LT_BUILD_ID "dev"
+#endif
+
 static void usage(void)
 {
     puts("LibreTune 0.1.0 - open source ECU tuning software\n"
@@ -37,7 +42,7 @@ int main(int argc, char **argv)
 
     for (i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) { usage(); return 0; }
-        if (strcmp(argv[i], "--version") == 0) { puts("libretune 0.1.0"); return 0; }
+        if (strcmp(argv[i], "--version") == 0) { printf("libretune 0.1.0 (build %s)\n", LT_BUILD_ID); return 0; }
         if (strcmp(argv[i], "--demo") == 0) { demo = 1; }
         else if (strcmp(argv[i], "--mcp") == 0) { mcp = 1; }
         else if (strcmp(argv[i], "--backend") == 0 && i + 1 < argc) { backend = argv[++i]; }
@@ -45,6 +50,7 @@ int main(int argc, char **argv)
         else if (strcmp(argv[i], "--ini") == 0 && i + 1 < argc) { ini = argv[++i]; }
         else { fprintf(stderr, "libretune: unknown option '%s' (try --help)\n", argv[i]); return 2; }
     }
+    lt_app_set_build_id(LT_BUILD_ID);
     app = lt_app_new();
     if (mcp) {
         /* no window: tools answer from the opened project / definition */

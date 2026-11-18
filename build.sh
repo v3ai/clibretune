@@ -105,7 +105,13 @@ case $target in
     app)
         echo "LD build/libretune$EXE"
         mkdir -p build
-        $CC $CFLAGS -Isrc src/main.c $OBJS -o "build/libretune$EXE.$$.tmp" $LDFLAGS $LIBS
+        # main.c is compiled here on every build, so it carries the build id (git commit)
+        BUILD_ID=$(git rev-parse --short HEAD 2>/dev/null || echo dev)
+        if [ "$BUILD_ID" != dev ] && [ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]; then
+            BUILD_ID="$BUILD_ID+local"
+        fi
+        $CC $CFLAGS "-DLT_BUILD_ID=\"$BUILD_ID\"" -Isrc src/main.c $OBJS \
+            -o "build/libretune$EXE.$$.tmp" $LDFLAGS $LIBS
         mv -f "build/libretune$EXE.$$.tmp" "build/libretune$EXE"
         ;;
     test)

@@ -164,7 +164,16 @@ static int page_builtin(lt_app *app, int tab)
         lt_ui_layout_row(ui, 1, &w1, 0);
         sel = 0;
         { int si; for (si = 0; si < 8; si++) { if (scale_pcts[si] == st->scale_pct) { sel = si; } } }
-        if (lt_ui_combo(ui, "scale", &sel, scales, 8)) { lt_app_set_scale_setting(app, scale_pcts[sel]); ch = 1; }
+        {
+            /* "Auto (200%)": show what detection picked, so a wrong guess is visible */
+            const char *items[8];
+            char autolbl[40];
+            int si;
+            for (si = 0; si < 8; si++) { items[si] = scales[si]; }
+            lt_snprintf(autolbl, sizeof(autolbl), "%s (%d%%)", lt_tr("Auto"), lt_app_detected_scale(app));
+            items[0] = autolbl;
+            if (lt_ui_combo(ui, "scale", &sel, items, 8)) { lt_app_set_scale_setting(app, scale_pcts[sel]); ch = 1; }
+        }
         lt_ui_layout_space(ui, 8);
         lt_ui_layout_row(ui, 1, &w1, 0);
         if (lt_ui_checkbox(ui, lt_tr("Show ECU menus in the menu bar"), &st->show_ecu_menus)) { ch = 1; }

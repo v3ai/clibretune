@@ -1279,6 +1279,11 @@ static void apply_min_size(lt_app *app)
     lt_backend_set_min_size(app->backend, mw, mh);
 }
 
+int lt_app_detected_scale(lt_app *app)
+{
+    return lt_app_pick_scale(NULL, 0, lt_backend_scale_hint(app->backend));
+}
+
 void lt_app_set_scale_setting(lt_app *app, int pct)
 {
     char *e = lt_plat_getenv("LT_SCALE");
@@ -1292,12 +1297,14 @@ void lt_app_set_scale_setting(lt_app *app, int pct)
 int lt_app_open_window(lt_app *app, const char *backend, int w, int h)
 {
     lt_backend *be = lt_backend_select(backend != NULL ? backend : app->settings.backend);
-    char *e;
+    char *e, *dbg;
+    double hint;
     int sw = 0, sh = 0, x, y, flags;
     if (be == NULL) { lt_err_set("no GUI backend available"); return -1; }
+    hint = lt_backend_scale_hint(be);
+    dbg = lt_plat_getenv("LT_SCALE_DEBUG");
     e = lt_plat_getenv("LT_SCALE");
-    app->scale_pct = lt_app_pick_scale(e, app->settings.scale_pct, lt_backend_scale_hint(be));
-    lt_free(e);
+    app->scale_pct = lt_app_pick_scale(e, app->settings.scale_pct, hint);
     app->backend = be;
     if (!be->cell_mode) {
         /* w x h is the default LOGICAL size; the saved size (if any) wins */
@@ -1306,6 +1313,19 @@ int lt_app_open_window(lt_app *app, const char *backend, int w, int h)
         apply_min_size(app);
         lt_backend_set_initial_geometry(be, x, y, flags);
     }
+    if (dbg != NULL) {
+        /* the whole decision in one place, for "why is my window small" reports */
+        char setting[16];
+        if (app->settings.scale_pct == 0) { lt_strlcpy(setting, "auto", sizeof(setting)); }
+        else { lt_snprintf(setting, sizeof(setting), "%d%%", app->settings.scale_pct); }
+        fprintf(stderr, "scale: build %s, backend %s, LT_SCALE=%s, Settings=%s, detected=%.2f"
+                " -> using %d%%\n", lt_app_build_id(), be->name, e != NULL ? e : "(unset)",
+                setting, hint, app->scale_pct);
+        fprintf(stderr, "scale: screen %dx%d px, saved window %dx%d (logical), opening %dx%d px\n",
+                sw, sh, app->settings.win_w, app->settings.win_h, w, h);
+    }
+    lt_free(dbg);
+    lt_free(e);
     if (be->open(be, "LibreTune", w, h) != 0) {
         lt_err_set("cannot open backend '%s': %s", be->name, lt_err_get());
         lt_backend_destroy(be);

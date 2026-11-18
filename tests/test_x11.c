@@ -68,10 +68,20 @@ int main(void) {
     b = lt_backend_x11_create();
     CHECK(b != NULL);
     if (!b) return 1;
-    /* the mock's RESOURCE_MANAGER says Xft.dpi 144 (1.5) but its XSETTINGS manager says
-     * Xft/DPI 192 and window scale 2: the largest wins -> 2.0 */
     CHECK(b->scale_hint != NULL);
-    if (b->scale_hint) { double sh = b->scale_hint(b); CHECK(sh > 1.999 && sh < 2.001); }
+    {
+        const char *mode = getenv("LT_X11_MOCK_MODE");
+        double sh = b->scale_hint ? b->scale_hint(b) : 0.0;
+        if (mode != NULL && strcmp(mode, "bare") == 0) {
+            /* nothing published by the desktop: the RandR panel (2880x1800, 302x189 mm,
+             * 242 dpi) decides -> 2.0; the disconnected output is skipped */
+            CHECK(sh > 1.999 && sh < 2.001);
+        } else {
+            /* RESOURCE_MANAGER says Xft.dpi 144 (1.5) but the XSETTINGS manager says
+             * Xft/DPI 192 and window scale 2: the largest wins -> 2.0 */
+            CHECK(sh > 1.999 && sh < 2.001);
+        }
+    }
     CHECK(b->screen_size != NULL && b->screen_size(b, &w, &h) == 1 && w == 640 && h == 480);
     b->set_min_size(b, 1024, 700);
     b->set_initial_geometry(b, 30, 40, LT_GEOM_POS);

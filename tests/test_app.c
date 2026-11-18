@@ -122,17 +122,29 @@ LT_TEST(scale_and_geometry_settings)
     lt_app_settings_load(app);
     LT_CHECK(s->scale_pct == 0 && s->win_w == 0 && s->win_pos == 0 && s->win_max == 0);
     {
-        static const char legacy[] = "scale=2\nwin_w=99999\nwin_h=100\nwin_x=5\nwin_y=6\n";
+        /* files from older builds: their "scale" key held a fixed default (1, later
+         * rewritten as 100), not a choice, so it must not pin the scale: auto */
+        static const char legacy[] = "scale=100\nwin_w=99999\nwin_h=100\nwin_x=5\nwin_y=6\n";
+        static const char legacy1[] = "scale=1\n";
+        static const char chosen[] = "scale=100\nui_scale=175\n";
         char *p = lt_path_join(dir, "settings.conf");
         char *txt = lt_file_read(p, NULL);
-        LT_CHECK(txt != NULL && strstr(txt, "scale=auto") != NULL);
+        LT_CHECK(txt != NULL && strstr(txt, "ui_scale=auto") != NULL);
+        LT_CHECK(txt != NULL && strstr(txt, "\nscale=") == NULL && strncmp(txt, "scale=", 6) != 0);
         lt_free(txt);
-        /* legacy integer scale (1..3) and out-of-range values */
+        LT_CHECK(lt_file_write(p, legacy1, sizeof(legacy1) - 1) == 0);
+        s->scale_pct = 150;
+        lt_app_settings_load(app);
+        LT_CHECK(s->scale_pct == 0);
+        LT_CHECK(lt_file_write(p, chosen, sizeof(chosen) - 1) == 0);
+        lt_app_settings_load(app);
+        LT_CHECK(s->scale_pct == 175);                   /* the new key is honoured */
         LT_CHECK(lt_file_write(p, legacy, sizeof(legacy) - 1) == 0);
         lt_free(p);
     }
     lt_app_settings_load(app);
-    LT_CHECK(s->scale_pct == 200);
+    LT_CHECK(s->scale_pct == 0);                         /* stale 100 no longer pins it */
+    LT_CHECK(lt_app_pick_scale(NULL, s->scale_pct, 2.0) == 200);
     LT_CHECK(s->win_w == 0 && s->win_h == 0);        /* insane size dropped */
     LT_CHECK(s->win_pos == 1 && s->win_x == 5);
     /* window plan: default 1280x800 logical */

@@ -8,7 +8,17 @@
 #include "app_ext.h"
 #include "feat.h"
 
-#define LT_APP_VERSION "0.1.0"
+static const char *g_build_id = "dev";
+
+void lt_app_set_build_id(const char *id)
+{
+    if (id != NULL && id[0] != '\0') { g_build_id = id; }
+}
+
+const char *lt_app_build_id(void)
+{
+    return g_build_id;
+}
 
 /* ------------------------------------------------------------------ */
 /* messages                                                            */
@@ -79,13 +89,12 @@ void lt_app_settings_load(lt_app *app)
         lt_props_get_i32(&p, "sidebar_on", &s->sidebar_on);
         lt_props_get_i32(&p, "sidebar_cols", &s->sidebar_cols);
         lt_props_get_i32(&p, "show_ecu_menus", &s->show_ecu_menus);
-        v = lt_props_get(&p, "scale");
-        if (v != NULL) {
-            int sv = lt_stricmp(v, "auto") == 0 ? 0 : atoi(v);
-            /* old files stored an integer factor: 1 was the default (not a choice),
-             * so it now means auto; 2..3 were explicit and become 200..300 */
-            s->scale_pct = sv == 1 ? 0 : (sv >= 2 && sv <= 3) ? sv * 100 : sv;
-        }
+        /* "ui_scale" is auto or a percentage chosen in Settings. The older "scale" key is
+         * deliberately ignored: early builds wrote their fixed default there (1, later
+         * migrated to 100), which is indistinguishable from a choice and would pin a
+         * HiDPI display at 100% forever. */
+        v = lt_props_get(&p, "ui_scale");
+        if (v != NULL) { s->scale_pct = lt_stricmp(v, "auto") == 0 ? 0 : atoi(v); }
         lt_props_get_i32(&p, "win_w", &s->win_w);
         lt_props_get_i32(&p, "win_h", &s->win_h);
         lt_props_get_i32(&p, "win_max", &s->win_max);
@@ -150,8 +159,8 @@ void lt_app_settings_save(lt_app *app)
     lt_snprintf(num, sizeof(num), "%d", s->sidebar_on); lt_props_set(&p, "sidebar_on", num);
     lt_snprintf(num, sizeof(num), "%d", s->sidebar_cols); lt_props_set(&p, "sidebar_cols", num);
     lt_snprintf(num, sizeof(num), "%d", s->show_ecu_menus); lt_props_set(&p, "show_ecu_menus", num);
-    if (s->scale_pct == 0) { lt_props_set(&p, "scale", "auto"); }
-    else { lt_snprintf(num, sizeof(num), "%d", s->scale_pct); lt_props_set(&p, "scale", num); }
+    if (s->scale_pct == 0) { lt_props_set(&p, "ui_scale", "auto"); }
+    else { lt_snprintf(num, sizeof(num), "%d", s->scale_pct); lt_props_set(&p, "ui_scale", num); }
     if (s->win_w > 0 && s->win_h > 0) {
         lt_snprintf(num, sizeof(num), "%d", s->win_w); lt_props_set(&p, "win_w", num);
         lt_snprintf(num, sizeof(num), "%d", s->win_h); lt_props_set(&p, "win_h", num);

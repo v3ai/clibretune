@@ -181,6 +181,11 @@ void    lt_app_free(lt_app *app);
 /* UI scale in percent: env LT_SCALE ("150", "150%") beats the setting (0 =
  * auto), auto uses the backend hint (1.0 = 100%) rounded to 25%; clamped 100..300. */
 int     lt_app_pick_scale(const char *env, int setting_pct, double hint);
+/* build identifier (git commit) set by main(); "dev" when unknown. id must stay valid. */
+void        lt_app_set_build_id(const char *id);
+const char *lt_app_build_id(void);
+/* scale auto-detection would choose right now (percent), whatever the setting says */
+int     lt_app_detected_scale(lt_app *app);
 /* Window plan: default 1280x800 logical, or the saved logical size, times pct;
  * falls back to the default when the saved size does not fit the screen
  * (scr_w/scr_h = 0 when unknown). Outputs physical size, position, LT_GEOM_*. */

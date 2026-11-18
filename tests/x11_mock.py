@@ -2,11 +2,18 @@
 """Fake X server for tests/test_x11.c. usage: x11_mock.py SOCKET_PATH
 Logs 'op=<opcode> len=<words>' per request to SOCKET_PATH.log. After the first
 PutImage it sends Expose, KeyPress('a'), ButtonPress(1) and ClientMessage
-(WM_DELETE_WINDOW). Answers GetProperty (RESOURCE_MANAGER = Xft.dpi 144) and TranslateCoordinates.
+(WM_DELETE_WINDOW). Answers GetProperty (RESOURCE_MANAGER = Xft.dpi 144), an XSETTINGS manager
+and TranslateCoordinates.
+With LT_X11_MOCK_MODE=bare the desktop publishes nothing (no RESOURCE_MANAGER, no XSETTINGS)
+and the RANDR extension reports a disconnected output plus a primary 2880x1800 panel of
+302x189 mm, as a HiDPI laptop running a bare window manager would.
 Exits when the client disconnects."""
 import os, socket, struct, sys
 
 path = sys.argv[1]
+BARE = os.environ.get("LT_X11_MOCK_MODE") == "bare"
+RR = 140                      # RANDR major opcode
+RR_TS = 0x1234                # config timestamp the client must echo
 if os.path.exists(path):
     os.unlink(path)
 srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -62,11 +69,42 @@ try:
             atoms[name] = next_atom
             conn.sendall(struct.pack("<BBHII20x", 1, 0, seq, 0, next_atom))
             next_atom += 1
-        elif op == 98:       # QueryExtension: no extensions
-            conn.sendall(struct.pack("<BBHI24x", 1, 0, seq, 0))
+        elif op == 98:       # QueryExtension: only RANDR, only in bare mode
+            nl = struct.unpack("<H", rest[0:2])[0]
+            present = 1 if (BARE and rest[4:4 + nl] == b"RANDR") else 0
+            conn.sendall(struct.pack("<BxHIBBBB20x", 1, seq, 0, present, RR if present else 0,
+                                     89 if present else 0, 147 if present else 0))
+        elif op == RR and BARE:
+            if b1 == 0:      # RRQueryVersion -> 1.5
+                conn.sendall(struct.pack("<BxHIII16x", 1, seq, 0, 1, 5))
+            elif b1 == 31:   # RRGetOutputPrimary
+                conn.sendall(struct.pack("<BxHII20x", 1, seq, 0, 0x62))
+            elif b1 == 25:   # RRGetScreenResourcesCurrent: crtcs 0x51 0x52, outputs 0x61 0x62
+                data = struct.pack("<IIII", 0x51, 0x52, 0x61, 0x62)
+                conn.sendall(struct.pack("<BxHIIIHHHH8x", 1, seq, len(data) // 4, 0x1000, RR_TS,
+                                         2, 2, 0, 0) + data)
+            elif b1 == 9:    # RRGetOutputInfo
+                out, ts = struct.unpack("<II", rest[0:8])
+                assert ts == RR_TS, "client must pass the config timestamp"
+                if out == 0x61:      # HDMI-1: disconnected, no crtc
+                    name, crtc, mmw, mmh, connection = b"HDMI-1", 0, 0, 0, 1
+                else:                # eDP-1: the laptop panel
+                    name, crtc, mmw, mmh, connection = b"eDP-1", 0x51, 302, 189, 0
+                tail = struct.pack("<HH", 0, len(name)) + struct.pack("<I", 0x51)
+                tail += name + b"\0" * (pad(len(name)) - len(name))
+                conn.sendall(struct.pack("<BBHIIIIIBBHHH", 1, 0, seq, len(tail) // 4, 0x1000, crtc,
+                                         mmw, mmh, connection, 0, 1, 0, 0) + tail)
+            elif b1 == 20:   # RRGetCrtcInfo
+                crtc, ts = struct.unpack("<II", rest[0:8])
+                assert crtc == 0x51 and ts == RR_TS
+                data = struct.pack("<II", 0x62, 0x62)
+                conn.sendall(struct.pack("<BBHIIhhHHIHHHH", 1, 0, seq, len(data) // 4, 0x1000,
+                                         0, 0, 2880, 1800, 0x71, 1, 63, 1, 1) + data)
+            else:            # unknown RANDR request: BadRequest
+                conn.sendall(struct.pack("<BBHIHB21x", 0, 1, seq, 0, b1, RR))
         elif op == 23:       # GetSelectionOwner: we own _XSETTINGS_S0 with window 0x55
             sel = struct.unpack("<I", rest[0:4])[0]
-            owner = 0x55 if sel == atoms.get(b"_XSETTINGS_S0") else 0
+            owner = 0x55 if (sel == atoms.get(b"_XSETTINGS_S0") and not BARE) else 0
             conn.sendall(struct.pack("<BBHII20x", 1, 0, seq, 0, owner))
         elif op == 20:
             prop = struct.unpack("<I", rest[4:8])[0]
@@ -81,7 +119,7 @@ try:
                         + xs_int(b"Gdk/WindowScalingFactor", 2))
                 val = struct.pack("<BxxxII", 0, 1, 3) + body
                 conn.sendall(struct.pack("<BBHIIII12x", 1, 8, seq, len(val) // 4, prop, 0, len(val)) + val)
-            elif prop == 23:   # RESOURCE_MANAGER on the root
+            elif prop == 23 and not BARE:   # RESOURCE_MANAGER on the root
                 val = b"*.background:\tblack\nXft.dpi:\t144\nXft.antialias:\t1\n"
                 data = val + b"\0" * (pad(len(val)) - len(val))
                 conn.sendall(struct.pack("<BBHIIII12x", 1, 8, seq, len(data) // 4, 31, 0, len(val)) + data)

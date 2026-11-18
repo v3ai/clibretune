@@ -6,9 +6,11 @@
 
 static void about_draw(lt_app *app, lt_app_dialog *d)
 {
-    lt_ui_msgbox(app->ui, "about", "About LibreTune",
-                 "LibreTune " LT_APP_VERSION " - open source ECU tuning software.\n"
-                 "In Universal C. GPL-2.0-or-later.\nBuild: " __DATE__, "OK", &d->open);
+    char msg[320];
+    lt_snprintf(msg, sizeof(msg), "LibreTune " LT_APP_VERSION " - open source ECU tuning software.\n"
+                "In Universal C. GPL-2.0-or-later.\nBuild: %s (" __DATE__ ")\nUI scale: %d%%",
+                lt_app_build_id(), app->scale_pct);
+    lt_ui_msgbox(app->ui, "about", "About LibreTune", msg, "OK", &d->open);
 }
 
 static void keys_draw(lt_app *app, lt_app_dialog *d)

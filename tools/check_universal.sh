@@ -207,6 +207,17 @@ probe() { # compiler flags... ; runner in $RUNNER_PROBE
 if [ "$RUN_TESTS" = 1 ]; then
     CCNATIVE=gcc; have gcc || CCNATIVE=cc
     run_tests "native $CCNATIVE" CC="$CCNATIVE" TARGET="$TARGET"
+    # the X11 backend against the mock X server (protocol, scale detection, RandR)
+    case $TARGET in
+        linux|bsd)
+            if have python3; then
+                printf 'tests: X11 mock server ... ' >&2
+                if CC="$CCNATIVE" tests/run_x11_mock.sh > "$TMP/x11.out" 2>&1; then rc=0; else rc=1; fi
+                { echo "=== tests X11 mock server"; cat "$TMP/x11.out"; } >> "$LOG"
+                if [ "$rc" = 0 ]; then echo "PASS" >&2; else echo "FAIL" >&2; fi
+                printf '%s|%s|%s\n' "X11 mock server" "$rc" "desktop + bare (RandR) modes" >> "$TMP/tests.txt"
+            else skip_tests "X11 mock server" "python3 not installed"; fi ;;
+    esac
     if [ "$QUICK" = 0 ]; then
         if have clang; then run_tests "native clang" CC=clang TARGET="$TARGET"
         else skip_tests "native clang" "clang not installed"; fi
