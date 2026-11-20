@@ -72,3 +72,14 @@ The embedded Speeduino base tunes are community calibrations. The miata-ecus res
 (`review/2026-11/kb/research/R14-engine-data-and-reference-tunes.md` in that repository) found public
 Miata base maps that disagree by 17-20 degrees of ignition advance at full load. Someone with the
 cars should review which base tunes to recommend, and the browser should then mark them.
+
+## 6. Maintenance runs and small follow-ups
+
+- **Fuzzing** (`tools/fuzz/run.sh NAME SECONDS`, clang only): 13 harnesses ran about 65 minutes each
+  before the first beta with no findings. Re-run them for a few hours before each release, and after
+  changing a parser; keep the corpora in `build/fuzz/corpus`.
+- **Real-INI corpus** (`tools/fetch_ini_corpus.sh` then `tools/ini_corpus_check.sh`): 157 rusEFI, FOME,
+  Speeduino and MegaSquirt INIs, every menu screen opened under ASan/UBSan, all clean. Re-run when
+  a new firmware release changes its INI.
+- Logs, CSV exports, Lua scripts and logger captures are still written in place (not via
+  `lt_plat_write_atomic` like tunes and settings); a crash mid-write can truncate that one export.
