@@ -638,6 +638,8 @@ LT_TEST(app_service_never_waits)
 {
     lt_app *app = lt_app_new();
     double t, t_end, d, max_d = 0.0, sum = 0.0, sync_ms, edit_ms;
+    long max_at = -1;
+    double blocked0;
     long calls = 0, slow = 0;
     unsigned long f0;
     int i, w;
@@ -658,6 +660,7 @@ LT_TEST(app_service_never_waits)
     }
     /* about a second of main loop: service, then sleep as long as the service allows */
     f0 = app->frames_ok;
+    blocked0 = lt_simlink_stats_get(app->simlink)->blocked_ms;
     t_end = lt_plat_now_ms() + 1000.0;
     while (lt_plat_now_ms() < t_end) {
         t = lt_plat_now_ms();
@@ -667,6 +670,7 @@ LT_TEST(app_service_never_waits)
         calls++;
         if (d > max_d) {
             max_d = d;
+            max_at = calls;
         }
         if (d >= 1.0) {
             slow++;
@@ -675,6 +679,8 @@ LT_TEST(app_service_never_waits)
         LT_CHECK(w >= 0 && w <= 50);
         lt_plat_sleep_ms(w > 2 ? 2 : (w < 1 ? 1 : w));
     }
+    /* the service never let a read wait for reply bytes (deterministic, unlike wall time) */
+    LT_CHECK(lt_simlink_stats_get(app->simlink)->blocked_ms - blocked0 == 0.0);
     /* the same link through the blocking call, for comparison */
     lt_proto_async_finish(app->proto);
     lt_buf_init(&blk);
@@ -685,16 +691,19 @@ LT_TEST(app_service_never_waits)
     }
     sync_ms = (lt_plat_now_ms() - t) / 5.0;
     lt_buf_free(&blk);
+    /* the counter does see a waiting caller: the blocking polls just now waited */
+    LT_CHECK(lt_simlink_stats_get(app->simlink)->blocked_ms - blocked0 > 5.0);
     printf("  service: %ld calls, avg %.3f ms, max %.3f ms, %ld >= 1 ms; %lu frames/s; "
-           "blocking poll %.1f ms\n", calls, sum / (double)(calls > 0 ? calls : 1), max_d, slow,
-           app->frames_ok - f0, sync_ms);
+           "blocking poll %.1f ms; slowest call #%ld\n", calls, sum / (double)(calls > 0 ? calls : 1), max_d, slow,
+           app->frames_ok - f0, sync_ms, max_at);
     LT_CHECK(app->frames_ok - f0 >= 10);         /* poll_hz 20 */
     LT_CHECK(sync_ms > 8.0);                     /* the link really is slow ... */
-    /* ... and the service never waited for it. A call that waits for a reply takes about the
-     * whole blocking time; shared CI machines (macOS VMs) also preempt a few calls for
-     * several ms, so allow rare slow calls well below that, and a small average. */
-    LT_CHECK(max_d < 1.0 || (slow * 10 <= calls && max_d < sync_ms / 2.0));
-    LT_CHECK(sum / (double)(calls > 0 ? calls : 1) < 1.0);
+    /* ... and the service never waited for it (checked exactly above through the link). In
+     * wall time a service that waits would be slow on every poll (20 a second); shared CI
+     * machines (macOS VMs) stall single calls for tens of ms, so only systematic slowness
+     * fails here. */
+    LT_CHECK(slow * 10 <= calls);
+    LT_CHECK(sum / (double)(calls > 0 ? calls : 1) < 2.0);
 
     /* a table edit: queued in well under a millisecond, in ECU RAM a little later */
     c = scalar_on(app->ini, 1);
