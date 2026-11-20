@@ -12,7 +12,7 @@ Input : assets/basetunes/speeduino/index.json, the .msq files it lists (<make>/<
 Output: src/tune/basetune_data.c (catalog table lt_basetune_tab, declared in src/tune/basetune.h)
 
 All files are concatenated in catalog order and packed with a small LZ77 coder (lzb_compress
-below; the format is documented at lt_lzb_decode in src/tune/basetune.h, which unpacks it at run
+in tools/lzpack.py; the format is documented at lt_lzb_decode in src/lt_lzb.h, which unpacks it at run
 time). The packed bytes are written as unsigned char arrays of at most ZBLOCK bytes, since
 Universal C section 9 limits objects to 32767 bytes. The tunes come out byte for byte as
 upstream ships them; packing is lossless and --check verifies the round trip.
@@ -23,112 +23,19 @@ import re
 import sys
 import urllib.parse
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import lzpack  # noqa: E402  (tools/lzpack.py: the packer shared with gen_definitions.py)
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC_DIR = os.path.join(ROOT, "assets", "basetunes", "speeduino")
 OUT = os.path.join(ROOT, "src", "tune", "basetune_data.c")
 UPSTREAM = "https://github.com/speeduino/Tunes"
-ZBLOCK = 32000       # bytes per packed array (objects <= 32767 bytes)
-
-
-def cesc_list(data):
-    """bytes -> list of C escaped characters (each element counts as one literal character)."""
-    out = []
-    for b in data:
-        c = chr(b)
-        if b == 0:
-            raise SystemExit("NUL byte in input")
-        if c == "\\":
-            out.append("\\\\")
-        elif c == '"':
-            out.append('\\"')
-        elif c == "?":
-            out.append("\\?")
-        elif c == "\n":
-            out.append("\\n")
-        elif c == "\r":
-            out.append("\\r")
-        elif c == "\t":
-            out.append("\\t")
-        elif 0x20 <= b < 0x7F:
-            out.append(c)
-        else:
-            out.append("\\%03o" % b)
-    return out
-
-
-def cstr(s):
-    e = cesc_list(s.encode("utf-8"))
-    if len(e) > 509:
-        raise SystemExit("string too long for one literal: %r" % s[:40])
-    return '"' + "".join(e) + '"'
-
-
-# ---- LZ77 packer (format: lt_lzb_decode in src/tune/basetune.h) ----
-MINM = 5
-def lzb_compress(data, maxchain=64):
-    n = len(data); out = bytearray(); heads = {}; chain = [0]*n
-    i = 0; lit = 0
-    def ext(v):
-        while v >= 255: out.append(255); v -= 255
-        out.append(v)
-    def emit(litstart, litlen, off, mlen):
-        ln = 15 if litlen >= 15 else litlen
-        mn = 0 if mlen == 0 else (15 if mlen - 4 >= 15 else mlen - 4)
-        out.append((ln << 4) | mn)
-        if litlen >= 15: ext(litlen - 15)
-        out.extend(data[litstart:litstart+litlen])
-        if mlen:
-            out.extend(bytes((off & 255, (off >> 8) & 255, (off >> 16) & 255)))
-            if mlen - 4 >= 15: ext(mlen - 4 - 15)
-    def insert(p):
-        if p + 4 <= n:
-            k = data[p:p+4]; chain[p] = heads.get(k, -1); heads[k] = p
-    def best(p):
-        if p + 4 > n: return 0, 0
-        c = heads.get(data[p:p+4], -1); bl = 0; bo = 0; tries = 0
-        while c >= 0 and tries < maxchain:
-            if p - c < (1 << 24):
-                l = 0; m = n - p
-                # fast compare
-                while l < m and data[c+l] == data[p+l]: l += 1
-                if l > bl: bl, bo = l, p - c
-                if l >= 4096: break
-            c = chain[c]; tries += 1
-        return bl, bo
-    start = 0
-    while i < n:
-        bl, bo = best(i)
-        if bl >= MINM:
-            # lazy: check i+1
-            insert(i)
-            bl2, bo2 = best(i+1)
-            if bl2 > bl + 1:
-                i += 1; continue
-            emit(start, i - start, bo, bl)
-            for p in range(i+1, i+bl): insert(p)
-            i += bl; start = i
-        else:
-            insert(i); i += 1
-    emit(start, n - start, 0, 0)
-    return bytes(out)
-def lzb_decompress(z, n):
-    o = bytearray(); i = 0
-    while True:
-        t = z[i]; i += 1; l = t >> 4
-        if l == 15:
-            while True:
-                b = z[i]; i += 1; l += b
-                if b != 255: break
-        o += z[i:i+l]; i += l
-        if len(o) == n: return bytes(o)
-        off = z[i] | z[i+1] << 8 | z[i+2] << 16; i += 3
-        m = (t & 15) + 4
-        if (t & 15) == 15:
-            while True:
-                b = z[i]; i += 1; m += b
-                if b != 255: break
-        s = len(o) - off
-        for k in range(m): o.append(o[s+k])
+ZBLOCK = lzpack.ZBLOCK   # bytes per packed array (objects <= 32767 bytes)
+cesc_list = lzpack.cesc_list
+cstr = lzpack.cstr
+cbytes = lzpack.cbytes
+lzb_compress = lzpack.lzb_compress
+lzb_decompress = lzpack.lzb_decompress
 
 
 def source_commit():
@@ -198,13 +105,6 @@ EMPTY_HEADER = """\
 #include "basetune.h"
 
 """
-
-
-def cbytes(data, ind="    "):
-    lines = []
-    for k in range(0, len(data), 20):
-        lines.append(ind + ",".join(str(b) for b in data[k:k + 20]) + ",")
-    return "\n".join(lines)
 
 
 def generate(empty=False):
