@@ -7,6 +7,7 @@
 #include "app.h"
 #include "app_ext.h"
 #include "feat.h"
+#include "iniext.h"
 
 static const char *g_build_id = "dev";
 
@@ -669,6 +670,7 @@ int lt_app_burn(lt_app *app)
     int rc;
     char *rp = NULL;
     if (!lt_app_can_burn(app)) { return -1; }
+    if (!lt_app_burn_gate(app)) { return -1; }     /* unacknowledged pin conflicts */
     if (lt_ecu_mem_has_dirty(app->mem) && lt_proto_write_dirty(app->proto, app->mem) < 0) {
         lt_app_toast(app, 3, "ECU write failed: %s", lt_err_get());
         return -1;
@@ -683,6 +685,7 @@ int lt_app_burn(lt_app *app)
         return rc;
     }
     lt_app_toast(app, 1, "Burned to ECU flash");
+    (void)lt_app_pc_after_burn(app);              /* "power cycle the ECU" notice */
     if (app->has_project) { lt_app_save_tune(app); }
     return 0;
 }
@@ -805,7 +808,15 @@ int lt_app_open_project(lt_app *app, const char *dir)
         lt_app_toast(app, 3, "Cannot open project: %s", lt_err_get());
         return -1;
     }
-    ini = lt_project_load_ini(&p, NULL);
+    {   /* the project's [SettingGroups] choice (TunerStudio ecuSettings) seeds the preprocessor */
+        lt_proj_symbols sy;
+        lt_ini_options o;
+        lt_proj_symbols_init(&sy);
+        (void)lt_proj_symbols_load(p.path, &sy);
+        lt_proj_symbols_options(&sy, &o);
+        ini = lt_project_load_ini(&p, &o);
+        lt_proj_symbols_free(&sy);
+    }
     if (ini == NULL) {
         lt_app_toast(app, 3, "Project INI failed: %s", lt_err_get());
         lt_project_close(&p);
@@ -848,6 +859,20 @@ int lt_app_import_ts(lt_app *app, const char *ts_dir)
     char *dir;
     int rc = lt_project_import_ts(ts_dir, NULL, &p);
     if (rc < 0) { lt_app_toast(app, 3, "Import failed: %s", lt_err_get()); return rc; }
+    {   /* carry the TunerStudio project settings (ecuSettings) over */
+        lt_proj_symbols sy;
+        lt_proj_symbols_init(&sy);
+        (void)lt_proj_symbols_load(ts_dir, &sy);
+        if (sy.present) {
+            size_t i;
+            for (i = 0; i < sy.n_on; i++) {
+                sy.managed = (char **)lt_realloc(sy.managed, (sy.n_managed + 1) * sizeof(char *));
+                sy.managed[sy.n_managed++] = lt_strdup(sy.on[i]);
+            }
+            (void)lt_proj_symbols_save(p.path, &sy);
+        }
+        lt_proj_symbols_free(&sy);
+    }
     dir = lt_strdup(p.path);
     lt_project_close(&p);
     rc = lt_app_open_project(app, dir);
@@ -994,24 +1019,131 @@ int lt_app_start_demo(lt_app *app, const char *ini_path)
 }
 
 /* ------------------------------------------------------------------ */
+/* INI reload with the project's settings symbols                      */
+typedef struct tab_memo { char kind[24], target[128], title[96]; int closable; } tab_memo;
+
+/* the simulated ECU starts from the definition's defaults: write the kept tune into it (as
+ * edits, so they show as unburned changes like before the reload). Returns bytes changed. */
+static size_t push_kept_pages(lt_app *app, lt_tune *kept)
+{
+    lt_pagesrc ps = lt_app_pages(app);
+    size_t total = 0, len, k, e, lim;
+    int pg;
+    const lt_u8 *cur;
+    for (pg = 0; pg < 256; pg++) {
+        if (kept->pages[pg] == NULL || ps.page == NULL) { continue; }
+        cur = ps.page(ps.ud, pg, &len);
+        if (cur == NULL) { continue; }
+        lim = len < kept->page_len[pg] ? len : kept->page_len[pg];
+        for (k = 0; k < lim; k = e) {
+            if (cur[k] == kept->pages[pg][k]) { e = k + 1; continue; }
+            for (e = k; e < lim && cur[e] != kept->pages[pg][e]; e++) {}
+            if (ps.write(ps.ud, pg, k, kept->pages[pg] + k, e - k) == 0) { total += e - k; }
+            cur = ps.page(ps.ud, pg, &len);
+            if (cur == NULL) { break; }
+        }
+    }
+    return total;
+}
+
+int lt_app_reload_ini(lt_app *app)
+{
+    lt_proj_symbols sy;
+    lt_ini_options o;
+    lt_ini *ini;
+    lt_tune *d;
+    tab_memo *memo;
+    int pg, i, n, active, was, baud, modified;
+    char port[128];
+    if (app->ini == NULL || app->tune == NULL || app->ini_path[0] == '\0') { return -1; }
+    lt_proj_symbols_init(&sy);
+    if (app->has_project) { (void)lt_proj_symbols_load(app->project.path, &sy); }
+    lt_proj_symbols_options(&sy, &o);
+    ini = lt_ini_load_file(app->ini_path, &o);
+    lt_proj_symbols_free(&sy);
+    if (ini == NULL) { lt_app_toast(app, 3, "Cannot reload the INI: %s", lt_err_get()); return -1; }
+    /* current values (ECU shadow, then the pages) into the tune, old layout */
+    if (app->mem != NULL) { (void)lt_tune_from_mem(app->tune, app->mem); }
+    (void)lt_tune_capture_from_pages(app->tune, app->ini);
+    modified = app->modified;
+    was = (int)app->conn;
+    lt_strlcpy(port, app->settings.port, sizeof(port));
+    baud = app->settings.baud;
+    app->keep_project_tune = 1;                     /* the tune was captured above */
+    lt_app_disconnect(app);
+    app->keep_project_tune = 0;
+    /* tabs hold pointers into the old definition: close them, reopen afterwards */
+    n = app->n_tabs;
+    active = app->active_tab;
+    memo = (tab_memo *)lt_calloc((size_t)n + 1, sizeof(tab_memo));
+    for (i = 0; i < n; i++) {
+        lt_strlcpy(memo[i].kind, app->tabs[i]->kind, sizeof(memo[i].kind));
+        lt_strlcpy(memo[i].target, app->tabs[i]->target, sizeof(memo[i].target));
+        lt_strlcpy(memo[i].title, app->tabs[i]->title, sizeof(memo[i].title));
+        memo[i].closable = app->tabs[i]->closable;
+    }
+    while (app->n_tabs > 0) { lt_app_tab_close(app, app->tabs[app->n_tabs - 1]); }
+    rec_free(app);
+    if (app->rt != NULL) { lt_ini_rt_free(app->rt); app->rt = NULL; }
+    /* fresh pages of the new layout with defaults, the named values written over them */
+    d = lt_tune_from_defaults(ini);
+    for (pg = 0; pg < 256; pg++) {
+        if (d->pages[pg] != NULL) { lt_tune_set_page(app->tune, pg, d->pages[pg], d->page_len[pg]); }
+    }
+    lt_tune_free(d);
+    (void)lt_tune_apply_to_pages(app->tune, ini);
+    (void)lt_tune_capture_from_pages(app->tune, ini);
+    lt_ini_free(app->ini);
+    app->ini = ini;
+    lt_expr_cache_free(&app->expr);
+    lt_expr_cache_init(&app->expr);
+    app->rt = lt_ini_rt_new(ini);
+    rebind(app);
+    for (i = 0; i < n; i++) { (void)lt_app_tab_open(app, memo[i].kind, memo[i].target, memo[i].title, memo[i].closable); }
+    if (active >= 0 && active < app->n_tabs) { app->active_tab = active; }
+    lt_free(memo);
+    app->modified = modified;
+    if (was == (int)LT_APP_DEMO) {
+        lt_tune *kept = lt_tune_new("");
+        for (pg = 0; pg < 256; pg++) {
+            if (app->tune->pages[pg] != NULL) { lt_tune_set_page(kept, pg, app->tune->pages[pg], app->tune->page_len[pg]); }
+        }
+        if (lt_app_connect_demo(app) == 0 && push_kept_pages(app, kept) > 0) {
+            lt_app_edited(app);
+        }
+        lt_tune_free(kept);
+    } else if (was == (int)LT_APP_ONLINE && port[0] != '\0') { (void)lt_app_connect_serial(app, port, baud); }
+    return 0;
+}
+
+/* ------------------------------------------------------------------ */
 /* target routing                                                      */
 int lt_app_open_target(lt_app *app, const char *target, const char *label)
 {
     lt_ini *ini = app->ini;
     int rc;
-    LT_UNUSED(label);
     if (ini == NULL || target == NULL) { return -1; }
     if (lt_ini_find_table(ini, target) != NULL) { return lt_app_table_editor_open(app, target); }
     if (lt_ini_find_curve(ini, target) != NULL) { return lt_app_curve_editor_open(app, target); }
-    if (lt_ini_find_dialog(ini, target) != NULL) { return lt_app_dialog_open(app, target); }
+    if (lt_ini_find_dialog(ini, target) != NULL) {
+        const lt_ini_dialog *d = lt_ini_find_dialog(ini, target);
+        if (label != NULL && label[0] != '\0' && d->title != NULL && strcmp(d->title, target) == 0) {
+            char t[96];
+            size_t i, k = 0;
+            for (i = 0; label[i] != '\0' && k + 1 < sizeof(t); i++) { if (label[i] != '&') { t[k++] = label[i]; } }
+            t[k] = '\0';
+            return lt_app_tab_open(app, "dialog", target, t, 1) != NULL ? 0 : -1;   /* untitled: the menu label */
+        }
+        return lt_app_dialog_open(app, target);
+    }
+    if (lt_ini_find_port_editor(ini, target) != NULL) { return lt_app_port_editor_open(app, target); }
     rc = lt_ext_dispatch_target(app, target);      /* feature-registered targets */
     if (rc != LT_EXT_NO_TARGET) { return rc; }
     if (lt_str_starts(target, "std_")) {
         if (strcmp(target, "std_separator") == 0) { return 0; }
         if (lt_ini_std_panel(ini, target) != NULL) { return lt_app_dialog_open(app, target); }
-        if (strcmp(target, "std_port_edit") == 0 || strcmp(target, "std_ms3SdConsole") == 0) {
-            return lt_app_special_open(app, target);
-        }
+        if (strcmp(target, "std_port_edit") == 0) { return lt_app_port_editor_open(app, target); }
+        if (strcmp(target, "std_ms3SdConsole") == 0) { return lt_app_special_open(app, target); }
     }
     lt_app_toast(app, 2, "Unsupported menu target: %s", target);
     return -1;

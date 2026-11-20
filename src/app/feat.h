@@ -135,4 +135,8 @@ int  lt_feat_actions_start(lt_app *app, const char *name, const char *desc);
 int  lt_feat_actions_stop(lt_app *app, size_t *count);
 int  lt_feat_actions_play_file(lt_app *app, const char *path, size_t *applied);
 
+/* INI extras: help topics, pin conflict report + burn gate, power cycle notice, project INI
+ * settings, port editor (feat_iniext.c; API in iniext.h) */
+void lt_feat_iniext_register(lt_app_ext *reg);
+
 #endif

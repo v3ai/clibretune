@@ -69,7 +69,7 @@ static void form_note(lt_ui *ui, const char *text)
 
 static const char *const set_tabs[] = { "General", "Appearance", "Connection" };
 #define N_SET_BUILTIN 3
-#define N_SET_MAX 24
+#define N_SET_MAX 32
 
 /* words the search matches besides the section title (G-92) */
 typedef struct set_kw { const char *title, *words; } set_kw;
@@ -88,7 +88,8 @@ static const set_kw keywords[] = {
     { "Behavior", "burn close exit alert large change threshold help icons session restore tabs demo "
                   "simulated onboarding welcome" },
     { "Status Bar", "channels live values rpm status" },
-    { "Project", "project name folder restore points auto save load connect" }
+    { "Project", "project name folder restore points auto save load connect" },
+    { "Project INI Settings", "settinggroups symbols celsius fahrenheit lambda mcu ecu settings units" }
 };
 
 static const char *words_of(const char *title)

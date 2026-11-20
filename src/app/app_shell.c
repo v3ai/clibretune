@@ -8,6 +8,7 @@
 #include "app_ext.h"
 #include "feat.h"
 #include "app_ttyshot.h"
+#include "iniext.h"
 
 
 static const char *const theme_names[] = { "dark", "light", "midnight", "carbon", "synthwave",
@@ -286,7 +287,7 @@ static void ini_items(lt_app *app, lt_ini_menu_item *const *items, size_t n)
                 lt_ui_submenu_end(app->ui);
             }
         } else if (lt_ui_menu_item(app->ui, lab, NULL, flags)) {
-            if (it->kind == LT_MENU_HELP) { lt_app_toast(app, 0, "Help topic: %s", it->target); }
+            if (it->kind == LT_MENU_HELP) { (void)lt_app_help_open(app, it->target); }
             else { lt_app_open_target(app, it->target, it->label); }
         }
     }
