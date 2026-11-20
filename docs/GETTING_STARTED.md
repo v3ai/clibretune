@@ -6,15 +6,29 @@ Speeduino and MegaSquirt ECUs: anything described by a TunerStudio-style INI fil
 > Tuning can damage an engine. Change one thing at a time, watch the wideband and knock, and keep
 > a copy of a tune that runs before you experiment.
 
-## 1. Try it without an ECU
+## 1. The start screen
+
+With no project open LibreTune shows its start screen:
+
+- **Connect to my ECU** finds the ECU, picks its definition (INI) and sets up a project in one go.
+- When an ECU is plugged in, a green strip names it ("rusEFI ECU is plugged in on /dev/ttyACM0").
+  If this computer has talked to that ECU before, one click opens its project and connects.
+- **Recent projects** shows each project's ECU and when it was last opened; `x` takes one off the
+  list (the folder stays on disk).
+- **Try the demo**, **Start from a base tune**, **Import a TunerStudio project**, **Open a project
+  folder** and **Set up a project manually** cover the other ways in.
+- **Before you connect** lists what a first connection needs, including the exact command when your
+  user cannot use serial ports yet. It goes away once an ECU has answered.
+
+## 2. Try it without an ECU
 
     libretune --demo
 
-Demo mode runs a simulated ECU inside the app (File > Demo mode does the same). Everything works:
-gauges move, tables highlight the live cell, AutoTune collects data and logs record. It is the
+Demo mode runs a simulated ECU inside the app (**Try the demo**, or File > Demo mode). Everything
+works: gauges move, tables highlight the live cell, AutoTune collects data and logs record. It is the
 safest place to learn the editor.
 
-## 2. Install and connect
+## 3. Install and connect
 
 - **Linux**: your user needs access to the serial port. On most distributions:
   `sudo usermod -aG dialout $USER`, then log out and back in. For firmware flashing also install the
@@ -25,13 +39,43 @@ safest place to learn the editor.
 - **macOS**: ports appear as `/dev/cu.usbmodem*` or `/dev/cu.usbserial*`. The release binary is not
   signed yet: right-click the app and choose Open the first time.
 
-Then **File > New Project...**: name the project, pick the ECU's INI from the built-in library or a
-file, and choose the port. **File > Connect ECU...** connects later; the status bar shows the link
-rate.
+Plug in the ECU's USB cable (a data cable: some cables only charge), switch the ignition on and press
+**Connect to my ECU**. LibreTune looks at USB serial ports first and recognises common ECU boards by
+their USB id: STM32 boards (rusEFI, FOME, epicEFI) as 0483:5740, Arduino Mega (Speeduino) as
+2341:0042 / 2341:0010, Teensy, and the usual USB-serial adapters (CH340, FTDI, CP210x, PL2303). Each
+port is asked at its likeliest baud rate first, and the window stays responsive while it searches
+(**Cancel scan** stops it). Built-in serial ports (`/dev/ttyS*`, COM1) are skipped unless you tick
+**Show all ports** in **File > Connect ECU...**.
+
+When something is in the way LibreTune says what to do:
+
+- *in use by another program*: close TunerStudio or a serial monitor, only one program can use a port;
+- *no permission* (Linux): it shows the command, e.g. `sudo usermod -aG dialout $USER`;
+- *the device went away*: the cable came loose or the ECU restarted;
+- *no answer*: check power, or the ECU is in its bootloader (flash firmware first);
+- *wrong baud rate*: data arrived but made no sense; pick the rate by hand.
+
+The port, baud rate, signature and project of every ECU that answered are remembered per USB serial
+number (`devices.conf` in the configuration folder), so the next time the same board is found first,
+even under another port name. **File > New Project...** still sets up a project by hand: pick the
+INI from the built-in library or a file and choose the port.
+
+If the cable is pulled or the ECU resets, LibreTune reconnects by itself as soon as the same device
+is back (for up to 30 minutes, under any port name) and keeps your edits; the status bar says what it
+is waiting for.
 
 On connect LibreTune compares the tune in the project with the one in the ECU; when they differ it
 asks which one to keep. If in doubt, use the ECU's settings, then **File > Save Tune** so the project
 has a copy.
+
+### Engine Setup checklist
+
+A new project opens **Tools > Engine Setup Checklist**: engine (displacement, cylinders), injectors
+(flow, dead time), trigger, MAP sensor, TPS, coolant and air temperature sensors, wideband and
+ignition. Each **Open** button goes to the page of your ECU's definition that handles it (rusEFI,
+FOME, Speeduino and MegaSquirt menus are recognised); pages you open are ticked, and the ticks are
+kept with the project (`setup.conf`). **Hide this checklist** puts it away; the Tools menu brings it
+back.
 
 ### Starting from a base tune
 
@@ -43,7 +87,7 @@ started: check injector size and dead time, trigger settings and ignition advanc
 before cranking. rusEFI, FOME, epicEFI and miata-ecus boards ship their base tune in the firmware;
 connect and read it.
 
-## 3. Find your way around
+## 4. Find your way around
 
 - The sidebar is the ECU's own menu tree from its INI; **Ctrl+K** searches it.
 - Tables: arrow keys or the mouse select, type a number to set, `+`/`-` step, `=` average,
@@ -51,22 +95,30 @@ connect and read it.
 - **View > Dashboard** (Ctrl+D) shows gauges; the Designer button edits them.
 - **Help > Keyboard Shortcuts** lists everything; **Help > User Manual** is the full manual.
 
-## 4. Change and burn
+## 5. Change and burn
 
 Edits go to the ECU's RAM immediately while connected, so you can try a change with the engine
-running. They are lost at power-off until you **burn** them: **File > Burn to ECU** (Ctrl+B), or the
-flame button. LibreTune checks the tune for pin conflicts before burning.
+running. They are lost at power-off until you **burn** them: **File > Burn to ECU** (Ctrl+B), the
+flame button, or the **Burn** button next to "*N* unburned changes" in the status bar, which counts
+the settings that are only in the ECU's RAM. LibreTune checks the tune for pin conflicts before
+burning.
 
-Save often (Ctrl+S). Restore points (**File > Create Restore Point**) and **File > Tune History...**
-let you go back to any earlier tune.
+Quitting, closing the project or disconnecting with unburned or unsaved changes asks first:
+**Burn and quit**, **Save and quit**, **Quit without saving** or **Cancel** (the same for close and
+disconnect).
 
-## 5. Log
+Save often (Ctrl+S). While a project has unsaved changes LibreTune also writes them every minute to
+`recovery/autosave.msq` in the project folder; if it was not closed normally (crash, power cut), the
+next time the project opens it offers to **Restore** that tune. Restore points (**File > Create
+Restore Point**) and **File > Tune History...** let you go back to any earlier tune.
+
+## 6. Log
 
 **Tools > Data Logging** (Ctrl+L) records every channel. **Tools > Datalog Viewer...** opens logs
 (`.csv`, `.msl`, `.mlg`) with stacked graph pages, scatter plots and histograms; logs from
 TunerStudio open directly.
 
-## 6. AutoTune
+## 7. AutoTune
 
 With a wideband sensor and a warm engine: **Tools > AutoTune** (Ctrl+Shift+A), choose the VE table,
 check the target AFR table and the filter settings, then press Space to start. Drive steadily
@@ -74,7 +126,7 @@ through the load and rpm range; cells fill as data arrives. Lock cells you trust
 proposed changes, apply them and burn. **Tools > WUE Analyze** and **Trim Table Analyze** work the same
 way for warm-up enrichment and per-cylinder trims.
 
-## 7. Update the firmware
+## 8. Update the firmware
 
 **Tools > Firmware Update...** flashes STM32 ECUs (rusEFI, FOME, epicEFI, miata-ecus) over USB DFU or
 OpenBLT, Speeduino on an Arduino Mega 2560 over its serial port and Speeduino on a Teensy 3.5/3.6/4.1
