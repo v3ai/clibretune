@@ -28,7 +28,7 @@ double lt_posix_clamp_time(double t)
     return t;
 }
 
-void lt_plat_sleep_ms(int ms)
+void lt_plat_os_sleep_ms(int ms)
 {
     struct timeval tv;
     if (ms <= 0) return;

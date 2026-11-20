@@ -15,7 +15,7 @@ lt_os lt_plat_os(void)
     return LT_OS_MACOS;
 }
 
-double lt_plat_now_ms(void)
+double lt_plat_os_now_ms(void)
 {
     static mach_timebase_info_data_t tb;
     double t;

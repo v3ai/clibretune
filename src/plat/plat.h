@@ -28,6 +28,11 @@ const char *lt_plat_os_name(void);
 /* monotonic milliseconds since an arbitrary epoch (wraps never in practice) */
 double lt_plat_now_ms(void);
 void   lt_plat_sleep_ms(int ms);
+/* Virtual clock for reproducible offscreen renders (screenshot harness, tests): while on,
+ * lt_plat_now_ms returns a counter that starts at the current time, moves 10 us per read
+ * (so deadline loops still end) and lt_plat_sleep_ms advances it instead of sleeping. */
+void   lt_plat_clock_virtual(int on);
+lt_bool lt_plat_clock_is_virtual(void);
 /* wall clock "YYYY-MM-DD HH:MM:SS" local time into buf (>= 20 bytes) */
 void   lt_plat_timestamp(char *buf, size_t cap);
 

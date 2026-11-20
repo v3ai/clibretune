@@ -45,7 +45,9 @@ static void render(int cols, int rows, const char *open, const char *keys, const
                    int ascii, const char *ppm)
 {
     char ini[512], size[32];
-    lt_app *app = lt_app_new();
+    lt_app *app;
+    lt_plat_clock_virtual(1);       /* timing-independent demo values (slow CI machines) */
+    app = lt_app_new();
     if (g_txt == NULL) {
         g_txt = (char *)lt_malloc(MAXTXT);
         g_ans = (char *)lt_malloc(MAXTXT);
@@ -64,6 +66,7 @@ static void render(int cols, int rows, const char *open, const char *keys, const
     if (open != NULL) { lt_app_open_target(app, open, open); }
     LT_CHECK(lt_app_screenshot(app, "", cols, rows, 8) == 0);
     lt_app_free(app);
+    lt_plat_clock_virtual(0);
     clear_env();
     slurp("build/ttyshot.txt", g_txt, MAXTXT);
     slurp("build/ttyshot.ans", g_ans, MAXTXT);

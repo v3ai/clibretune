@@ -15,7 +15,7 @@ lt_os lt_plat_os(void)
     return LT_OS_WINDOWS;
 }
 
-double lt_plat_now_ms(void)
+double lt_plat_os_now_ms(void)
 {
     static double freq = 0.0;
     LARGE_INTEGER c;
@@ -28,7 +28,7 @@ double lt_plat_now_ms(void)
     return (double)c.QuadPart / freq;
 }
 
-void lt_plat_sleep_ms(int ms)
+void lt_plat_os_sleep_ms(int ms)
 {
     if (ms > 0) Sleep((DWORD)ms);
 }

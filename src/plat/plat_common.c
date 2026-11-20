@@ -9,6 +9,39 @@
 #include <time.h>
 #include "plat_priv.h"
 
+/* ---- clock (with the screenshot harness's virtual mode) ---- */
+static int g_vclock = 0;
+static double g_vclock_ms = 0.0;
+
+double lt_plat_now_ms(void)
+{
+    if (g_vclock) {
+        g_vclock_ms += 0.01;
+        return g_vclock_ms;
+    }
+    return lt_plat_os_now_ms();
+}
+
+void lt_plat_sleep_ms(int ms)
+{
+    if (g_vclock) {
+        if (ms > 0) { g_vclock_ms += (double)ms; }
+        return;
+    }
+    lt_plat_os_sleep_ms(ms);
+}
+
+void lt_plat_clock_virtual(int on)
+{
+    if (on && !g_vclock) { g_vclock_ms = lt_plat_os_now_ms(); }
+    g_vclock = on ? 1 : 0;
+}
+
+lt_bool lt_plat_clock_is_virtual(void)
+{
+    return g_vclock ? LT_TRUE : LT_FALSE;
+}
+
 const char *lt_plat_os_name(void)
 {
     switch (lt_plat_os()) {

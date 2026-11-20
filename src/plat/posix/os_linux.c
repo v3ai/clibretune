@@ -15,7 +15,7 @@ lt_os lt_plat_os(void)
     return LT_OS_LINUX;
 }
 
-double lt_plat_now_ms(void)
+double lt_plat_os_now_ms(void)
 {
     struct timespec ts;
     double t = 0.0;

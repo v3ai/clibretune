@@ -13,6 +13,10 @@ LT_BEGIN_DECLS
 void lt_plat_sort_names(char **names, int n);
 /* append a copy of name to a growing array; returns the new count */
 int lt_plat_names_add(char ***arr, int n, int *cap, const char *name);
+/* the OS clock and sleep; lt_plat_now_ms / lt_plat_sleep_ms (plat_common.c) wrap them
+ * with the virtual clock used by the screenshot harness */
+double lt_plat_os_now_ms(void);
+void   lt_plat_os_sleep_ms(int ms);
 
 LT_END_DECLS
 
