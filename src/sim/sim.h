@@ -99,6 +99,42 @@ const lt_u8 *lt_ecusim_flash(const lt_ecusim *s, int page, size_t *len);
 lt_simengine *lt_ecusim_engine(lt_ecusim *s);
 
 /* ====================================================================== */
+/* Slow link model (sim_link.c)                                            */
+/* ====================================================================== */
+/* Wraps another io (normally lt_ecusim_io) and releases the device's replies over time like a
+ * real serial / USB / radio link: 10 bits per byte at `baud` in both directions, a fixed
+ * latency before each reply and delivery in packets of `chunk` bytes (partial reads split
+ * replies anywhere). Reads with a timeout wait through the clock hooks (default: the plat
+ * clock, i.e. really). clear_input discards only bytes that already arrived. Used by demo
+ * mode (env LT_DEMO_BAUD, LT_DEMO_LATENCY, LT_DEMO_CHUNK) and by the protocol tests. */
+typedef struct lt_simlink_cfg {
+    long   baud;          /* <= 0: no wire time */
+    double latency_ms;    /* before each reply starts */
+    int    chunk;         /* reply bytes reach the host in packets of this size; 0/1 = bytewise */
+} lt_simlink_cfg;
+typedef struct lt_simlink_stats {
+    unsigned long bytes_written, bytes_delivered, reads, max_read, replies_dropped;
+    double blocked_ms;    /* total time reads spent waiting for bytes */
+} lt_simlink_stats;
+typedef struct lt_simlink lt_simlink;
+/* inner is copied; its device is not owned (io.close is forwarded). cfg NULL = 115200 baud,
+ * 4 ms latency, 64-byte packets. */
+lt_simlink *lt_simlink_new(const lt_proto_io *inner, const lt_simlink_cfg *cfg);
+void        lt_simlink_free(lt_simlink *l);
+void        lt_simlink_set_clock(lt_simlink *l, double (*now_fn)(void *ud),
+                                 void (*sleep_fn)(void *ud, int ms), void *ud);
+lt_proto_io lt_simlink_io(lt_simlink *l);
+/* fault injection */
+void   lt_simlink_inject(lt_simlink *l, const lt_u8 *bytes, size_t n);  /* unsolicited noise */
+void   lt_simlink_drop_replies(lt_simlink *l, int n);     /* the next n replies are lost */
+void   lt_simlink_delay_reply(lt_simlink *l, double ms);  /* the next reply starts ms later */
+void   lt_simlink_cut_reply(lt_simlink *l, int keep);     /* only the first keep bytes of the next reply */
+void   lt_simlink_set_dropped(lt_simlink *l, lt_bool dropped);   /* read/write fail (-1) */
+size_t lt_simlink_pending(const lt_simlink *l);           /* bytes not yet read (on the wire or arrived) */
+double lt_simlink_next_arrival(const lt_simlink *l);      /* clock time of the next byte, -1 none */
+const lt_simlink_stats *lt_simlink_stats_get(const lt_simlink *l);
+
+/* ====================================================================== */
 /* Cosmetic demo channels (spec 5) - no INI, no protocol                   */
 /* ====================================================================== */
 typedef struct lt_demo lt_demo;

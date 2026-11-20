@@ -36,6 +36,8 @@ typedef struct lg_view {
     int cap_ready;
     int capturing, auto_done, frames;
     double next_read;
+    int ticket;                     /* > 0: a data read is on the wire (lt_proto_raw_pump) */
+    lt_buf rep;
     double t_start;
     double secs, teeth, missing;    /* capture length, wheel teeth per revolution, missing teeth */
     double zoom, scroll;
@@ -82,6 +84,7 @@ static void view_free(lt_app *app, lt_app_tab *tab)
         if (v->cap_ready) { lt_logcap_free(&v->cap); }
         lt_free(v->teeth_us);
         lt_free(v->cs);
+        lt_buf_free(&v->rep);
         lt_free(v);
     }
     tab->data = NULL;
@@ -159,6 +162,7 @@ static void capture_stop(lt_app *app, lg_view *v, int save)
 {
     if (!v->capturing) { return; }
     v->capturing = 0;
+    v->ticket = 0;                  /* a read still in flight completes inside logger_stop */
     if (is_online(app) && v->lg != NULL) { (void)lt_proto_logger_stop(app->proto, v->lg); }
     view_rebuild(v);
     if (save && (v->comp ? v->ncs : v->nt) > 0) {
@@ -206,44 +210,58 @@ static void capture_start(lt_app *app, lg_view *v)
     v->scroll = 1.0;
 }
 
+/* Data reads go out asynchronously (lt_proto_logger_read_begin) and are collected on later
+ * frames, so a capture never stalls drawing and input while the ECU sends its buffer. */
 static void capture_tick(lt_app *app, lg_view *v)
 {
-    lt_buf rep;
     double now;
     int rc;
     if (!v->capturing) { return; }
     if (!is_online(app) || v->lg == NULL) {
         lt_strlcpy(v->err, "Connection lost during capture.", sizeof(v->err));
         v->capturing = 0;
+        v->ticket = 0;
         return;
     }
     now = lt_plat_now_ms();
+    if (v->ticket > 0) {
+        rc = lt_proto_raw_pump(app->proto, v->ticket, &v->rep);
+        if (rc == 0) { return; }                        /* still on the wire */
+        v->ticket = 0;
+        if (rc < 0) {
+            lt_snprintf(v->err, sizeof(v->err), "read failed after %lu reads: %s", v->cap.reads, lt_err_get());
+            capture_stop(app, v, 1);
+            return;
+        }
+        (void)lt_logcap_feed(&v->cap, (const lt_u8 *)v->rep.data, v->rep.len);
+        if (v->cap.empty_reads > MAX_EMPTY_READS) {
+            lt_strlcpy(v->err, "no data after 200 empty reads - is the engine running?", sizeof(v->err));
+            capture_stop(app, v, 1);
+            return;
+        }
+        if (!v->lg->continuous_read) {
+            lt_strlcpy(v->err, "logger does not declare continuousRead; one buffer only", sizeof(v->err));
+            capture_stop(app, v, 1);
+        }
+        return;
+    }
     if (!v->comp && now - v->t_start >= v->secs * 1000.0) {
         lt_snprintf(v->err, sizeof(v->err), "stopped at the %.0fs limit", v->secs);
         capture_stop(app, v, 1);
         return;
     }
     if (now < v->next_read) { return; }
+    rc = lt_proto_logger_read_begin(app->proto, v->lg);
+    if (rc == LT_EBUSY) { return; }                     /* the wire is busy: next frame */
     v->next_read = now + (app->headless ? 0.0 : READ_INTERVAL_MS);  /* no pacing for screenshots */
-    lt_buf_init(&rep);
-    rc = lt_proto_logger_read(app->proto, v->lg, &rep);
     if (rc < 0) {
         lt_snprintf(v->err, sizeof(v->err), "read failed after %lu reads: %s", v->cap.reads, lt_err_get());
-        lt_buf_free(&rep);
         capture_stop(app, v, 1);
         return;
     }
-    (void)lt_logcap_feed(&v->cap, (const lt_u8 *)rep.data, rep.len);
-    lt_buf_free(&rep);
-    if (v->cap.empty_reads > MAX_EMPTY_READS) {
-        lt_strlcpy(v->err, "no data after 200 empty reads - is the engine running?", sizeof(v->err));
-        capture_stop(app, v, 1);
-        return;
-    }
-    if (!v->lg->continuous_read) {
-        lt_strlcpy(v->err, "logger does not declare continuousRead; one buffer only", sizeof(v->err));
-        capture_stop(app, v, 1);
-    }
+    v->ticket = rc;
+    lt_buf_clear(&v->rep);
+    capture_tick(app, v);                               /* in-process links answer at once */
 }
 
 /* visible window of a series of n samples at the zoom/scroll of the view */

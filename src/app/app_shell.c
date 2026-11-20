@@ -1626,8 +1626,10 @@ int lt_app_run(lt_app *app)
     while (!app->quit) {
         hint = lt_ui_wait_hint_ms(app->ui);
         timeout = lt_ui_needs_redraw(app->ui) ? 0 : hint;
-        if (app->conn == LT_APP_ONLINE || app->conn == LT_APP_DEMO) {
-            if (timeout < 0 || timeout > 25) { timeout = 25; }
+        {
+            /* ECU link: wake when reply bytes are expected or the next poll is due */
+            int sw = lt_app_service_wait_ms(app);
+            if (sw >= 0 && (timeout < 0 || sw < timeout)) { timeout = sw; }
         }
         if (app->anim_ms > 0.0 && timeout != 0) {
             /* a live gauge view animates: wake when its next frame is due (no fixed sleep) */

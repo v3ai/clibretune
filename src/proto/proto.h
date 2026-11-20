@@ -8,8 +8,13 @@
  *   any test double                 --------------------------->  lt_proto_io
  *   lt_proto_io  ->  lt_proto (this file: framing, handshake, pages, realtime)
  *
- * lt_proto is SINGLE THREADED and BLOCKING: every call runs to completion or
- * timeout. Long operations (reading 40 KB pages, writing a tune) call the
+ * lt_proto is SINGLE THREADED. Most calls are BLOCKING: they run to completion or
+ * timeout. The exceptions are the asynchronous realtime poll and the asynchronous RAM
+ * writer (section "asynchronous requests" below), which never wait: the GUI starts them and
+ * pumps them from its event loop. At most one exchange is ever on the wire: every blocking
+ * call first completes whatever asynchronous work is in flight (so the byte stream can never
+ * mix two replies), and an asynchronous request is refused while the wire is busy.
+ * Long operations (reading 40 KB pages, writing a tune) call the
  * progress callback regularly; the GUI uses it to pump events / redraw and may
  * return non-zero to cancel (LT_ECANCEL). A cancel flag (volatile int) can also
  * be raised from a signal handler. Timing (sleep + clock) can be replaced for
@@ -183,6 +188,12 @@ lt_bool     lt_ecu_mem_is_dirty(const lt_ecu_mem *m, int page, size_t off);
 size_t      lt_ecu_mem_dirty_ranges(const lt_ecu_mem *m, int page, lt_range *out, size_t cap);
 void        lt_ecu_mem_mark_pending(lt_ecu_mem *m);   /* after write to ECU RAM: dirty pages -> PENDING, clear bits */
 void        lt_ecu_mem_mark_burned(lt_ecu_mem *m);    /* PENDING -> CLEAN */
+/* Range forms used by the asynchronous writer: a range is taken (bits cleared) when it is
+ * queued, given back (bits set, page DIRTY) when the write fails, and a page whose queued
+ * ranges all reached ECU RAM becomes pending (PENDING unless it was edited again meanwhile). */
+void        lt_ecu_mem_clear_dirty(lt_ecu_mem *m, int page, size_t off, size_t n);
+void        lt_ecu_mem_mark_dirty(lt_ecu_mem *m, int page, size_t off, size_t n);
+void        lt_ecu_mem_mark_page_pending(lt_ecu_mem *m, int page);
 lt_bool     lt_ecu_mem_has_pending_burn(const lt_ecu_mem *m);
 void        lt_ecu_mem_revert(lt_ecu_mem *m);         /* clear dirty bits; DIRTY pages -> NOT_LOADED */
 /* View for lt_ini_* value codec / tableops / basemap (writes mark dirty). */
@@ -204,6 +215,8 @@ typedef struct lt_proto_cfg {
     lt_bool      adaptive_timing;       /* false (spec 6.3) */
     int          env_order_hint;        /* -1 = derive from INI (Speeduino LE else BE), or lt_env_order */
     int          legacy_read_min_wait_ms;    /* 10 */
+    lt_bool      instant_link;          /* false; true = in-process device (demo simulator):
+                                         * the pacing gaps of asynchronous writes are skipped */
 } lt_proto_cfg;
 void lt_proto_cfg_default(lt_proto_cfg *c);
 
@@ -306,6 +319,41 @@ lt_rt_kind lt_proto_choose_runtime(const lt_proto *p, const char **reason);
  * when declared. Feed to lt_ini_rt_update(). */
 int  lt_proto_get_realtime(lt_proto *p, lt_buf *out);
 
+/* ---- asynchronous requests (never wait) ----
+ * One exchange is on the wire at a time. Pumps read only bytes that have already arrived
+ * (io.read with timeout 0); deadlines, framing (msEnvelope or legacy raw), validation, adaptive
+ * timing and error reporting are those of the blocking calls, measured on the proto clock.
+ * Blocking calls made while asynchronous work is in flight first complete it (waiting as the
+ * blocking path would); its results are kept for the next pump. */
+/* Send one realtime request (same command choice as lt_proto_get_realtime). LT_OK sent;
+ * LT_EBUSY the wire is busy (another exchange, pacing gap or resync after a failed reply:
+ * call again later); other <0 the send failed. */
+int  lt_proto_rt_begin(lt_proto *p);
+/* 1: the frame is complete and appended to out (feed to lt_ini_rt_update); 0: still waiting
+ * or nothing requested; <0: the request failed (lt_proto_errinfo), e.g. LT_ETIMEOUT, LT_EIO. */
+int  lt_proto_rt_pump(lt_proto *p, lt_buf *out);
+lt_bool lt_proto_rt_pending(const lt_proto *p);          /* in flight or result not collected */
+/* Asynchronous lt_proto_send_raw_response (same timeouts, status byte strip and empty-reply
+ * rules). Returns a ticket > 0, LT_EBUSY (wire busy: try later) or <0. Pump with the ticket:
+ * 1 reply appended to out, 0 waiting, <0 failed or LT_ENOENT (that reply is gone: a newer
+ * raw request replaced it, or the link was reset). */
+int  lt_proto_raw_begin(lt_proto *p, const lt_u8 *bytes, size_t n, int timeout_ms);
+int  lt_proto_raw_pump(lt_proto *p, int ticket, lt_buf *out);
+/* Queue every dirty range of mem for writing to ECU RAM (chunks of blockingFactor-8, merged
+ * with ranges still queued) and start sending if the wire is free. The ranges' dirty bits are
+ * cleared now and given back if the write fails. Pages change state as with write_dirty
+ * (PENDING once all their queued ranges are written); auto-burn on page change is honoured
+ * (asynchronously: no realtime request goes out while the ECU burns). Returns the bytes queued. */
+int  lt_proto_write_dirty_begin(lt_proto *p, lt_ecu_mem *mem);
+/* 1: everything queued has been written; 0: still writing or nothing queued; <0: a write
+ * failed (the page is marked failed like write_dirty does; its ranges are dirty again). */
+int  lt_proto_write_pump(lt_proto *p);
+lt_bool lt_proto_write_pending(const lt_proto *p);       /* queued, in flight or result not collected */
+/* Main-loop hint: ms until pumping can make progress (0 = now, -1 = nothing in flight). */
+int  lt_proto_async_wait_ms(const lt_proto *p);
+/* Block until nothing asynchronous is in flight (results kept for the pumps). */
+void lt_proto_async_finish(lt_proto *p);
+
 /* ---- misc commands ---- */
 int  lt_proto_send_raw(lt_proto *p, const lt_u8 *bytes, size_t n);                 /* controller commands, no reply */
 int  lt_proto_send_raw_response(lt_proto *p, const lt_u8 *bytes, size_t n, int timeout_ms,
@@ -320,6 +368,8 @@ int  lt_proto_read_calibration_crc(lt_proto *p, int table, lt_u32 *crc);
 /* Tooth/composite logger commands (INI [LoggerDefinition]): start, read one block, stop. */
 int  lt_proto_logger_start(lt_proto *p, const lt_ini_logger *lg);
 int  lt_proto_logger_read(lt_proto *p, const lt_ini_logger *lg, lt_buf *out);
+/* The same read without waiting: a ticket for lt_proto_raw_pump, LT_EBUSY or <0. */
+int  lt_proto_logger_read_begin(lt_proto *p, const lt_ini_logger *lg);
 int  lt_proto_logger_stop(lt_proto *p, const lt_ini_logger *lg);
 
 /* ====================================================================== */
