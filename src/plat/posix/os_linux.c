@@ -56,3 +56,25 @@ int lt_serial_list(char ***names)
     static const char *const fixed[] = { "ttyS0", "ttyS1", "ttyS2", "ttyS3" };
     return lt_posix_serial_scan(prefixes, LT_COUNTOF(prefixes), fixed, LT_COUNTOF(fixed), names);
 }
+
+int lt_plat_volume_list(char ***paths)
+{
+    char *user = lt_plat_getenv("USER");
+    char *a, *b;
+    const char *parents[3];
+    int n;
+    if (user == NULL || user[0] == '\0') {
+        lt_free(user);
+        user = lt_strdup("-");
+    }
+    a = lt_path_join("/media", user);
+    b = lt_path_join("/run/media", user);
+    parents[0] = a;
+    parents[1] = b;
+    parents[2] = "/media";
+    n = lt_posix_volume_scan(parents, 3, paths);
+    lt_free(a);
+    lt_free(b);
+    lt_free(user);
+    return n;
+}

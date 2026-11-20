@@ -59,3 +59,9 @@ int lt_serial_list(char ***names)
     static const char *const prefixes[] = { "cu.usb", "tty.usb" };
     return lt_posix_serial_scan(prefixes, LT_COUNTOF(prefixes), NULL, 0, names);
 }
+
+int lt_plat_volume_list(char ***paths)
+{
+    static const char *const parents[] = { "/Volumes" };
+    return lt_posix_volume_scan(parents, LT_COUNTOF(parents), paths);
+}

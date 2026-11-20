@@ -61,3 +61,9 @@ int lt_serial_list(char ***names)
     static const char *const prefixes[] = { "cuaU", "ttyU", "cuau", "ttyu" };
     return lt_posix_serial_scan(prefixes, LT_COUNTOF(prefixes), NULL, 0, names);
 }
+
+int lt_plat_volume_list(char ***paths)
+{
+    static const char *const parents[] = { "/media", "/mnt" };
+    return lt_posix_volume_scan(parents, LT_COUNTOF(parents), paths);
+}

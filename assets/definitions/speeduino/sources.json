@@ -1,0 +1,537 @@
+[
+ {
+  "file": "speeduino/speeduino_201712.ini",
+  "family": "speeduino",
+  "board": "",
+  "version": "201712",
+  "tags": [
+   "201712"
+  ],
+  "commit": "e19ce69bfd667cdc900cc17165c09c990b41a428",
+  "url": "https://raw.githubusercontent.com/speeduino/speeduino/e19ce69bfd667cdc900cc17165c09c990b41a428/reference/speeduino.ini",
+  "member": "",
+  "signature": "speeduino 201711",
+  "size": 170452,
+  "sha256": "a26aaf35bbd0e64dd1eaaef71a8d0cb7b08399e2bb40edbd257978c15b262c0a",
+  "licence": "GPL-2.0",
+  "source": "https://github.com/speeduino/speeduino/blob/201712/reference/speeduino.ini"
+ },
+ {
+  "file": "speeduino/speeduino_201802.ini",
+  "family": "speeduino",
+  "board": "",
+  "version": "201802",
+  "tags": [
+   "201802"
+  ],
+  "commit": "566c20d8e9191d724a13ef20c25e6d8ac0f1d858",
+  "url": "https://raw.githubusercontent.com/speeduino/speeduino/566c20d8e9191d724a13ef20c25e6d8ac0f1d858/reference/speeduino.ini",
+  "member": "",
+  "signature": "speeduino 201802",
+  "size": 175305,
+  "sha256": "421071d78a209b7687e348c1eff9a90a0c2752afa215464bea8bbc79e666ab92",
+  "licence": "GPL-2.0",
+  "source": "https://github.com/speeduino/speeduino/blob/201802/reference/speeduino.ini"
+ },
+ {
+  "file": "speeduino/speeduino_201804.ini",
+  "family": "speeduino",
+  "board": "",
+  "version": "201804",
+  "tags": [
+   "201804"
+  ],
+  "commit": "be6658975fdba045f506b6eb988f657b0653aa69",
+  "url": "https://raw.githubusercontent.com/speeduino/speeduino/be6658975fdba045f506b6eb988f657b0653aa69/reference/speeduino.ini",
+  "member": "",
+  "signature": "speeduino 201804",
+  "size": 178903,
+  "sha256": "39d6b280b281dc7607cdf0045ef5f665a7798750d31e682519451c8b1e3b853d",
+  "licence": "GPL-2.0",
+  "source": "https://github.com/speeduino/speeduino/blob/201804/reference/speeduino.ini"
+ },
+ {
+  "file": "speeduino/speeduino_201805.ini",
+  "family": "speeduino",
+  "board": "",
+  "version": "201805",
+  "tags": [
+   "201805"
+  ],
+  "commit": "ab08140bbcc00a5901776f3d1e36c36ab81cc018",
+  "url": "https://raw.githubusercontent.com/speeduino/speeduino/ab08140bbcc00a5901776f3d1e36c36ab81cc018/reference/speeduino.ini",
+  "member": "",
+  "signature": "speeduino 201805",
+  "size": 182543,
+  "sha256": "c81dab43a95c5b5ab4a72f64e5c5e940954b435932282308d26677848dfe5d8f",
+  "licence": "GPL-2.0",
+  "source": "https://github.com/speeduino/speeduino/blob/201805/reference/speeduino.ini"
+ },
+ {
+  "file": "speeduino/speeduino_201806.ini",
+  "family": "speeduino",
+  "board": "",
+  "version": "201806",
+  "tags": [
+   "201806"
+  ],
+  "commit": "87e2cbbde25448a30fb5ff3cf0bc91acd39d50dc",
+  "url": "https://raw.githubusercontent.com/speeduino/speeduino/87e2cbbde25448a30fb5ff3cf0bc91acd39d50dc/reference/speeduino.ini",
+  "member": "",
+  "signature": "speeduino 201806",
+  "size": 188692,
+  "sha256": "e2d69984dc9f1564dc263008626f17eb05ee9d7216e21380338cc3b67698b62f",
+  "licence": "GPL-2.0",
+  "source": "https://github.com/speeduino/speeduino/blob/201806/reference/speeduino.ini"
+ },
+ {
+  "file": "speeduino/speeduino_201808.ini",
+  "family": "speeduino",
+  "board": "",
+  "version": "201808",
+  "tags": [
+   "201808"
+  ],
+  "commit": "5792cd103cb03bc55158ce90f71ee9f127357b0e",
+  "url": "https://raw.githubusercontent.com/speeduino/speeduino/5792cd103cb03bc55158ce90f71ee9f127357b0e/reference/speeduino.ini",
+  "member": "",
+  "signature": "speeduino 201808",
+  "size": 217080,
+  "sha256": "e0cd45ea7c8a5ab28820ee28bc0ec9e4ea9621750b3139078e27005f460bd1e6",
+  "licence": "GPL-2.0",
+  "source": "https://github.com/speeduino/speeduino/blob/201808/reference/speeduino.ini"
+ },
+ {
+  "file": "speeduino/speeduino_201808-2.ini",
+  "family": "speeduino",
+  "board": "",
+  "version": "201808-2",
+  "tags": [
+   "201808-2"
+  ],
+  "commit": "d317a610c9b178b3d8641fd3a771fc04cc918782",
+  "url": "https://raw.githubusercontent.com/speeduino/speeduino/d317a610c9b178b3d8641fd3a771fc04cc918782/reference/speeduino.ini",
+  "member": "",
+  "signature": "speeduino 201808",
+  "size": 217413,
+  "sha256": "04a86c70d35de156e4bbd40219e2c046f5294bd7ef78d096f76f2a9831fc740f",
+  "licence": "GPL-2.0",
+  "source": "https://github.com/speeduino/speeduino/blob/201808-2/reference/speeduino.ini"
+ },
+ {
+  "file": "speeduino/speeduino_201810.ini",
+  "family": "speeduino",
+  "board": "",
+  "version": "201810",
+  "tags": [
+   "201810"
+  ],
+  "commit": "5431a24e261b63ce2b043568ae8f08df478d666a",
+  "url": "https://raw.githubusercontent.com/speeduino/speeduino/5431a24e261b63ce2b043568ae8f08df478d666a/reference/speeduino.ini",
+  "member": "",
+  "signature": "speeduino 201810",
+  "size": 278592,
+  "sha256": "4a9078a0642f8643e2b83d2e1a58faa8e285d68d68b96e4ae8b89d382ac8ea1e",
+  "licence": "GPL-2.0",
+  "source": "https://github.com/speeduino/speeduino/blob/201810/reference/speeduino.ini"
+ },
+ {
+  "file": "speeduino/speeduino_201902.ini",
+  "family": "speeduino",
+  "board": "",
+  "version": "201902",
+  "tags": [
+   "201902",
+   "201902b"
+  ],
+  "commit": "9ca230df0a29515020019fdc722d0ecd03995765",
+  "url": "https://raw.githubusercontent.com/speeduino/speeduino/9ca230df0a29515020019fdc722d0ecd03995765/reference/speeduino.ini",
+  "member": "",
+  "signature": "speeduino 201902",
+  "size": 279265,
+  "sha256": "64017d1f8ca5da9c6e4dec8ee5c62de5f883e197996ea13f77164c6ca05cffb6",
+  "licence": "GPL-2.0",
+  "source": "https://github.com/speeduino/speeduino/blob/201902/reference/speeduino.ini"
+ },
+ {
+  "file": "speeduino/speeduino_201903.ini",
+  "family": "speeduino",
+  "board": "",
+  "version": "201903",
+  "tags": [
+   "201903"
+  ],
+  "commit": "3c285408e6a6f5198ddb6f44f23fa6fa58d43bdc",
+  "url": "https://raw.githubusercontent.com/speeduino/speeduino/3c285408e6a6f5198ddb6f44f23fa6fa58d43bdc/reference/speeduino.ini",
+  "member": "",
+  "signature": "speeduino 201903",
+  "size": 279803,
+  "sha256": "60b5da086b04f03c3bd27190bd27a56a40758606408cb88f3ab59da4aeea3731",
+  "licence": "GPL-2.0",
+  "source": "https://github.com/speeduino/speeduino/blob/201903/reference/speeduino.ini"
+ },
+ {
+  "file": "speeduino/speeduino_201905.ini",
+  "family": "speeduino",
+  "board": "",
+  "version": "201905",
+  "tags": [
+   "201905"
+  ],
+  "commit": "1943d0f7bf41380905da692c9134fcdeb80db6a0",
+  "url": "https://raw.githubusercontent.com/speeduino/speeduino/1943d0f7bf41380905da692c9134fcdeb80db6a0/reference/speeduino.ini",
+  "member": "",
+  "signature": "speeduino 201905",
+  "size": 282667,
+  "sha256": "3bb8aa022a421061344c62dde5005fe18fff4e47678c5e11f5ca89be33f6c5b3",
+  "licence": "GPL-2.0",
+  "source": "https://github.com/speeduino/speeduino/blob/201905/reference/speeduino.ini"
+ },
+ {
+  "file": "speeduino/speeduino_201909.ini",
+  "family": "speeduino",
+  "board": "",
+  "version": "201909",
+  "tags": [
+   "201909"
+  ],
+  "commit": "cc0d71b0e7090fd2ce585d4c3c8a051e818caf6c",
+  "url": "https://raw.githubusercontent.com/speeduino/speeduino/cc0d71b0e7090fd2ce585d4c3c8a051e818caf6c/reference/speeduino.ini",
+  "member": "",
+  "signature": "speeduino 201909",
+  "size": 287453,
+  "sha256": "17b5c2669c8ee31790c940301fb2db31385bf927f4196b94917a12d41615bfee",
+  "licence": "GPL-2.0",
+  "source": "https://github.com/speeduino/speeduino/blob/201909/reference/speeduino.ini"
+ },
+ {
+  "file": "speeduino/speeduino_201911.ini",
+  "family": "speeduino",
+  "board": "",
+  "version": "201911",
+  "tags": [
+   "201911"
+  ],
+  "commit": "f1f593f97cb5e3aee565393dfd09d9b6267cb5cd",
+  "url": "https://raw.githubusercontent.com/speeduino/speeduino/f1f593f97cb5e3aee565393dfd09d9b6267cb5cd/reference/speeduino.ini",
+  "member": "",
+  "signature": "speeduino 201911",
+  "size": 293929,
+  "sha256": "b212ca716b83b1344d604b5950d68311a90724fa1ceccbca094ed181ed1f57a6",
+  "licence": "GPL-2.0",
+  "source": "https://github.com/speeduino/speeduino/blob/201911/reference/speeduino.ini"
+ },
+ {
+  "file": "speeduino/speeduino_202002.ini",
+  "family": "speeduino",
+  "board": "",
+  "version": "202002",
+  "tags": [
+   "202002"
+  ],
+  "commit": "e31773ff139a0443561e4fd4e3d243d700e374b6",
+  "url": "https://raw.githubusercontent.com/speeduino/speeduino/e31773ff139a0443561e4fd4e3d243d700e374b6/reference/speeduino.ini",
+  "member": "",
+  "signature": "speeduino 202002",
+  "size": 301205,
+  "sha256": "66183ff1f6d8fe572abad67883329c1b23041e6aebdc66c4d6508e37909f57b4",
+  "licence": "GPL-2.0",
+  "source": "https://github.com/speeduino/speeduino/blob/202002/reference/speeduino.ini"
+ },
+ {
+  "file": "speeduino/speeduino_202005.ini",
+  "family": "speeduino",
+  "board": "",
+  "version": "202005",
+  "tags": [
+   "202005"
+  ],
+  "commit": "7d28b454c3841acee9b64d19653f739a06575bc8",
+  "url": "https://raw.githubusercontent.com/speeduino/speeduino/7d28b454c3841acee9b64d19653f739a06575bc8/reference/speeduino.ini",
+  "member": "",
+  "signature": "speeduino 202005",
+  "size": 335457,
+  "sha256": "be7c9f774996d26f1fc557078dbded1b50411c3b51dc012f7ed7d054f1edd813",
+  "licence": "GPL-2.0",
+  "source": "https://github.com/speeduino/speeduino/blob/202005/reference/speeduino.ini"
+ },
+ {
+  "file": "speeduino/speeduino_202008.ini",
+  "family": "speeduino",
+  "board": "",
+  "version": "202008",
+  "tags": [
+   "202008"
+  ],
+  "commit": "6b5788d09f69bbc9c6b358caed96e91530fc1d11",
+  "url": "https://raw.githubusercontent.com/speeduino/speeduino/6b5788d09f69bbc9c6b358caed96e91530fc1d11/reference/speeduino.ini",
+  "member": "",
+  "signature": "speeduino 202008",
+  "size": 388029,
+  "sha256": "e797df09c87ed3b99a7899cf2a00ef190ec61f4a6f4a2dfad565180f2e497a14",
+  "licence": "GPL-2.0",
+  "source": "https://github.com/speeduino/speeduino/blob/202008/reference/speeduino.ini"
+ },
+ {
+  "file": "speeduino/speeduino_202012.ini",
+  "family": "speeduino",
+  "board": "",
+  "version": "202012",
+  "tags": [
+   "202012"
+  ],
+  "commit": "0995eb4ad409b43a02684f3c5f476fa1ac89a973",
+  "url": "https://raw.githubusercontent.com/speeduino/speeduino/0995eb4ad409b43a02684f3c5f476fa1ac89a973/reference/speeduino.ini",
+  "member": "",
+  "signature": "speeduino 202012",
+  "size": 397774,
+  "sha256": "a24e5bbc0e846d844e4d9a0a936ac83c48ed5d6a78e9ea7ee0b6cd220c492ce6",
+  "licence": "GPL-2.0",
+  "source": "https://github.com/speeduino/speeduino/blob/202012/reference/speeduino.ini"
+ },
+ {
+  "file": "speeduino/speeduino_202103.ini",
+  "family": "speeduino",
+  "board": "",
+  "version": "202103",
+  "tags": [
+   "202103"
+  ],
+  "commit": "62e889eaa9c79812915d72aab8be19ef2ce0cda3",
+  "url": "https://raw.githubusercontent.com/speeduino/speeduino/62e889eaa9c79812915d72aab8be19ef2ce0cda3/reference/speeduino.ini",
+  "member": "",
+  "signature": "speeduino 202103",
+  "size": 406074,
+  "sha256": "358d839d542fdec528206d736b103e9aada6b35748c44463d8f2ee8887bed4a7",
+  "licence": "GPL-2.0",
+  "source": "https://github.com/speeduino/speeduino/blob/202103/reference/speeduino.ini"
+ },
+ {
+  "file": "speeduino/speeduino_202108.ini",
+  "family": "speeduino",
+  "board": "",
+  "version": "202108",
+  "tags": [
+   "202108"
+  ],
+  "commit": "95b8e6ee75f296cde2f2355096d8609b2c39f535",
+  "url": "https://raw.githubusercontent.com/speeduino/speeduino/95b8e6ee75f296cde2f2355096d8609b2c39f535/reference/speeduino.ini",
+  "member": "",
+  "signature": "speeduino 202108",
+  "size": 404663,
+  "sha256": "f8eed3dc00d6d0b9d0457363bf9e1347a498b8a79c4132420995c68a6726bd93",
+  "licence": "GPL-2.0",
+  "source": "https://github.com/speeduino/speeduino/blob/202108/reference/speeduino.ini"
+ },
+ {
+  "file": "speeduino/speeduino_202201.ini",
+  "family": "speeduino",
+  "board": "",
+  "version": "202201",
+  "tags": [
+   "202201"
+  ],
+  "commit": "9eb61271cfbb7e8a2016d897d7e1d6029574c2d0",
+  "url": "https://raw.githubusercontent.com/speeduino/speeduino/9eb61271cfbb7e8a2016d897d7e1d6029574c2d0/reference/speeduino.ini",
+  "member": "",
+  "signature": "speeduino 202201",
+  "size": 422458,
+  "sha256": "5bb9725eaae742bd6e56d098c59443d7fb9cf6e6b4b6d1a35859830e15471a87",
+  "licence": "GPL-2.0",
+  "source": "https://github.com/speeduino/speeduino/blob/202201/reference/speeduino.ini"
+ },
+ {
+  "file": "speeduino/speeduino_202202.ini",
+  "family": "speeduino",
+  "board": "",
+  "version": "202202",
+  "tags": [
+   "202202"
+  ],
+  "commit": "318677fbc7656a38a3fd438d2cfcdc342f4d5e03",
+  "url": "https://raw.githubusercontent.com/speeduino/speeduino/318677fbc7656a38a3fd438d2cfcdc342f4d5e03/reference/speeduino.ini",
+  "member": "",
+  "signature": "speeduino 202202",
+  "size": 422898,
+  "sha256": "83602805c0ddbb09d3ecf80efced8b63f3a1f9a405311381556a144de054da49",
+  "licence": "GPL-2.0",
+  "source": "https://github.com/speeduino/speeduino/blob/202202/reference/speeduino.ini"
+ },
+ {
+  "file": "speeduino/speeduino_202207.ini",
+  "family": "speeduino",
+  "board": "",
+  "version": "202207",
+  "tags": [
+   "202207"
+  ],
+  "commit": "4518bb6c40cca95f7130dc6d731aec309bb407fc",
+  "url": "https://raw.githubusercontent.com/speeduino/speeduino/4518bb6c40cca95f7130dc6d731aec309bb407fc/reference/speeduino.ini",
+  "member": "",
+  "signature": "speeduino 202207",
+  "size": 438913,
+  "sha256": "5bd7d1dbf068faa6f92e11fac4782ba83256624cf15bf467469540c9483e1e3e",
+  "licence": "GPL-2.0",
+  "source": "https://github.com/speeduino/speeduino/blob/202207/reference/speeduino.ini"
+ },
+ {
+  "file": "speeduino/speeduino_202207.1.ini",
+  "family": "speeduino",
+  "board": "",
+  "version": "202207.1",
+  "tags": [
+   "202207.1",
+   "202207.2"
+  ],
+  "commit": "11024a2070e8e4329006dde86e23fc1eaad3eb06",
+  "url": "https://raw.githubusercontent.com/speeduino/speeduino/11024a2070e8e4329006dde86e23fc1eaad3eb06/reference/speeduino.ini",
+  "member": "",
+  "signature": "speeduino 202207",
+  "size": 438911,
+  "sha256": "5451c8105d061d5eee5f22bacd2ec5a37991681ee63a14d30f9746e5480d158c",
+  "licence": "GPL-2.0",
+  "source": "https://github.com/speeduino/speeduino/blob/202207.1/reference/speeduino.ini"
+ },
+ {
+  "file": "speeduino/speeduino_202305.ini",
+  "family": "speeduino",
+  "board": "",
+  "version": "202305",
+  "tags": [
+   "202305"
+  ],
+  "commit": "dd41ae5f276ee9befa3806fa130be26323555569",
+  "url": "https://raw.githubusercontent.com/speeduino/speeduino/dd41ae5f276ee9befa3806fa130be26323555569/reference/speeduino.ini",
+  "member": "",
+  "signature": "speeduino 202305",
+  "size": 451272,
+  "sha256": "0cf30b9bd56436f8374aec5d639d559f43691c8b1ccb45b08a2fbcab42aaa515",
+  "licence": "GPL-2.0",
+  "source": "https://github.com/speeduino/speeduino/blob/202305/reference/speeduino.ini"
+ },
+ {
+  "file": "speeduino/speeduino_202310.ini",
+  "family": "speeduino",
+  "board": "",
+  "version": "202310",
+  "tags": [
+   "202310"
+  ],
+  "commit": "70d3f61573be11383891ae7c9f8044b966e6d8b3",
+  "url": "https://raw.githubusercontent.com/speeduino/speeduino/70d3f61573be11383891ae7c9f8044b966e6d8b3/reference/speeduino.ini",
+  "member": "",
+  "signature": "speeduino 202310",
+  "size": 453891,
+  "sha256": "64da756dabe1f85684fc75a3379e53d7d82fae398f48b2f58e2e7a96ba1e4b23",
+  "licence": "GPL-2.0",
+  "source": "https://github.com/speeduino/speeduino/blob/202310/reference/speeduino.ini"
+ },
+ {
+  "file": "speeduino/speeduino_202402.ini",
+  "family": "speeduino",
+  "board": "",
+  "version": "202402",
+  "tags": [
+   "202402"
+  ],
+  "commit": "a4eed5f3e3762d02443f63bb232db0ac665ca9e8",
+  "url": "https://raw.githubusercontent.com/speeduino/speeduino/a4eed5f3e3762d02443f63bb232db0ac665ca9e8/reference/speeduino.ini",
+  "member": "",
+  "signature": "speeduino 202402",
+  "size": 460916,
+  "sha256": "58a67980606518708552e0966419f9d4f435a45146e6a1f8aeda85ae735efbad",
+  "licence": "GPL-2.0",
+  "source": "https://github.com/speeduino/speeduino/blob/202402/reference/speeduino.ini"
+ },
+ {
+  "file": "speeduino/speeduino_202402.1.ini",
+  "family": "speeduino",
+  "board": "",
+  "version": "202402.1",
+  "tags": [
+   "202402.1"
+  ],
+  "commit": "b6dcfe3a0a070b7480d0ce177a966428d734c6bc",
+  "url": "https://raw.githubusercontent.com/speeduino/speeduino/b6dcfe3a0a070b7480d0ce177a966428d734c6bc/reference/speeduino.ini",
+  "member": "",
+  "signature": "speeduino 202402",
+  "size": 461015,
+  "sha256": "60a16397e8fc653fcdc44480e55afc5d9f8e364efed388131d980e787e0adcf2",
+  "licence": "GPL-2.0",
+  "source": "https://github.com/speeduino/speeduino/blob/202402.1/reference/speeduino.ini"
+ },
+ {
+  "file": "speeduino/speeduino_202402.2.ini",
+  "family": "speeduino",
+  "board": "",
+  "version": "202402.2",
+  "tags": [
+   "202402.2",
+   "202402.3"
+  ],
+  "commit": "821b3efa7f4e7030484046c29e77e5da56460866",
+  "url": "https://raw.githubusercontent.com/speeduino/speeduino/821b3efa7f4e7030484046c29e77e5da56460866/reference/speeduino.ini",
+  "member": "",
+  "signature": "speeduino 202402",
+  "size": 461015,
+  "sha256": "f8a9641b44841a04f7e1c03f8f2b6c39b83d55ccc942acd21a83546dcbcccd60",
+  "licence": "GPL-2.0",
+  "source": "https://github.com/speeduino/speeduino/blob/202402.2/reference/speeduino.ini"
+ },
+ {
+  "file": "speeduino/speeduino_202501.ini",
+  "family": "speeduino",
+  "board": "",
+  "version": "202501",
+  "tags": [
+   "202501",
+   "202501.1",
+   "202501.2",
+   "202501.3",
+   "202501.4"
+  ],
+  "commit": "29bdaa32fc35764094e281f169754714100ce1f0",
+  "url": "https://raw.githubusercontent.com/speeduino/speeduino/29bdaa32fc35764094e281f169754714100ce1f0/reference/speeduino.ini",
+  "member": "",
+  "signature": "speeduino 202501",
+  "size": 469349,
+  "sha256": "b772b2d4703c99bba1de3c9bebc31560ec1833616d7008233e9c405be3ab208f",
+  "licence": "GPL-2.0",
+  "source": "https://github.com/speeduino/speeduino/blob/202501/reference/speeduino.ini"
+ },
+ {
+  "file": "speeduino/speeduino_202501.5.ini",
+  "family": "speeduino",
+  "board": "",
+  "version": "202501.5",
+  "tags": [
+   "202501.5"
+  ],
+  "commit": "6469eaf907e22022ac86911799622c9420692d46",
+  "url": "https://raw.githubusercontent.com/speeduino/speeduino/6469eaf907e22022ac86911799622c9420692d46/reference/speeduino.ini",
+  "member": "",
+  "signature": "speeduino 202501",
+  "size": 469322,
+  "sha256": "0862eef9abda149329727a9e38e82fac91c0f92b73f6711d1f6901871a236feb",
+  "licence": "GPL-2.0",
+  "source": "https://github.com/speeduino/speeduino/blob/202501.5/reference/speeduino.ini"
+ },
+ {
+  "file": "speeduino/speeduino_202501.6.ini",
+  "family": "speeduino",
+  "board": "",
+  "version": "202501.6",
+  "tags": [
+   "202501.6",
+   "202501.7"
+  ],
+  "commit": "6429cdd1bc72eb63cbb7668b06f34f064cbfc929",
+  "url": "https://raw.githubusercontent.com/speeduino/speeduino/6429cdd1bc72eb63cbb7668b06f34f064cbfc929/reference/speeduino.ini",
+  "member": "",
+  "signature": "speeduino 202501",
+  "size": 469374,
+  "sha256": "86b60fc11541da7c99ac5addcf109cccd915b7ed6c8c2e5809c9bade02911764",
+  "licence": "GPL-2.0",
+  "source": "https://github.com/speeduino/speeduino/blob/202501.6/reference/speeduino.ini"
+ }
+]

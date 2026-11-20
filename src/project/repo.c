@@ -33,6 +33,10 @@ static char *default_repo_dir(void)
     char *base = NULL, *r, *home, *t;
     lt_os os = lt_plat_os();
 
+    base = lt_plat_getenv("LIBRETUNE_DEFINITIONS");     /* explicit location (tests, portable use) */
+    if (base != NULL && base[0] != '\0') { return base; }
+    lt_free(base);
+    base = NULL;
     if (os == LT_OS_WINDOWS) {
         base = lt_plat_getenv("LOCALAPPDATA");
     } else if (os == LT_OS_MACOS) {
@@ -310,15 +314,26 @@ static char *make_id(const char *sig)
 
 int lt_ini_repo_import(lt_ini_repo *r, const char *src_path, char **id_out)
 {
-    size_t n = 0, tl = 0;
-    char *raw = lt_file_read(src_path, &n), *text, *sig = NULL, *name = NULL, *id, *f, *file;
+    size_t n = 0;
+    char *raw = lt_file_read(src_path, &n);
+    int rc;
+    if (raw == NULL) return LT_ENOENT;
+    rc = lt_ini_repo_import_data(r, raw, n, src_path, id_out);
+    lt_free(raw);
+    return rc;
+}
+
+int lt_ini_repo_import_data(lt_ini_repo *r, const char *data, size_t n, const char *source,
+                            char **id_out)
+{
+    size_t tl = 0;
+    char *text, *sig = NULL, *name = NULL, *id, *f, *file;
     lt_ini_entry *e;
     char now[21];
     int rc;
 
-    if (raw == NULL) return LT_ENOENT;
-    text = lt_ini_decode((const lt_u8 *)raw, n, &tl);
-    lt_free(raw);
+    if (data == NULL) return LT_EINVAL;
+    text = lt_ini_decode((const lt_u8 *)data, n, &tl);
     if (text == NULL) return LT_EDATA;
     rc = lt_ini_extract_info(text, &sig, &name);
     if (rc != LT_OK) {
@@ -355,7 +370,7 @@ int lt_ini_repo_import(lt_ini_repo *r, const char *src_path, char **id_out)
     e->path = file;
     lt_proj_utc_now(now);
     e->imported = lt_strdup(now);
-    e->source = lt_strdup(src_path);
+    e->source = lt_strdup(source != NULL ? source : "");
     rc = index_save(r);
     if (rc != LT_OK) {
         lt_free(id);

@@ -99,11 +99,14 @@ lt_bool lt_props_remove(lt_props *p, const char *key);
 /* ====================================================================== */
 typedef struct lt_ini_entry { char *id, *name, *signature, *path, *imported, *source; } lt_ini_entry;
 typedef struct lt_ini_repo { char *dir; lt_ini_entry *e; size_t n; } lt_ini_repo;
-/* dir NULL = <data dir>/LibreTune/definitions */
+/* dir NULL = $LIBRETUNE_DEFINITIONS, else <data dir>/LibreTune/definitions */
 int  lt_ini_repo_open(lt_ini_repo *r, const char *dir);
 void lt_ini_repo_close(lt_ini_repo *r);
 /* Import a file (BOM/cp1252 -> UTF-8); returns existing id if the signature is known. id malloc'd. */
 int  lt_ini_repo_import(lt_ini_repo *r, const char *src_path, char **id_out);
+/* the same for n bytes in memory; source is recorded in the index (e.g. a URL) */
+int  lt_ini_repo_import_data(lt_ini_repo *r, const char *data, size_t n, const char *source,
+                             char **id_out);
 const lt_ini_entry *lt_ini_repo_get(const lt_ini_repo *r, const char *id);
 const lt_ini_entry *lt_ini_repo_find_signature(const lt_ini_repo *r, const char *signature,
                                                lt_bool prefix_match);   /* for "ECU signature differs" prompts */

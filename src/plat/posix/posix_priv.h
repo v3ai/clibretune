@@ -31,6 +31,9 @@ int lt_posix_spawn_open(const char *cmd, const char *url);
 int lt_posix_serial_scan(const char *const *prefixes, size_t nprefix,
                          const char *const *fixed, size_t nfixed, char ***names);
 
+/* the subdirectories of each parent directory (mounted volumes); returns count, *out malloc'd */
+int lt_posix_volume_scan(const char *const *parents, size_t nparent, char ***out);
+
 LT_END_DECLS
 
 #endif /* LT_POSIX_PRIV_H */

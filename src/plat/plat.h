@@ -149,6 +149,10 @@ void lt_term_write(const char *buf, int n);
 lt_bool lt_term_resized(void);  /* SIGWINCH latch; clears on read */
 
 /* ---- misc ---- */
+/* Mounted removable volumes (USB drives) whose top level may hold files: the directories under
+ * /media/$USER, /run/media/$USER and /media (Linux), /Volumes (macOS), /media and /mnt (BSD),
+ * the removable drive roots "E:\\" (Windows). Returns the count, *paths malloc'd (free_list). */
+int  lt_plat_volume_list(char ***paths);
 /* open URL in the default browser (xdg-open / open / start). 0 ok */
 int  lt_plat_open_url(const char *url);
 

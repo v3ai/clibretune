@@ -75,3 +75,23 @@ int lt_plat_open_url(const char *url)
     HINSTANCE r = ShellExecuteA(NULL, "open", url, NULL, NULL, SW_SHOWNORMAL);
     return ((INT_PTR)r > 32) ? 0 : -1;
 }
+
+int lt_plat_volume_list(char ***paths)
+{
+    char **res = NULL;
+    int n = 0, cap = 0;
+    DWORD mask = GetLogicalDrives();
+    unsigned i;
+    *paths = NULL;
+    for (i = 2; i < 26; i++) {              /* C: onwards; A:/B: are floppy letters */
+        char root[4];
+        if ((mask & ((DWORD)1 << i)) == 0) continue;
+        root[0] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[i];
+        root[1] = ':';
+        root[2] = '\\';
+        root[3] = '\0';
+        if (GetDriveTypeA(root) == DRIVE_REMOVABLE) n = lt_plat_names_add(&res, n, &cap, root);
+    }
+    *paths = res;
+    return n;
+}
