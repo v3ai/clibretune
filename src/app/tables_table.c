@@ -9,8 +9,7 @@
 #include "view_kit.h"
 #include "tables_3d.h"
 #include "feat.h"
-
-#define TRAIL_N 20
+#include "trail.h"
 
 typedef struct tbl_tab {
     lt_tblview v;
@@ -25,7 +24,8 @@ typedef struct tbl_tab {
     int cur_r, cur_c;             /* cursor in data coordinates */
     int nsel;
     double *clip; size_t clip_h, clip_w;
-    int trail_r[TRAIL_N], trail_c[TRAIL_N], ntrail;
+    lt_trail trail;               /* live-cell trail, newest first (trail.h) */
+    double trail_a[LT_TRAIL_MAX]; /* opacity of each trail entry this frame */
     int live_ok, live_r, live_c;
     double live_x, live_y;
     unsigned long last_frames;
@@ -54,7 +54,7 @@ typedef struct tbl_tab {
     lt_rect r3d;
     char xlab[48], ylab[48];
     /* overlay (live cell, trail) positions recorded while the grid is declared */
-    double ov_xy[TRAIL_N][2];
+    double ov_xy[LT_TRAIL_MAX][2], ov_a[LT_TRAIL_MAX];
     int ov_n, ov_live, ov_have_cur;
     lt_rect ov_live_r, ov_cur_r;
     lt_color ov_trail, ov_live_c;
@@ -683,8 +683,8 @@ static void draw3d(lt_gfx *g, lt_rect r, void *user)
     {
         double pxo = 0.0, pyo = 0.0;
         int have = 0;
-        for (k = 0; k < st->ntrail; k++) {
-            int mr = st->trail_r[k], mc = st->trail_c[k];
+        for (k = 0; k < st->trail.n; k++) {
+            int mr = st->trail.r[k], mc = st->trail.c[k];
             double v, sx, sy;
             if (mr < 0 || mc < 0 || mr >= rows || mc >= cols) { continue; }
             v = st->v.z[(size_t)mr * (size_t)cols + (size_t)mc];
@@ -692,8 +692,10 @@ static void draw3d(lt_gfx *g, lt_rect r, void *user)
             lt_cam3_proj(&cam, cc * LT_T3D_W, (v - zlo) / span * LT_T3D_H + 0.1,
                       st->ybottom ? (1.0 - rr) * LT_T3D_W : rr * LT_T3D_W, &sx, &sy);
             if (have) {
-                int a = 220 - k * 170 / TRAIL_N;
-                lt_gfx_line(g, pxo, pyo, sx, sy, 2.0, (st->col_trail & 0x00FFFFFFUL) | ((lt_u32)(a > 40 ? a : 40) << 24));
+                int a = (int)(220.0 * st->trail_a[k]);
+                if (a >= 8) {
+                    lt_gfx_line(g, pxo, pyo, sx, sy, 2.0, (st->col_trail & 0x00FFFFFFUL) | ((lt_u32)a << 24));
+                }
             }
             pxo = sx; pyo = sy; have = 1;
         }
@@ -730,6 +732,24 @@ static void draw3d(lt_gfx *g, lt_rect r, void *user)
 }
 
 /* ---- live cursor ---- */
+/* trail of the live cell: switched off in Settings or the toolbar, faded by age (Settings >
+ * Table display > Trail fade, 0 = never) */
+static void tbl_trail_update(lt_app *app, tbl_tab *st)
+{
+    const lt_prefs *p = &app->settings.prefs;
+    double now = lt_plat_now_ms();
+    int k;
+    if (!st->live_ok || !p->trail_on) {
+        lt_trail_clear(&st->trail);
+        return;
+    }
+    if (app->frames_ok != st->last_frames) { lt_trail_push(&st->trail, st->live_r, st->live_c, now); }
+    lt_trail_prune(&st->trail, now, p->trail_fade_sec);
+    for (k = 0; k < st->trail.n; k++) { st->trail_a[k] = lt_trail_alpha(&st->trail, k, now, p->trail_fade_sec); }
+    /* a fading trail keeps changing without new data: ask for frames while it is visible */
+    if (p->trail_fade_sec > 0 && st->trail.n > 1 && (app->anim_ms <= 0.0 || app->anim_ms > 100.0)) { app->anim_ms = 100.0; }
+}
+
 static void tbl_live(lt_app *app, tbl_tab *st)
 {
     size_t xi = 0, yi = 0;
@@ -740,15 +760,7 @@ static void tbl_live(lt_app *app, tbl_tab *st)
             lt_tabs_live_index(app, st->t->y_channel, st->v.y, st->v.rows, &st->live_y, &yi)) { }
         st->live_c = (int)xi; st->live_r = (int)yi;
     }
-    if (st->live_ok && app->frames_ok != st->last_frames) {
-        if (st->ntrail == 0 || st->trail_r[0] != st->live_r || st->trail_c[0] != st->live_c) {
-            int k;
-            for (k = TRAIL_N - 1; k > 0; k--) { st->trail_r[k] = st->trail_r[k - 1]; st->trail_c[k] = st->trail_c[k - 1]; }
-            st->trail_r[0] = st->live_r; st->trail_c[0] = st->live_c;
-            if (st->ntrail < TRAIL_N) { st->ntrail++; }
-        }
-    }
-    if (!st->live_ok) { st->ntrail = 0; }
+    tbl_trail_update(app, st);
     st->last_frames = app->frames_ok;
 }
 
@@ -885,7 +897,7 @@ static void tbl_keys(lt_app *app, lt_app_tab *tab, tbl_tab *st)
 
 /* ---- UI pieces ---- */
 enum { TB_EQ, TB_UP, TB_DOWN, TB_SCALE, TB_INTERP, TB_SMOOTH, TB_REBIN, TB_COPY, TB_PASTE,
-       TB_UNDO, TB_REDO, TB_REVERT, TB_FILLR, TB_FILLD, TB_LIVE, TB_FOLLOW, TB_SHADE, TB_YBOT,
+       TB_UNDO, TB_REDO, TB_REVERT, TB_FILLR, TB_FILLD, TB_LIVE, TB_FOLLOW, TB_TRAIL, TB_SHADE, TB_YBOT,
        TB_3D, TB_RESET3D, TB_STYLE3D, TB_COLOR3D, TB_GRID3D, TB_LAMBDA, TB_BURN, TB_SIZE, TB_GEN, TB_LOAD, TB_SAVE, TB_PSPECIAL, TB_STEPS, TB_N };
 
 static int gen_ok(const tbl_tab *st)
@@ -969,6 +981,9 @@ static void tbl_toolbar(lt_app *app, lt_app_tab *tab, tbl_tab *st)
     TB_ADD(TB_LIVE, LT_ICON_MAP_PIN, cell ? "Live" : NULL, "g", "Jump to the live cell (g)");
     TB_ADD(TB_FOLLOW, LT_ICON_CROSSHAIR, cell ? "Follow" : NULL, "f", "Follow the live ECU position (f)");
     it[n - 1].on = st->follow;
+    TB_ADD(TB_TRAIL, LT_ICON_ROUTE, cell ? "Trail" : NULL, NULL,
+           app->settings.prefs.trail_on ? "Live-cell trail: on (click to hide)" : "Live-cell trail: off (click to show)");
+    it[n - 1].on = app->settings.prefs.trail_on;
     TB_GAP();
     TB_ADD(TB_SHADE, LT_ICON_PALETTE, cell ? "Shade" : NULL, NULL, "Colour shading: show the value heat map");
     it[n - 1].on = st->shading;
@@ -1023,6 +1038,10 @@ static void tbl_toolbar(lt_app *app, lt_app_tab *tab, tbl_tab *st)
     case TB_REVERT: tbl_revert(app, tab, st); break;
     case TB_LIVE: st->goto_live = 1; break;
     case TB_FOLLOW: st->follow = !st->follow; break;
+    case TB_TRAIL:
+        app->settings.prefs.trail_on = !app->settings.prefs.trail_on;
+        lt_app_settings_save(app);
+        break;
     case TB_SHADE: st->shading = !st->shading; break;
     case TB_YBOT: st->ybottom = !st->ybottom; break;
     case TB_3D: st->show3d = !st->show3d; break;
@@ -1217,13 +1236,15 @@ static void ov_draw(lt_gfx *g, lt_rect r, void *user)
     int k;
     LT_UNUSED(r);
     for (k = st->ov_n - 1; k > 0; k--) {
-        int a = 215 - k * 150 / TRAIL_N;
+        int a = (int)(215.0 * st->ov_a[k]);
         lt_color c = (st->ov_trail & 0x00FFFFFFUL) | ((lt_u32)a << 24);
+        if (a < 8) { continue; }
         lt_gfx_line(g, st->ov_xy[k][0], st->ov_xy[k][1], st->ov_xy[k - 1][0], st->ov_xy[k - 1][1], lt_gfx_fpx(g, 2.5), c);
     }
     for (k = st->ov_n - 1; k >= 1; k--) {
-        int a = 235 - k * 150 / TRAIL_N;
+        int a = (int)(235.0 * st->ov_a[k]);
         lt_color c = (st->ov_trail & 0x00FFFFFFUL) | ((lt_u32)a << 24);
+        if (a < 8) { continue; }
         lt_gfx_fill_circle(g, st->ov_xy[k][0], st->ov_xy[k][1], lt_gfx_fpx(g, 3.5), c);
     }
     if (st->ov_live) {
@@ -1259,15 +1280,17 @@ static void tbl_overlay_record(lt_ui *ui, tbl_tab *st, const lt_theme *th, int r
         st->ov_live = 1;
         st->ov_xy[n][0] = (double)c.x + (double)c.w * 0.5;
         st->ov_xy[n][1] = (double)c.y + (double)c.h * 0.5;
+        st->ov_a[n] = 1.0;
         n++;
     }
-    for (k = 0; k < st->ntrail && n < TRAIL_N; k++) {
-        int dr2 = st->ybottom ? rows - 1 - st->trail_r[k] : st->trail_r[k];
+    for (k = 0; k < st->trail.n && n < LT_TRAIL_MAX; k++) {
+        int dr2 = st->ybottom ? rows - 1 - st->trail.r[k] : st->trail.r[k];
         lt_rect c;
         if (k == 0 && st->live_ok) { continue; }
-        c = lt_ui_grid_cell_rect(ui, dr2, st->trail_c[k]);
+        c = lt_ui_grid_cell_rect(ui, dr2, st->trail.c[k]);
         st->ov_xy[n][0] = (double)c.x + (double)c.w * 0.5;
         st->ov_xy[n][1] = (double)c.y + (double)c.h * 0.5;
+        st->ov_a[n] = st->trail_a[k];
         n++;
     }
     st->ov_n = n;
@@ -1327,12 +1350,13 @@ static void tbl_grid(lt_app *app, lt_app_tab *tab, tbl_tab *st, int vh)
         /* live trail and cursor */
         st->ov_n = 0; st->ov_live = 0; st->ov_have_cur = 0;
         if (cell) {
-            for (k = (size_t)st->ntrail; k-- > 1;) {
-                int dr2 = st->ybottom ? rows - 1 - st->trail_r[k] : st->trail_r[k];
+            for (k = (size_t)st->trail.n; k-- > 1;) {
+                int dr2 = st->ybottom ? rows - 1 - st->trail.r[k] : st->trail.r[k];
                 lt_color tc = th->cursor_trail;
-                lt_u32 a = (lt_u32)(200 - (int)k * 200 / TRAIL_N);
+                lt_u32 a = (lt_u32)(200.0 * st->trail_a[k]);
+                if (a < 20) { continue; }
                 tc = (tc & 0x00FFFFFFUL) | (a << 24);
-                lt_ui_grid_mark(ui, dr2, st->trail_c[k], tc, 1);
+                lt_ui_grid_mark(ui, dr2, st->trail.c[k], tc, 1);
             }
             if (st->live_ok) {
                 lt_ui_grid_mark(ui, st->ybottom ? rows - 1 - st->live_r : st->live_r, st->live_c,
