@@ -15,7 +15,7 @@ struct lt_fw_job {
     void *user;
     int phase, cancel;
     double now, next_ms;
-    lt_u32 done, total;             /* bytes of the current phase */
+    lt_u32 done, goal;              /* bytes of the current phase */
     lt_u32 w_total[LT_FW_PH_CANCELLED + 1];  /* planned bytes per phase (overall progress) */
     int usb_err;
     char msg[200];
@@ -28,7 +28,7 @@ void lt_fwj_log(lt_fw_job *j, int level, const char *fmt, ...);
 /* finish with FAILED; msg is logged as an error and kept as the result */
 void lt_fwj_fail(lt_fw_job *j, const char *fmt, ...);
 /* enter a phase: resets done, sets total and the activity message */
-void lt_fwj_phase(lt_fw_job *j, int phase, lt_u32 total, const char *msg);
+void lt_fwj_phase(lt_fw_job *j, int phase, lt_u32 goal, const char *msg);
 /* record a USB error code; returns the one-line text */
 const char *lt_fwj_usb_err(lt_fw_job *j, int code);
 int  lt_fwj_finished(const lt_fw_job *j);

@@ -454,8 +454,8 @@ void lt_fw_sim_io(lt_fw_sim *s, lt_fw_io *io)
     io->ctx = s;
     io->control = sim_control;
     io->bulk = sim_bulk;
-    io->config_desc = sim_config;
-    io->string_desc = sim_string;
+    io->get_config = sim_config;
+    io->get_string = sim_string;
     io->claim = sim_claim;
 }
 

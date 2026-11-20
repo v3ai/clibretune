@@ -38,4 +38,5 @@ void lt_app_features_register(lt_app_ext *reg)
     lt_feat_dyno_register(reg);
     lt_feat_actions_register(reg);
     lt_feat_perf_register(reg);
+    lt_feat_firmware_register(reg);
 }

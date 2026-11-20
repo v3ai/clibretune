@@ -34,7 +34,7 @@ typedef struct lt_fw_image {
     int format;                 /* LT_FW_FMT_* the data came from */
     lt_fw_seg *segs;            /* sorted by address, merged, never overlapping (after finish) */
     size_t n_segs, cap_segs;
-    lt_u32 total;               /* data bytes */
+    lt_u32 goal;                /* data bytes */
     lt_u32 lo, last;            /* lowest and highest (inclusive) address, when n_segs > 0 */
     lt_u32 entry;               /* start address record (hex 05/03, S7/S8/S9) */
     int has_entry;
@@ -48,7 +48,7 @@ void lt_fw_image_init(lt_fw_image *img);
 void lt_fw_image_free(lt_fw_image *img);
 /* append n bytes at addr (contiguous data extends the previous segment); 0 or -1 with err */
 int  lt_fw_image_add(lt_fw_image *img, lt_u32 addr, const lt_u8 *data, size_t n, char *err, size_t errcap);
-/* sort, reject overlaps, merge touching segments, compute lo/last/total; 0 or -1 with err */
+/* sort, reject overlaps, merge touching segments, compute lo/last/goal; 0 or -1 with err */
 int  lt_fw_image_finish(lt_fw_image *img, char *err, size_t errcap);
 /* parse a file image; format LT_FW_FMT_UNKNOWN = detect from the content. bin_base is the
  * address of a raw binary. Returns 0, or -1 with a one-line reason in err. img is (re)initialised. */
@@ -112,8 +112,8 @@ typedef struct lt_fw_io {
     int (*control)(void *ctx, lt_u8 rtype, lt_u8 req, lt_u16 value, lt_u16 index, lt_u8 *data,
                    lt_u16 len, int timeout_ms);
     int (*bulk)(void *ctx, lt_u8 ep, lt_u8 *data, int len, int timeout_ms);
-    int (*config_desc)(void *ctx, lt_u8 *buf, int cap);
-    int (*string_desc)(void *ctx, int index, char *buf, size_t cap);
+    int (*get_config)(void *ctx, lt_u8 *buf, int cap);
+    int (*get_string)(void *ctx, int index, char *buf, size_t cap);
     int (*claim)(void *ctx, int iface, int alt);   /* claim; alt >= 0 also selects it */
 } lt_fw_io;
 
@@ -129,7 +129,7 @@ typedef struct lt_fw_region {
 /* "@Internal Flash  /0x08000000/04*016Kg,01*064Kg,07*128Kg": regions (count) or -1 */
 int lt_fw_dfuse_layout(const char *s, lt_fw_region *out, int cap, char *name, size_t namecap);
 typedef struct lt_fw_dfu_alt {
-    int iface, alt, istr;       /* interface number, alternate setting, iInterface */
+    int iface, alt, iface_str;       /* interface number, alternate setting, iInterface */
     int xfer;                   /* wTransferSize of the functional descriptor (0 = none seen) */
     int dfuse;                  /* bcdDFUVersion 0x011A */
 } lt_fw_dfu_alt;
@@ -162,7 +162,7 @@ typedef struct lt_fw_opts {
 
 typedef struct lt_fw_progress {
     int phase;                  /* LT_FW_PH_* */
-    lt_u32 done, total;         /* bytes of the current phase */
+    lt_u32 done, goal;          /* bytes of the current phase */
     double frac;                /* whole job 0..1 */
     int usb_err;                /* last LT_USB_E* seen (0 none): permission/driver hints */
     char msg[200];              /* current activity or the final result */

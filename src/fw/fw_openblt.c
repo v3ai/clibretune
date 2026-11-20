@@ -26,8 +26,8 @@
 #define PID_ERR 0xFE
 #define RES_PGM 0x10
 
-#define EP_OUT 0x01
-#define EP_IN  0x81
+#define XCP_EP_OUT 0x01
+#define XCP_EP_IN  0x81
 #define POLL_MS 40
 #define CONNECT_TRIES 25
 
@@ -94,7 +94,7 @@ static void send_cmd(lt_fw_job *j, const lt_u8 *pkt, int len, lt_u32 n, int time
     int r;
     out[0] = (lt_u8)len;
     memcpy(out + 1, pkt, (size_t)len);
-    r = j->io->bulk(j->io->ctx, EP_OUT, out, len + 1, 1000);
+    r = j->io->bulk(j->io->ctx, XCP_EP_OUT, out, len + 1, 1000);
     if (r < 0) {
         if (pkt[0] == CMD_PROGRAM_RESET && r == LT_USB_ENODEV) {
             lt_fwj_phase(j, LT_FW_PH_DONE, 0, "Done: OpenBLT started the new firmware.");
@@ -210,7 +210,7 @@ static void recv_step(lt_fw_job *j)
 {
     xcp *x = (xcp *)j->m;
     lt_u8 b[64];
-    int r = j->io->bulk(j->io->ctx, EP_IN, b, 64, POLL_MS);
+    int r = j->io->bulk(j->io->ctx, XCP_EP_IN, b, 64, POLL_MS);
     if (r == LT_USB_ETIMEOUT || r == 0) {
         if (j->now >= x->deadline) { on_timeout(j); }
         return;

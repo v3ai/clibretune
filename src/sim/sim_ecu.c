@@ -47,11 +47,42 @@ struct lt_ecusim {
     void *now_ud;
     lt_simlog trig;            /* trigger logger state */
     lt_buf con_out;            /* pending console reply text */
+    double wbo_t0;             /* demo of the miata-ecus wideband flasher (wbo_uart_*), 0 = idle */
 };
 
 static double now_ms(const lt_ecusim *s)
 {
     return s->now_fn ? s->now_fn(s->now_ud) : lt_plat_now_ms();
+}
+
+/* miata-ecus board console commands: wbo_uart_flash starts a ~14 s simulated flash of the
+ * on-board wideband MCU, wbo_uart_status reports its progress like the real firmware */
+static int wbo_console(lt_ecusim *s, const char *text, lt_buf *out)
+{
+    static const struct { double t; const char *st; } steps[5] = {
+        { 600.0, "starting" }, { 2500.0, "erasing" }, { 10500.0, "writing" }, { 13500.0, "verifying" },
+        { 0.0, "done: wideband flashed and verified" }
+    };
+    double t;
+    int i;
+    char b[120];
+    while (*text == ' ') { text++; }
+    if (strcmp(text, "wbo_uart_flash") == 0) {
+        if (s->wbo_t0 > 0.0 && now_ms(s) - s->wbo_t0 < steps[3].t) {
+            lt_buf_puts(out, "msg`WBO UART: already running`");
+        } else {
+            s->wbo_t0 = now_ms(s);
+            lt_buf_puts(out, "msg`WBO UART: 26112 byte image, entering the F103 ROM bootloader`");
+        }
+        return 1;
+    }
+    if (strcmp(text, "wbo_uart_status") != 0) { return 0; }
+    if (s->wbo_t0 <= 0.0) { lt_buf_puts(out, "msg`WBO UART: idle`"); return 1; }
+    t = now_ms(s) - s->wbo_t0;
+    for (i = 0; i < 4 && t >= steps[i].t; i++) { }
+    lt_snprintf(b, sizeof(b), "msg`WBO UART: %s%s`", steps[i].st, i < 4 ? " (running)" : "");
+    lt_buf_puts(out, b);
+    return 1;
 }
 
 /* ------------------------------------------------------ memory */
@@ -513,7 +544,9 @@ static void respond(lt_ecusim *s, const lt_u8 *cmd, size_t n, lt_bool env, lt_bu
             {
                 lt_buf txt;
                 lt_buf_init(&txt);
-                lt_sim_console(s->con_out.data, (double)sn.rpm, s->sig, &txt);
+                if (!wbo_console(s, s->con_out.data, &txt)) {
+                    lt_sim_console(s->con_out.data, (double)sn.rpm, s->sig, &txt);
+                }
                 lt_buf_clear(&s->con_out);
                 lt_buf_append(&s->con_out, txt.data, txt.len);
                 lt_buf_free(&txt);

@@ -13,7 +13,7 @@ static int parse_str(lt_fw_image *img, const char *s, char *err, size_t cap)
 static int images_equal(const lt_fw_image *a, const lt_fw_image *b)
 {
     size_t i;
-    if (a->n_segs != b->n_segs || a->total != b->total) { return 0; }
+    if (a->n_segs != b->n_segs || a->goal != b->goal) { return 0; }
     for (i = 0; i < a->n_segs; i++) {
         if (a->segs[i].addr != b->segs[i].addr || a->segs[i].len != b->segs[i].len) { return 0; }
         if (memcmp(a->segs[i].data, b->segs[i].data, a->segs[i].len) != 0) { return 0; }
@@ -38,7 +38,7 @@ LT_TEST(ihex_basic)
     LT_CHECK_INT((long)img.n_segs, 1);
     LT_CHECK(img.lo == 0x08000000UL);
     LT_CHECK(img.last == 0x0800001FUL);
-    LT_CHECK_INT((long)img.total, 32);
+    LT_CHECK_INT((long)img.goal, 32);
     LT_CHECK(img.has_entry && img.entry == 0x08000101UL);
     LT_CHECK_INT(img.segs[0].data[0x13], 3);
     lt_fw_image_free(&img);
@@ -78,7 +78,7 @@ LT_TEST(srec_basic)
     char err[200];
     LT_CHECK_INT(parse_str(&img, s, err, sizeof(err)), 0);
     LT_CHECK_INT(img.format, LT_FW_FMT_SREC);
-    LT_CHECK(img.lo == 0x08000000UL && img.total == 4);
+    LT_CHECK(img.lo == 0x08000000UL && img.goal == 4);
     LT_CHECK_INT(img.segs[0].data[3], 0xDD);
     LT_CHECK(img.has_entry && img.entry == 0x08000101UL);
     lt_fw_image_free(&img);
@@ -220,7 +220,7 @@ LT_TEST(fuzz_truncations)
             int rc = lt_fw_image_parse(&b, (const lt_u8 *)enc[f].data, n, LT_FW_FMT_UNKNOWN, 0, err, sizeof(err));
             if (rc == 0) {
                 accepted++;
-                if (b.total > a.total || b.n_segs == 0) { ok = 0; }
+                if (b.goal > a.goal || b.n_segs == 0) { ok = 0; }
                 lt_fw_image_free(&b);
             } else if (err[0] == '\0' || b.n_segs != 0) {
                 ok = 0;
@@ -320,10 +320,10 @@ LT_TEST(descriptor_alts)
     o.kind = LT_FW_SIM_DFUSE;
     s = lt_fw_sim_new(&o, zero_clock, NULL);
     lt_fw_sim_io(s, &io);
-    len = io.config_desc(io.ctx, cfg, (int)sizeof(cfg));
+    len = io.get_config(io.ctx, cfg, (int)sizeof(cfg));
     n = lt_fw_dfuse_alts(cfg, len, alts, 8);
     LT_CHECK_INT(n, 4);
-    LT_CHECK(alts[0].iface == 0 && alts[0].alt == 0 && alts[0].istr == 4);
+    LT_CHECK(alts[0].iface == 0 && alts[0].alt == 0 && alts[0].iface_str == 4);
     LT_CHECK(alts[3].alt == 3 && alts[3].xfer == 2048 && alts[3].dfuse == 1);
     LT_CHECK_INT(lt_fw_dfuse_alts(cfg, 12, alts, 8), 0);
     lt_fw_sim_free(s);

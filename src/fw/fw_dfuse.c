@@ -155,7 +155,7 @@ int lt_fw_dfuse_alts(const lt_u8 *cfg, int len, lt_fw_dfu_alt *out, int cap)
         if (ty == 4 && bl >= 9 && cfg[pos + 5] == 0xFE && cfg[pos + 6] == 0x01 && n < cap) {
             out[n].iface = cfg[pos + 2];
             out[n].alt = cfg[pos + 3];
-            out[n].istr = cfg[pos + 8];
+            out[n].iface_str = cfg[pos + 8];
             out[n].xfer = 0;
             out[n].dfuse = 0;
             n++;
@@ -329,7 +329,7 @@ static void tx_done(lt_fw_job *j)
         break;
     case K_MASS:
         d->er_idx = d->n_er;
-        j->done = j->total;
+        j->done = j->goal;
         d->retries = 0;
         break;
     case K_DATA:
@@ -407,13 +407,13 @@ static void connect_step(lt_fw_job *j)
         lt_fw_dfu_alt alts[8];
         char s[256], err[200];
         int n, i, r, pick = -1;
-        r = j->io->config_desc(j->io->ctx, cfg, (int)sizeof(cfg));
+        r = j->io->get_config(j->io->ctx, cfg, (int)sizeof(cfg));
         if (r < 0) { lt_fwj_fail(j, "cannot read the USB descriptors: %s", lt_fwj_usb_err(j, r)); return; }
         n = lt_fw_dfuse_alts(cfg, r, alts, 8);
         if (n == 0) { lt_fwj_fail(j, "no DFU interface on this device (is it in DFU mode?)"); return; }
         for (i = 0; i < n && pick < 0; i++) {
             s[0] = '\0';
-            if (alts[i].istr > 0 && j->io->string_desc(j->io->ctx, alts[i].istr, s, sizeof(s)) > 0 &&
+            if (alts[i].iface_str > 0 && j->io->get_string(j->io->ctx, alts[i].iface_str, s, sizeof(s)) > 0 &&
                 lt_str_istarts(skip_sp(s), "@Internal Flash")) {
                 pick = i;
             }
@@ -421,7 +421,7 @@ static void connect_step(lt_fw_job *j)
         if (pick < 0) {
             pick = 0;
             s[0] = '\0';
-            if (alts[0].istr > 0) { (void)j->io->string_desc(j->io->ctx, alts[0].istr, s, sizeof(s)); }
+            if (alts[0].iface_str > 0) { (void)j->io->get_string(j->io->ctx, alts[0].iface_str, s, sizeof(s)); }
         }
         d->iface = alts[pick].iface;
         d->alt = alts[pick].alt;
@@ -452,8 +452,8 @@ static void connect_step(lt_fw_job *j)
         }
         j->w_total[LT_FW_PH_ERASE] = 0;
         for (i = 0; i < d->n_er; i++) { j->w_total[LT_FW_PH_ERASE] += d->er_size[i]; }
-        j->w_total[LT_FW_PH_WRITE] = j->img->total;
-        j->w_total[LT_FW_PH_VERIFY] = j->o.verify ? j->img->total : 0;
+        j->w_total[LT_FW_PH_WRITE] = j->img->goal;
+        j->w_total[LT_FW_PH_VERIFY] = j->o.verify ? j->img->goal : 0;
         lt_fwj_log(j, 0, "DFU device: %s, interface %d alt %d, transfer size %d", d->mem[0] != '\0' ? d->mem : "memory",
                    d->iface, d->alt, d->xfer);
         r = j->io->claim(j->io->ctx, d->iface, d->alt);
@@ -493,8 +493,8 @@ static void enter_write(lt_fw_job *j)
     d->seg = 0;
     d->off = 0;
     d->ptr_valid = 0;
-    lt_snprintf(m, sizeof(m), "Writing %lu bytes", (unsigned long)j->img->total);
-    lt_fwj_phase(j, LT_FW_PH_WRITE, j->img->total, m);
+    lt_snprintf(m, sizeof(m), "Writing %lu bytes", (unsigned long)j->img->goal);
+    lt_fwj_phase(j, LT_FW_PH_WRITE, j->img->goal, m);
 }
 
 /* the next data block of the cursor: address and length; 0 when all segments are done */
@@ -607,7 +607,7 @@ static void after_phase(lt_fw_job *j)
         d->seg = 0;
         d->off = 0;
         d->verify_ready = 0;
-        lt_fwj_phase(j, LT_FW_PH_VERIFY, j->img->total, "Verifying (reading the flash back)");
+        lt_fwj_phase(j, LT_FW_PH_VERIFY, j->img->goal, "Verifying (reading the flash back)");
         return;
     }
     if (j->phase == LT_FW_PH_VERIFY) { lt_fwj_log(j, 1, "Verify OK: the flash matches the image"); }

@@ -58,7 +58,7 @@ int lt_fw_image_add(lt_fw_image *img, lt_u32 addr, const lt_u8 *data, size_t n, 
         set_err(err, errcap, "data at 0x%08lX runs past the 32-bit address space", (unsigned long)addr);
         return -1;
     }
-    if ((unsigned long)img->total + (unsigned long)n > LT_FW_MAX_DATA) {
+    if ((unsigned long)img->goal + (unsigned long)n > LT_FW_MAX_DATA) {
         set_err(err, errcap, "image too large (more than %lu MB of data)", LT_FW_MAX_DATA / (1024UL * 1024UL));
         return -1;
     }
@@ -78,7 +78,7 @@ int lt_fw_image_add(lt_fw_image *img, lt_u32 addr, const lt_u8 *data, size_t n, 
     if (seg_reserve(s, (size_t)s->len + n) != 0) { set_err(err, errcap, "out of memory"); return -1; }
     memcpy(s->data + s->len, data, n);
     s->len += (lt_u32)n;
-    img->total += (lt_u32)n;
+    img->goal += (lt_u32)n;
     return 0;
 }
 
@@ -116,8 +116,8 @@ int lt_fw_image_finish(lt_fw_image *img, char *err, size_t errcap)
     img->n_segs = k + 1;
     img->lo = img->segs[0].addr;
     img->last = img->segs[k].addr + (img->segs[k].len - 1u);
-    img->total = 0;
-    for (i = 0; i < img->n_segs; i++) { img->total += img->segs[i].len; }
+    img->goal = 0;
+    for (i = 0; i < img->n_segs; i++) { img->goal += img->segs[i].len; }
     return 0;
 }
 
@@ -649,8 +649,8 @@ void lt_fw_image_summary(const lt_fw_image *img, char *out, size_t cap)
 {
     char sz[32];
     if (img->n_segs == 0) { lt_strlcpy(out, "no image", cap); return; }
-    if (img->total < 1024u) { lt_snprintf(sz, sizeof(sz), "%lu bytes", (unsigned long)img->total); }
-    else { lt_snprintf(sz, sizeof(sz), "%.1f KB", (double)img->total / 1024.0); }
+    if (img->goal < 1024u) { lt_snprintf(sz, sizeof(sz), "%lu bytes", (unsigned long)img->goal); }
+    else { lt_snprintf(sz, sizeof(sz), "%.1f KB", (double)img->goal / 1024.0); }
     lt_snprintf(out, cap, "%s, %lu segment%s, %s, 0x%08lX-0x%08lX", lt_fw_format_name(img->format),
                 (unsigned long)img->n_segs, img->n_segs == 1 ? "" : "s", sz, (unsigned long)img->lo,
                 (unsigned long)img->last);

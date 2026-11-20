@@ -29,7 +29,7 @@ void lt_fwj_phase(lt_fw_job *j, int phase, lt_u32 total, const char *msg)
 {
     j->phase = phase;
     j->done = 0;
-    j->total = total;
+    j->goal = total;
     if (msg != NULL) {
         lt_strlcpy(j->msg, msg, sizeof(j->msg));
         if (j->log != NULL) { j->log(j->user, phase == LT_FW_PH_DONE ? 1 : 0, msg); }
@@ -116,7 +116,7 @@ void lt_fw_job_progress(const lt_fw_job *j, lt_fw_progress *p)
     if (j == NULL) { return; }
     p->phase = j->phase;
     p->done = j->done;
-    p->total = j->total;
+    p->goal = j->goal;
     p->usb_err = j->usb_err;
     lt_strlcpy(p->msg, j->msg, sizeof(p->msg));
     for (i = 0; i < 4; i++) { sum += weight[i] * (double)j->w_total[order[i]]; }
@@ -125,8 +125,8 @@ void lt_fw_job_progress(const lt_fw_job *j, lt_fw_progress *p)
     for (i = 0; i < 4; i++) {
         double w = weight[i] * (double)j->w_total[order[i]];
         if (order[i] < j->phase || (j->phase > LT_FW_PH_LEAVE)) { acc += w; }
-        else if (order[i] == j->phase && j->total > 0) {
-            acc += w * (double)(j->done < j->total ? j->done : j->total) / (double)j->total;
+        else if (order[i] == j->phase && j->goal > 0) {
+            acc += w * (double)(j->done < j->goal ? j->done : j->goal) / (double)j->goal;
         }
     }
     if (j->phase > LT_FW_PH_LEAVE) { acc = 0.0; }      /* failed / cancelled: no bar */

@@ -58,8 +58,8 @@ lt_fw_usb *lt_fw_usb_open(const char *path, lt_fw_io *io, char *err, size_t errc
     io->ctx = u;
     io->control = u_control;
     io->bulk = u_bulk;
-    io->config_desc = u_config;
-    io->string_desc = u_string;
+    io->get_config = u_config;
+    io->get_string = u_string;
     io->claim = u_claim;
     return u;
 }
