@@ -299,6 +299,60 @@ size_t lt_ecu_mem_dirty_ranges(const lt_ecu_mem *m, int page, lt_range *out, siz
     return c;
 }
 
+/* Set (on) or clear the dirty bits of [off, off+n) without touching the image. */
+static void set_range(mem_page *p, size_t off, size_t n, lt_bool on)
+{
+    size_t i, end;
+    lt_u8 bit;
+
+    if (off >= p->len) {
+        return;
+    }
+    end = n > p->len - off ? p->len : off + n;
+    ensure_bitmap(p, p->len);
+    for (i = off; i < end; i++) {
+        bit = (lt_u8)(1u << (i & 7));
+        if (on && !(p->dirty[i >> 3] & bit)) {
+            p->dirty[i >> 3] = (lt_u8)(p->dirty[i >> 3] | bit);
+            p->ndirty++;
+        } else if (!on && (p->dirty[i >> 3] & bit)) {
+            p->dirty[i >> 3] = (lt_u8)(p->dirty[i >> 3] & (lt_u8)~bit);
+            p->ndirty--;
+        }
+    }
+}
+
+void lt_ecu_mem_clear_dirty(lt_ecu_mem *m, int page, size_t off, size_t n)
+{
+    mem_page *p = pg(m, page);
+
+    if (p && loaded(p)) {
+        set_range(p, off, n, LT_FALSE);
+    }
+}
+
+void lt_ecu_mem_mark_dirty(lt_ecu_mem *m, int page, size_t off, size_t n)
+{
+    mem_page *p = pg(m, page);
+
+    if (p && loaded(p) && n > 0) {
+        set_range(p, off, n, LT_TRUE);
+        p->state = LT_PAGE_DIRTY;
+    }
+}
+
+void lt_ecu_mem_mark_page_pending(lt_ecu_mem *m, int page)
+{
+    mem_page *p = pg(m, page);
+
+    if (p && loaded(p)) {
+        p->pend = 1;
+        if (p->ndirty == 0) {
+            p->state = LT_PAGE_PENDING;
+        }
+    }
+}
+
 void lt_ecu_mem_mark_pending(lt_ecu_mem *m)
 {
     size_t i;

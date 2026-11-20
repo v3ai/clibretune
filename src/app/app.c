@@ -536,6 +536,10 @@ void lt_app_disconnect(lt_app *app)
 {
     if (app->conn == LT_APP_OFFLINE && app->proto == NULL) { return; }
     if (app->rec != NULL && lt_rec_is_recording(app->rec)) { lt_rec_stop(app->rec); }
+    if (app->proto != NULL && lt_proto_state(app->proto) == LT_CONN_CONNECTED &&
+        lt_proto_write_pending(app->proto)) {
+        lt_proto_async_finish(app->proto);         /* edits made just before still reach the ECU */
+    }
     if (app->mem != NULL && app->tune != NULL && !app->keep_project_tune) {
         lt_tune_from_mem(app->tune, app->mem);
     }
@@ -562,6 +566,7 @@ static int connect_io(lt_app *app, const lt_proto_io *io, const char *port, long
     cfg.port_name = port;
     cfg.runtime_mode = (lt_runtime_mode)app->settings.prefs.packet_mode;
     cfg.adaptive_timing = app->settings.prefs.adaptive_timing ? LT_TRUE : LT_FALSE;
+    cfg.instant_link = strcmp(port, "demo") == 0 ? LT_TRUE : LT_FALSE;
     app->proto = lt_proto_new(io, app->ini, &cfg);
     if (strcmp(port, "demo") == 0) {
         lt_proto_clock clk;
@@ -673,16 +678,20 @@ lt_bool lt_app_can_burn(const lt_app *app)
 {
     if (app->mem == NULL || app->proto == NULL) { return LT_FALSE; }
     if (app->conn != LT_APP_ONLINE && app->conn != LT_APP_DEMO) { return LT_FALSE; }
-    return (lt_ecu_mem_has_pending_burn(app->mem) || lt_ecu_mem_has_dirty(app->mem)) ? LT_TRUE
-                                                                                         : LT_FALSE;
+    return (lt_ecu_mem_has_pending_burn(app->mem) || lt_ecu_mem_has_dirty(app->mem) ||
+            lt_proto_write_pending(app->proto)) ? LT_TRUE : LT_FALSE;
 }
 
+/* The changed ranges are queued, not written here: lt_proto sends them between realtime
+ * requests (merging ranges that are edited again before they went out) and lt_app_service
+ * reports a failure. Any blocking ECU call (burn, page read, controller command) completes
+ * the queued writes first, so they can never overtake or interleave with it. */
 void lt_app_edited(lt_app *app)
 {
     app->modified = 1;
     if (app->mem != NULL && app->proto != NULL &&
         (app->conn == LT_APP_ONLINE || app->conn == LT_APP_DEMO) && lt_ecu_mem_has_dirty(app->mem)) {
-        if (lt_proto_write_dirty(app->proto, app->mem) < 0) {
+        if (lt_proto_write_dirty_begin(app->proto, app->mem) < 0) {
             lt_app_toast(app, 3, "ECU write failed: %s", lt_err_get());
         }
     }
@@ -717,6 +726,11 @@ int lt_app_burn(lt_app *app)
     char *rp = NULL;
     if (!lt_app_can_burn(app)) { return -1; }
     if (!lt_app_burn_gate(app)) { return -1; }     /* unacknowledged pin conflicts */
+    lt_proto_async_finish(app->proto);             /* queued edit writes first */
+    if (lt_proto_write_pending(app->proto) && lt_proto_write_pump(app->proto) < 0) {
+        burn_failed(app, "ECU write failed", -1, -1);
+        return -1;
+    }
     if (lt_ecu_mem_has_dirty(app->mem) && lt_proto_write_dirty(app->proto, app->mem) < 0) {
         burn_failed(app, "ECU write failed", -1, -1);
         return -1;
@@ -789,19 +803,16 @@ int lt_app_service(lt_app *app)
     return got;
 }
 
-static int service_link(lt_app *app)
+/* the demo simulator runs in-process (no link to saturate): poll it at display rate */
+static double poll_period_ms(const lt_app *app)
 {
-    double now;
-    int rc, got = 0;
-    now = lt_plat_now_ms();
-    /* the demo simulator runs in-process (no link to saturate): poll it at display rate */
-    if (now - app->last_poll_ms < 1000.0 / ((app->conn == LT_APP_DEMO && app->simlink == NULL)
-                                            ? 60.0 : (double)LT_CLAMP(app->settings.poll_hz, 5, 100))) {
-        return 0;
-    }
-    app->last_poll_ms = now;
-    lt_buf_clear(&app->rtbuf);
-    rc = lt_proto_get_realtime(app->proto, &app->rtbuf);
+    return 1000.0 / ((app->conn == LT_APP_DEMO && app->simlink == NULL)
+                     ? 60.0 : (double)LT_CLAMP(app->settings.poll_hz, 5, 100));
+}
+
+/* A realtime request finished: rc 1 = new frame in rtbuf, < 0 = failed. May disconnect. */
+static int rt_finished(lt_app *app, int rc, double now)
+{
     if (rc < 0) {
         app->frames_bad++;
         if (lt_proto_state(app->proto) != LT_CONN_CONNECTED) {
@@ -816,7 +827,6 @@ static int service_link(lt_app *app)
     }
     app->frames_ok++;
     app->rate_frames++;
-    got = 1;
     lt_app_tables_service(app);
     if (now - app->rate_t0_ms >= 1000.0) {
         app->data_rate = app->rate_frames * 1000.0 / (now - app->rate_t0_ms);
@@ -832,7 +842,60 @@ static int service_link(lt_app *app)
         }
         lt_rec_record(app->rec, app->rec_vals, (int)app->rec_n);
     }
+    return 1;
+}
+
+/* Never waits for the ECU: collects what has arrived, queues the next request when it is due
+ * and the wire is free, and returns. Realtime requests and the RAM writes of table edits
+ * (queued by lt_app_edited) take turns on the wire inside lt_proto. */
+static int service_link(lt_app *app)
+{
+    double now = lt_plat_now_ms();
+    int rc, got = 0;
+    if (lt_proto_write_pending(app->proto)) {
+        rc = lt_proto_write_pump(app->proto);
+        if (rc < 0) { lt_app_toast(app, 3, "ECU write failed: %s", lt_err_get()); }
+    }
+    if (lt_proto_rt_pending(app->proto)) {
+        lt_buf_clear(&app->rtbuf);
+        rc = lt_proto_rt_pump(app->proto, &app->rtbuf);
+        if (rc != 0) {
+            got = rt_finished(app, rc, now);
+            if (app->proto == NULL) { return got; }
+        }
+    }
+    if (!lt_proto_rt_pending(app->proto) && now - app->last_poll_ms >= poll_period_ms(app)) {
+        rc = lt_proto_rt_begin(app->proto);
+        if (rc == LT_OK) {
+            app->last_poll_ms = now;
+            lt_buf_clear(&app->rtbuf);
+            rc = lt_proto_rt_pump(app->proto, &app->rtbuf);   /* in-process links answer at once */
+            if (rc != 0) { got = rt_finished(app, rc, now); }
+        } else if (rc != LT_EBUSY) {                            /* LT_EBUSY: the wire is busy */
+            app->last_poll_ms = now;
+            got = rt_finished(app, rc, now);
+        }
+    }
     return got;
+}
+
+int lt_app_service_wait_ms(lt_app *app)
+{
+    double left;
+    int w;
+    if ((app->conn != LT_APP_ONLINE && app->conn != LT_APP_DEMO) || app->proto == NULL) { return -1; }
+    w = lt_proto_async_wait_ms(app->proto);       /* reply bytes expected / pacing gap */
+    if (!lt_proto_rt_pending(app->proto)) {
+        left = app->last_poll_ms + poll_period_ms(app) - lt_plat_now_ms();
+        if (left > 0.0) {
+            int d = (int)left + 1;
+            if (w < 0 || d < w) { w = d; }
+        } else if (w < 0) {
+            w = 0;                                /* a request is due and the wire is free */
+        }
+    }
+    /* feature ticks (lt_ext_tick) run from the service: keep them going while connected */
+    return (w < 0 || w > 50) ? 50 : w;
 }
 
 /* ------------------------------------------------------------------ */

@@ -202,8 +202,12 @@ int     lt_app_run(lt_app *app);
 int     lt_app_screenshot(lt_app *app, const char *ppm_path, int w, int h, int frames);
 /* one UI frame (menus, sidebar, tabs, status bar, dialogs) */
 void    lt_app_frame(lt_app *app);
-/* ECU service: realtime poll, recorder; returns 1 if new data arrived */
+/* ECU service: realtime poll, queued edit writes, recorder; returns 1 if new data arrived.
+ * Never waits for the ECU (requests are asynchronous); call it every loop iteration. */
 int     lt_app_service(lt_app *app);
+/* Main-loop hint: ms until lt_app_service has something to do (reply bytes expected, next
+ * poll due, pacing gap over); -1 when offline. Capped at 50 ms while connected. */
+int     lt_app_service_wait_ms(lt_app *app);
 void    lt_app_request_quit(lt_app *app);
 
 /* ---- settings ---- */
