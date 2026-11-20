@@ -140,4 +140,14 @@ int  lt_feat_actions_play_file(lt_app *app, const char *path, size_t *applied);
 void lt_feat_calc_register(lt_app_ext *reg);
 int  lt_feat_calc_eval(lt_app *app, const char *expr, char *out, size_t cap);
 
+/* File > Save / Load Partial Tune (.msqpart, feat_msqpart.c). save: the named constants of the
+ * open tune; apply_file: only the values in the file (the previous ones become the Undo copy);
+ * undo: restore them; open_load: the Load dialog with the preview of path (confirmation) */
+void lt_feat_msqpart_register(lt_app_ext *reg);
+int  lt_feat_msqpart_save(lt_app *app, const char *path, const char *const *names, size_t n);
+int  lt_feat_msqpart_apply_file(lt_app *app, const char *path, size_t *applied, size_t *skipped);
+int  lt_feat_msqpart_undo(lt_app *app);
+int  lt_feat_msqpart_can_undo(lt_app *app);
+void lt_feat_msqpart_open_load(lt_app *app, const char *path);
+
 #endif

@@ -189,6 +189,40 @@ size_t        lt_tune_merge_selected(lt_tune *target, const lt_tune *source, con
                                      size_t n);
 
 /* ====================================================================== */
+/* Partial tunes (.msqpart)                                                */
+/* ====================================================================== */
+/* A partial tune is an ordinary lt_tune holding only some constants (no page images, no
+ * manifest). lt_tune_save writes it in the layout TunerStudio uses for .msqpart files: the
+ * usual <msq> root with <versionInfo>/<bibliography>, then <page number="N"> blocks carrying just
+ * the chosen <constant> elements (pc variables in <page number="-1">). lt_tune_load reads one.
+ *
+ * One constant against a page source (ECU shadow or tune pages): write the value (0, or
+ * LT_EINVAL for a PC variable / bad argument, LT_EDATA when it cannot be encoded), read the
+ * current value (LT_FALSE when the page is not available). */
+int      lt_tune_write_const(const lt_ini *ini, const lt_ini_const *c, lt_pagesrc *ps, const lt_tune_value *v);
+lt_bool  lt_tune_read_const(const lt_ini *ini, const lt_ini_const *c, const lt_pagesrc *ps, lt_tune_value *out);
+/* new partial tune with the named constants / pc variables of src (names src lacks are skipped) */
+lt_tune *lt_tune_part_extract(const lt_tune *src, const char *const *names, size_t n);
+/* new partial tune with the CURRENT values of the named INI constants read from ps (pc variables
+ * from pcvars, may be NULL); names the INI does not know are skipped */
+lt_tune *lt_tune_part_capture(const lt_ini *ini, const lt_pagesrc *ps, const lt_tune *pcvars,
+                              const char *const *names, size_t n);
+/* constants of cur whose value differs from ref or that ref lacks: sorted malloc'd names
+ * (free each and the array); returns the count */
+size_t   lt_tune_part_diff_names(const lt_tune *cur, const lt_tune *ref, char ***names_out);
+/* constants edited through an INI table, curve or dialog (embedded panels and tables followed)
+ * added to set (key = name, value = non-NULL); returns how many were added */
+size_t   lt_tune_part_target_consts(const lt_ini *ini, const char *target, lt_map *set);
+/* every constant and pc variable name of a partial tune, sorted (malloc'd, as above) */
+size_t   lt_tune_part_names(const lt_tune *part, char ***names_out);
+/* Apply ONLY the values in part: INI constants are written through ps, pc variables into pcvars
+ * (skipped when NULL). *undo (may be NULL) receives a partial tune with the previous values, so
+ * applying it restores them. applied / skipped (may be NULL) count the constants written and
+ * those the INI does not know or that failed to encode. Returns 0, or LT_EINVAL. */
+int      lt_tune_part_apply(const lt_ini *ini, lt_pagesrc *ps, lt_tune *pcvars, const lt_tune *part,
+                            lt_tune **undo, size_t *applied, size_t *skipped);
+
+/* ====================================================================== */
 /* INI migration detection (spec 4)                                        */
 /* ====================================================================== */
 typedef struct lt_constant_change {
