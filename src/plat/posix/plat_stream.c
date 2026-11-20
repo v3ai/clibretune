@@ -4,7 +4,8 @@
  * PLATFORM FILE: includes POSIX headers (termios.h, sys/socket.h, netdb.h,
  * ...). Feature-test macros come from the build (tools/target.sh). The #ifdef
  * lines below only probe OS-defined constants (baud rates, TCP_NODELAY), never
- * the compiler or OS identity.
+ * the compiler or OS identity. Modem lines (DTR/RTS) use the TIOCMBIS/TIOCMBIC
+ * ioctls of sys/ioctl.h, present on Linux, the BSDs and macOS.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 #include "posix_priv.h"
@@ -19,6 +20,7 @@
 #include <fcntl.h>
 #include <termios.h>
 #include <sys/types.h>
+#include <sys/ioctl.h>
 #include <sys/time.h>
 #include <sys/select.h>
 #include <sys/socket.h>
@@ -193,6 +195,17 @@ int lt_serial_set_baud(lt_stream *s, long baud)
 {
     if (s == NULL) return -1;
     return apply_baud(s->fd, baud);
+}
+
+int lt_serial_set_lines(lt_stream *s, int dtr, int rts)
+{
+    int on = 0, off = 0;
+    if (s == NULL || s->is_sock) return -1;
+    if (dtr) on |= TIOCM_DTR; else off |= TIOCM_DTR;
+    if (rts) on |= TIOCM_RTS; else off |= TIOCM_RTS;
+    if (on != 0 && ioctl(s->fd, TIOCMBIS, &on) != 0) return -1;
+    if (off != 0 && ioctl(s->fd, TIOCMBIC, &off) != 0) return -1;
+    return 0;
 }
 
 static void set_nodelay(int fd)

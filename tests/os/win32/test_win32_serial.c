@@ -40,6 +40,13 @@ LT_TEST(test_serial_com)
     }
     LT_CHECK(lt_serial_set_baud(s, 57600L) == 0);
     LT_CHECK(lt_serial_set_baud(s, 115200L) == 0);
+    {   /* DTR/RTS pulse as used by the Arduino flasher; a pty behind wine may refuse it */
+        int r = lt_serial_set_lines(s, 0, 0);
+        LT_CHECK(r == 0 || r == -1);
+        r = lt_serial_set_lines(s, 1, 1);
+        LT_CHECK(r == 0 || r == -1);
+    }
+    LT_CHECK(lt_serial_set_lines(NULL, 1, 1) == -1);
     LT_CHECK(lt_stream_write(s, "ping", 4) == 4);
     memset(buf, 0, sizeof buf);
     n = lt_stream_read_full(s, buf, 4, 3000);

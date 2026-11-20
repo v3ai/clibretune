@@ -29,6 +29,13 @@ LT_TEST(test_serial_pty)
         LT_CHECK(lt_serial_set_baud(s, 9600) == 0);
         LT_CHECK(lt_serial_set_baud(s, 115200) == 0);
         LT_CHECK(lt_serial_set_baud(s, 12345) < 0);
+        {   /* modem lines: a pty may not have them (-1), but the call must be safe */
+            int r = lt_serial_set_lines(s, 0, 0);
+            LT_CHECK(r == 0 || r == -1);
+            r = lt_serial_set_lines(s, 1, 1);
+            LT_CHECK(r == 0 || r == -1);
+        }
+        LT_CHECK(lt_serial_set_lines(NULL, 1, 1) == -1);
         LT_CHECK(write(m, "\x01\r\n\xff", 4) == 4);
         LT_CHECK(lt_stream_read_full(s, buf, 4, 1000) == 4);
         LT_CHECK(memcmp(buf, "\x01\r\n\xff", 4) == 0);

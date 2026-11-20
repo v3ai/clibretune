@@ -120,6 +120,14 @@ int lt_serial_set_baud(lt_stream *s, long baud)
     return apply_dcb(s->h, baud);
 }
 
+int lt_serial_set_lines(lt_stream *s, int dtr, int rts)
+{
+    if (s == NULL || s->is_sock) return -1;
+    if (!EscapeCommFunction(s->h, dtr ? SETDTR : CLRDTR)) return -1;
+    if (!EscapeCommFunction(s->h, rts ? SETRTS : CLRRTS)) return -1;
+    return 0;
+}
+
 /* COM port number of a name like "COM12", or 0 */
 static int com_number(const char *name)
 {

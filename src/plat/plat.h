@@ -75,6 +75,10 @@ typedef struct lt_stream lt_stream;
  * 8N1, no flow control, raw. */
 lt_stream *lt_serial_open(const char *port, long baud);
 int  lt_serial_set_baud(lt_stream *s, long baud);
+/* Drive the modem control lines of a serial port: dtr/rts 1 = asserted, 0 = cleared
+ * (Arduino-style boards reset on the DTR/RTS edge). 0 ok, -1 when the stream is not a
+ * serial port or the driver has no modem lines (pseudo-terminals). */
+int  lt_serial_set_lines(lt_stream *s, int dtr, int rts);
 /* list candidate serial ports; returns count, names malloc'd (free_list) */
 int  lt_serial_list(char ***names);
 /* tcp client connect with timeout */
