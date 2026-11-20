@@ -376,10 +376,10 @@ static void handle_userdefined(lt_ini *ini, ini_pstate *st, const char *lk, cons
                 in->expression = ini_unbrace(p[0], 1);
                 in->label_off = ini_dequote(p[1]);
                 in->label_on = ini_dequote(p[2]);
-                if (n > 3 && p[3][0]) in->off_fg = lt_strdup(p[3]);
-                if (n > 4 && p[4][0]) in->off_bg = lt_strdup(p[4]);
-                if (n > 5 && p[5][0]) in->on_fg = lt_strdup(p[5]);
-                if (n > 6 && p[6][0]) in->on_bg = lt_strdup(p[6]);
+                if (n > 3 && p[3][0]) in->off_bg = lt_strdup(p[3]);   /* TS order: bg, fg */
+                if (n > 4 && p[4][0]) in->off_fg = lt_strdup(p[4]);
+                if (n > 5 && p[5][0]) in->on_bg = lt_strdup(p[5]);
+                if (n > 6 && p[6][0]) in->on_fg = lt_strdup(p[6]);
             } else if (d) {
                 lt_ini_comp *c = comp_add(d, LT_COMP_INDICATOR);
                 c->expression = ini_unbrace(p[0], 1);
@@ -1141,6 +1141,108 @@ static void handle_extensions(lt_ini *ini, const char *lk, const char *value)
 }
 
 /* ------------------------------------------------------------------ */
+/* [PortEditor]                                                        */
+/* ------------------------------------------------------------------ */
+static lt_ini_port_editor *port_editor_new(lt_ini *ini, const char *name, char *label)
+{
+    lt_ini_port_editor *pe = (lt_ini_port_editor *)ini_push((void **)&ini->port_editors,
+                                                            &ini->n_port_editors, sizeof(*pe));
+    pe->name = lt_strdup(name);
+    pe->label = label;
+    return pe;
+}
+
+/* the editor the mapping keys attach to (the last one; a default std_port_edit if none) */
+static lt_ini_port_editor *port_editor_cur(lt_ini *ini)
+{
+    if (ini->n_port_editors == 0)
+        return port_editor_new(ini, "std_port_edit", lt_strdup("Output Port Settings"));
+    return &ini->port_editors[ini->n_port_editors - 1];
+}
+
+static void port_labels(char **p, size_t n, size_t from, char ***out, size_t *nout)
+{
+    size_t i;
+    for (i = from; i < n; i++) {
+        if (ini_is_braced(p[i])) continue;
+        ini_str_push(out, nout, ini_dequote(p[i]));
+    }
+}
+
+static void port_editor_line(lt_ini *ini, const char *key, const char *lk, const char *value)
+{
+    static const char *const keys[] = {
+        "enabledports", "outputcanid", "outputoffset", "outputsize", "operators", "threshold",
+        "hysteresis", "poweronvalue", "triggervalue", "conditionrelationship", "outputoffset2",
+        "outputsize2", "operators2", "threshold2", "hysteresis2"
+    };
+    char **p;
+    size_t n, i, k;
+    lt_ini_port_editor *pe;
+    if (strcmp(lk, "topichelp") == 0) {
+        if (ini->n_port_editors > 0) ini_set_str(&port_editor_cur(ini)->help_topic, ini_dequote(value));
+        return;
+    }
+    n = ini_split(value, &p);
+    if (n == 0) {
+        ini_strv_free(p, n);
+        return;
+    }
+    if (strcmp(lk, "portnames") == 0) {
+        pe = port_editor_cur(ini);
+        port_labels(p, n, 0, &pe->port_names, &pe->n_port_names);
+        ini_strv_free(p, n);
+        return;
+    }
+    {
+        for (k = 0; k < sizeof(keys) / sizeof(keys[0]); k++)
+            if (strcmp(lk, keys[k]) == 0) break;
+        if (strcmp(lk, "porteditor") == 0 || k == sizeof(keys) / sizeof(keys[0])) {
+            /* a new editor: "portEditor = name, \"Title\"" or "name = \"Title\"" */
+            size_t first = 0;
+            if (strcmp(lk, "porteditor") == 0) {
+                pe = port_editor_new(ini, p[0], n > 1 ? ini_dequote(p[1]) : lt_strdup(p[0]));
+                first = 2;
+            } else {
+                pe = port_editor_new(ini, key, ini_dequote(p[0]));
+                first = 1;
+            }
+            for (i = first; i < n; i++)
+                if (ini_is_braced(p[i])) {
+                    pe->enable_cond = ini_unbrace(p[i], 1);
+                    break;
+                }
+            ini_strv_free(p, n);
+            return;
+        }
+        pe = port_editor_cur(ini);
+        switch (k) {
+        case 0: ini_set_str(&pe->enabled_const, lt_strdup(p[0]));
+                port_labels(p, n, 1, &pe->port_names, &pe->n_port_names); break;
+        case 1: ini_set_str(&pe->can_id_const, lt_strdup(p[0])); break;
+        case 2: ini_set_str(&pe->offset_const, lt_strdup(p[0])); break;
+        case 3: ini_set_str(&pe->size_const, lt_strdup(p[0])); break;
+        case 4: ini_set_str(&pe->op_const, lt_strdup(p[0]));
+                port_labels(p, n, 1, &pe->op_labels, &pe->n_op_labels); break;
+        case 5: ini_set_str(&pe->threshold_const, lt_strdup(p[0])); break;
+        case 6: ini_set_str(&pe->hysteresis_const, lt_strdup(p[0])); break;
+        case 7: ini_set_str(&pe->power_on_const, lt_strdup(p[0])); break;
+        case 8: ini_set_str(&pe->trigger_const, lt_strdup(p[0])); break;
+        case 9: ini_set_str(&pe->connector_const, lt_strdup(p[0]));
+                port_labels(p, n, 1, &pe->conn_labels, &pe->n_conn_labels); break;
+        case 10: ini_set_str(&pe->offset2_const, lt_strdup(p[0])); break;
+        case 11: ini_set_str(&pe->size2_const, lt_strdup(p[0])); break;
+        case 12: ini_set_str(&pe->op2_const, lt_strdup(p[0]));
+                 if (pe->n_op_labels == 0) port_labels(p, n, 1, &pe->op_labels, &pe->n_op_labels);
+                 break;
+        case 13: ini_set_str(&pe->threshold2_const, lt_strdup(p[0])); break;
+        default: ini_set_str(&pe->hysteresis2_const, lt_strdup(p[0])); break;
+        }
+    }
+    ini_strv_free(p, n);
+}
+
+/* ------------------------------------------------------------------ */
 /* the rest                                                            */
 /* ------------------------------------------------------------------ */
 
@@ -1249,22 +1351,7 @@ void ini_section_line(lt_ini *ini, ini_ctx *cx, ini_pstate *st, const char *key,
     } else if (strcmp(s, "controllercommands") == 0) {
         handle_commands(ini, key, value);
     } else if (strcmp(s, "porteditor") == 0) {
-        if (strcmp(lk, "topichelp") != 0 && strcmp(lk, "enabledports") != 0 &&
-            strcmp(lk, "operators") != 0 && strcmp(lk, "threshold") != 0 &&
-            strcmp(lk, "hysteresis") != 0) {
-            lt_ini_port_editor *pe;
-            n = ini_split(value, &p);
-            pe = (lt_ini_port_editor *)ini_push((void **)&ini->port_editors,
-                                                &ini->n_port_editors, sizeof(*pe));
-            pe->name = lt_strdup(key);
-            pe->label = ini_dequote(p[0]);
-            for (i = 1; i < n; i++)
-                if (ini_is_braced(p[i])) {
-                    pe->enable_cond = ini_unbrace(p[i], 1);
-                    break;
-                }
-            ini_strv_free(p, n);
-        }
+        port_editor_line(ini, key, lk, value);
     } else if (strcmp(s, "referencetables") == 0) {
         handle_reftable(ini, st, lk, value);
     } else if (strcmp(s, "datalogviews") == 0) {

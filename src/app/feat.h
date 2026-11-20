@@ -167,5 +167,8 @@ size_t lt_feat_triggers_eval(lt_app *app, double now_ms);
 int    lt_feat_triggers_fire(lt_app *app, size_t i);
 const char *lt_feat_triggers_last(lt_app *app);
 int    lt_feat_triggers_save(lt_app *app);
+/* INI extras: help topics, pin conflict report + burn gate, power cycle notice, project INI
+ * settings, port editor (feat_iniext.c; API in iniext.h) */
+void lt_feat_iniext_register(lt_app_ext *reg);
 
 #endif

@@ -172,6 +172,7 @@ static lt_ini *ini_new(void)
     lt_buf_init(&cx->logger_raw);
     lt_map_init(&cx->included, LT_FALSE);
     lt_vec_init(&cx->std_panels, sizeof(lt_ini_dialog *));
+    lt_map_init(&cx->managed, LT_FALSE);
     ini->priv = cx;
     return ini;
 }
@@ -189,6 +190,8 @@ void lt_ini_options_default(lt_ini_options *o)
 {
     o->symbols = NULL;
     o->n_symbols = 0;
+    o->managed = NULL;
+    o->n_managed = 0;
 }
 
 /* ------------------------------------------------------------------ */
@@ -1136,7 +1139,8 @@ static int parse_text(lt_ini *ini, ini_ctx *cx, const char *text, size_t len,
                 if (live) {
                     char *sym = lt_strdup(p + 5);
                     lt_str_trim(sym);
-                    lt_map_put(&ini->active_symbols, sym, (void *)cx);
+                    if (!lt_map_has(&cx->managed, sym))
+                        lt_map_put(&ini->active_symbols, sym, (void *)cx);
                     lt_free(sym);
                 }
             } else if (lt_str_starts(p, "#unset ")) {
@@ -1144,7 +1148,7 @@ static int parse_text(lt_ini *ini, ini_ctx *cx, const char *text, size_t len,
                     char *sym = lt_strdup(p + 7);
                     lt_str_trim(sym);
                     /* lt_map has no delete: rebuild without the symbol */
-                    if (lt_map_has(&ini->active_symbols, sym)) {
+                    if (lt_map_has(&ini->active_symbols, sym) && !lt_map_has(&cx->managed, sym)) {
                         lt_map nm;
                         size_t i;
                         lt_map_init(&nm, LT_FALSE);
@@ -1226,8 +1230,13 @@ static lt_ini *load_common(const char *text, size_t len, const char *base_dir,
     int rc;
 
     if (opts && opts->symbols)
-        for (i = 0; i < opts->n_symbols; i++)
+        for (i = 0; i < opts->n_symbols; i++) {
             lt_map_put(&ini->active_symbols, opts->symbols[i], (void *)cx);
+            lt_map_put(&cx->managed, opts->symbols[i], (void *)cx);
+        }
+    if (opts && opts->managed)
+        for (i = 0; i < opts->n_managed; i++)
+            lt_map_put(&cx->managed, opts->managed[i], (void *)cx);
     if (source_path) {
         char *n = path_norm(source_path);
         lt_map_put(&cx->included, n, (void *)cx);

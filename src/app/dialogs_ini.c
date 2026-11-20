@@ -10,6 +10,8 @@
 #include "dialogs.h"
 #include "view_kit.h"
 #include "feat.h"
+#include "dialogs_embed.h"
+#include "iniext.h"
 
 #define MAX_DEPTH 5
 #define N_STR 8
@@ -30,6 +32,8 @@ typedef struct ini_state {
     str_slot str[N_STR]; int n_str;
     graph_slot gr[N_GRAPH]; int n_gr;
     int close_req;
+    lt_embeds emb;                  /* embedded curves/tables/gauges */
+    int counts[LT_EMB_KINDS];       /* drawn this frame (tests); [0] = help buttons */
 } ini_state;
 
 typedef struct opt_ctx { const lt_ini_const *c; const int *map; } opt_ctx;
@@ -120,16 +124,30 @@ static void field_layout(lt_ui *ui, int *w3, int *n)
     lt_ui_layout_row(ui, *n, w3, cell ? 0 : 30);
 }
 
-/* label cell of a field row: uppercase caption, hint icon when the constant has help text,
- * hairline under the whole row (pixel mode); plain label in cell mode */
-static void field_label(lt_ui *ui, const char *label, const lt_ini_const *c, int enabled)
+/* label cell of a field row: uppercase caption, hint icon when the constant has help text (and
+ * the "help icons" preference is on; clicking it opens the text), a power badge on constants
+ * that need an ECU power cycle, hairline under the whole row (pixel mode); plain label in
+ * cell mode */
+static void field_label(lt_app *app, const char *label, const lt_ini_const *c, int enabled)
 {
+    lt_ui *ui = app->ui;
     const lt_theme *t = lt_ui_theme(ui);
     lt_rect r, body;
     char up[160];
     size_t i, n = 0;
-    int tw;
-    if (lt_ui_cell_mode(ui)) { lt_ui_label(ui, label); return; }
+    int tw, x, help = c != NULL && c->help != NULL && app->settings.prefs.help_icons;
+    int pcyc = c != NULL && lt_ini_needs_power_cycle(app->ini, c->name);
+    if (lt_ui_cell_mode(ui)) {
+        if (pcyc) {
+            char lb[200];
+            lt_snprintf(lb, sizeof(lb), "%s [pwr]", label != NULL ? label : "");
+            lt_ui_label(ui, lb);
+            lt_ui_tooltip(ui, "Takes effect after the ECU is power cycled");
+        } else {
+            lt_ui_label(ui, label);
+        }
+        return;
+    }
     r = lt_ui_layout_next(ui);
     body = lt_ui_layout_body(ui);
     lt_ui_draw_hline(ui, body.x, body.x + body.w - 1, r.y + r.h - 1, LT_RGBA(255, 255, 255, t->dark ? 16 : 0));
@@ -139,13 +157,26 @@ static void field_label(lt_ui *ui, const char *label, const lt_ini_const *c, int
         up[n++] = (ch >= 'a' && ch <= 'z') ? (char)(ch - 'a' + 'A') : ch;
     }
     up[n] = '\0';
-    lt_vk_text(ui, lt_rect_make(r.x + lt_ui_px(ui, 4), r.y, r.w - (c != NULL && c->help != NULL ? lt_ui_px(ui, 30) : lt_ui_px(ui, 8)), r.h),
+    lt_vk_text(ui, lt_rect_make(r.x + lt_ui_px(ui, 4), r.y, r.w - lt_ui_px(ui, 8 + (help ? 22 : 0) + (pcyc ? 22 : 0)), r.h),
                (int)LT_FONT_SANS_SEMIBOLD, 11.0, up, enabled ? t->text2 : t->disabled, 0);
-    if (c != NULL && c->help != NULL) {
-        tw = lt_vk_text_w(ui, (int)LT_FONT_SANS_SEMIBOLD, 11.0, up);
-        if (tw > r.w - 34) { tw = r.w - 34; }
-        lt_vk_icon(ui, lt_rect_make(r.x + lt_ui_px(ui, 4) + tw + lt_ui_px(ui, 6), r.y, lt_ui_px(ui, 14), r.h), LT_ICON_CIRCLE_HELP, 13, 2.0,
-                   enabled ? t->accent : t->disabled);
+    tw = lt_vk_text_w(ui, (int)LT_FONT_SANS_SEMIBOLD, 11.0, up);
+    if (tw > r.w - lt_ui_px(ui, 52)) { tw = r.w - lt_ui_px(ui, 52); }
+    x = r.x + lt_ui_px(ui, 4) + tw + lt_ui_px(ui, 6);
+    if (help) {
+        lt_rect hr = lt_rect_make(x, r.y, lt_ui_px(ui, 16), r.h);
+        lt_point m = lt_ui_mouse(ui);
+        int over = m.x >= hr.x && m.x < hr.x + hr.w && m.y >= r.y + r.h / 4 && m.y < r.y + r.h * 3 / 4;
+        lt_ui_layout_set_rect(ui, lt_rect_make(hr.x, r.y + r.h / 4, hr.w, r.h / 2));
+        if (lt_ui_button_ex(ui, "##fhelp", LT_UI_BTN_FLAT) && c != NULL) { (void)lt_app_help_text(app, label, c->help); }
+        lt_vk_icon(ui, hr, LT_ICON_CIRCLE_HELP, 13, 2.0, enabled ? (over ? t->accent_hover : t->accent) : t->disabled);
+        x += lt_ui_px(ui, 20);
+    }
+    if (pcyc) {
+        lt_rect pr = lt_rect_make(x, r.y, lt_ui_px(ui, 16), r.h);
+        lt_vk_icon(ui, pr, LT_ICON_POWER, 12, 2.0, enabled ? t->warning : t->disabled);
+        lt_ui_layout_set_rect(ui, lt_rect_make(pr.x, r.y + r.h / 4, pr.w, r.h / 2));
+        lt_ui_label(ui, "");
+        lt_ui_tooltip(ui, "Changing this setting takes effect after the ECU is power cycled");
     }
 }
 
@@ -293,7 +324,7 @@ static void draw_graph(lt_app *app, ini_state *st, const lt_ini_comp *cm)
     const lt_theme *t = lt_ui_theme(ui);
     graph_slot *g = NULL;
     lt_rect r;
-    int i, w1 = -1;
+    int i, w1 = -1, lx, ly;
     size_t k;
     lt_color cols[GRAPH_CH];
     cols[0] = t->primary; cols[1] = t->accent; cols[2] = t->success; cols[3] = t->warning;
@@ -303,10 +334,12 @@ static void draw_graph(lt_app *app, ini_state *st, const lt_ini_comp *cm)
         memset(g, 0, sizeof(*g));
         g->comp = cm;
     }
+    lt_ui_layout_row(ui, 1, &w1, 0);
     if (cm->label != NULL && cm->label[0] != '\0') { lt_ui_label_ex(ui, cm->label, t->text2, LT_UI_ALIGN_LEFT); }
     lt_ui_layout_row(ui, 1, &w1, 8 * 16);
     r = lt_ui_layout_next(ui);
     lt_ui_draw_box(ui, r, t->table_bg, t->border, 0);
+    lx = r.x + 6; ly = r.y + 2;
     if (g == NULL) { return; }
     push_graph(app, g, cm);
     lt_ui_request_redraw(ui);
@@ -326,7 +359,9 @@ static void draw_graph(lt_app *app, ini_state *st, const lt_ini_comp *cm)
             lt_ui_draw_line(ui, x0, y0, x1, y1, 1.5, cols[k]);
         }
         lt_snprintf(lab, sizeof(lab), "%s %.1f", cm->channels[k], g->n > 0 ? g->h[k][g->n - 1] : 0.0);
-        lt_ui_draw_text(ui, r.x + 6 + (int)k * 150, r.y + 2, lab, cols[k]);
+        if (lx + lt_ui_text_width(ui, lab) > r.x + r.w - 4) { lx = r.x + 6; ly += lt_ui_row_height(ui) - 4; }
+        lt_ui_draw_text(ui, lx, ly, lab, cols[k]);
+        lx += lt_ui_text_width(ui, lab) + lt_ui_px(ui, 18);
     }
 }
 
@@ -339,6 +374,61 @@ static const lt_ini_dialog *find_panel(lt_app *app, const char *name)
     d = lt_ini_find_dialog(app->ini, name);
     if (d == NULL) { d = lt_ini_std_panel(app->ini, name); }
     return d;
+}
+
+/* group box with a title around an embedded component (pixel mode: card, cell mode: heading) */
+static int titled_begin(lt_app *app, const char *title)
+{
+    if (title == NULL || title[0] == '\0') { return 1; }
+    return lt_ui_group_begin(app->ui, title, 0) ? 2 : 0;
+}
+
+static void titled_end(lt_app *app, int g)
+{
+    if (g == 2) { lt_ui_group_end(app->ui); }
+}
+
+/* "panel = name": a dialog, curve, table, indicator panel, readout panel or gauge. Returns 1
+ * when something was drawn. */
+static int draw_panel_ref(lt_app *app, ini_state *st, const char *name, int enabled, int depth)
+{
+    lt_ui *ui = app->ui;
+    int w1 = -1, g, kind = lt_emb_kind(app, name), drawn = 0;
+    lt_ui_layout_row(ui, 1, &w1, 0);
+    switch (kind) {
+    case LT_EMB_DIALOG: {
+        const lt_ini_dialog *sub = find_panel(app, name);
+        if (sub == NULL || depth >= MAX_DEPTH) { return 0; }
+        /* an untitled dialog (title defaults to its name) gets no titled border, as in TunerStudio */
+        g = titled_begin(app, sub->title != NULL && sub->name != NULL && strcmp(sub->title, sub->name) == 0
+                              ? NULL : sub->title);
+        if (g) { draw_dialog(app, st, sub, depth + 1); titled_end(app, g); }
+        st->counts[LT_EMB_DIALOG]++;
+        return 1; }
+    case LT_EMB_CURVE: {
+        const lt_ini_curve *c = lt_ini_find_curve(app->ini, name);
+        g = titled_begin(app, c->title != NULL ? c->title : c->name);
+        if (g) { drawn = lt_emb_curve(app, &st->emb, c, enabled); titled_end(app, g); }
+        break; }
+    case LT_EMB_TABLE: {
+        const lt_ini_table *t = lt_ini_find_table(app->ini, name);
+        g = titled_begin(app, t->title != NULL ? t->title : t->name);
+        if (g) { drawn = lt_emb_table(app, &st->emb, t, enabled); titled_end(app, g); }
+        break; }
+    case LT_EMB_IND:
+        drawn = lt_emb_indicators(app, lt_ini_find_ind_panel(app->ini, name));
+        break;
+    case LT_EMB_READOUT:
+        drawn = lt_emb_readouts(app, lt_ini_find_readout_panel(app->ini, name));
+        break;
+    case LT_EMB_GAUGE:
+        drawn = lt_emb_gauge(app, &st->emb, lt_ini_find_gauge(app->ini, name));
+        break;
+    default:
+        return 0;
+    }
+    if (drawn) { st->counts[kind]++; }
+    return drawn;
 }
 
 static void draw_comp(lt_app *app, ini_state *st, const lt_ini_dialog *dlg, size_t idx, int depth)
@@ -380,24 +470,13 @@ static void draw_comp(lt_app *app, ini_state *st, const lt_ini_dialog *dlg, size
             lt_ui_layout_space(ui, 6);
         }
         break;
-    case LT_COMP_PANEL: {
-        const lt_ini_dialog *sub = find_panel(app, cm->name);
-        if (sub != NULL && depth < MAX_DEPTH) {
-            lt_ui_layout_row(ui, 1, &w1, 0);
-            if (sub->title != NULL && sub->title[0] != '\0') {
-                if (lt_ui_group_begin(ui, sub->title, 0)) {
-                    draw_dialog(app, st, sub, depth + 1);
-                    lt_ui_group_end(ui);
-                }
-            } else {
-                draw_dialog(app, st, sub, depth + 1);
-            }
-        }
-        break; }
+    case LT_COMP_PANEL:
+        (void)draw_panel_ref(app, st, cm->name, enabled, depth);
+        break;
     case LT_COMP_FIELD:
     case LT_COMP_DISPLAYONLY:
         field_layout(ui, w3, &n);
-        field_label(ui, label, c, enabled);
+        field_label(app, label, c, enabled);
         if (c != NULL && c->help != NULL) { lt_ui_tooltip(ui, c->help); }
         if (c != NULL) {
             value_widget(app, st, c, cm->kind == LT_COMP_DISPLAYONLY);
@@ -424,7 +503,7 @@ static void draw_comp(lt_app *app, ini_state *st, const lt_ini_dialog *dlg, size
         break;
     case LT_COMP_SLIDER:
         field_layout(ui, w3, &n);
-        field_label(ui, label, c, enabled);
+        field_label(app, label, c, enabled);
         if (c != NULL && c->shape.kind == LT_SH_SCALAR && c->type != LT_DT_BITS && val_get(app, c, &v) == 0) {
             double lo = c->min, hi = c->max;
             lt_uconv uc;
@@ -444,7 +523,7 @@ static void draw_comp(lt_app *app, ini_state *st, const lt_ini_dialog *dlg, size
         int sel = -1, ch;
         size_t o, a;
         field_layout(ui, w3, &n);
-        field_label(ui, label, NULL, enabled);
+        field_label(app, label, NULL, enabled);
         /* match: every assignment equals the current value */
         for (o = 0; o < cm->n_options; o++) {
             int all = cm->options[o].n_assigns > 0;
@@ -472,7 +551,7 @@ static void draw_comp(lt_app *app, ini_state *st, const lt_ini_dialog *dlg, size
     case LT_COMP_RUNTIMEVALUE: {
         char b[64];
         field_layout(ui, w3, &n);
-        field_label(ui, label, NULL, enabled);
+        field_label(app, label, NULL, enabled);
         if (cm->name != NULL && lt_app_channel_disp(app, cm->name, &v, NULL)) { lt_fmt_double(b, sizeof(b), v, 2); }
         else { lt_strlcpy(b, "-", sizeof(b)); }
         lt_ui_label_ex(ui, b, t->accent, LT_UI_ALIGN_LEFT);
@@ -487,14 +566,15 @@ static void draw_comp(lt_app *app, ini_state *st, const lt_ini_dialog *dlg, size
     case LT_COMP_LIVEGRAPH:
         draw_graph(app, st, cm);
         break;
-    case LT_COMP_TABLE:
-        lt_ui_layout_row(ui, 1, &w1, 0);
-        {
-            char b[160];
-            lt_snprintf(b, sizeof(b), "Open table: %s", cm->name != NULL ? cm->name : "?");
-            if (cm->name != NULL && lt_ui_button(ui, b)) { lt_app_table_editor_open(app, cm->name); }
+    case LT_COMP_TABLE: {
+        const lt_ini_table *tb = cm->name != NULL ? lt_ini_find_table(app->ini, cm->name) : NULL;
+        if (tb != NULL) {
+            (void)draw_panel_ref(app, st, cm->name, enabled, depth);
+        } else {
+            lt_ui_layout_row(ui, 1, &w1, 0);
+            lt_ui_label_ex(ui, cm->name != NULL ? cm->name : "?", t->muted, LT_UI_ALIGN_LEFT);
         }
-        break;
+        break; }
     case LT_COMP_INDICATOR: {
         int on = lt_expr_cache_f64(&app->expr, cm->expression, &app->varenv.env, 0.0) != 0.0;
         char l1[96], l2[96];
@@ -521,7 +601,10 @@ static void draw_comp(lt_app *app, ini_state *st, const lt_ini_dialog *dlg, size
             }
         }
         break; }
-    case LT_COMP_GAUGE:
+    case LT_COMP_GAUGE: {
+        const lt_ini_gauge *gg = cm->name != NULL ? lt_ini_find_gauge(app->ini, cm->name) : NULL;
+        if (gg != NULL && lt_emb_gauge(app, &st->emb, gg)) { st->counts[LT_EMB_GAUGE]++; }
+        break; }
     default:
         break;
     }
@@ -534,49 +617,112 @@ static int is_xaxis(const lt_ini_dialog *d)
     return d->layout_hint != NULL && lt_str_istarts(d->layout_hint, "xaxis");
 }
 
+static int is_border(const lt_ini_dialog *d)
+{
+    return d->layout_hint != NULL && lt_stricmp(d->layout_hint, "border") == 0;
+}
+
+/* a component that can stand as a column: an embedded panel of any kind or a gauge */
+static int columnable(lt_app *app, const lt_ini_comp *cm)
+{
+    if (cm->kind == LT_COMP_GAUGE) { return cm->name != NULL && lt_ini_find_gauge(app->ini, cm->name) != NULL; }
+    return cm->kind == LT_COMP_PANEL && lt_emb_kind(app, cm->name) != LT_EMB_NONE;
+}
+
+/* draw groups of components side by side: col[k] lists n_in[k] component indices */
+#define MAX_COLS 4
+#define COL_CAP 64
+static void draw_columns(lt_app *app, ini_state *st, const lt_ini_dialog *dlg, size_t col[][COL_CAP],
+                         const int *n_in, const int *weight, int ncols, int depth)
+{
+    lt_ui *ui = app->ui;
+    int ws[MAX_COLS], k, n = 0, idx[MAX_COLS], j;
+    for (k = 0; k < ncols; k++) {
+        int vis = 0;
+        for (j = 0; j < n_in[k]; j++) {
+            const lt_ini_comp *cm = &dlg->comps[col[k][j]];
+            if (cond(app, cm->vis_cond)) { vis = 1; }
+        }
+        if (vis) { ws[n] = weight[k]; idx[n++] = k; }
+    }
+    if (n == 0) { return; }
+    lt_ui_layout_row(ui, n, ws, 0);
+    for (k = 0; k < n; k++) {
+        lt_ui_push_id_int(ui, 1000 + idx[k]);
+        lt_ui_layout_column_begin(ui);
+        for (j = 0; j < n_in[idx[k]]; j++) { draw_comp(app, st, dlg, col[idx[k]][j], depth); }
+        lt_ui_layout_column_end(ui);
+        lt_ui_pop_id(ui);
+    }
+}
+
+/* border layout: North, then West | Center | East side by side (when wide enough), then South */
+static void draw_border(lt_app *app, ini_state *st, const lt_ini_dialog *dlg, int depth)
+{
+    size_t (*col)[COL_CAP];
+    int n_in[5] = { 0, 0, 0, 0, 0 }, k, j, wide, used = 0;
+    static const int weight[3] = { -2, -3, -2 };
+    size_t i;
+    /* 0 North, 1 West, 2 Center, 3 East, 4 South */
+    col = (size_t (*)[COL_CAP])lt_calloc(5, sizeof(*col));
+    for (i = 0; i < dlg->n_comps; i++) {
+        const char *pos = dlg->comps[i].position;
+        int r = 2;
+        if (pos != NULL) {
+            if (lt_stricmp(pos, "North") == 0) { r = 0; }
+            else if (lt_stricmp(pos, "West") == 0) { r = 1; }
+            else if (lt_stricmp(pos, "East") == 0) { r = 3; }
+            else if (lt_stricmp(pos, "South") == 0) { r = 4; }
+        }
+        if (n_in[r] < COL_CAP) { col[r][n_in[r]++] = i; }
+    }
+    for (k = 1; k <= 3; k++) { if (n_in[k] > 0) { used++; } }
+    wide = lt_ui_unpx(app->ui, lt_ui_layout_width(app->ui)) >= 700 && used >= 2;
+    for (j = 0; j < n_in[0]; j++) { draw_comp(app, st, dlg, col[0][j], depth); }
+    if (wide) {
+        draw_columns(app, st, dlg, &col[1], &n_in[1], weight, 3, depth);
+    } else {
+        for (k = 1; k <= 3; k++) {
+            for (j = 0; j < n_in[k]; j++) { draw_comp(app, st, dlg, col[k][j], depth); }
+        }
+    }
+    for (j = 0; j < n_in[4]; j++) { draw_comp(app, st, dlg, col[4][j], depth); }
+    lt_free(col);
+}
+
 static void draw_dialog(lt_app *app, ini_state *st, const lt_ini_dialog *dlg, int depth)
 {
     lt_ui *ui = app->ui;
     size_t i = 0, j;
     lt_ui_push_id(ui, dlg->name != NULL ? dlg->name : "dlg");
+    if (is_border(dlg) && depth < MAX_DEPTH) {
+        draw_border(app, st, dlg, depth);
+        lt_ui_pop_id(ui);
+        return;
+    }
     while (i < dlg->n_comps) {
-        if (is_xaxis(dlg) && dlg->comps[i].kind == LT_COMP_PANEL && depth < MAX_DEPTH) {
-            int ws[4], n = 0;
-            size_t idxs[4];
-            for (j = i; j < dlg->n_comps && dlg->comps[j].kind == LT_COMP_PANEL && n < 4; j++) {
-                if (cond(app, dlg->comps[j].vis_cond) && find_panel(app, dlg->comps[j].name) != NULL) {
-                    idxs[n++] = j;
-                }
+        if (is_xaxis(dlg) && columnable(app, &dlg->comps[i]) && depth < MAX_DEPTH) {
+            size_t (*col)[COL_CAP] = (size_t (*)[COL_CAP])lt_calloc(MAX_COLS, sizeof(*col));
+            int n_in[MAX_COLS] = { 0, 0, 0, 0 }, ws[MAX_COLS] = { 0, 0, 0, 0 }, n = 0;
+            for (j = i; j < dlg->n_comps && columnable(app, &dlg->comps[j]) && n < MAX_COLS; j++) {
+                col[n][0] = j; n_in[n] = 1; ws[n] = -1; n++;
             }
             i = j;
-            if (n > 0) {
-                int k;
-                for (k = 0; k < n; k++) { ws[k] = -1; }
-                lt_ui_layout_row(ui, n, ws, 0);
-                for (k = 0; k < n; k++) {
-                    const lt_ini_dialog *sub = find_panel(app, dlg->comps[idxs[k]].name);
-                    lt_ui_push_id_int(ui, (int)idxs[k]);
-                    lt_ui_layout_column_begin(ui);
-                    {
-                        int w1 = -1;
-                        lt_ui_layout_row(ui, 1, &w1, 0);
-                        if (sub->title != NULL && sub->title[0] != '\0') {
-                            if (lt_ui_group_begin(ui, sub->title, 0)) {
-                                draw_dialog(app, st, sub, depth + 1);
-                                lt_ui_group_end(ui);
-                            }
-                        } else { draw_dialog(app, st, sub, depth + 1); }
-                    }
-                    lt_ui_layout_column_end(ui);
-                    lt_ui_pop_id(ui);
-                }
-            }
+            draw_columns(app, st, dlg, col, n_in, ws, n, depth);
+            lt_free(col);
             continue;
         }
         draw_comp(app, st, dlg, i, depth);
         i++;
     }
     lt_ui_pop_id(ui);
+}
+
+/* the dialog has its own title (an untitled one carries its name as title) */
+static int titled(const lt_ini_dialog *d)
+{
+    return d != NULL && d->title != NULL && d->title[0] != '\0' &&
+           (d->name == NULL || strcmp(d->title, d->name) != 0);
 }
 
 static void ini_dialog_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
@@ -592,21 +738,28 @@ static void ini_dialog_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
         tab->data = st;
     }
     st->close_req = 0;
+    memset(st->counts, 0, sizeof(st->counts));
     if (app->ini == NULL) { return; }
     dlg = find_panel(app, tab->target);
     lt_ui_layout_row(ui, 1, &w1, -1);
     if (lt_ui_scroll_begin(ui, "inidlg")) {
         if (lt_ui_cell_mode(ui)) {
-            lt_ui_layout_row(ui, 1, &w1, 0);
-            lt_ui_heading(ui, dlg != NULL && dlg->title != NULL ? dlg->title : tab->title);
+            int wh[2];
+            wh[0] = -1; wh[1] = 8 * 8;
+            lt_ui_layout_row(ui, dlg != NULL && dlg->help_topic != NULL ? 2 : 1, dlg != NULL && dlg->help_topic != NULL ? wh : &w1, 0);
+            if (dlg == NULL || dlg->help_topic == NULL) { lt_ui_heading(ui, titled(dlg) ? dlg->title : tab->title); }
+            else { lt_ui_label_ex(ui, titled(dlg) ? dlg->title : tab->title, t->text, LT_UI_ALIGN_LEFT); }
+            if (dlg != NULL && dlg->help_topic != NULL) {
+                st->counts[0]++;
+                if (lt_ui_button(ui, "Help")) { (void)lt_app_help_open(app, dlg->help_topic); }
+            }
         } else {
             lt_rect hr;
             char ttl[200];
             int tw;
             lt_ui_layout_row(ui, 1, &w1, 50);
             hr = lt_ui_layout_next(ui);
-            lt_snprintf(ttl, sizeof(ttl), "%s", dlg != NULL && dlg->title != NULL && dlg->title[0] != '\0'
-                                                    ? dlg->title : tab->title);
+            lt_snprintf(ttl, sizeof(ttl), "%s", titled(dlg) ? dlg->title : tab->title);
             if (dlg != NULL && dlg->name != NULL && strcmp(dlg->name, ttl) != 0) {
                 size_t k = strlen(ttl);
                 lt_snprintf(ttl + k, sizeof(ttl) - k, " (%s)", dlg->name);
@@ -616,6 +769,12 @@ static void ini_dialog_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
             lt_vk_text(ui, lt_rect_make(hr.x + lt_ui_px(ui, 20), hr.y + lt_ui_px(ui, 6), hr.w - lt_ui_px(ui, 40), lt_ui_px(ui, 30)), (int)LT_FONT_SANS_SEMIBOLD, 17.0,
                        ttl, t->text, 1);
             lt_ui_draw_hline(ui, hr.x + (hr.w - tw) / 2 - 4, hr.x + (hr.w + tw) / 2 + 4, hr.y + 38, t->border_strong);
+            if (dlg != NULL && dlg->help_topic != NULL) {     /* topicHelp: help button at the right */
+                st->counts[0]++;
+                lt_ui_layout_set_rect(ui, lt_rect_make(hr.x + hr.w - lt_ui_px(ui, 84), hr.y + lt_ui_px(ui, 8), lt_ui_px(ui, 72), lt_ui_px(ui, 26)));
+                if (lt_ui_button_ex(ui, "Help##dlghelp", LT_UI_BTN_FLAT)) { (void)lt_app_help_open(app, dlg->help_topic); }
+                lt_ui_tooltip(ui, dlg->help_topic);
+            }
         }
         lt_ui_layout_row(ui, 1, &w1, 0);
         if (dlg == NULL) {
@@ -633,8 +792,17 @@ static void ini_dialog_close(lt_app *app, lt_app_tab *tab)
 {
     ini_state *st = (ini_state *)tab->data;
     LT_UNUSED(app);
-    if (st != NULL) { lt_free(st->map); lt_free(st); }
+    if (st != NULL) { lt_emb_free(&st->emb); lt_free(st->map); lt_free(st); }
     tab->data = NULL;
+}
+
+int lt_dlg_ini_counts(lt_app *app, const char *name, int *counts)
+{
+    lt_app_tab *tab = lt_app_tab_find(app, "dialog", name);
+    const ini_state *st = tab != NULL ? (const ini_state *)tab->data : NULL;
+    if (st == NULL) { return -1; }
+    memcpy(counts, st->counts, sizeof(st->counts));
+    return 0;
 }
 
 void lt_dlg_register_ini(lt_app *app)
