@@ -7,6 +7,7 @@
 #include <string.h>
 #include <math.h>
 #include "datalog.h"
+#include "dl_view.h"
 
 static lt_math_hooks g_hooks;
 
@@ -702,4 +703,142 @@ bad:
     lt_math_set_free(&tmp);
     lt_err_set("math channels file '%s' is not valid JSON", path);
     return LT_EDATA;
+}
+
+/* ---- expressions over a log, live math (dl_view.h) ---- */
+
+int lt_log_eval_expr(const lt_log *log, const char *expr, double *out, char *err, size_t errlen)
+{
+    lt_expr *ast;
+    char msg[256];
+    lt_map idx;
+    log_row_ctx lc;
+    lt_expr_env env;
+    long i;
+    int c;
+    if (err != NULL && errlen > 0) {
+        err[0] = '\0';
+    }
+    if (!g_hooks.compile || !g_hooks.eval) {
+        if (err != NULL && errlen > 0) {
+            lt_strlcpy(err, "no expression engine installed", errlen);
+        }
+        return LT_EUNSUPPORTED;
+    }
+    msg[0] = '\0';
+    ast = g_hooks.compile(expr != NULL ? expr : "", msg, sizeof msg);
+    if (ast == NULL) {
+        if (err != NULL && errlen > 0) {
+            lt_strlcpy(err, msg[0] ? msg : "invalid expression", errlen);
+        }
+        return LT_EDATA;
+    }
+    lt_map_init(&idx, LT_FALSE);
+    for (c = 0; c < log->n_ch; c++) {
+        if (!lt_map_has(&idx, log->names[c])) {
+            lt_map_put(&idx, log->names[c], (void *)(size_t)(c + 1));
+        }
+    }
+    lc.log = log;
+    lc.idx = &idx;
+    memset(&env, 0, sizeof env);
+    env.ud = &lc;
+    env.get_var = lr_get_var;
+    for (i = 0; i < log->n; i++) {
+        double v = 0.0;
+        lc.row = log->v + (size_t)i * (size_t)log->n_ch;
+        if (g_hooks.eval(ast, &env, &v) != 0) {
+            v = nan_val();
+        }
+        out[i] = v;
+    }
+    lt_map_free(&idx);
+    if (g_hooks.free_expr) {
+        g_hooks.free_expr(ast);
+    }
+    return 0;
+}
+
+long lt_log_filter(const lt_log *log, const char *expr, unsigned char *mask, char *err,
+                   size_t errlen)
+{
+    const char *p = expr != NULL ? expr : "";
+    double *v;
+    long i, pass = 0;
+    int rc;
+    while (*p == ' ' || *p == '\t') {
+        p++;
+    }
+    if (err != NULL && errlen > 0) {
+        err[0] = '\0';
+    }
+    if (*p == '\0') {
+        for (i = 0; i < log->n; i++) {
+            mask[i] = 1;
+        }
+        return log->n;
+    }
+    v = (double *)lt_malloc((size_t)(log->n > 0 ? log->n : 1) * sizeof(double));
+    rc = lt_log_eval_expr(log, p, v, err, errlen);
+    if (rc != 0) {
+        lt_free(v);
+        return rc;
+    }
+    for (i = 0; i < log->n; i++) {
+        mask[i] = (unsigned char)(lt_isfinite(v[i]) && v[i] != 0.0 ? 1 : 0);
+        pass += mask[i];
+    }
+    lt_free(v);
+    return pass;
+}
+
+void lt_math_live_free(lt_math_live *ml)
+{
+    lt_free(ml->vals);
+    memset(ml, 0, sizeof *ml);
+}
+
+int lt_math_live_eval(lt_math_live *ml, lt_math_set *s, const lt_expr_env *env)
+{
+    int rc;
+    size_t k;
+    if (ml->busy) {
+        return 0;
+    }
+    if (ml->n != s->n || ml->vals == NULL) {
+        lt_free(ml->vals);
+        ml->vals = (double *)lt_calloc(s->n + 1, sizeof(double));
+        ml->n = s->n;
+    }
+    if (s->n == 0) {
+        ml->valid = 0;
+        return 0;
+    }
+    for (k = 0; k < s->n; k++) {
+        ensure_compiled(&s->ch[k]);
+    }
+    ml->busy = 1;
+    rc = lt_math_eval_all(s, env, ml->vals);
+    ml->busy = 0;
+    ml->valid = 1;
+    return rc;
+}
+
+lt_bool lt_math_live_get(const lt_math_live *ml, const lt_math_set *s, const char *name,
+                         double *out)
+{
+    size_t k;
+    if (!ml->valid || ml->n != s->n || name == NULL) {
+        return LT_FALSE;
+    }
+    for (k = 0; k < s->n; k++) {
+        if (s->ch[k].name != NULL && strcmp(s->ch[k].name, name) == 0) {
+            if (!lt_isfinite(ml->vals[k])) {
+                return LT_FALSE;
+            }
+            *out = ml->vals[k];
+            return LT_TRUE;
+        }
+    }
+    return LT_FALSE;
 }

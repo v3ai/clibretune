@@ -11,6 +11,7 @@
 #include "../plat/plat.h"
 #include "view_kit.h"
 #include "../dash/dash_priv.h"
+#include "../datalog/dl_view.h"
 
 #define FD_IMPORT (LT_APP_FD_USER0 + 42)
 #define FD_EXPORT (LT_APP_FD_USER0 + 43)
@@ -646,12 +647,13 @@ void lt_dpanel_palette(lt_app *app, dash_state *st)
     lt_ui_layout_row(ui, 1, &one, 0);
     (void)lt_ui_text(ui, "pal_filter", st->pal_filter, sizeof st->pal_filter, 0);
     if (app->ini != NULL && app->ini->n_channels > 0) {
-        const char **match = (const char **)lt_malloc(sizeof(char *) * (app->ini->n_channels + 1));
+        const char **match = (const char **)lt_malloc(sizeof(char *) * (app->ini->n_channels + lt_datalog_virtual_count() + 1));
         int nm = 0, sel = 0, ch;
         char cur[80];
         lt_snprintf(cur, sizeof cur, "%s", st->pal_name);
-        for (k = 0; k < app->ini->n_channels; k++) {
-            const char *nme = app->ini->channels[k]->name;
+        for (k = 0; k < app->ini->n_channels + lt_datalog_virtual_count(); k++) {   /* + live math channels */
+            const char *nme = k < app->ini->n_channels ? app->ini->channels[k]->name
+                                                       : lt_datalog_virtual_name(k - app->ini->n_channels);
             if (st->pal_filter[0] == '\0' || strstr(nme, st->pal_filter) != NULL) {
                 if (strcmp(nme, st->pal_name) == 0) { sel = nm; }
                 match[nm++] = nme;

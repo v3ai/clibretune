@@ -789,6 +789,8 @@ struct lt_ini_rt {
     size_t n_computed;
     const lt_expr_env *parent;
     lt_expr_env env;
+    lt_ini_rt_virtual_fn virt;   /* names that are not INI channels (math channels) */
+    void *virt_ud;
 };
 
 static lt_bool rt_get_var(void *ud, const char *name, double *out)
@@ -898,6 +900,12 @@ void lt_ini_rt_free(lt_ini_rt *rt)
     lt_free(rt);
 }
 
+void lt_ini_rt_set_virtual(lt_ini_rt *rt, lt_ini_rt_virtual_fn fn, void *ud)
+{
+    rt->virt = fn;
+    rt->virt_ud = ud;
+}
+
 void lt_ini_rt_set_parent(lt_ini_rt *rt, const lt_expr_env *parent)
 {
     rt->parent = parent;
@@ -959,7 +967,8 @@ void lt_ini_rt_set(lt_ini_rt *rt, size_t channel_index, double v)
 lt_bool lt_ini_rt_get(const lt_ini_rt *rt, const char *name, double *out)
 {
     const lt_ini_channel *ch = (const lt_ini_channel *)lt_map_get(&rt->ini->channel_idx, name);
-    if (!ch || !rt->valid[ch->index]) return LT_FALSE;
+    if (!ch) return rt->virt != NULL ? rt->virt(rt->virt_ud, name, out) : LT_FALSE;
+    if (!rt->valid[ch->index]) return LT_FALSE;
     *out = rt->vals[ch->index];
     return LT_TRUE;
 }

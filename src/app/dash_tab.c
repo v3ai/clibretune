@@ -12,6 +12,7 @@
 #include "../plat/plat.h"
 #include "view_kit.h"
 #include "../dash/dash_priv.h"
+#include "../datalog/dl_view.h"
 
 #define FD_OPEN_DASH (LT_APP_FD_USER0 + 40)
 #define FD_SAVE_DASH (LT_APP_FD_USER0 + 41)
@@ -573,9 +574,10 @@ static void props_window(lt_app *app, dash_state *st)
         lt_ui_text(ui, "dp_filter", st->filter, sizeof st->filter, 0);
         if (app->ini != NULL && app->ini->n_channels > 0) {
             size_t k;
-            match = (const char **)lt_malloc(sizeof(char *) * (app->ini->n_channels + 1));
-            for (k = 0; k < app->ini->n_channels; k++) {
-                const char *nme = app->ini->channels[k]->name;
+            match = (const char **)lt_malloc(sizeof(char *) * (app->ini->n_channels + lt_datalog_virtual_count() + 1));
+            for (k = 0; k < app->ini->n_channels + lt_datalog_virtual_count(); k++) {   /* + live math channels */
+                const char *nme = k < app->ini->n_channels ? app->ini->channels[k]->name
+                                                           : lt_datalog_virtual_name(k - app->ini->n_channels);
                 if (st->filter[0] == '\0' || strstr(nme, st->filter) != NULL) {
                     if (g->output_channel != NULL && strcmp(nme, g->output_channel) == 0) { ch = nm; }
                     match[nm++] = nme;
