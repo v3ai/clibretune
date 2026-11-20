@@ -678,6 +678,7 @@ static void layer_render(gp *p, lt_canvas *dst, void (*paint)(gp *))
     lt_gfx_clear(&og, LT_RGB(255, 255, 255));
     paint(&q);
     n = (size_t)p->r.w * (size_t)p->r.h;
+    lt_canvas_touch(dst);                 /* the pixels are rewritten directly below */
     for (i = 0; i < n; i++) {
         lt_u32 b = dst->px[i], w = white.px[i];
         int db = (int)(w & 255) - (int)(b & 255);

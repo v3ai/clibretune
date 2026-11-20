@@ -43,10 +43,15 @@ lt_rect lt_rect_inset(lt_rect r, int dx, int dy);
 typedef struct lt_canvas {
     lt_u32 *px;
     int w, h, pitch;
+    lt_u32 gen;           /* content generation: changes with every draw call into the canvas
+                           * (unique across canvases); retained rendering keys blits on it */
 } lt_canvas;
 void lt_canvas_init(lt_canvas *c, int w, int h);   /* allocates */
 void lt_canvas_resize(lt_canvas *c, int w, int h);
 void lt_canvas_free(lt_canvas *c);
+/* call before writing c->px directly (outside the lt_gfx calls): a recorded frame that still
+ * refers to the old pixels keeps a copy, and the generation changes */
+void lt_canvas_touch(lt_canvas *c);
 
 /* Character-cell grid for the tty backend. */
 typedef struct lt_cell {
@@ -100,6 +105,8 @@ typedef struct lt_gfx {
     int        bitmap_text; /* nonzero: lt_gfx_text/vtext use the 8x16 bitmap/Hershey
                              * fonts even in pixel mode (default 0 = IBM Plex) */
     int        ui_pct;    /* UI scale percent for custom draw callbacks (0 = 100); set by lt_ui_begin */
+    struct lt_rec *rec;   /* non-NULL while lt_tiles records this context: draw calls are
+                           * stored, not rasterized, and g->canvas must not be read */
 } lt_gfx;
 
 /* px at 100% -> device px using g->ui_pct (identity in cell mode) */
@@ -127,11 +134,41 @@ void lt_diff_invalidate(lt_diff *d);      /* force the next lt_diff_rects to rep
  * copy is updated, so each change is reported once. */
 int lt_diff_rects(lt_diff *d, const lt_canvas *cur, lt_rect area, lt_rect *out, int max_out);
 
+/* ---- retained rendering (gfx_rec.c) ----
+ * Between lt_tiles_begin and lt_tiles_end every pixel-mode draw call on g is recorded into a
+ * display list (parameters, copied strings/points/pixels, clip, translation and a conservative
+ * bounding box per call). lt_tiles_end hashes the calls touching each screen tile, compares with
+ * the previous frame and rasterizes only the tiles whose hash changed, replaying their calls with
+ * the clip narrowed to the tile, so the canvas ends up exactly as if every call had been drawn
+ * directly. The frame must start with an opaque clear (lt_ui_end does). Offscreen canvases
+ * stay immediate; a blit of one is keyed on its generation (lt_canvas.gen). Cell mode is never
+ * recorded. Code that would read g->canvas pixels while recording must check
+ * lt_gfx_recording. */
+typedef struct lt_tiles lt_tiles;
+lt_tiles *lt_tiles_new(void);
+void lt_tiles_free(lt_tiles *t);
+void lt_tiles_begin(lt_tiles *t, lt_gfx *g);  /* no-op (nothing recorded) in cell mode */
+/* stop recording and rasterize the changed tiles into g->canvas; writes up to max_out merged
+ * rectangles of changed pixels to out (bounding box of everything when more) and returns their
+ * count; g->dirty becomes their union */
+int  lt_tiles_end(lt_tiles *t, lt_gfx *g, lt_rect *out, int max_out);
+void lt_tiles_invalidate(lt_tiles *t);        /* next frame re-renders every tile */
+/* debug cross-check: render the last recorded frame from scratch into a private canvas and
+ * compare with g->canvas; returns the number of differing pixels (first one in *x, *y) */
+long lt_tiles_verify(lt_tiles *t, const lt_gfx *g, int *x, int *y);
+/* statistics of the last frame: recorded calls, tiles, re-rendered tiles, re-rendered pixels */
+void lt_tiles_stats(const lt_tiles *t, long *ncmd, int *ntiles, int *ndirty, double *pixels);
+lt_bool lt_gfx_recording(const lt_gfx *g);
+
 /* composite a premultiplied-ARGB canvas (alpha in the top byte) at (x, y); pixel mode only */
 void lt_gfx_blit_premul(lt_gfx *g, int x, int y, const lt_canvas *src);
 void lt_gfx_fill_rect(lt_gfx *g, lt_rect r, lt_color c);
 void lt_gfx_rect(lt_gfx *g, lt_rect r, lt_color c);           /* 1px outline */
 void lt_gfx_fill_round_rect(lt_gfx *g, lt_rect r, int radius, lt_color c);
+/* soft drop shadow under r: for i = spread..1 a black round rect r grown by i (shifted down by
+ * spread/2), radius radius+i, alpha alpha*(spread-i+1)^2/(1.5*spread^2+1) (at least 1) - drawn
+ * in one pass with exactly the pixels of those calls */
+void lt_gfx_shadow(lt_gfx *g, lt_rect r, int radius, int spread, int alpha);
 void lt_gfx_hline(lt_gfx *g, int x0, int x1, int y, lt_color c);
 void lt_gfx_vline(lt_gfx *g, int x, int y0, int y1, lt_color c);
 /* anti-aliased line, width in pixels (double) */

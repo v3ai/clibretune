@@ -169,20 +169,51 @@ static int alt_match(const char *label, const char *alt, size_t len)
 
 enum { NODE_FOLDER = 0, NODE_TABLE, NODE_DIALOG, NODE_DASH, NODE_LOG, NODE_HELP };
 
-static int node_icon(const char *label, int type, lt_color *col, const lt_theme *t)
+/* icon of the first node_rules pattern matching label (0: none) */
+static int rule_icon(const char *label)
 {
     size_t i;
-    int icon = 0;
-    for (i = 0; i < sizeof(node_rules) / sizeof(node_rules[0]) && icon == 0; i++) {
+    for (i = 0; i < sizeof(node_rules) / sizeof(node_rules[0]); i++) {
         const char *p = node_rules[i].pat;
         while (*p != '\0') {
             const char *e = strchr(p, '|');
             size_t len = e != NULL ? (size_t)(e - p) : strlen(p);
-            if (alt_match(label, p, len)) { icon = node_rules[i].icon; break; }
+            if (alt_match(label, p, len)) { return node_rules[i].icon; }
             if (e == NULL) { break; }
             p = e + 1;
         }
     }
+    return 0;
+}
+
+/* rule_icon is ~100 substring searches; the sidebar asks for every visible item every frame,
+ * so results are remembered per label (direct-mapped by hash; longer labels are not cached) */
+#define ICON_CACHE_N 256
+#define ICON_CACHE_LEN 48
+typedef struct icon_cache_ent {
+    char label[ICON_CACHE_LEN];
+    int icon;
+} icon_cache_ent;
+static icon_cache_ent g_icon_cache[ICON_CACHE_N];
+
+static int rule_icon_cached(const char *label)
+{
+    size_t n = strlen(label), i;
+    lt_u32 h = 2166136261UL;
+    icon_cache_ent *e;
+    if (n == 0 || n >= ICON_CACHE_LEN) { return rule_icon(label); }
+    for (i = 0; i < n; i++) { h = ((h ^ (lt_u32)(unsigned char)label[i]) * 16777619UL) & LT_U32_MASK; }
+    e = &g_icon_cache[h % ICON_CACHE_N];
+    if (strcmp(e->label, label) != 0) {
+        lt_strlcpy(e->label, label, sizeof(e->label));
+        e->icon = rule_icon(label);
+    }
+    return e->icon;
+}
+
+static int node_icon(const char *label, int type, lt_color *col, const lt_theme *t)
+{
+    int icon = rule_icon_cached(label);
     switch (type) {
     case NODE_FOLDER: *col = t->warning; if (icon == 0) { icon = LT_ICON_FOLDER; } break;
     case NODE_TABLE: *col = t->info; if (icon == 0) { icon = LT_ICON_TABLE_2; } break;
@@ -1358,84 +1389,228 @@ static void save_geometry(lt_app *app)
     }
 }
 
-/* Present the frame. Backends that take rectangles get only the 64x64 tiles that differ from the
- * previously presented frame (as a few merged rectangles); the others get the drawn bounding box.
- * Returns the number of pixels handed to the backend. */
+/* Rendering mode. Pixel frames are retained (gfx_rec.c): the frame's draw calls are recorded and
+ * only the screen tiles whose calls changed are rasterized; those tiles are also exactly what has
+ * to be presented. LT_RENDER=immediate draws every call directly and finds the changed pixels by
+ * comparing whole frames (lt_diff_rects). LT_RENDER_VERIFY=1 renders every retained frame a second
+ * time from scratch and exits with status 3 at the first pixel that differs. */
 #define PRESENT_MAX_RECTS 48
-static double present_frame(lt_app *app)
+typedef struct render_state {
+    int init, retained, verify;
+    lt_tiles *tiles;
+    long verified;
+    lt_rect rects[PRESENT_MAX_RECTS];
+    int nrects;
+    int be_owned;               /* app->canvas.px is the backend's memory (canvas_pixels) */
+    int want_w, want_h;         /* window size in pixels (0: the canvas size) */
+} render_state;
+
+static void render_state_free(lt_app *app, void *state)
+{
+    render_state *rs = (render_state *)state;
+    if (rs->be_owned) {
+        /* backend memory: never freed by the app */
+        app->canvas.px = NULL;
+        rs->be_owned = 0;
+    }
+    if (rs->verify && rs->verified > 0) {
+        fprintf(stderr, "render verify: %ld frames identical\n", rs->verified);
+    }
+    lt_tiles_free(rs->tiles);
+    rs->tiles = NULL;
+}
+
+static render_state *render_get(lt_app *app)
+{
+    render_state *rs = (render_state *)lt_ext_state(app, "shell.render", sizeof(render_state),
+                                                    render_state_free);
+    if (!rs->init) {
+        char *e = lt_plat_getenv("LT_RENDER");
+        rs->init = 1;
+        rs->retained = !(e != NULL && strcmp(e, "immediate") == 0);
+        lt_free(e);
+        e = lt_plat_getenv("LT_RENDER_VERIFY");
+        rs->verify = e != NULL && e[0] != '0';
+        lt_free(e);
+        rs->tiles = lt_tiles_new();
+    }
+    return rs;
+}
+
+/* Present the frame. Backends that take rectangles get only the changed parts (the re-rendered
+ * tiles in retained mode, else the 64x64 tiles that differ from the previously presented frame)
+ * as a few merged rectangles; the others get their bounding box. Returns the number of pixels
+ * handed to the backend. */
+static double present_frame(lt_app *app, const render_state *rs, int retained)
 {
     lt_backend *be = app->backend;
     lt_rect rects[PRESENT_MAX_RECTS];
+    const lt_rect *rp = rects;
     int n, i;
     double px = 0.0;
     if (app->cell_mode) {
         be->present(be, NULL, &app->cells, app->gfx.dirty);
         return 0.0;
     }
-    if (!be->rect_present) {
+    if (!be->rect_present && be->present_rects == NULL) {
         be->present(be, &app->canvas, NULL, app->gfx.dirty);
         return (double)app->gfx.dirty.w * (double)app->gfx.dirty.h;
     }
-    n = lt_diff_rects(&app->diff, &app->canvas, app->gfx.dirty, rects, PRESENT_MAX_RECTS);
-    for (i = 0; i < n; i++) {
-        be->present(be, &app->canvas, NULL, rects[i]);
-        px += (double)rects[i].w * (double)rects[i].h;
+    if (retained) {
+        n = rs->nrects;
+        rp = rs->rects;
+    } else {
+        n = lt_diff_rects(&app->diff, &app->canvas, app->gfx.dirty, rects, PRESENT_MAX_RECTS);
     }
+    lt_backend_present_rects(be, &app->canvas, rp, n);
+    for (i = 0; i < n; i++) { px += (double)rp[i].w * (double)rp[i].h; }
     return px;
 }
 
-/* LT_PERF=1: per-second frame statistics on stderr (draw ms avg/max, present ms, bytes handed to
- * the backend per second); in screenshot mode one summary line at the end. */
+/* every pixel of the next frame must be rendered and presented */
+static void canvas_replaced(lt_app *app, render_state *rs)
+{
+    lt_gfx_init_canvas(&app->gfx, &app->canvas);
+    lt_diff_invalidate(&app->diff);
+    lt_tiles_invalidate(rs->tiles);
+}
+
+/* Zero copy: draw straight into the memory the backend shows (canvas_pixels), when it has some.
+ * A different pointer (or size) means the old contents are gone; going back to an app-owned
+ * canvas likewise starts from scratch. Called before every pixel frame. */
+static void canvas_acquire(lt_app *app, render_state *rs)
+{
+    lt_canvas *c = &app->canvas;
+    int w, h;
+    lt_u32 *px;
+    if (app->backend == NULL || app->cell_mode) { return; }
+    w = rs->want_w > 0 ? rs->want_w : c->w;
+    h = rs->want_h > 0 ? rs->want_h : c->h;
+    px = lt_backend_canvas_pixels(app->backend, w, h);
+    if (px != NULL) {
+        if (rs->be_owned && px == c->px && c->w == w && c->h == h) { return; }
+        if (!rs->be_owned) { lt_canvas_free(c); }
+        c->px = px; c->w = w; c->h = h; c->pitch = w;
+        lt_canvas_touch(c);
+        rs->be_owned = 1;
+        canvas_replaced(app, rs);
+    } else if (rs->be_owned) {
+        c->px = NULL;
+        rs->be_owned = 0;
+        lt_canvas_init(c, w, h);
+        canvas_replaced(app, rs);
+    } else if (c->w != w || c->h != h) {
+        lt_canvas_resize(c, w, h);
+        canvas_replaced(app, rs);
+    }
+}
+
+/* LT_PERF=1: per-second frame statistics on stderr (frame = draw + present: avg, 95th
+ * percentile and max; draw and present averages; bytes handed to the backend per second); in
+ * screenshot mode one summary line at the end. LT_PERF_SKIP=N leaves the first N frames out
+ * (warm-up: caches, layout). */
 typedef struct perf_stats {
-    int on, init;
+    int on, init, skip;
     double t0, draw_sum, draw_max, pres_sum;
     double bytes;
     long frames;
+    double *ft;                 /* frame times of this period (for the percentile) */
+    long ft_cap;
 } perf_stats;
 static perf_stats g_perf;
+
+static int perf_cmp(const void *a, const void *b)
+{
+    double x = *(const double *)a, y = *(const double *)b;
+    return x < y ? -1 : (x > y ? 1 : 0);
+}
 
 static void perf_report(perf_stats *p, double now)
 {
     if (p->frames > 0) {
-        double span = now - p->t0;
+        double span = now - p->t0, sum = 0.0, p95, mx;
+        long i, k;
         if (span < 1.0) { span = 1.0; }
-        fprintf(stderr, "perf: %ld frames, draw avg %.2f ms max %.2f ms, present avg %.2f ms, "
-                "%.2f MB/s presented\n", p->frames, p->draw_sum / (double)p->frames, p->draw_max,
+        qsort(p->ft, (size_t)p->frames, sizeof(double), perf_cmp);
+        for (i = 0; i < p->frames; i++) { sum += p->ft[i]; }
+        k = (p->frames * 95 + 99) / 100 - 1;
+        if (k < 0) { k = 0; }
+        p95 = p->ft[k];
+        mx = p->ft[p->frames - 1];
+        fprintf(stderr, "perf: %ld frames, frame avg %.3f p95 %.3f max %.3f ms, draw avg %.3f ms "
+                "max %.3f ms, present avg %.3f ms, %.2f MB/s presented\n", p->frames,
+                sum / (double)p->frames, p95, mx, p->draw_sum / (double)p->frames, p->draw_max,
                 p->pres_sum / (double)p->frames, p->bytes / (span / 1000.0) / 1048576.0);
     }
     p->t0 = now; p->draw_sum = 0.0; p->draw_max = 0.0; p->pres_sum = 0.0;
     p->bytes = 0.0; p->frames = 0;
 }
 
+static void perf_add(perf_stats *p, double draw, double pres, double pixels)
+{
+    if (p->skip > 0) { p->skip--; return; }
+    if (p->frames >= p->ft_cap) {
+        p->ft_cap = p->ft_cap < 256 ? 256 : p->ft_cap * 2;
+        p->ft = (double *)lt_realloc(p->ft, (size_t)p->ft_cap * sizeof(double));
+    }
+    p->ft[p->frames] = draw + pres;
+    p->draw_sum += draw; p->pres_sum += pres; p->bytes += pixels * 4.0;
+    if (draw > p->draw_max) { p->draw_max = draw; }
+    p->frames++;
+}
+
 static void run_frame(lt_app *app)
 {
     perf_stats *p = &g_perf;
-    double t0, t1, t2, pixels = 0.0;
+    render_state *rs = render_get(app);
+    int retained = rs->retained && !app->cell_mode;
+    double t0, t1, t2, tw, pixels = 0.0;
     if (!p->init) {
         char *e = lt_plat_getenv("LT_PERF");
         p->init = 1;
         p->on = (e != NULL && e[0] != '\0' && e[0] != '0') ? 1 : 0;
         lt_free(e);
+        e = lt_plat_getenv("LT_PERF_SKIP");
+        p->skip = e != NULL ? atoi(e) : 0;
+        lt_free(e);
         p->t0 = lt_plat_now_ms();
     }
+    tw = lt_plat_now_ms();
+    canvas_acquire(app, rs);            /* may wait for the window system: counted as present */
     t0 = lt_plat_now_ms();
+    tw = t0 - tw;
+    if (retained) { lt_tiles_begin(rs->tiles, &app->gfx); }
     lt_ui_begin(app->ui, &app->gfx, t0);
     lt_app_frame(app);
     lt_ui_end(app->ui);
+    if (retained) { rs->nrects = lt_tiles_end(rs->tiles, &app->gfx, rs->rects, PRESENT_MAX_RECTS); }
     t1 = lt_plat_now_ms();
     if (app->backend != NULL) {
-        pixels = present_frame(app);
+        pixels = present_frame(app, rs, retained);
     } else if (p->on && !app->cell_mode) {      /* headless: still measure what would be presented */
-        lt_rect rs[PRESENT_MAX_RECTS];
-        int n = lt_diff_rects(&app->diff, &app->canvas, app->gfx.dirty, rs, PRESENT_MAX_RECTS), i;
-        for (i = 0; i < n; i++) { pixels += (double)rs[i].w * (double)rs[i].h; }
+        if (retained) {
+            int i;
+            for (i = 0; i < rs->nrects; i++) { pixels += (double)rs->rects[i].w * (double)rs->rects[i].h; }
+        } else {
+            lt_rect rr[PRESENT_MAX_RECTS];
+            int n = lt_diff_rects(&app->diff, &app->canvas, app->gfx.dirty, rr, PRESENT_MAX_RECTS), i;
+            for (i = 0; i < n; i++) { pixels += (double)rr[i].w * (double)rr[i].h; }
+        }
     }
     lt_gfx_reset_dirty(&app->gfx);
     t2 = lt_plat_now_ms();
+    if (retained && rs->verify) {
+        int vx, vy;
+        long bad = lt_tiles_verify(rs->tiles, &app->gfx, &vx, &vy);
+        if (bad != 0) {
+            fprintf(stderr, "render verify: frame %ld differs from a full render in %ld pixels "
+                    "(first at %d,%d)\n", rs->verified + 1, bad, vx, vy);
+            exit(3);
+        }
+        rs->verified++;
+    }
     if (p->on) {
-        p->draw_sum += t1 - t0; p->pres_sum += t2 - t1; p->bytes += pixels * 4.0;
-        if (t1 - t0 > p->draw_max) { p->draw_max = t1 - t0; }
-        p->frames++;
+        perf_add(p, t1 - t0, t2 - t1 + tw, pixels);
         if (!app->headless && t2 - p->t0 >= 1000.0) { perf_report(p, t2); }
     }
 }
@@ -1477,14 +1652,20 @@ int lt_app_run(lt_app *app)
                 }
             } else if (ev.type == LT_EV_EXPOSE) {
                 lt_diff_invalidate(&app->diff);      /* the window contents were lost */
+                lt_tiles_invalidate(render_get(app)->tiles);
                 lt_ui_request_redraw(app->ui);
             } else if (ev.type == LT_EV_RESIZE) {
                 if (app->cell_mode) {
                     lt_cells_resize(&app->cells, ev.x, ev.y);
                     lt_gfx_init_cells(&app->gfx, &app->cells);
                 } else if (ev.x > 0 && ev.y > 0) {
-                    lt_canvas_resize(&app->canvas, ev.x, ev.y);
-                    lt_gfx_init_canvas(&app->gfx, &app->canvas);
+                    render_state *rs = render_get(app);
+                    rs->want_w = ev.x; rs->want_h = ev.y;
+                    if (!rs->be_owned) {
+                        /* backend memory is never resized here: the next frame asks for it */
+                        lt_canvas_resize(&app->canvas, ev.x, ev.y);
+                        lt_gfx_init_canvas(&app->gfx, &app->canvas);
+                    }
                 }
                 lt_ui_request_redraw(app->ui);
             } else {
@@ -1529,13 +1710,56 @@ static void write_ppm(const lt_canvas *c, const char *path)
     fclose(f);
 }
 
+/* LT_SHOT_SCRIPT (pixel screenshots, benchmarks): after the LT_SHOT_FRAMES frames, one frame per
+ * token, in pixel coordinates: m:X/Y mouse move, d:X/Y left button down, u:X/Y up, w:X/Y/N wheel,
+ * anything else is an LT_SHOT_KEYS key or text token (ctrl+tab, esc, text:12, ...). With LT_PERF
+ * the statistics restart before the script, so they cover the scripted frames only; the token
+ * "reset" (no frame) restarts them again, after setup steps. */
+static void shot_script(lt_app *app, const char *script, int sleep_ms)
+{
+    const char *p = script;
+    char tok[96];
+    lt_event evs[24];
+    if (g_perf.on) { perf_report(&g_perf, lt_plat_now_ms()); fflush(stderr); }
+    while (*p != '\0') {
+        size_t len = 0;
+        int n = 0, k, a = 0, b = 0, c = 0;
+        while (*p == ',' || *p == ' ') { p++; }
+        while (*p != '\0' && *p != ' ' && *p != ',' && len + 1 < sizeof(tok)) { tok[len++] = *p++; }
+        tok[len] = '\0';
+        if (len == 0) { break; }
+        if (strcmp(tok, "reset") == 0) {
+            if (g_perf.on) { perf_report(&g_perf, lt_plat_now_ms()); fflush(stderr); }
+            continue;
+        }
+        memset(evs, 0, sizeof(evs));
+        if (len > 2 && tok[1] == ':' && strchr("mduw", tok[0]) != NULL) {
+            sscanf(tok + 2, "%d/%d/%d", &a, &b, &c);
+            evs[0].x = a; evs[0].y = b; evs[0].button = LT_MB_LEFT; evs[0].wheel = c;
+            evs[0].type = tok[0] == 'm' ? LT_EV_MOUSE_MOVE : (tok[0] == 'd' ? LT_EV_MOUSE_DOWN :
+                          (tok[0] == 'u' ? LT_EV_MOUSE_UP : LT_EV_WHEEL));
+            n = 1;
+        } else {
+            n = lt_app_shot_parse(tok, evs, (int)LT_COUNTOF(evs));
+        }
+        lt_app_service(app);
+        for (k = 0; k < n; k++) { lt_ui_input(app->ui, &evs[k]); }
+        run_frame(app);
+        if (sleep_ms > 0) { lt_plat_sleep_ms(sleep_ms); }
+    }
+}
+
 int lt_app_screenshot(lt_app *app, const char *ppm_path, int w, int h, int frames)
 {
     int i;
     char *click = lt_plat_getenv("LT_SHOT_CLICK");
-    int cx = -1, cy = -1, button = LT_MB_LEFT;
+    int cx = -1, cy = -1, button = LT_MB_LEFT, sleep_ms = 60;
     lt_event ev;
     lt_bool tty = lt_app_shot_is_tty();
+    {
+        char *sl = lt_plat_getenv("LT_SHOT_SLEEP");     /* ms between frames (default 60) */
+        if (sl != NULL) { sleep_ms = atoi(sl); lt_free(sl); }
+    }
     app->cell_mode = tty ? 1 : 0;
     app->headless = 1;
     {
@@ -1566,7 +1790,7 @@ int lt_app_screenshot(lt_app *app, const char *ppm_path, int w, int h, int frame
             ev.type = LT_EV_MOUSE_UP; lt_ui_input(app->ui, &ev);
         }
         run_frame(app);
-        lt_plat_sleep_ms(60);
+        if (sleep_ms > 0) { lt_plat_sleep_ms(sleep_ms); }
     }
     if (tty) {
         char *keys = lt_plat_getenv("LT_SHOT_KEYS");
@@ -1594,6 +1818,10 @@ int lt_app_screenshot(lt_app *app, const char *ppm_path, int w, int h, int frame
             }
         }
         return lt_app_shot_write(&app->cells);
+    }
+    {
+        char *sc = lt_plat_getenv("LT_SHOT_SCRIPT");
+        if (sc != NULL) { shot_script(app, sc, sleep_ms); lt_free(sc); }
     }
     if (g_perf.on) { perf_report(&g_perf, lt_plat_now_ms()); }
     write_ppm(&app->canvas, ppm_path);

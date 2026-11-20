@@ -811,16 +811,15 @@ void lt_ui_draw_box(lt_ui *ui, lt_rect r, lt_color fill, lt_color border, int ra
 
 void lt_ui_draw_shadow(lt_ui *ui, lt_rect r, int radius, int spread, int alpha)
 {
-    int i, n;
+    ui_cmd *k;
+    lt_rect outer;
     if (ui->cell || spread <= 0 || alpha <= 0) { return; }
-    n = spread;
-    for (i = n; i >= 1; i--) {
-        /* quadratic falloff: outermost rings nearly transparent */
-        int a = alpha * (n - i + 1) * (n - i + 1) / (n * n * 3 / 2 + 1);
-        lt_rect q = lt_rect_make(r.x - i, r.y - i + n / 2, r.w + 2 * i, r.h + 2 * i);
-        if (a < 1) { a = 1; }
-        lt_ui_draw_round(ui, q, radius + i, LT_RGBA(0, 0, 0, a));
-    }
+    /* spread nested rings with a quadratic falloff (outermost nearly transparent), drawn by
+     * lt_gfx_shadow in one pass */
+    outer = lt_rect_make(r.x - spread, r.y - spread + spread / 2, r.w + 2 * spread, r.h + 2 * spread);
+    if (outer.w <= 0 || outer.h <= 0 || !rect_vis(ui, outer)) { return; }
+    k = ui_cmd_push(ui, UC_SHADOW);
+    k->r = r; k->i[0] = radius; k->i[1] = spread; k->i[2] = alpha;
 }
 
 /* input-like box: fill + border, with the stock 2px translucent focus ring */
@@ -1327,6 +1326,7 @@ static void replay_layer(lt_ui *ui, ui_layer *L)
             lt_gfx_fill_poly(g, (const double *)ui->dpool.data + c->off, c->i[0], c->c);
             break;
         case UC_VGRAD: lt_gfx_fill_rect_vgrad(g, c->r, c->c, c->c2); break;
+        case UC_SHADOW: lt_gfx_shadow(g, c->r, c->i[0], c->i[1], c->i[2]); break;
         case UC_ICON: {
             double sz = c->d[0];
             lt_gfx_icon(g, c->i[0], (double)c->r.x + ((double)c->r.w - sz) / 2.0,
