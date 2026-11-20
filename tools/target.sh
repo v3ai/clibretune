@@ -34,13 +34,13 @@ case $TARGET in
     macos)
         PLAT=posix; GUIOS=macos; EXE=""
         PLAT_CPPFLAGS=""
-        TARGET_LIBS="-lm -framework Cocoa -framework CoreGraphics -framework CoreFoundation" ;;
+        TARGET_LIBS="-lm -framework Cocoa -framework CoreGraphics -framework CoreFoundation -framework IOKit" ;;
     windows)
         # Console subsystem on purpose: --help/--version print to the console.
         # (Add -mwindows to LDFLAGS for a console-less GUI-only release build.)
         PLAT=win32; GUIOS=win32; EXE=".exe"
         PLAT_CPPFLAGS=""
-        TARGET_LIBS="-lws2_32 -lgdi32 -luser32 -lshell32 -ladvapi32" ;;
+        TARGET_LIBS="-lws2_32 -lgdi32 -luser32 -lshell32 -ladvapi32 -lsetupapi -lwinusb" ;;
     *)
         echo "unknown TARGET '$TARGET' (use linux, macos, windows or bsd)" >&2
         exit 2 ;;
@@ -50,8 +50,9 @@ esac
 lt_platform_files() {
     case $PLAT in
         posix)
-            ls src/plat/posix/*.c | grep -v '/os_[a-z0-9]*\.c$'
-            ls "src/plat/posix/os_$TARGET.c" ;;
+            # exactly one os_<target>.c and one usb_<target>.c
+            ls src/plat/posix/*.c | grep -v -e '/os_[a-z0-9]*\.c$' -e '/usb_[a-z0-9]*\.c$'
+            ls "src/plat/posix/os_$TARGET.c" "src/plat/posix/usb_$TARGET.c" ;;
         win32)
             ls src/plat/win32/*.c ;;
     esac

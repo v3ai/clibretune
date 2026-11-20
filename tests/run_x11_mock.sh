@@ -6,7 +6,7 @@ cd "$(dirname "$0")/.."
 mkdir -p build
 S="$PWD/build/x11mock:0"
 # self-contained link: x11_stubs.c replaces gfx.c so we do not depend on it
-PLAT_SRC="src/plat/plat_common.c $(lt_platform_files | grep '^src/plat/')"
+PLAT_SRC="src/plat/plat_common.c src/plat/usb_common.c $(lt_platform_files | grep '^src/plat/')"
 ${CC:-gcc} -Wall -Wextra $PLAT_CPPFLAGS -Isrc -o build/test_x11 tests/test_x11.c \
     src/gui/be_x11.c src/lt_base.c $PLAT_SRC tests/x11_stubs.c -lm
 # two desktops: one that publishes its scale, and a bare one where only RandR knows the panel
