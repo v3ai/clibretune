@@ -40,4 +40,5 @@ void lt_app_features_register(lt_app_ext *reg)
     lt_feat_perf_register(reg);
     lt_feat_calc_register(reg);
     lt_feat_msqpart_register(reg);
+    lt_feat_triggers_register(reg);
 }

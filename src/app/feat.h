@@ -150,4 +150,17 @@ int  lt_feat_msqpart_undo(lt_app *app);
 int  lt_feat_msqpart_can_undo(lt_app *app);
 void lt_feat_msqpart_open_load(lt_app *app, const char *path);
 
+/* Tools > Action Triggers (feat_triggers.c): rules over the live channels that run an action.
+ * rules: the loaded set (project or configuration folder); eval: check every rule at now_ms and
+ * run the actions of those that fire (returns how many); fire: run the action of rule i now
+ * (0 / -1); last: the latest firing log line; save: write the rules (0 ok) */
+struct lt_trig_set;
+void   lt_feat_triggers_register(lt_app_ext *reg);
+void   lt_feat_triggers_open(lt_app *app);
+struct lt_trig_set *lt_feat_triggers_rules(lt_app *app);
+size_t lt_feat_triggers_eval(lt_app *app, double now_ms);
+int    lt_feat_triggers_fire(lt_app *app, size_t i);
+const char *lt_feat_triggers_last(lt_app *app);
+int    lt_feat_triggers_save(lt_app *app);
+
 #endif
