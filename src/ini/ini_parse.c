@@ -20,9 +20,16 @@ void *ini_push(void **arr, size_t *n, size_t elem)
     return p + (*n - 1) * elem;
 }
 
+/* Arrays built here only ever grow through this function (they start NULL), so the
+ * capacity is implied: the next power of two >= n. Growing only when n is 0 or a power
+ * of two keeps appends amortized O(1); a realloc per element made long $define option
+ * lists quadratic (seconds per INI under allocators that always copy on realloc). */
 void ini_str_push(char ***arr, size_t *n, char *s)
 {
-    char **a = (char **)lt_realloc(*arr, (*n + 1) * sizeof(char *));
+    char **a = *arr;
+    if (*n == 0 || (*n & (*n - 1)) == 0) {
+        a = (char **)lt_realloc(*arr, (*n == 0 ? 1 : *n * 2) * sizeof(char *));
+    }
     a[*n] = s;
     *arr = a;
     (*n)++;

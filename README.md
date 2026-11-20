@@ -60,12 +60,18 @@ Ctrl+R/D fill, Ctrl+Z/Y undo/redo, `f` follow, `g` go to live cell. AutoTune: Sp
 
 ## Known limitations
 
-- Signature-mismatch / tune-mismatch prompts on connect: ECU data simply replaces the tune.
-- Table editor 3D view: no zoom/pan; no table compare or resize. Curve points drag vertically only.
-- Dashboard designer: no undo, copy/paste or layers; click actions, background images and embedded fonts unsupported.
-- Tooth/composite logger tabs and the port editor are placeholders.
-- AutoTune apply/replay paths are lightly tested; the demo AFR target table is all zeros (fill it first).
-- Burn button in the status bar is slightly clipped at the bottom edge.
+- INI dialogs: a `panel =` that names a curve, table, indicator panel or readout panel is not drawn
+  (many rusEFI/FOME settings screens lose their embedded curve or status lights); an embedded `table =`
+  is a button that opens the table, and dialog gauges are not drawn.
+- INI help topics (Help-type menu items, `topicHelp`) only show a toast; the port editor (`std_port_edit`)
+  is a placeholder and there is no whole-tune pin-conflict check before burning.
+- Project INI symbols (`ecuSettings`, e.g. CELSIUS / LAMBDA) are not applied when parsing the INI.
+- Data log graph is one overlaid chart (no stacked panes or saved graph setups); math channels are
+  evaluated for logs only, not live on gauges. `.msl` logs must be renamed to `.csv` to open.
+- Not available by design (zero dependencies, no TLS): firmware flashing (only "Enter DFU Mode"),
+  in-app updates, in-app HTTPS INI download (assisted browser flow instead), cloud AI providers
+  (local OpenAI-compatible endpoints only), WASM plugins, `.ltlog` logs, pop-out windows.
+- The demo AFR target table is all zeros (fill it before trying AutoTune in demo mode).
 
 ## License and credits
 

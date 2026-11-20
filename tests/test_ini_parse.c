@@ -452,6 +452,49 @@ LT_TEST(define_lists)
     lt_ini_free(ini);
 }
 
+/* Long option lists (Speeduino's pin lists) cross many power-of-two growth steps of the
+ * string arrays; every entry must survive, including indexed "N=" entries far past the end. */
+LT_TEST(define_lists_long)
+{
+    size_t cap = 64000, len = 0;
+    char *buf = (char *)lt_malloc(cap);
+    lt_ini *ini;
+    const lt_ini_const *c;
+    char want[32];
+    int i;
+    len += (size_t)lt_snprintf(buf + len, cap - len, "#define big=");
+    for (i = 0; i < 1500; i++) {
+        len += (size_t)lt_snprintf(buf + len, cap - len, "%s\"P%d\"", i ? ", " : "", i);
+    }
+    len += (size_t)lt_snprintf(buf + len, cap - len, "\n#define both = $big, $big\n[Constants]\npage = 1\n"
+                               "a = bits, U16, 0, [0:15], $both, \"END\"\n"
+                               "b = bits, U16, 2, [0:15], \"zero\", 1000=\"K\", 513=\"M\"\n");
+    ini = lt_ini_load_string(buf, len, NULL, NULL);
+    LT_CHECK(ini != NULL);
+    c = lt_ini_find_const(ini, "a");
+    LT_CHECK(c != NULL);
+    if (c != NULL) {
+        LT_CHECK_INT(c->n_bit_options, 3001);
+        for (i = 0; i < 3000; i += 7) {
+            lt_snprintf(want, sizeof(want), "P%d", i % 1500);
+            LT_CHECK_STR(c->bit_options[i], want);
+        }
+        LT_CHECK_STR(c->bit_options[2999], "P1499");
+        LT_CHECK_STR(c->bit_options[3000], "END");
+    }
+    c = lt_ini_find_const(ini, "b");
+    LT_CHECK(c != NULL);
+    if (c != NULL) {
+        LT_CHECK_INT(c->n_bit_options, 1001);
+        LT_CHECK_STR(c->bit_options[0], "zero");
+        LT_CHECK(c->bit_options[1] == NULL && c->bit_options[512] == NULL && c->bit_options[999] == NULL);
+        LT_CHECK_STR(c->bit_options[513], "M");
+        LT_CHECK_STR(c->bit_options[1000], "K");
+    }
+    lt_ini_free(ini);
+    lt_free(buf);
+}
+
 /* ---------------------------------------------------------------- */
 /* includes                                                          */
 /* ---------------------------------------------------------------- */
@@ -1693,6 +1736,7 @@ int main(void)
     LT_RUN(preprocessor_seed_units);
     LT_RUN(conditional_headers);
     LT_RUN(define_lists);
+    LT_RUN(define_lists_long);
     LT_RUN(includes);
     LT_RUN(protocol_keys);
     LT_RUN(tscanid_substitution);
