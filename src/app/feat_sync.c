@@ -663,6 +663,7 @@ static int create_project(lt_app *app, const char *name, const char *ini_path, c
     lt_ini *probe = lt_ini_load_file(ini_path, NULL);
     char nm[96], *dir;
     int rc = LT_EEXIST, k;
+    memset(&p, 0, sizeof(p));
     if (probe == NULL) { return LT_EDATA; }
     for (k = 1; k < 100 && rc == LT_EEXIST; k++) {
         if (k == 1) { lt_strlcpy(nm, name, sizeof(nm)); }
