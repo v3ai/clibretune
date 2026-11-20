@@ -11,12 +11,11 @@ Input : assets/basetunes/speeduino/index.json, the .msq files it lists (<make>/<
         assets/basetunes/speeduino/README.md and LICENSE.
 Output: src/tune/basetune_data.c (catalog table lt_basetune_tab, declared in src/tune/basetune.h)
 
-The project has no decompressor, so the files are embedded unmodified as text. Universal C
-section 9 limits string literals to 509 characters and objects to 32767 bytes: every file is
-split into string literals of at most CHUNK characters (an escape sequence is one character),
-one literal per array element (no adjacent-literal concatenation), and each tune has its own
-array of pointers to them. '?' is always written as an escape so no trigraph can form; bytes
-outside printable ASCII use three-digit octal escapes. The files contain no NUL byte.
+All files are concatenated in catalog order and packed with a small LZ77 coder (lzb_compress
+below; the format is documented at lt_lzb_decode in src/tune/basetune.h, which unpacks it at run
+time). The packed bytes are written as unsigned char arrays of at most ZBLOCK bytes, since
+Universal C section 9 limits objects to 32767 bytes. The tunes come out byte for byte as
+upstream ships them; packing is lossless and --check verifies the round trip.
 """
 import json
 import os
@@ -28,8 +27,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC_DIR = os.path.join(ROOT, "assets", "basetunes", "speeduino")
 OUT = os.path.join(ROOT, "src", "tune", "basetune_data.c")
 UPSTREAM = "https://github.com/speeduino/Tunes"
-CHUNK = 480          # characters per literal (limit 509)
-MAX_PTRS = 4000      # pointers per tune array (8 bytes each stays far below 32767)
+ZBLOCK = 32000       # bytes per packed array (objects <= 32767 bytes)
 
 
 def cesc_list(data):
@@ -65,24 +63,72 @@ def cstr(s):
     return '"' + "".join(e) + '"'
 
 
-def chunks_of(data):
-    """split into literals at line ends where possible, each <= CHUNK characters."""
-    esc = cesc_list(data)
-    res = []
-    i = 0
-    n = len(esc)
+# ---- LZ77 packer (format: lt_lzb_decode in src/tune/basetune.h) ----
+MINM = 5
+def lzb_compress(data, maxchain=64):
+    n = len(data); out = bytearray(); heads = {}; chain = [0]*n
+    i = 0; lit = 0
+    def ext(v):
+        while v >= 255: out.append(255); v -= 255
+        out.append(v)
+    def emit(litstart, litlen, off, mlen):
+        ln = 15 if litlen >= 15 else litlen
+        mn = 0 if mlen == 0 else (15 if mlen - 4 >= 15 else mlen - 4)
+        out.append((ln << 4) | mn)
+        if litlen >= 15: ext(litlen - 15)
+        out.extend(data[litstart:litstart+litlen])
+        if mlen:
+            out.extend(bytes((off & 255, (off >> 8) & 255, (off >> 16) & 255)))
+            if mlen - 4 >= 15: ext(mlen - 4 - 15)
+    def insert(p):
+        if p + 4 <= n:
+            k = data[p:p+4]; chain[p] = heads.get(k, -1); heads[k] = p
+    def best(p):
+        if p + 4 > n: return 0, 0
+        c = heads.get(data[p:p+4], -1); bl = 0; bo = 0; tries = 0
+        while c >= 0 and tries < maxchain:
+            if p - c < (1 << 24):
+                l = 0; m = n - p
+                # fast compare
+                while l < m and data[c+l] == data[p+l]: l += 1
+                if l > bl: bl, bo = l, p - c
+                if l >= 4096: break
+            c = chain[c]; tries += 1
+        return bl, bo
+    start = 0
     while i < n:
-        j = min(i + CHUNK, n)
-        if j < n:
-            # prefer to end a literal after a newline
-            k = j
-            while k > i + CHUNK // 2 and esc[k - 1] != "\\n":
-                k -= 1
-            if esc[k - 1] == "\\n":
-                j = k
-        res.append("".join(esc[i:j]))
-        i = j
-    return res
+        bl, bo = best(i)
+        if bl >= MINM:
+            # lazy: check i+1
+            insert(i)
+            bl2, bo2 = best(i+1)
+            if bl2 > bl + 1:
+                i += 1; continue
+            emit(start, i - start, bo, bl)
+            for p in range(i+1, i+bl): insert(p)
+            i += bl; start = i
+        else:
+            insert(i); i += 1
+    emit(start, n - start, 0, 0)
+    return bytes(out)
+def lzb_decompress(z, n):
+    o = bytearray(); i = 0
+    while True:
+        t = z[i]; i += 1; l = t >> 4
+        if l == 15:
+            while True:
+                b = z[i]; i += 1; l += b
+                if b != 255: break
+        o += z[i:i+l]; i += l
+        if len(o) == n: return bytes(o)
+        off = z[i] | z[i+1] << 8 | z[i+2] << 16; i += 3
+        m = (t & 15) + 4
+        if (t & 15) == 15:
+            while True:
+                b = z[i]; i += 1; m += b
+                if b != 255: break
+        s = len(o) - off
+        for k in range(m): o.append(o[s+k])
 
 
 def source_commit():
@@ -130,12 +176,12 @@ HEADER = """\
  * assets/basetunes/speeduino/LICENSE).
  *   Attribution: Speeduino project and contributors, %s
  *                (commit %s); author of each tune: the provider field below.
- *   Changes:     none, the files are embedded byte for byte.
+ *   Changes:     none: the files are stored packed (lossless LZ77) and unpack byte for byte.
  *   NonCommercial: a program or bundle containing this file must not be sold. LibreTune is free
  *                software and is never sold; to distribute it commercially, regenerate this file
  *                with `python3 tools/gen_basetunes.py --empty` first.
  *
- * Every file is split into string literals of at most %d characters (UNIVERSAL_C section 9).
+ * Packed library: %d bytes unpacked, %d bytes packed, in blocks of at most %d bytes.
  * SPDX-License-Identifier: CC-BY-NC-4.0
  */
 #include "basetune.h"
@@ -154,21 +200,36 @@ EMPTY_HEADER = """\
 """
 
 
+def cbytes(data, ind="    "):
+    lines = []
+    for k in range(0, len(data), 20):
+        lines.append(ind + ",".join(str(b) for b in data[k:k + 20]) + ",")
+    return "\n".join(lines)
+
+
 def generate(empty=False):
     commit = source_commit()
-    out = [EMPTY_HEADER if empty else HEADER % (UPSTREAM, commit, CHUNK)]
     tunes = [] if empty else load_catalog()
-    for i, t in enumerate(tunes):
-        ch = chunks_of(t["data"])
-        if len(ch) > MAX_PTRS:
-            raise SystemExit("%s: too many chunks" % t["key"])
-        t["n"] = len(ch)
-        out.append("/* %s - %s (provider: %s) */\n" % (t["key"], t["name"], t["provider"]
-                                                       .replace("*/", "* /")))
-        out.append("static const char *const bt%d_c[] = {\n" % i)
-        for c in ch:
-            out.append('    "%s",\n' % c)
-        out.append("};\n\n")
+    raw = bytearray()
+    for t in tunes:
+        t["offset"] = len(raw)
+        raw += t["data"]
+    raw = bytes(raw)
+    z = lzb_compress(raw) if raw else b""
+    if raw and lzb_decompress(z, len(raw)) != raw:
+        raise SystemExit("packer round trip failed")
+    blocks = [z[k:k + ZBLOCK] for k in range(0, len(z), ZBLOCK)]
+    out = [EMPTY_HEADER if empty else HEADER % (UPSTREAM, commit, len(raw), len(z), ZBLOCK)]
+    for i, blk in enumerate(blocks):
+        out.append("static const unsigned char btz%d[%d] = {\n%s\n};\n" % (i, len(blk), cbytes(blk)))
+    if not blocks:
+        out.append("static const unsigned char btz0[1] = { 0 };\n")
+    out.append("\nconst unsigned char *const lt_basetune_z[%d] = { %s };\n"
+               % (max(1, len(blocks)), ", ".join("btz%d" % i for i in range(max(1, len(blocks))))))
+    out.append("const size_t lt_basetune_zlen[%d] = { %s };\n"
+               % (max(1, len(blocks)), ", ".join(str(len(b)) for b in blocks) if blocks else "0"))
+    out.append("const size_t lt_basetune_zn = %d;\n" % len(blocks))
+    out.append("const size_t lt_basetune_raw = %d;\n\n" % len(raw))
     out.append("const char lt_basetune_source[] = %s;\n" % cstr(UPSTREAM))
     out.append("const char lt_basetune_commit[] = %s;\n" % cstr(commit))
     out.append("const size_t lt_basetune_tab_n = %d;\n" % len(tunes))
@@ -179,23 +240,24 @@ def generate(empty=False):
         out.append("      %s, %s, %s,\n" % (cstr(t["provider"]), cstr(t["kind"]), cstr(t["board"])))
         out.append("      %s,\n" % cstr(t["description"]))
         out.append("      %dL, %s, %s,\n" % (t["firmware"], cstr(t["signature"]), cstr(t["fwinfo"])))
-        out.append("      bt%d_c, %d, %d }%s\n" % (i, t["n"], len(t["data"]),
-                                                   "," if i + 1 < len(tunes) else ""))
+        out.append("      %d, %d }%s\n" % (t["offset"], len(t["data"]),
+                                           "," if i + 1 < len(tunes) else ""))
     if not tunes:
-        out.append('    { "", "", "", "", "", "", "", 0L, "", "", NULL, 0, 0 }\n')
+        out.append('    { "", "", "", "", "", "", "", 0L, "", "", 0, 0 }\n')
     out.append("};\n")
-    return "".join(out), tunes
+    return "".join(out), tunes, len(z)
 
 
 def main(argv):
     empty = "--empty" in argv
-    text, tunes = generate(empty)
+    text, tunes, zsize = generate(empty)
     if "--stats" in argv:
         total = 0
         for t in tunes:
             total += len(t["data"])
-            print("%-48s %7d bytes  %4d chunks  %s" % (t["key"], len(t["data"]), t["n"], t["signature"]))
-        print("total %d bytes in %d tunes, generated source %d bytes" % (total, len(tunes), len(text)))
+            print("%-48s %7d bytes  %s" % (t["key"], len(t["data"]), t["signature"]))
+        print("total %d bytes in %d tunes, packed %d bytes, generated source %d bytes"
+              % (total, len(tunes), zsize, len(text)))
         return 0
     if "--check" in argv:
         try:

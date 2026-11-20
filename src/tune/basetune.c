@@ -25,16 +25,84 @@ const lt_basetune *lt_basetune_find(const char *key)
     return NULL;
 }
 
+/* length continuation bytes after a nibble of 15; 0 ok, -1 truncated or absurd */
+static int lzb_more(const unsigned char *in, size_t inlen, size_t *ip, size_t *v)
+{
+    unsigned char c;
+    do {
+        if (*ip >= inlen) { return -1; }
+        c = in[(*ip)++];
+        if (!lt_add_size(*v, (size_t)c, v)) { return -1; }
+    } while (c == 255);
+    return 0;
+}
+
+int lt_lzb_decode(const unsigned char *in, size_t inlen, unsigned char *out, size_t outlen)
+{
+    size_t ip = 0, op = 0;
+    if ((in == NULL && inlen > 0) || (out == NULL && outlen > 0)) { return -1; }
+    for (;;) {
+        unsigned t;
+        size_t lit, dist, mlen, k;
+        if (ip >= inlen) { return -1; }
+        t = in[ip++];
+        lit = (size_t)(t >> 4);
+        if (lit == 15 && lzb_more(in, inlen, &ip, &lit) != 0) { return -1; }
+        if (lit > inlen - ip || lit > outlen - op) { return -1; }
+        if (lit > 0) { memcpy(out + op, in + ip, lit); }
+        ip += lit;
+        op += lit;
+        if (op == outlen) { return 0; }
+        if (inlen - ip < 3) { return -1; }
+        dist = (size_t)in[ip] | ((size_t)in[ip + 1] << 8) | ((size_t)in[ip + 2] << 16);
+        ip += 3;
+        mlen = (size_t)(t & 15U) + 4;
+        if ((t & 15U) == 15U && lzb_more(in, inlen, &ip, &mlen) != 0) { return -1; }
+        if (dist == 0 || dist > op || mlen > outlen - op) { return -1; }
+        for (k = 0; k < mlen; k++) { out[op + k] = out[op - dist + k]; }   /* may overlap */
+        op += mlen;
+    }
+}
+
 char *lt_basetune_text(const lt_basetune *b, size_t *len)
 {
-    lt_buf buf;
-    size_t i;
-    lt_buf_init(&buf);
-    if (b != NULL) {
-        for (i = 0; i < b->n_chunks; i++) { lt_buf_puts(&buf, b->chunks[i]); }
+    unsigned char *z = NULL, *raw = NULL;
+    char *txt = NULL;
+    size_t zlen = 0, i, end;
+    if (len != NULL) { *len = 0; }
+    if (b == NULL || !lt_add_size(b->offset, b->size, &end) || end > lt_basetune_raw) {
+        lt_err_set("No such base tune");
+        return NULL;
     }
-    if (len != NULL) { *len = buf.len; }
-    return lt_buf_take(&buf);
+    for (i = 0; i < lt_basetune_zn; i++) {
+        if (!lt_add_size(zlen, lt_basetune_zlen[i], &zlen)) { zlen = 0; break; }
+    }
+    z = (unsigned char *)lt_malloc(zlen > 0 ? zlen : 1);
+    raw = (unsigned char *)lt_malloc(lt_basetune_raw > 0 ? lt_basetune_raw : 1);
+    txt = (char *)lt_malloc(b->size + 1);
+    if (z != NULL && raw != NULL && txt != NULL) {
+        size_t at = 0;
+        for (i = 0; i < lt_basetune_zn; i++) {
+            memcpy(z + at, lt_basetune_z[i], lt_basetune_zlen[i]);
+            at += lt_basetune_zlen[i];
+        }
+        if (lt_lzb_decode(z, zlen, raw, lt_basetune_raw) == 0) {
+            memcpy(txt, raw + b->offset, b->size);
+            txt[b->size] = '\0';
+            if (len != NULL) { *len = b->size; }
+        } else {
+            lt_err_set("Base tune library data is damaged");
+            lt_free(txt);
+            txt = NULL;
+        }
+    } else {
+        lt_err_set("Out of memory");
+        lt_free(txt);
+        txt = NULL;
+    }
+    lt_free(z);
+    lt_free(raw);
+    return txt;
 }
 
 lt_tune *lt_basetune_load(const lt_basetune *b)
@@ -42,11 +110,12 @@ lt_tune *lt_basetune_load(const lt_basetune *b)
     size_t len = 0;
     char *txt;
     lt_tune *t;
-    if (b == NULL || b->n_chunks == 0) {
+    if (b == NULL || b->size == 0) {
         lt_err_set("No such base tune");
         return NULL;
     }
     txt = lt_basetune_text(b, &len);
+    if (txt == NULL) { return NULL; }
     t = lt_tune_parse_msq(txt, len);
     lt_free(txt);
     return t;

@@ -28,21 +28,33 @@ typedef struct lt_basetune {
     long        firmware;      /* firmware version in the upstream index (yyyymm) */
     const char *signature;     /* versionInfo signature of the file ("speeduino 202501"), may be "" */
     const char *firmware_info; /* versionInfo firmwareInfo ("Speeduino+2025.01.1"), may be "" */
-    const char *const *chunks; /* the file, in order (concatenate) */
-    size_t      n_chunks;
+    size_t      offset;        /* where the file starts in the unpacked library stream */
     size_t      size;          /* file size in bytes */
 } lt_basetune;
 
 /* generated data (basetune_data.c) */
 extern const lt_basetune lt_basetune_tab[];
 extern const size_t      lt_basetune_tab_n;
+/* the library: all files back to back, packed with lt_lzb_decode's format and split into
+ * lt_basetune_zn blocks (each <= 32767 bytes) of lt_basetune_zlen[i] bytes */
+extern const unsigned char *const lt_basetune_z[];
+extern const size_t      lt_basetune_zlen[];
+extern const size_t      lt_basetune_zn;
+extern const size_t      lt_basetune_raw;        /* unpacked size of the whole library */
 extern const char        lt_basetune_source[];   /* upstream repository URL */
 extern const char        lt_basetune_commit[];   /* upstream commit the files come from */
 
 size_t             lt_basetune_count(void);
 const lt_basetune *lt_basetune_at(size_t i);            /* NULL when out of range */
 const lt_basetune *lt_basetune_find(const char *key);   /* by key, NULL when unknown */
-/* the file as one malloc'd NUL-terminated buffer; *len (may be NULL) = size */
+/* Unpack the library format of tools/gen_basetunes.py (LZ77, byte oriented): each sequence is a
+ * token (high nibble literal count, low nibble match length - 4; 15 = more length bytes follow,
+ * each 255 adds 255 and continues), the literals, then - unless the output is complete - a 3-byte
+ * little-endian distance back into the output and the match. Writes exactly outlen bytes; 0 ok,
+ * -1 on malformed or truncated input (never reads or writes out of bounds). */
+int      lt_lzb_decode(const unsigned char *in, size_t inlen, unsigned char *out, size_t outlen);
+/* the file as one malloc'd NUL-terminated buffer; *len (may be NULL) = size; NULL + lt_err when
+ * the embedded data is damaged */
 char    *lt_basetune_text(const lt_basetune *b, size_t *len);
 /* parse the file with the tune loader; NULL + lt_err on failure */
 lt_tune *lt_basetune_load(const lt_basetune *b);

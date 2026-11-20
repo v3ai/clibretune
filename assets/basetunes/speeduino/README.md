@@ -37,7 +37,8 @@ These are the 14 tunes listed in the upstream `index.json`. The upstream reposit
 
 ## How LibreTune uses them
 
-`tools/gen_basetunes.py` embeds the files unmodified into `src/tune/basetune_data.c`, which
+`tools/gen_basetunes.py` embeds the files unmodified (packed with a lossless LZ77 coder, about 75 KB,
+unpacked byte for byte at run time) into `src/tune/basetune_data.c`, which
 carries the same licence notice. The program shows them in File > New Project from Base Tune and
 File > Load Base Tune, with the tune's author and this licence. When a base tune is loaded into a
 project with a different ECU definition, the values are converted to that definition (an

@@ -31,7 +31,19 @@ LT_TEST(catalog_entries)
         LT_CHECK(strncmp(b->signature, "speeduino ", 10) == 0);
         LT_CHECK(lt_basetune_find(b->key) == b);
         txt = lt_basetune_text(b, &len);
+        LT_CHECK(txt != NULL);
+        if (txt == NULL) { continue; }
         LT_CHECK(len == b->size && strlen(txt) == len);
+        {   /* byte for byte what upstream ships (assets/basetunes/speeduino/<key>) */
+            char path[512];
+            size_t flen = 0;
+            char *f;
+            lt_snprintf(path, sizeof(path), "assets/basetunes/speeduino/%s", b->key);
+            f = lt_file_read(path, &flen);
+            LT_CHECK(f != NULL);
+            if (f != NULL) { LT_CHECK(flen == len && memcmp(f, txt, len) == 0); }
+            lt_free(f);
+        }
         LT_CHECK(strncmp(txt, "<?xml", 5) == 0);
         LT_CHECK(strstr(txt, "</msq>") != NULL);
         lt_free(txt);
@@ -44,6 +56,40 @@ LT_TEST(catalog_entries)
 }
 
 /* every embedded file parses with the tune loader and maps onto the Speeduino INI */
+LT_TEST(lzb_decoder)
+{
+    /* "abcabcabcab": 3 literals, then a 8-byte match at distance 3 (overlapping copy) */
+    static const unsigned char ok[] = { 0x34, 'a', 'b', 'c', 3, 0, 0, 0x00 };
+    /* long literal run (15 + 5 = 20) and a long match (4 + 15 + 255 + 1 = 275) */
+    unsigned char big[64], out[400], junk[64];
+    size_t i, n = 0;
+    unsigned seed = 12345U;
+    LT_CHECK(lt_lzb_decode(ok, sizeof(ok), out, 11) == 0);
+    LT_CHECK(memcmp(out, "abcabcabcab", 11) == 0);
+    big[n++] = 0xFF; big[n++] = 5;
+    for (i = 0; i < 20; i++) { big[n++] = (unsigned char)('A' + i); }
+    big[n++] = 20; big[n++] = 0; big[n++] = 0; big[n++] = 255; big[n++] = 1;
+    big[n++] = 0x00;
+    LT_CHECK(lt_lzb_decode(big, n, out, 295) == 0);
+    LT_CHECK(out[294] == (unsigned char)('A' + 274 % 20));
+    /* malformed: distance 0, distance before the start, truncated, overlong, short output */
+    { static const unsigned char d0[] = { 0x10, 'x', 0, 0, 0 };
+      static const unsigned char far_[] = { 0x10, 'x', 2, 0, 0 };
+      static const unsigned char trunc[] = { 0x30, 'a' };
+      LT_CHECK(lt_lzb_decode(d0, sizeof(d0), out, 10) == -1);
+      LT_CHECK(lt_lzb_decode(far_, sizeof(far_), out, 10) == -1);
+      LT_CHECK(lt_lzb_decode(trunc, sizeof(trunc), out, 3) == -1);
+      LT_CHECK(lt_lzb_decode(ok, sizeof(ok), out, 10) == -1);
+      LT_CHECK(lt_lzb_decode(ok, sizeof(ok), out, 12) == -1);
+      LT_CHECK(lt_lzb_decode(ok, 0, out, 11) == -1); }
+    /* random garbage never crashes (ASan/UBSan builds check the bounds) */
+    for (i = 0; i < 20000; i++) {
+        size_t k, len = (size_t)(i % sizeof(junk)) + 1;
+        for (k = 0; k < len; k++) { seed = seed * 1103515245U + 12345U; junk[k] = (unsigned char)(seed >> 16); }
+        (void)lt_lzb_decode(junk, len, out, (size_t)(seed % sizeof(out)));
+    }
+}
+
 LT_TEST(every_tune_parses_and_maps)
 {
     size_t i, n = lt_basetune_count();
@@ -355,6 +401,7 @@ int main(void)
 {
     g_ini = lt_ini_load_file(SPEEDUINO_INI, NULL);
     if (g_ini == NULL) { fprintf(stderr, "cannot load %s: %s\n", SPEEDUINO_INI, lt_err_get()); }
+    LT_RUN(lzb_decoder);
     LT_RUN(catalog_entries);
     LT_RUN(every_tune_parses_and_maps);
     LT_RUN(same_firmware_values_survive);
