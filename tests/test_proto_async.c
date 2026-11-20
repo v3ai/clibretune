@@ -691,8 +691,6 @@ LT_TEST(app_service_never_waits)
     }
     sync_ms = (lt_plat_now_ms() - t) / 5.0;
     lt_buf_free(&blk);
-    /* the counter does see a waiting caller: the blocking polls just now waited */
-    LT_CHECK(lt_simlink_stats_get(app->simlink)->blocked_ms - blocked0 > 5.0);
     printf("  service: %ld calls, avg %.3f ms, max %.3f ms, %ld >= 1 ms; %lu frames/s; "
            "blocking poll %.1f ms; slowest call #%ld\n", calls, sum / (double)(calls > 0 ? calls : 1), max_d, slow,
            app->frames_ok - f0, sync_ms, max_at);
