@@ -53,8 +53,13 @@ reports are triaged.
 - **OpenBLT seed/key unlock**: the key algorithm is board specific (a shared library in OpenBLT).
   Needs the algorithm from each board vendor that enables it.
 - **CAN bootloaders through native adapters** (PEAK PCAN, Kvaser, Linux SocketCAN): each needs its
-  driver API and an adapter to test with. (SLCAN serial adapters are handled in software where
-  implemented; see the README.)
+  driver API and an adapter to test with. (OpenBLT over CAN through an SLCAN serial adapter is
+  implemented and tested against a simulated adapter only.)
+- **AVR EEPROM and fuses**: the Mega 2560 flasher writes flash only (Speeduino keeps its tune in
+  EEPROM, which is left alone on purpose); fuse writes are not supported.
+- **Teensy soft reboot**: the Teensy flasher waits for the board's program button; the 134-baud
+  reboot request used by PJRC's loader is not sent yet. Needs a Teensy to test the timing.
+- **OpenBLT UART checksum**: only the default framing (no checksum byte) is implemented.
 - **MegaSquirt firmware loading** (MS2/MS3 serial monitor): needs the loader protocol and boards to
   test with; TunerStudio does not do this either (MegaSquirt ships its own loaders).
 - **BSD USB backend**: `src/plat/posix/usb_bsd.c` is a stub; needs a BSD machine with a board.

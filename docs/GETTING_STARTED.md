@@ -33,6 +33,16 @@ On connect LibreTune compares the tune in the project with the one in the ECU; w
 asks which one to keep. If in doubt, use the ECU's settings, then **File > Save Tune** so the project
 has a copy.
 
+### Starting from a base tune
+
+Speeduino users can start from one of the built-in base tunes (Miata NA/NB, BMW M50/M52/M60/M43,
+Audi 1.8T, Mitsubishi 4G93, generic): **File > New Project from Base Tune...**, or **File > Load Base
+Tune...** into an open Speeduino project. If the tune was made for a different firmware version, a
+report lists what did not carry over before anything is applied. A base tune only gets the engine
+started: check injector size and dead time, trigger settings and ignition advance against your car
+before cranking. rusEFI, FOME, epicEFI and miata-ecus boards ship their base tune in the firmware;
+connect and read it.
+
 ## 3. Find your way around
 
 - The sidebar is the ECU's own menu tree from its INI; **Ctrl+K** searches it.
@@ -66,5 +76,6 @@ way for warm-up enrichment and per-cylinder trims.
 
 ## 7. Update the firmware
 
-**Tools > Firmware Update...** flashes STM32 ECUs (rusEFI, FOME, epicEFI, miata-ecus) over USB; see
-the README's "Firmware update" section. Save your tune first: a firmware update can reset settings.
+**Tools > Firmware Update...** flashes STM32 ECUs (rusEFI, FOME, epicEFI, miata-ecus) over USB DFU or
+OpenBLT, Speeduino on an Arduino Mega 2560 over its serial port and Speeduino on a Teensy 3.5/3.6/4.1
+(Linux and macOS); see the README's "Firmware update" section. Save your tune first: a firmware update can reset settings.

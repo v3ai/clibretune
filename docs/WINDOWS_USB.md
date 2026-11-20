@@ -19,9 +19,10 @@ not affected.
 
 ## With STM32CubeProgrammer
 
-Installing ST's STM32CubeProgrammer also installs a driver for `STM32 BOOTLOADER`. That is ST's own
-driver, not WinUSB; if LibreTune says the device is in use by another driver, switch it to WinUSB
-with Zadig as above. STM32CubeProgrammer itself keeps working with WinUSB.
+Installing ST's STM32CubeProgrammer also installs a driver for `STM32 BOOTLOADER`; recent versions
+bind WinUSB, while the old DfuSe tools installed ST's own `STTub30` driver, which LibreTune cannot
+use. If LibreTune lists no device or says it is in use by another driver, switch it to WinUSB with
+Zadig as above. STM32CubeProgrammer keeps working with WinUSB.
 
 ## Teensy (Speeduino)
 

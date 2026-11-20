@@ -11,6 +11,9 @@ bootloader and Teensy HalfKay) with presets for the [miata-ecus](https://github.
 and Speeduino.
 This is a from-scratch rewrite in Universal C (see [docs/UNIVERSAL_C.md](docs/UNIVERSAL_C.md)) with no third-party dependencies.
 
+New here? Start with [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md). What still needs real hardware,
+signing certificates or vendor information is tracked in [docs/OPEN_ITEMS.md](docs/OPEN_ITEMS.md).
+
 ## Build
 
 Separate native builds per operating system; any C compiler (C89 or newer). Nothing to install
@@ -97,8 +100,8 @@ Tools > Firmware Update flashes ECUs with no external tool:
   to a file you pick, default `~/50-libretune.rules`) and the two commands to install it
   (`sudo cp ... /etc/udev/rules.d/` and `sudo udevadm control --reload-rules && sudo udevadm trigger`);
   LibreTune never runs sudo itself. Serial ports need the `dialout` (or `uucp`) group; the screen says so
-  when a port does not open. Windows needs the WinUSB driver on the USB bootloader device (Zadig, or
-  STM32CubeProgrammer's driver).
+  when a port does not open. Windows needs the WinUSB driver on the USB bootloader device (Zadig, or a
+  recent STM32CubeProgrammer's driver): see [docs/WINDOWS_USB.md](docs/WINDOWS_USB.md).
 - With `--demo` (or `LT_FW_SIM=1`) simulated bootloaders (DfuSe, OpenBLT on USB / UART / CAN, STK500v2,
   HalfKay) run the whole flow without hardware; the serial methods offer a "simulated port".
 
