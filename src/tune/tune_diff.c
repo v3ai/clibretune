@@ -244,6 +244,118 @@ void lt_migration_compare(lt_migration_report *out, const lt_manifest_entry *sav
     }
 }
 
+/* ---- tunes without a constantManifest (TunerStudio files, base tunes): compare by name ---- */
+static void shape_text(const lt_ini_const *c, char *out, size_t cap)
+{
+    size_t cnt = lt_shape_count(&c->shape);
+    if (c->type == LT_DT_BITS || c->type == LT_DT_STRING || cnt <= 1) {
+        lt_strlcpy(out, lt_dtype_name(c->type), cap);
+    } else {
+        lt_snprintf(out, cap, "%s[%lu]", lt_dtype_name(c->type), (unsigned long)cnt);
+    }
+}
+
+static void value_text(const lt_tune_value *v, char *out, size_t cap)
+{
+    switch (v->kind) {
+    case LT_TV_ARRAY: lt_snprintf(out, cap, "%lu values", (unsigned long)v->n); break;
+    case LT_TV_STRING: lt_snprintf(out, cap, "\"%s\"", v->str != NULL ? v->str : ""); break;
+    case LT_TV_BOOL: lt_strlcpy(out, v->boolean ? "true" : "false", cap); break;
+    default: lt_strlcpy(out, "1 value", cap); break;
+    }
+}
+
+static void add_mismatch(lt_migration_report *out, const char *name, const lt_tune_value *v,
+                         const lt_ini_const *c, const char *desc)
+{
+    lt_constant_change *ch;
+    char a[96], b[64];
+    value_text(v, a, sizeof a);
+    shape_text(c, b, sizeof b);
+    out->type_changed = (lt_constant_change *)lt_realloc(out->type_changed,
+                                                         (out->n_type + 1) * sizeof(lt_constant_change));
+    ch = &out->type_changed[out->n_type++];
+    memset(ch, 0, sizeof *ch);
+    ch->name = lt_strdup(name);
+    ch->old_type = lt_strdup(a);
+    ch->new_type = lt_strdup(b);
+    ch->new_page = c->page;
+    ch->new_offset = c->offset;
+    ch->new_scale = c->scale;
+    ch->new_translate = c->translate;
+    ch->description = lt_strdup(desc);
+}
+
+/* why the named value v cannot be written to c as it is (NULL = it fits) */
+static const char *value_misfit(const lt_ini_const *c, const lt_tune_value *v)
+{
+    size_t cnt = lt_shape_count(&c->shape);
+    double d;
+    if (c->type == LT_DT_STRING) {
+        return v->kind == LT_TV_STRING ? NULL : "the definition expects text";
+    }
+    if (c->type == LT_DT_BITS) {
+        if (v->kind == LT_TV_STRING) {
+            const char *s = v->str != NULL ? v->str : "";
+            if (lt_ini_bit_index(c, s) >= 0 || lt_tune_parse_num(s, strlen(s), &d)) { return NULL; }
+            return "option not offered by the definition";
+        }
+        return NULL;
+    }
+    if (v->kind == LT_TV_STRING) { return "text value for a numeric constant"; }
+    if (v->kind == LT_TV_ARRAY && v->n != cnt) { return "different number of values"; }
+    if (v->kind != LT_TV_ARRAY && cnt > 1) { return "single value for an array"; }
+    return NULL;
+}
+
+void lt_migration_compare_tune(lt_migration_report *out, const lt_tune *t, const lt_ini *ini)
+{
+    const lt_ini_const **sorted;
+    size_t i, ns = 0, n;
+
+    if (t->has_manifest && t->n_manifest > 0) {
+        lt_migration_compare(out, t->manifest, t->n_manifest, ini);
+        return;
+    }
+    lt_migration_clear(out);
+    sorted = (const lt_ini_const **)lt_malloc((ini->n_constants + 1) * sizeof(*sorted));
+    for (i = 0; i < ini->n_constants; i++) sorted[ns++] = ini->constants[i];
+    qsort(sorted, ns, sizeof(*sorted), cmp_cp);
+    for (i = 0; i < ns; i++) {
+        if (sorted[i]->is_pc_var) continue;
+        if (!lt_tune_get_constant(t, sorted[i]->name))
+            add_str(&out->missing_in_tune, &out->n_missing_in_tune, sorted[i]->name);
+    }
+    lt_free((void *)sorted);
+
+    n = lt_tune_n_constants(t);
+    for (i = 0; i < n; i++) {
+        const char *name = lt_tune_constant_name(t, i);
+        const lt_tune_entry *e = name != NULL ? lt_tune_get_constant(t, name) : NULL;
+        const lt_ini_const *c;
+        const char *why;
+        if (e == NULL) continue;
+        c = lt_ini_find_const(ini, name);
+        if (c == NULL) {
+            add_str(&out->missing_in_ini, &out->n_missing_in_ini, name);
+            continue;
+        }
+        if (c->is_pc_var) continue;
+        why = value_misfit(c, &e->value);
+        if (why != NULL) add_mismatch(out, name, &e->value, c, why);
+    }
+
+    if (out->n_type || out->n_missing_in_ini) {
+        out->requires_user_review = LT_TRUE;
+        out->can_auto_migrate = LT_FALSE;
+        lt_strlcpy(out->severity, "high", sizeof out->severity);
+    } else if (out->n_missing_in_tune) {
+        out->requires_user_review = LT_FALSE;
+        out->can_auto_migrate = LT_TRUE;
+        lt_strlcpy(out->severity, "low", sizeof out->severity);
+    }
+}
+
 lt_bool lt_migration_has_changes(const lt_migration_report *r)
 {
     return (r->n_missing_in_tune || r->n_missing_in_ini || r->n_type || r->n_scale || r->n_loc)

@@ -1,0 +1,155 @@
+[{
+        "id": "1",
+        "displayName": "Speeduino Generic base tune",
+        "make": "Generic",
+        "firmware": 202305,
+        "provider": "Speeduino",
+        "type": "Stock",
+        "board": "v0.4",
+        "description": "This is the generic basic tune for Speeduino v0.4 and v0.3. It is not meant to work out of the box for every vehicle, but will give all settings a sane value",
+        "filename": "Speeduino%20base%20tune.msq"
+    },
+    {
+        "id": "2",
+        "displayName": "Miata / MX5 89-95 PNP",
+        "make": "Mazda",
+        "firmware": 202108,
+        "provider": "Speeduino",
+        "type": "Stock",
+        "board": "NA6 PNP",
+        "description": "Tune for use with the Speeduino PNP units on 1989-1995 NA6 and NA8 Miata + MX5",
+        "filename": "NA6%20PNP%20base%20tune.msq"
+    },
+    {
+        "id": "3",
+        "displayName": "Miata / MX5 96-97 PNP",
+        "make": "Mazda",
+        "firmware": 202108,
+        "provider": "Speeduino",
+        "type": "Stock",
+        "board": "NA8 PNP",
+        "description": "Tune for use with the Speeduino PNP units on 1996-1997 NA8 Miata + MX5",
+        "filename": "NA8%20PNP%20base%20tune.msq"
+    },
+    {
+        "id": "12",
+        "displayName": "Miata / MX5 96-98 PNP (SpeedyEFI)",
+        "make": "Mazda",
+        "firmware": 202103,
+        "provider": "SpeedyEFI",
+        "type": "Stock",
+        "board": "UA4C",
+        "description": "Tune for use with the SpeedyEFI UA4C PNP",
+        "filename": "Miata_PNP96-98_SpeedyEFI.msq"
+    },
+    {
+        "id": "13",
+        "displayName": "Miata / MX5 99-00 PNP (SpeedyEFI)",
+        "make": "Mazda",
+        "firmware": 202207,
+        "provider": "SpeedyEFI",
+        "type": "Stock",
+        "board": "UA4C",
+        "description": "Tune for use with the SpeedyEFI UA4C PNP",
+        "filename": "Miata_PNP99-00_SpeedyEFI.msq"
+    },
+     {
+        "id": "4",
+        "displayName": "Miata / MX5 01-05 PNP",
+        "make": "Mazda",
+        "firmware": 202108,
+        "provider": "Speeduino",
+        "type": "Stock",
+        "board": "NB2 PNP",
+        "description": "Tune for use with the Speeduino PNP units on 2001-2005 NB8B Miata + MX5",
+        "filename": "NB8B%20PNP%20base%20tune.msq"
+    },
+    {
+        "id": "5",
+        "displayName": "BMW M50NV PNP",
+        "make": "BMW",
+        "firmware": 202202,
+        "provider": "Pazi88",
+        "type": "Stock",
+        "description": "",
+        "board": "BMW PNP",
+        "filename": "M50NV_PnP.msq"
+    },
+    {
+        "id": "6",
+        "displayName": "BMW M50TU PNP",
+        "make": "BMW",
+        "firmware": 202202,
+        "provider": "Pazi88",
+        "type": "Stock",
+        "description": "",
+        "board": "BMW PNP",
+        "filename": "M50TU_PnP.msq"
+    },
+    {
+        "id": "7",
+        "displayName": "BMW M52 PNP",
+        "make": "BMW",
+        "firmware": 202202,
+        "provider": "Pazi88",
+        "type": "Stock",
+        "description": "",
+        "board": "DIY-EFI CORE4",
+        "filename": "M52_PnP.msq"
+    },
+    {
+      "id": "8",
+      "displayName": "BMW M43 PNP",
+      "make": "BMW",
+      "firmware": 202202,
+      "provider": "Pazi88",
+      "type": "Stock",
+      "description": "",
+      "board": "BMW PNP",
+      "filename": "M43_PnP.msq"
+    },
+    {
+      "id": "9",
+      "displayName": "BMW M60 PNP",
+      "make": "BMW",
+      "firmware": 202202,
+      "provider": "Pazi88",
+      "type": "Stock",
+      "description": "",
+      "board": "BMW PNP",
+      "filename": "M60_PnP.msq"
+    },
+    {
+      "id": "10",
+      "displayName": "BMW M52TU PNP",
+      "make": "BMW",
+      "firmware": 202202,
+      "provider": "Pazi88",
+      "type": "Stock",
+      "description": "",
+      "board": "DIY-EFI CORE4",
+      "filename": "M52TU_PnP.msq"
+    },
+    {
+      "id": "11",
+      "displayName": "4G93",
+      "make": "Mitsubishi",
+      "firmware": 202103,
+      "provider": "Steven Chua",
+      "type": "Stock",
+      "description": "Stock 4G93 tune with support for limited boost. Some adjustment of CAS maybe needed to align with the trigger angle used",
+      "board": "v0.4",
+      "filename": "4g93_stock.msq"
+    },
+     {
+      "id": "12",
+      "displayName": "A4 B5 1.8t",
+      "make": "Audi",
+      "firmware": 202501,
+      "provider": "N/A",
+      "type": "Stock",
+      "description": "Stock Audi A4 B5 1.8t engine",
+      "board": "UA4C",
+      "filename": "Audi_A4_B5_1.8t.msq"
+    }
+]
