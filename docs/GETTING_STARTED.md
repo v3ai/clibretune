@@ -60,6 +60,24 @@ number (`devices.conf` in the configuration folder), so the next time the same b
 even under another port name. **File > New Project...** still sets up a project by hand: pick the
 INI from the built-in library or a file and choose the port.
 
+### ECU definitions come with LibreTune
+
+You do not need to find or download an INI file. LibreTune carries 167 definitions: every Speeduino
+release since 2017, every board of the last three rusEFI releases, every FOME board of its latest
+release and the miata-ecus board. When an ECU answers, LibreTune reads its signature and picks the
+definition by itself:
+
+- **exact match**: used straight away; a short message says which one;
+- **close match** (a rusEFI nightly build, a newer Speeduino than this LibreTune knows): the
+  nearest build of the same board is used, with a warning that some settings may differ and a
+  **Find Exact INI...** button that searches online;
+- **nothing fits** (MegaSquirt, other firmware): choose the INI file that came with the firmware or
+  search online. MegaSquirt INIs are not bundled because their licence does not allow it.
+
+rusEFI F7/H7 boards also show a small USB drive with their own INI; when it is there and matches,
+LibreTune uses that one. A definition you add yourself (**Settings > ECU Definitions**) wins over the
+bundled one with the same signature.
+
 If the cable is pulled or the ECU resets, LibreTune reconnects by itself as soon as the same device
 is back (for up to 30 minutes, under any port name) and keeps your edits; the status bar says what it
 is waiting for.
