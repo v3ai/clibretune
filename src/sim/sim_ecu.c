@@ -29,6 +29,7 @@ struct lt_ecusim {
     size_t n_pages;
     lt_u32 *page_ids;          /* NULL when no identifiers declared */
     size_t n_page_ids;
+    lt_bool no_page_arg;       /* page commands carry no page ("R%2o%2c": FOME, one page) */
     char *sig, *ver;
     lt_u8 query_cmd;
     lt_bool cmd_le, enveloped;
@@ -286,6 +287,16 @@ lt_ecusim *lt_ecusim_new(const lt_ini *ini)
             s->pages[i].ram = (lt_u8 *)lt_calloc(sz ? sz : 1, 1);
             s->pages[i].flash = (lt_u8 *)lt_calloc(sz ? sz : 1, 1);
         }
+        if (ini->proto.page_read_commands.n > 0 && np == 1) {
+            const lt_ini_blob *b = &ini->proto.page_read_commands.v[0];
+            size_t k;
+            s->no_page_arg = LT_TRUE;
+            for (k = 0; k + 1 < b->n; k++) {
+                if (b->p[k] == '%' && (b->p[k + 1] == 'i' || (k + 2 < b->n && b->p[k + 2] == 'i'))) {
+                    s->no_page_arg = LT_FALSE;
+                }
+            }
+        }
         if (ini->proto.n_page_identifiers > 0) {
             s->n_page_ids = ini->proto.n_page_identifiers;
             s->page_ids = (lt_u32 *)lt_calloc(s->n_page_ids, sizeof(lt_u32));
@@ -389,6 +400,17 @@ static int resolve_page(const lt_ecusim *s, lt_u32 id)
     return (int)id;
 }
 
+/* the page a command addresses; *at = where its offset (or data) starts */
+static int cmd_page(const lt_ecusim *s, const lt_u8 *cmd, size_t n, size_t *at)
+{
+    if (s->no_page_arg) {
+        *at = 1;
+        return s->n_pages > 0 ? 0 : -1;
+    }
+    *at = 3;
+    return n >= 3 ? resolve_page(s, rd16(s, cmd + 1)) : -1;
+}
+
 /* zero padded read of RAM into out */
 static void mem_read(const lt_ecusim *s, int page, size_t off, size_t count, lt_buf *out)
 {
@@ -431,7 +453,7 @@ static void respond(lt_ecusim *s, const lt_u8 *cmd, size_t n, lt_bool env, lt_bu
 {
     lt_u8 c = cmd[0];
     int pg;
-    size_t off, cnt;
+    size_t off, cnt, at;
     lt_sim_snapshot sn;
     lt_buf lg_data;
 
@@ -463,13 +485,13 @@ static void respond(lt_ecusim *s, const lt_u8 *cmd, size_t n, lt_bool env, lt_bu
     case 'p':
     case 'R':
     case 'k':
-        pg = n >= 7 ? resolve_page(s, rd16(s, cmd + 1)) : -1;
-        if (pg < 0) {
+        pg = cmd_page(s, cmd, n, &at);
+        if (pg < 0 || n < at + 4) {
             put_status(out, env, LT_RC_OUT_OF_RANGE);
             return;
         }
-        off = rd16(s, cmd + 3);
-        cnt = rd16(s, cmd + 5);
+        off = rd16(s, cmd + at);
+        cnt = rd16(s, cmd + at + 2);
         if (c == 'k') {
             lt_buf tmp;
             lt_u32 crc;
@@ -492,12 +514,12 @@ static void respond(lt_ecusim *s, const lt_u8 *cmd, size_t n, lt_bool env, lt_bu
     case 'C': {
         int wrote = 0;
 
-        pg = n >= 7 ? resolve_page(s, rd16(s, cmd + 1)) : -1;
-        if (pg >= 0) {
-            off = rd16(s, cmd + 3);
-            cnt = rd16(s, cmd + 5);
-            if (n >= 7 + cnt) {
-                wrote = mem_write(s, pg, off, cmd + 7, cnt) == 0;
+        pg = cmd_page(s, cmd, n, &at);
+        if (pg >= 0 && n >= at + 4) {
+            off = rd16(s, cmd + at);
+            cnt = rd16(s, cmd + at + 2);
+            if (n >= at + 4 + cnt) {
+                wrote = mem_write(s, pg, off, cmd + at + 4, cnt) == 0;
             }
         }
         if (s->fault_write > 0 && --s->fault_write == 0) {
@@ -512,7 +534,7 @@ static void respond(lt_ecusim *s, const lt_u8 *cmd, size_t n, lt_bool env, lt_bu
     case 'B': {
         int ok = 0;
 
-        pg = n >= 3 ? resolve_page(s, rd16(s, cmd + 1)) : -1;
+        pg = cmd_page(s, cmd, n, &at);
         if (pg >= 0) {
             size_t len = s->pages[pg].size;
             if (s->fault_burn > 0 && --s->fault_burn == 0) {
