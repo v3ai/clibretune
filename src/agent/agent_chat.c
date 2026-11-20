@@ -133,18 +133,20 @@ static void note_tokens(lt_ag_chat *c, const lt_json *root)
     const lt_json *u = lt_json_get(root, "usage");
     if (u != NULL) {
         double t = lt_json_get_num(u, "total_tokens", 0.0);
-        if (t > 0.0) { c->n_tok += (long)t; }
+        if (t > 0.0 && t < 1e9) { c->n_tok += (long)t; }
     }
 }
 
 static void take_call(lt_ag_chat *c, const lt_json *tc, int whole)
 {
     const lt_json *f = lt_json_get(tc, "function");
-    int idx = (int)lt_json_get_num(tc, "index", (double)c->n_calls);
+    double di = lt_json_get_num(tc, "index", (double)c->n_calls);
+    int idx;
     const char *s;
     lt_ag_call *k;
-    if (whole) { idx = c->n_calls; }
-    if (idx < 0 || idx >= LT_AG_MAX_CALLS) { return; }
+    if (whole) { di = (double)c->n_calls; }
+    if (!(di >= 0.0 && di < (double)LT_AG_MAX_CALLS)) { return; }   /* also NaN: no UB cast */
+    idx = (int)di;
     k = &c->calls[idx];
     if (idx >= c->n_calls) { c->n_calls = idx + 1; }
     s = lt_json_get_str(tc, "id", "");

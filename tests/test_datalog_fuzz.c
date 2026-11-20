@@ -101,6 +101,67 @@ static void csv_fuzz(void)
     LT_CHECK(1);
 }
 
+/* MSL (MegaLogViewer text): a written log, truncated and mutated, plus hand-made headers */
+static void msl_fuzz(void)
+{
+    static const char *nm[3] = { "RPM", "MAP", "AFR" };
+    static const char *un[3] = { "rpm", "kPa", "" };
+    static const char *odd[] = {
+        "\"title\"\nTime\tRPM\ns\trpm\n0\t800\n0.1\t\n\n0.2\t900\t1\t2\t3\n",
+        "Time\tRPM\n",
+        "\"a\"\n\"b\"\n\"c\"\n",
+        "Time\n\n1e999\n-1e999\nnan\n",
+        "MARK 001 - x\nTime\tRPM\ns\trpm\nMARK 002\n1\t2\n",
+        "\t\t\t\t\n\t\t\n1\t2\t3\n"
+    };
+    lt_log l;
+    lt_buf b;
+    double v[3];
+    size_t i;
+    int it;
+    lt_log_init(&l);
+    lt_log_set_channels(&l, nm, un, 3);
+    for (it = 0; it < 30; it++) {
+        v[0] = 800 + it * 10; v[1] = 40 + it; v[2] = 14.7;
+        lt_log_append(&l, it * 0.1, v);
+    }
+    lt_log_add_marker(&l, 0.5, "m");
+    lt_buf_init(&b);
+    lt_msl_format(&b, &l);
+    lt_log_free(&l);
+    for (i = 0; i <= b.len; i += 3) {
+        lt_log_init(&l);
+        lt_msl_parse(b.data, i, &l);
+        lt_log_free(&l);
+    }
+    for (it = 0; it < 3000; it++) {
+        char *c = (char *)lt_malloc(b.len + 1);
+        size_t n = b.len;
+        memcpy(c, b.data, b.len);
+        mutate((lt_u8 *)c, n, 1 + (int)rnd(6));
+        if (it % 3 == 0) {
+            size_t k;
+            for (k = 0; k < 4; k++) c[rnd((unsigned long)n)] = "\t\n\"-.e0"[rnd(7)];
+        }
+        if (it % 5 == 0) n = (size_t)rnd((unsigned long)n + 1);
+        c[n] = 0;
+        lt_log_init(&l);
+        if (lt_msl_parse(c, n, &l) == 0) {
+            LT_CHECK(l.n >= 0 && l.n_ch >= 0);
+            (void)lt_log_duration(&l);
+        }
+        lt_log_free(&l);
+        lt_free(c);
+    }
+    for (i = 0; i < sizeof odd / sizeof odd[0]; i++) {
+        lt_log_init(&l);
+        lt_msl_parse(odd[i], strlen(odd[i]), &l);
+        lt_log_free(&l);
+    }
+    lt_buf_free(&b);
+    LT_CHECK(1);
+}
+
 static void file_fuzz(void)
 {
     static const char *dy = "RPM,HP,Torque,AFR\n3000,100,175,13\n4000,150,197,12.5\n5000,180,189,12\n";
@@ -148,6 +209,7 @@ int main(void)
 {
     LT_RUN(mlg_fuzz);
     LT_RUN(csv_fuzz);
+    LT_RUN(msl_fuzz);
     LT_RUN(file_fuzz);
     LT_TEST_MAIN_END
 }
