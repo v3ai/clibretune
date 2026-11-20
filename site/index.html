@@ -3,212 +3,277 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>LibreTune in Universal C</title>
-<meta name="description" content="Open-source ECU tuning software for rusEFI, Speeduino and MegaSquirt. One native binary for Linux, Windows and macOS with no dependencies.">
-<meta property="og:title" content="LibreTune in Universal C">
-<meta property="og:description" content="Open-source ECU tuning software. One native binary, no dependencies.">
+<title>clibretune: open-source ECU tuning in a single file</title>
+<meta name="description" content="clibretune is LibreTune rewritten in portable C: table editing, AutoTune, dashboards and data logging for rusEFI, Speeduino and MegaSquirt-style ECUs, in one native binary for Linux, Windows and macOS.">
+<meta property="og:title" content="clibretune">
+<meta property="og:description" content="Open-source ECU tuning in one native binary for Linux, Windows and macOS.">
 <meta property="og:image" content="https://v3ai.github.io/clibretune/img/og.jpg">
+<meta property="og:url" content="https://v3ai.github.io/clibretune/">
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#0e0f11">
+<link rel="canonical" href="https://v3ai.github.io/clibretune/">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<header class="nav">
-  <div class="wrap nav-in">
-    <a class="brand" href="#top" aria-label="LibreTune home">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>
-      <span>LibreTune<span class="dim"> / C</span></span>
-    </a>
+<header class="top">
+  <div class="wrap top-in">
+    <a class="brand" href="./">clibretune</a>
     <nav>
-      <a href="#features">Features</a>
-      <a href="#screens">Screenshots</a>
+      <a href="#session">Features</a>
+      <a href="#platforms">Platforms</a>
+      <a href="#specs">Specs</a>
       <a href="#download">Download</a>
-      <a href="#build">Build</a>
-      <a class="gh" href="https://github.com/v3ai/clibretune">GitHub</a>
+      <a href="https://github.com/v3ai/clibretune">GitHub</a>
     </nav>
   </div>
 </header>
 
-<main id="top">
-
-<section class="hero wrap">
-  <p class="eyebrow"><span class="dot"></span> Open-source ECU tuning &middot; <span data-version>v0.1.0</span></p>
-  <h1>Tune your engine with one small native binary.</h1>
-  <p class="lede">LibreTune is INI-driven tuning software for rusEFI, Speeduino and MegaSquirt-style ECUs.
-    This edition is a from-scratch rewrite in portable C: no installer, no runtime, no third-party libraries.
-    Download it, run it, and start editing tables.</p>
-  <div class="cta">
-    <a class="btn primary" id="hero-dl" href="#download">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></svg>
-      <span id="hero-dl-label">Download</span>
-    </a>
-    <a class="btn" href="https://github.com/v3ai/clibretune">View source</a>
-  </div>
-  <p class="meta">Linux (x86-64, ARM64) &middot; Windows &middot; macOS (Intel + Apple Silicon) &middot; GPL-2.0-or-later</p>
-
-  <figure class="window hero-shot">
-    <div class="titlebar"><i></i><i></i><i></i><span>libretune --demo</span></div>
-    <img src="img/dashboard.webp" width="1280" height="800" alt="LibreTune dashboard with analog gauges for RPM, coolant temperature, MAP, air/fuel ratio, battery and dwell, connected to the simulated ECU">
-  </figure>
-</section>
-
-<section id="features" class="wrap section">
-  <h2>Everything a tuning session needs</h2>
-  <p class="sub">Reads the same ECU definition (INI) files your firmware already ships, so menus, tables and gauges match your ECU.</p>
-  <div class="grid">
-    <article class="card">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18"/><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/></svg>
-      <h3>Table and curve editing</h3>
-      <p>Heat-mapped VE, ignition and AFR tables with 3D view, smoothing, interpolation, scaling, copy/paste, undo, and live-cell follow.</p>
-    </article>
-    <article class="card">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72"/><path d="m14 7 3 3"/><path d="M5 6v4"/><path d="M19 14v4"/><path d="M10 2v2"/><path d="M7 8H3"/><path d="M21 16h-4"/><path d="M11 3H9"/></svg>
-      <h3>AutoTune</h3>
-      <p>Builds VE corrections from live data or a replayed log, with cell locking, per-region health scores and a session report.</p>
-    </article>
-    <article class="card">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>
-      <h3>Dashboards</h3>
-      <p>Analog and bar gauges, indicator panels, and a dashboard designer. Smooth 60&nbsp;Hz refresh.</p>
-    </article>
-    <article class="card">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/></svg>
-      <h3>Data logging and playback</h3>
-      <p>Record any of the ECU's output channels, add markers, then play logs back through the dashboards and AutoTune.</p>
-    </article>
-    <article class="card">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20v2"/><path d="M12 2v2"/><path d="M17 20v2"/><path d="M17 2v2"/><path d="M2 12h2"/><path d="M2 17h2"/><path d="M2 7h2"/><path d="M20 12h2"/><path d="M20 17h2"/><path d="M20 7h2"/><path d="M7 20v2"/><path d="M7 2v2"/><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="8" y="8" width="8" height="8" rx="1"/></svg>
-      <h3>Built-in ECU simulator</h3>
-      <p>Demo mode runs a simulated engine in-process. Try every feature with no hardware connected.</p>
-    </article>
-    <article class="card">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19h8"/><path d="m4 17 6-6-6-6"/></svg>
-      <h3>Five UI backends</h3>
-      <p>Native windows on X11, Cocoa and Win32, plus a local web UI and a full terminal UI, all from the same binary.</p>
-    </article>
-    <article class="card">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>
-      <h3>Projects and restore points</h3>
-      <p>Keep tunes, logs and dashboards together in a project, with tune history and restore points to roll back a bad change.</p>
-    </article>
-    <article class="card">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></svg>
-      <h3>Universal C, zero dependencies</h3>
-      <p>Builds warning-free with any C compiler from C89 to C2x. Its own TrueType renderer, HTTP server and XML parser.</p>
-    </article>
-  </div>
-</section>
-
-<section id="screens" class="wrap section">
-  <h2>See it running</h2>
-  <p class="sub">All captured from the demo mode of the current build.</p>
-  <div class="tabs" role="tablist" aria-label="Screenshots">
-    <button role="tab" aria-selected="true" data-shot="ve-table">VE table</button>
-    <button role="tab" aria-selected="false" data-shot="dashboard">Dashboard</button>
-    <button role="tab" aria-selected="false" data-shot="autotune">AutoTune</button>
-    <button role="tab" aria-selected="false" data-shot="datalog">Data log</button>
-    <button role="tab" aria-selected="false" data-shot="terminal">Terminal UI</button>
-  </div>
-  <figure class="window">
-    <div class="titlebar"><i></i><i></i><i></i><span id="shot-title">VE table</span></div>
-    <img id="shot" src="img/ve-table.webp" width="1280" height="800" alt="LibreTune VE table">
-  </figure>
-  <p class="caption" id="shot-caption">32 x 32 VE table with heat map, live-cell tracking and the full editing toolbar.</p>
-</section>
-
-<section id="download" class="wrap section">
-  <h2>Download</h2>
-  <p class="sub">Single-file builds of the <a id="rel-link" href="https://github.com/v3ai/clibretune/releases/latest">latest release</a>. Nothing to install.</p>
-
-  <div class="dl-grid">
-    <a class="dl" data-os="linux" href="https://github.com/v3ai/clibretune/releases/latest/download/libretune-linux-x86_64">
-      <span class="os">Linux</span><span class="arch">x86-64</span>
-      <code>libretune-linux-x86_64</code>
-    </a>
-    <a class="dl" data-os="linux-arm" href="https://github.com/v3ai/clibretune/releases/latest/download/libretune-linux-aarch64">
-      <span class="os">Linux</span><span class="arch">ARM64 / Raspberry Pi</span>
-      <code>libretune-linux-aarch64</code>
-    </a>
-    <a class="dl" data-os="windows" href="https://github.com/v3ai/clibretune/releases/latest/download/libretune-windows-x86_64-gui.exe">
-      <span class="os">Windows</span><span class="arch">x86-64</span>
-      <code>libretune-windows-x86_64-gui.exe</code>
-    </a>
-    <a class="dl" data-os="mac" href="https://github.com/v3ai/clibretune/releases/latest/download/libretune-macos-universal">
-      <span class="os">macOS</span><span class="arch">Intel + Apple Silicon</span>
-      <code>libretune-macos-universal</code>
-    </a>
-  </div>
-
-  <p class="extras">
-    Also: <a href="https://github.com/v3ai/clibretune/releases/latest/download/demo.ini">demo.ini</a> (for demo mode)
-    &middot; <a href="https://github.com/v3ai/clibretune/releases/latest/download/libretune-windows-x86_64.exe">Windows console build</a>
-    &middot; <a href="https://github.com/v3ai/clibretune/releases/latest/download/SHA256SUMS">SHA256SUMS</a>
-    &middot; <a href="https://github.com/v3ai/clibretune/releases/tag/nightly">Nightly build</a>
-    &middot; <a href="https://github.com/v3ai/clibretune/releases">All releases</a>
-  </p>
-
-  <div class="steps">
-    <div>
-      <h3>Try it without an ECU</h3>
-      <p>Download <code>demo.ini</code> next to the binary and start the simulator:</p>
-<pre><code><span class="c"># Linux / macOS</span>
-chmod +x libretune-*
-./libretune-linux-x86_64 --demo --ini demo.ini
-
-<span class="c"># Windows</span>
-libretune-windows-x86_64.exe --demo --ini demo.ini</code></pre>
+<section class="hero">
+  <div class="wrap">
+    <div class="hero-grid">
+      <h1>ECU tuning that fits in a single file.</h1>
+      <div class="hero-side">
+        <p>clibretune is LibreTune rewritten in portable C. Tables, AutoTune, dashboards and data logging
+          for rusEFI, Speeduino and MegaSquirt-style ECUs, in one native binary for Linux, Windows and macOS.
+          Nothing to install.</p>
+        <div class="btns">
+          <a class="btn btn-red" id="hero-dl" href="#download">Download</a>
+          <a class="btn btn-ghost" href="https://github.com/v3ai/clibretune">Source on GitHub</a>
+        </div>
+      </div>
     </div>
-    <div>
-      <h3>Good to know</h3>
+    <a class="shot hero-shot zoom" href="img/dashboard.webp" data-cap="Dashboard, running against the built-in simulated ECU">
+      <img src="img/dashboard.webp" width="2560" height="1600" alt="clibretune's main window: a dashboard of analog gauges for RPM, coolant temperature, MAP, air/fuel ratio, battery voltage and dwell, with the ECU's settings tree on the left" fetchpriority="high">
+    </a>
+  </div>
+</section>
+
+<main>
+
+<section class="paper session-wrap" id="session">
+  <div class="wrap">
+    <header class="head">
+      <p class="label">A tuning session</p>
+      <h2>From base map to a tune you trust</h2>
+      <p class="lead">clibretune reads the INI definition your firmware ships with, so every menu, table and gauge
+        is the one your ECU actually has.</p>
+    </header>
+
+    <div class="session">
+      <ol class="steps">
+        <li class="step" data-img="tables">
+          <p class="num">01 <span>Table editor</span></p>
+          <h3>Edit tables the way you think about them</h3>
+          <p>VE, ignition and AFR tables are heat-mapped and sit beside a 3D surface you can rotate.
+            Select a range and smooth it, interpolate across it, scale it or step it from the keyboard,
+            and let the cursor follow the engine's live operating point while it runs.</p>
+          <dl class="keys">
+            <div><dt><kbd>s</kbd></dt><dd>Smooth</dd></div>
+            <div><dt><kbd>/</kbd></dt><dd>Interpolate</dd></div>
+            <div><dt><kbd>*</kbd></dt><dd>Scale</dd></div>
+            <div><dt><kbd>+</kbd><kbd>-</kbd></dt><dd>Step</dd></div>
+            <div><dt><kbd>f</kbd></dt><dd>Follow</dd></div>
+            <div><dt><kbd>g</kbd></dt><dd>Go to live cell</dd></div>
+          </dl>
+          <a class="shot inline zoom" href="img/tables.webp" data-cap="VE table with the 3D view"><img src="img/tables.webp" loading="lazy" width="2560" height="1600" alt="A 32 by 32 VE table, heat-mapped from blue to orange, next to a rotatable 3D surface of the same table"></a>
+        </li>
+        <li class="step" data-img="datalog">
+          <p class="num">02 <span>Data logging</span></p>
+          <h3>Log what the engine is doing</h3>
+          <p>Record any of the ECU's output channels (the demo definition has 1,129 of them) at the rate you choose,
+            drop markers when something happens on the road, and keep every log with the project it belongs to.</p>
+          <a class="shot inline zoom" href="img/datalog.webp" data-cap="Data logging"><img src="img/datalog.webp" loading="lazy" width="2560" height="1600" alt="Data logging view with a channel list on the left and a live RPM trace on the right"></a>
+        </li>
+        <li class="step" data-img="autotune">
+          <p class="num">03 <span>AutoTune</span></p>
+          <h3>Let the data correct the VE table</h3>
+          <p>AutoTune compares measured AFR with your target and recommends changes cell by cell, live or from a
+            replayed log. Lock the cells you already trust, watch coverage and health for idle, cruise and WOT,
+            then send the result to the ECU and burn it.</p>
+          <a class="shot inline zoom" href="img/autotune.webp" data-cap="AutoTune"><img src="img/autotune.webp" loading="lazy" width="2560" height="1600" alt="AutoTune view with the VE table on the left and tune health scores for idle, cruise, WOT and low load on the right"></a>
+        </li>
+      </ol>
+
+      <div class="stage">
+        <a class="shot zoom" id="stage-link" href="img/tables.webp" data-cap="VE table with the 3D view" aria-label="Enlarge screenshot">
+          <img class="on" data-key="tables" src="img/tables.webp" width="2560" height="1600" alt="">
+          <img data-key="datalog" src="img/datalog.webp" width="2560" height="1600" alt="" loading="lazy">
+          <img data-key="autotune" src="img/autotune.webp" width="2560" height="1600" alt="" loading="lazy">
+        </a>
+      </div>
+    </div>
+
+    <div class="also">
+      <p class="label">Also in the box</p>
       <ul>
-        <li><strong>macOS:</strong> the binary is ad-hoc signed, not notarized. If it won't open, run
-          <code>xattr -dr com.apple.quarantine libretune-macos-universal</code> once.</li>
-        <li><strong>Windows:</strong> the <code>-gui</code> build opens without a console window; use the console build for <code>--help</code>.</li>
-        <li><strong>Backends:</strong> pick one with <code>--backend</code> or <code>LT_BACKEND</code>: <code>x11</code>, <code>cocoa</code>, <code>win32</code>, <code>web</code>, <code>tty</code>.</li>
+        <li><b>Dashboards</b>Analog and bar gauges, indicator panels, and a designer to lay out your own.</li>
+        <li><b>Projects</b>Tunes, logs and dashboards for one car, kept together in one folder.</li>
+        <li><b>Restore points</b>Tune history with restore points, so a bad change is easy to undo.</li>
+        <li><b>Demo mode</b>A simulated engine in the same process, for learning without hardware.</li>
       </ul>
     </div>
   </div>
 </section>
 
-<section id="build" class="wrap section">
-  <h2>Build from source</h2>
-  <p class="sub">Any C compiler, C89 or newer. Nothing else to install.</p>
-  <div class="table-wrap">
-    <table>
-      <thead><tr><th>OS</th><th>Command</th><th>Output</th></tr></thead>
+<section class="ink" id="platforms">
+  <div class="wrap platforms">
+    <div class="pf-text">
+      <p class="label">Platforms</p>
+      <h2>Runs on whatever is in the car</h2>
+      <p class="lead">The same binary opens a native window when it can, and falls back to a browser
+        or a terminal when it can't. There's an ARM64 Linux build for a Raspberry Pi behind the dash.</p>
+      <dl class="backends">
+        <div><dt>x11 · cocoa · win32</dt><dd>Native windows with no GUI toolkit. On Linux it speaks the X11 protocol itself.</dd></div>
+        <div><dt>web</dt><dd>Serves the UI to your browser on 127.0.0.1 behind a tokenised URL.</dd></div>
+        <div><dt>tty</dt><dd>The whole application in a terminal, including one over SSH.</dd></div>
+      </dl>
+      <pre><code>libretune --backend tty --demo --ini demo.ini</code></pre>
+    </div>
+    <a class="shot pf-shot zoom" href="img/terminal.webp" data-cap="The terminal backend">
+      <img src="img/terminal.webp" loading="lazy" width="2400" height="1600" alt="The same dashboard rendered as text in a terminal, with large digit readouts and bar graphs">
+    </a>
+  </div>
+</section>
+
+<section class="paper" id="specs">
+  <div class="wrap specs">
+    <div>
+      <p class="label">Specifications</p>
+      <h2>What's inside</h2>
+      <p class="lead">Written to the <a href="https://github.com/v3ai/clibretune/blob/main/docs/UNIVERSAL_C.md">Universal C</a>
+        rules: one codebase for every platform, and no third-party code.</p>
+    </div>
+    <table class="sheet">
       <tbody>
-        <tr><td>Linux / BSD</td><td><code>./build.sh app</code></td><td><code>build/libretune</code></td></tr>
-        <tr><td>macOS</td><td><code>./build.sh app</code></td><td><code>build/libretune</code></td></tr>
-        <tr><td>Windows, MSVC</td><td><code>build.bat</code></td><td><code>build\libretune.exe</code></td></tr>
-        <tr><td>Windows, MinGW</td><td><code>TARGET=windows CC=x86_64-w64-mingw32-gcc ./build.sh app</code></td><td><code>build/libretune.exe</code></td></tr>
+        <tr><th>ECU definitions</th><td>INI files for rusEFI, Speeduino and MegaSquirt-style firmware</td></tr>
+        <tr><th>Connection</th><td>Serial or TCP, plus a built-in ECU simulator</td></tr>
+        <tr><th>Files</th><td><code>.msq</code> tunes, <code>.mlg</code> data logs, project folders</td></tr>
+        <tr><th>Language</th><td>C89. Warning-free with gcc and clang from <code>-std=c89</code> to <code>-std=c2x</code>, and with MSVC</td></tr>
+        <tr><th>Source</th><td>About 115,000 lines of C</td></tr>
+        <tr><th>Dependencies</th><td>None. On Linux the binary links only libc and libm</td></tr>
+        <tr><th>Binary size</th><td>2.9&nbsp;MB on Linux and Windows, 5.1&nbsp;MB macOS universal</td></tr>
+        <tr><th>Automation</th><td>Read-only MCP server over stdio with <code>--mcp</code></td></tr>
+        <tr><th>License</th><td>GPL-2.0-or-later</td></tr>
       </tbody>
     </table>
   </div>
-<pre><code>git clone https://github.com/v3ai/clibretune
-cd clibretune
-./build.sh test   <span class="c"># build and run the test programs</span>
-./build.sh app    <span class="c"># build the application</span></code></pre>
-  <p class="more">More in the <a href="https://github.com/v3ai/clibretune#readme">README</a>,
-    <a href="https://github.com/v3ai/clibretune/blob/main/docs/ARCHITECTURE.md">architecture notes</a> and
-    <a href="https://github.com/v3ai/clibretune/blob/main/docs/UNIVERSAL_C.md">Universal C standard</a>.</p>
+</section>
+
+<section class="paper deep" id="download">
+  <div class="wrap">
+    <header class="head">
+      <p class="label">Download</p>
+      <h2>Get clibretune <span id="dl-version">v0.1.0</span></h2>
+      <p class="lead">One file per platform. Download it, make it executable, run it.</p>
+    </header>
+
+    <table class="dl">
+      <thead><tr><th>Platform</th><th>Architecture</th><th class="hide-sm">File</th><th class="num-col">Size</th><th><span class="sr">Link</span></th></tr></thead>
+      <tbody>
+        <tr data-os="windows">
+          <td><b>Windows</b></td><td>x86-64</td><td class="hide-sm"><code>libretune-windows-x86_64-gui.exe</code></td>
+          <td class="num-col" data-size="libretune-windows-x86_64-gui.exe">2.9 MB</td>
+          <td class="go"><a class="btn btn-dark" href="https://github.com/v3ai/clibretune/releases/latest/download/libretune-windows-x86_64-gui.exe">Download</a></td>
+        </tr>
+        <tr data-os="mac">
+          <td><b>macOS</b></td><td>Apple Silicon + Intel</td><td class="hide-sm"><code>libretune-macos-universal</code></td>
+          <td class="num-col" data-size="libretune-macos-universal">5.1 MB</td>
+          <td class="go"><a class="btn btn-dark" href="https://github.com/v3ai/clibretune/releases/latest/download/libretune-macos-universal">Download</a></td>
+        </tr>
+        <tr data-os="linux">
+          <td><b>Linux</b></td><td>x86-64</td><td class="hide-sm"><code>libretune-linux-x86_64</code></td>
+          <td class="num-col" data-size="libretune-linux-x86_64">2.9 MB</td>
+          <td class="go"><a class="btn btn-dark" href="https://github.com/v3ai/clibretune/releases/latest/download/libretune-linux-x86_64">Download</a></td>
+        </tr>
+        <tr data-os="linux-arm">
+          <td><b>Linux</b></td><td>ARM64 / Raspberry Pi</td><td class="hide-sm"><code>libretune-linux-aarch64</code></td>
+          <td class="num-col" data-size="libretune-linux-aarch64">2.9 MB</td>
+          <td class="go"><a class="btn btn-dark" href="https://github.com/v3ai/clibretune/releases/latest/download/libretune-linux-aarch64">Download</a></td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="small">Also on the release:
+      <a href="https://github.com/v3ai/clibretune/releases/latest/download/libretune-windows-x86_64.exe">Windows console build</a>,
+      <a href="https://github.com/v3ai/clibretune/releases/latest/download/SHA256SUMS">SHA256SUMS</a>.
+      Every push to main also builds a <a href="https://github.com/v3ai/clibretune/releases/tag/nightly">nightly</a>.</p>
+
+    <div class="first-run">
+      <div>
+        <h3>No ECU on the bench?</h3>
+        <p>Grab <a href="https://github.com/v3ai/clibretune/releases/latest/download/demo.ini">demo.ini</a>
+          and start the simulator. Everything on this page works in demo mode.</p>
+<pre><code>chmod +x libretune-linux-x86_64
+./libretune-linux-x86_64 --demo --ini demo.ini</code></pre>
+      </div>
+      <div>
+        <h3>First launch</h3>
+        <p><b>macOS</b> blocks binaries that aren't notarized. Run this once:</p>
+        <pre><code>xattr -dr com.apple.quarantine libretune-macos-universal</code></pre>
+        <p><b>Windows</b> SmartScreen may warn about an unsigned download. Click <i>More info</i>, then <i>Run anyway</i>.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="paper" id="faq">
+  <div class="wrap faq">
+    <div>
+      <p class="label">Questions</p>
+      <h2>Before you start</h2>
+    </div>
+    <div class="qa">
+      <div>
+        <h3>How is this related to LibreTune?</h3>
+        <p>It's a from-scratch rewrite of <a href="https://github.com/RallyPat/LibreTune">LibreTune</a> in C.
+          It follows the original's behaviour and file formats, without the Rust and Tauri runtime.</p>
+      </div>
+      <div>
+        <h3>Will it work with my ECU?</h3>
+        <p>If your firmware ships an INI definition in the format rusEFI, Speeduino and MegaSquirt use, clibretune
+          builds its menus, tables and gauges from it. Try demo mode first to get comfortable.</p>
+      </div>
+      <div>
+        <h3>Is it finished?</h3>
+        <p>Not yet. The day-to-day workflow is there, and the
+          <a href="https://github.com/v3ai/clibretune#known-limitations">known limitations</a> are listed in the README.
+          Keep a backup of your tune.</p>
+      </div>
+      <div>
+        <h3>How do I build it myself?</h3>
+        <p>Any C compiler will do. Clone the repo and run <code>./build.sh app</code>, or <code>build.bat</code>
+          from a Visual Studio prompt.</p>
+      </div>
+    </div>
+  </div>
 </section>
 
 </main>
 
-<footer>
-  <div class="wrap">
-    <p>GPL-2.0-or-later. Based on the original <a href="https://github.com/RallyPat/LibreTune">LibreTune</a> project.
-      UI text in IBM Plex (SIL OFL 1.1); icons from <a href="https://lucide.dev">Lucide</a> (ISC).</p>
-    <p><a href="https://github.com/v3ai/clibretune">Source</a> &middot;
-      <a href="https://github.com/v3ai/clibretune/issues">Issues</a> &middot;
-      <a href="https://github.com/v3ai/clibretune/releases">Releases</a></p>
+<footer class="foot">
+  <div class="wrap foot-in">
+    <span class="brand">clibretune</span>
+    <nav>
+      <a href="https://github.com/v3ai/clibretune">Source</a>
+      <a href="https://github.com/v3ai/clibretune/releases">Releases</a>
+      <a href="https://github.com/v3ai/clibretune/issues">Issues</a>
+      <a href="https://github.com/v3ai/clibretune/blob/main/docs/ARCHITECTURE.md">Architecture</a>
+    </nav>
+    <p>Free software under GPL-2.0-or-later, based on <a href="https://github.com/RallyPat/LibreTune">LibreTune</a>.
+      UI set in IBM Plex (SIL OFL 1.1), icons from Lucide (ISC).</p>
   </div>
 </footer>
+
+<dialog class="lightbox" id="lightbox" aria-label="Screenshot">
+  <form method="dialog"><button class="lb-close">Close</button></form>
+  <img id="lb-img" alt="">
+  <p id="lb-cap"></p>
+</dialog>
 
 <script src="site.js"></script>
 </body>

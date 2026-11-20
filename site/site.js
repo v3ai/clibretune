@@ -1,57 +1,88 @@
 (function () {
   "use strict";
+  var REPO = "v3ai/clibretune";
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
 
-  /* screenshot tabs */
-  var shots = {
-    "dashboard": ["Dashboard", "Gauges driven by the built-in simulated ECU."],
-    "ve-table": ["VE table", "32 x 32 VE table with heat map, live-cell tracking and the full editing toolbar."],
-    "autotune": ["AutoTune", "AutoTune recommendations with per-region health scores."],
-    "datalog": ["Data log", "Live data logging; pick any of the ECU's output channels."],
-    "terminal": ["Terminal UI", "The same app in a terminal: --backend tty."]
-  };
-  var img = document.getElementById("shot");
-  var title = document.getElementById("shot-title");
-  var cap = document.getElementById("shot-caption");
-  var tabs = document.querySelectorAll(".tabs button");
-  Array.prototype.forEach.call(tabs, function (b) {
-    b.addEventListener("click", function () {
-      var k = b.getAttribute("data-shot");
-      Array.prototype.forEach.call(tabs, function (o) { o.setAttribute("aria-selected", o === b ? "true" : "false"); });
-      img.src = "img/" + k + ".webp";
-      img.alt = "LibreTune " + shots[k][0];
-      title.textContent = shots[k][0];
-      cap.textContent = shots[k][1];
-    });
-  });
-  Object.keys(shots).forEach(function (k) { new Image().src = "img/" + k + ".webp"; });
-
-  /* highlight the download for this OS and point the hero button at it */
+  /* Recommend the build for this computer. */
   var ua = navigator.userAgent || "";
   var plat = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || "";
-  var os = null, label = null;
-  if (/Win/i.test(plat) || /Windows/i.test(ua)) { os = "windows"; label = "Download for Windows"; }
-  else if (/Mac/i.test(plat) && !/iPhone|iPad/i.test(ua)) { os = "mac"; label = "Download for macOS"; }
-  else if (/aarch64|arm64/i.test(plat + ua) && /Linux/i.test(plat + ua) && !/Android/i.test(ua)) { os = "linux-arm"; label = "Download for Linux ARM64"; }
-  else if (/Linux|X11/i.test(plat + ua) && !/Android/i.test(ua)) { os = "linux"; label = "Download for Linux"; }
+  var os = null, label = "Download";
+  if (/Android|iPhone|iPad/i.test(ua)) { os = null; }
+  else if (/Win/i.test(plat)) { os = "windows"; label = "Download for Windows"; }
+  else if (/Mac/i.test(plat)) { os = "mac"; label = "Download for macOS"; }
+  else if (/Linux|X11/i.test(plat + " " + ua)) {
+    if (/aarch64|arm64/i.test(plat + " " + ua)) { os = "linux-arm"; label = "Download for Linux ARM64"; }
+    else { os = "linux"; label = "Download for Linux"; }
+  }
   if (os) {
-    var card = document.querySelector('.dl[data-os="' + os + '"]');
-    if (card) {
-      card.classList.add("match");
-      var hero = document.getElementById("hero-dl");
-      hero.href = card.href;
-      document.getElementById("hero-dl-label").textContent = label;
+    var row = $('.dl tr[data-os="' + os + '"]');
+    if (row) {
+      row.classList.add("match");
+      row.parentNode.insertBefore(row, row.parentNode.firstChild);
+      var hero = $("#hero-dl");
+      hero.textContent = label;
+      hero.href = $("a", row).href;
     }
   }
 
-  /* show the latest release tag */
+  /* Version and file sizes from the latest release. */
   if (window.fetch) {
-    fetch("https://api.github.com/repos/v3ai/clibretune/releases/latest")
+    fetch("https://api.github.com/repos/" + REPO + "/releases/latest")
       .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (j) {
-        if (!j || !j.tag_name) { return; }
-        Array.prototype.forEach.call(document.querySelectorAll("[data-version]"), function (el) { el.textContent = j.tag_name; });
-        document.getElementById("rel-link").textContent = j.tag_name + " release";
+      .then(function (rel) {
+        if (!rel) { return; }
+        if (rel.tag_name) { $("#dl-version").textContent = rel.tag_name; }
+        (rel.assets || []).forEach(function (a) {
+          var cell = $('[data-size="' + a.name + '"]');
+          if (cell) { cell.textContent = (a.size / 1e6).toFixed(1) + " MB"; }
+        });
       })
       .catch(function () {});
+  }
+
+  /* Tuning session: swap the pinned screenshot as each step reaches the middle of the screen. */
+  var steps = $$(".step");
+  var stageImgs = $$(".stage img");
+  var stageLink = $("#stage-link");
+  function activate(step) {
+    var key = step.getAttribute("data-img");
+    steps.forEach(function (s) { s.classList.toggle("active", s === step); });
+    stageImgs.forEach(function (img) { img.classList.toggle("on", img.getAttribute("data-key") === key); });
+    var inline = $(".inline", step);
+    if (stageLink && inline) {
+      stageLink.href = inline.getAttribute("href");
+      stageLink.setAttribute("data-cap", inline.getAttribute("data-cap"));
+    }
+  }
+  if (steps.length) {
+    var ticking = false;
+    var pick = function () {
+      ticking = false;
+      var mid = window.innerHeight / 2, best = steps[0];
+      steps.forEach(function (s) { if (s.getBoundingClientRect().top < mid) { best = s; } });
+      if (!best.classList.contains("active")) { activate(best); }
+    };
+    window.addEventListener("scroll", function () {
+      if (!ticking) { ticking = true; window.requestAnimationFrame(pick); }
+    }, { passive: true });
+    window.addEventListener("resize", pick);
+    pick();
+  }
+
+  /* Click a screenshot to see it full size. */
+  var box = $("#lightbox");
+  if (box && typeof box.showModal === "function") {
+    var big = $("#lb-img"), cap = $("#lb-cap");
+    $$(".zoom").forEach(function (a) {
+      a.addEventListener("click", function (ev) {
+        ev.preventDefault();
+        big.src = a.getAttribute("href");
+        big.alt = a.getAttribute("data-cap") || "";
+        cap.textContent = a.getAttribute("data-cap") || "";
+        box.showModal();
+      });
+    });
+    box.addEventListener("click", function (ev) { if (ev.target !== $(".lb-close")) { box.close(); } });
   }
 })();
