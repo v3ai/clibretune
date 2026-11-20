@@ -326,13 +326,53 @@ static lt_color blend_color(lt_color dst, lt_color src, int a)
 }
 
 /* ------------------------------------------------------------------ */
+/* pixel blending. Red and blue are blended together in the two 16-bit halves of one word
+ * (0x00RR00BB * alpha stays below 2^16 per half), with the same rounding as DIV255 per channel:
+ * the results are bit-identical to blending each channel on its own. */
+#define LANES 0x00FF00FFU
+
+/* d blended with a colour whose premultiplied lanes are srb = (c & LANES) * a,
+ * sg = G(c) * a, ia = 255 - a */
+static LT_INLINE lt_u32 blend_lanes(lt_u32 d, lt_u32 srb, lt_u32 sg, lt_u32 ia)
+{
+    lt_u32 rb = (d & LANES) * ia + srb + 0x00800080U;
+    lt_u32 gg = ((d >> 8) & 0xFFU) * ia + sg + 0x80U;
+    rb = ((rb + ((rb >> 8) & LANES)) >> 8) & LANES;
+    gg = ((gg + (gg >> 8)) >> 8) & 0xFFU;
+    return 0xFF000000U | rb | (gg << 8);
+}
+
+/* one pixel at coverage cov (0..255) of colour col (alpha ca), like a 1-pixel put_span */
+static LT_INLINE void put_px(lt_u32 *p, lt_color col, int ca, int cov)
+{
+    int a = cov < 255 ? DIV255(ca * cov) : ca;
+    lt_u32 ua;
+    if (a <= 0) { return; }
+    if (a >= 255) { *p = (col | OPAQUE_MASK) & LT_U32_MASK; return; }
+    ua = (lt_u32)a;
+    *p = blend_lanes(*p, (col & LANES) * ua, ((col >> 8) & 0xFFU) * ua, 255U - ua);
+}
+
+/* the clip intersected with the canvas: every pixel inside may be written without checks */
+static lt_rect vis_clip(const lt_gfx *g)
+{
+    return lt_rect_intersect(g->clip, lt_rect_make(0, 0, g->canvas->w, g->canvas->h));
+}
+
+/* put_px at (x, y) if inside vc (= vis_clip) */
+static LT_INLINE void put_px_at(lt_gfx *g, const lt_rect *vc, int x, int y, lt_color col, int ca,
+                                int cov)
+{
+    if (x < vc->x || y < vc->y || x >= vc->x + vc->w || y >= vc->y + vc->h) { return; }
+    put_px(g->canvas->px + (size_t)y * (size_t)g->canvas->pitch + (size_t)x, col, ca, cov);
+}
+
 /* pixel span primitive: horizontal run with constant coverage          */
 static void put_span(lt_gfx *g, int x, int y, int w, lt_color col, int cov)
 {
     lt_canvas *c = g->canvas;
-    int x0, y0, x1, y1, a, ia, sr, sg, sb, i;
-    lt_u32 *p;
-    lt_u32 d;
+    int x0, y0, x1, y1, a, i;
+    lt_u32 *p, srb, sg, ia;
 
     x0 = LT_MAX(g->clip.x, 0); y0 = LT_MAX(g->clip.y, 0);
     x1 = LT_MIN(g->clip.x + g->clip.w, c->w); y1 = LT_MIN(g->clip.y + g->clip.h, c->h);
@@ -349,17 +389,10 @@ static void put_span(lt_gfx *g, int x, int y, int w, lt_color col, int cov)
         for (i = 0; i < w; i++) { p[i] = v; }
         return;
     }
-    ia = 255 - a;
-    sr = LT_COLOR_R(col) * a; sg = LT_COLOR_G(col) * a; sb = LT_COLOR_B(col) * a;
-    for (i = 0; i < w; i++) {
-        int r, gg, b;
-        d = p[i];
-        r = sr + (int)((d >> 16) & 0xFF) * ia;
-        gg = sg + (int)((d >> 8) & 0xFF) * ia;
-        b = sb + (int)(d & 0xFF) * ia;
-        p[i] = (lt_u32)(0xFF000000UL | ((lt_u32)DIV255(r) << 16) |
-                        ((lt_u32)DIV255(gg) << 8) | (lt_u32)DIV255(b));
-    }
+    ia = 255U - (lt_u32)a;
+    srb = (col & LANES) * (lt_u32)a;
+    sg = ((col >> 8) & 0xFFU) * (lt_u32)a;
+    for (i = 0; i < w; i++) { p[i] = blend_lanes(p[i], srb, sg, ia); }
 }
 
 /* Composite a premultiplied-ARGB layer (alpha in the top byte, colour already multiplied by it)
@@ -389,19 +422,20 @@ void lt_gfx_blit_premul(lt_gfx *g, int x, int y, const lt_canvas *src)
         lt_u32 *dp = c->px + (size_t)yy * (size_t)c->pitch + (size_t)r.x;
         for (xx = 0; xx < r.w; xx++) {
             lt_u32 s = sp[xx];
-            lt_u32 a = s >> 24;
-            if (a == 255) {
-                dp[xx] = s | 0xFF000000UL;
-            } else if (a != 0) {
-                lt_u32 d = dp[xx];
-                int ia = 255 - (int)a;
-                int rr = (int)((s >> 16) & 0xFF) + DIV255((int)((d >> 16) & 0xFF) * ia);
-                int gg = (int)((s >> 8) & 0xFF) + DIV255((int)((d >> 8) & 0xFF) * ia);
-                int bb = (int)(s & 0xFF) + DIV255((int)(d & 0xFF) * ia);
-                if (rr > 255) { rr = 255; }
-                if (gg > 255) { gg = 255; }
-                if (bb > 255) { bb = 255; }
-                dp[xx] = (lt_u32)(0xFF000000UL | ((lt_u32)rr << 16) | ((lt_u32)gg << 8) | (lt_u32)bb);
+            lt_u32 a = (s >> 24) & 0xFFU;
+            if (a == 255U) {
+                dp[xx] = (s | 0xFF000000UL) & LT_U32_MASK;
+            } else if (a != 0U) {
+                /* source + destination * (255 - a) / 255 per channel, saturated at 255 */
+                lt_u32 d = dp[xx], ia = 255U - a, rb, gg, ov;
+                rb = (d & LANES) * ia + 0x00800080U;
+                gg = ((d >> 8) & 0xFFU) * ia + 0x80U;
+                rb = (((rb + ((rb >> 8) & LANES)) >> 8) & LANES) + (s & LANES);
+                gg = (((gg + (gg >> 8)) >> 8) & 0xFFU) + ((s >> 8) & 0xFFU);
+                ov = rb & 0x01000100U;
+                rb = (rb | (ov - (ov >> 8))) & LANES;
+                if (gg > 255U) { gg = 255U; }
+                dp[xx] = 0xFF000000U | rb | (gg << 8);
             }
         }
     }
@@ -666,7 +700,8 @@ void lt_gfx_rect(lt_gfx *g, lt_rect r, lt_color c)
 
 void lt_gfx_fill_round_rect(lt_gfx *g, lt_rect r, int radius, lt_color c)
 {
-    int y, i, rad, x0, rx;
+    int y, i, rad, x0, rx, ca;
+    lt_rect vc;
     double rr;
     if (r.w <= 0 || r.h <= 0) { return; }
     rad = radius;
@@ -688,6 +723,8 @@ void lt_gfx_fill_round_rect(lt_gfx *g, lt_rect r, int radius, lt_color c)
     prep(g);
     r.x += g->ox; r.y += g->oy;
     rr = (double)rad;
+    vc = vis_clip(g);
+    ca = LT_COLOR_A(c);
     for (y = LT_MAX(0, g->clip.y - r.y); y < r.h && r.y + y < g->clip.y + g->clip.h; y++) {
         double dy = -1.0;
         if (y < rad) {
@@ -701,18 +738,178 @@ void lt_gfx_fill_round_rect(lt_gfx *g, lt_rect r, int radius, lt_color c)
         }
         x0 = r.x;
         rx = r.x + r.w;
-        put_span(g, x0 + rad, r.y + y, r.w - 2 * rad, c, 255);
-        for (i = 0; i < rad; i++) {
-            double dx = rr - (i + 0.5);
-            double d = sqrt(dx * dx + dy * dy);
-            int cv = cov255(clamp01(rr + 0.5 - d));
-            if (cv > 0) {
-                put_span(g, x0 + i, r.y + y, 1, c, cv);
-                put_span(g, rx - 1 - i, r.y + y, 1, c, cv);
+        {
+            /* coverage grows towards the middle: the corner pixels at full coverage join the
+             * middle span, the anti-aliased ones are blended one by one */
+            int f = rad, py = r.y + y, inrow = py >= vc.y && py < vc.y + vc.h;
+            lt_u32 *row = inrow ? g->canvas->px + (size_t)py * (size_t)g->canvas->pitch : NULL;
+            for (i = 0; i < rad; i++) {
+                double dx = rr - (i + 0.5);
+                double d = sqrt(dx * dx + dy * dy);
+                int cv = cov255(clamp01(rr + 0.5 - d));
+                if (cv >= 255) { f = i; break; }
+                if (cv > 0 && row != NULL) {
+                    int xa = x0 + i, xb = rx - 1 - i;
+                    if (xa >= vc.x && xa < vc.x + vc.w) { put_px(row + xa, c, ca, cv); }
+                    if (xb >= vc.x && xb < vc.x + vc.w) { put_px(row + xb, c, ca, cv); }
+                }
             }
+            put_span(g, x0 + f, py, r.w - 2 * f, c, 255);
         }
     }
     mark_clipped(g, r.x, r.y, r.w, r.h);
+}
+
+/* ------------------------------------------------------------------ */
+/* soft shadow: `spread` nested translucent black round rects          */
+#define SHADOW_MAX 256
+
+typedef struct shadow_ring {
+    lt_rect q;          /* absolute */
+    int rad, plain, a;
+    double rr;
+} shadow_ring;
+
+/* ring i of lt_gfx_shadow (i = spread..1): rectangle (relative), radius and alpha */
+static lt_rect shadow_ring_rect(lt_rect r, int i, int n, int radius, int alpha, int *rad, int *a)
+{
+    int al = alpha * (n - i + 1) * (n - i + 1) / (n * n * 3 / 2 + 1);
+    if (al < 1) { al = 1; }
+    *a = al & 0xFF;
+    *rad = radius + i;
+    return lt_rect_make(r.x - i, r.y - i + n / 2, r.w + 2 * i, r.h + 2 * i);
+}
+
+/* coverage (0..255) of ring k at absolute pixel x in a row: lo..hi is the fully covered part,
+ * dy the row's corner distance (< 0: no corner) */
+static int ring_cov(const shadow_ring *k, int x, int lo, int hi, double dy)
+{
+    int j;
+    double dx;
+    if (x >= lo && x < hi) { return 255; }
+    if (x < k->q.x || x >= k->q.x + k->q.w || dy < 0.0 || k->plain) { return 0; }
+    j = x < k->q.x + k->rad ? x - k->q.x : k->q.x + k->q.w - 1 - x;
+    dx = k->rr - (j + 0.5);
+    return cov255(clamp01(k->rr + 0.5 - sqrt(dx * dx + dy * dy)));
+}
+
+static lt_u32 shadow_px(lt_u32 d, int a)
+{
+    int ia;
+    if (a <= 0) { return d; }
+    if (a >= 255) { return 0xFF000000UL; }
+    ia = 255 - a;
+    return (lt_u32)(0xFF000000UL | ((lt_u32)DIV255((int)((d >> 16) & 0xFF) * ia) << 16) |
+                    ((lt_u32)DIV255((int)((d >> 8) & 0xFF) * ia) << 8) |
+                    (lt_u32)DIV255((int)(d & 0xFF) * ia));
+}
+
+/* Exactly the pixels of: for i = spread..1, lt_gfx_fill_round_rect(ring i, radius + i,
+ * black with the ring's alpha) (lt_ui_draw_shadow's rings). The rings are concentric, so in a row
+ * the covered ones are a prefix of that order and, where all of them cover fully, their combined
+ * effect is one per-channel table; only the anti-aliased edge band is blended ring by ring. */
+void lt_gfx_shadow(lt_gfx *g, lt_rect r, int radius, int spread, int alpha)
+{
+    shadow_ring *rg;
+    lt_u8 lut[256];
+    int n = spread, i, k, y, ylo, yhi, cx0, cx1, lut_m = -1, rad, a;
+    double *dys;
+    int *lo, *hi;
+    lt_canvas *c = g->canvas;
+    if (n <= 0 || alpha <= 0) { return; }
+    if (n > SHADOW_MAX || g->cells != NULL || c == NULL) {
+        for (i = n; i >= 1; i--) {
+            lt_rect q = shadow_ring_rect(r, i, n, radius, alpha, &rad, &a);
+            lt_gfx_fill_round_rect(g, q, rad, LT_RGBA(0, 0, 0, a));
+        }
+        return;
+    }
+    if (g->rec != NULL) {
+        lt_dcmd *kc = lt_rec_cmd(g, LT_OP_SHADOW, lt_rect_make(r.x - n + g->ox, r.y - n + n / 2 + g->oy,
+                                                              r.w + 2 * n, r.h + 2 * n));
+        if (kc != NULL) {
+            kc->i[0] = r.x; kc->i[1] = r.y; kc->i[2] = r.w; kc->i[3] = r.h;
+            kc->d[0] = (double)radius; kc->d[1] = (double)spread; kc->d[2] = (double)alpha;
+            lt_rec_done(g, kc);
+        }
+        return;
+    }
+    prep(g);
+    rg = (shadow_ring *)lt_malloc((size_t)n * sizeof(shadow_ring));
+    dys = (double *)lt_malloc((size_t)n * sizeof(double));
+    lo = (int *)lt_malloc((size_t)n * 2 * sizeof(int));
+    hi = lo + n;
+    for (k = 0; k < n; k++) {
+        shadow_ring *s = &rg[k];
+        s->q = shadow_ring_rect(r, n - k, n, radius, alpha, &s->rad, &s->a);
+        s->q.x += g->ox; s->q.y += g->oy;
+        if (s->rad > s->q.w / 2) { s->rad = s->q.w / 2; }
+        if (s->rad > s->q.h / 2) { s->rad = s->q.h / 2; }
+        s->plain = s->rad <= 1;
+        s->rr = (double)s->rad;
+        if (s->q.w <= 0 || s->q.h <= 0) { s->q.w = s->q.h = 0; }
+    }
+    cx0 = LT_MAX(g->clip.x, 0); cx1 = LT_MIN(g->clip.x + g->clip.w, c->w);
+    ylo = LT_MAX(LT_MAX(g->clip.y, 0), rg[0].q.y);
+    yhi = LT_MIN(LT_MIN(g->clip.y + g->clip.h, c->h), rg[0].q.y + rg[0].q.h);
+    for (y = ylo; y < yhi && cx0 < cx1; y++) {
+        int m = 0, ilo = -0x7FFFFFFF, ihi = 0x7FFFFFFF, ux0 = 0x7FFFFFFF, ux1 = -0x7FFFFFFF, x;
+        lt_u32 *p = c->px + (size_t)y * (size_t)c->pitch;
+        /* rings covering this row: a prefix of the drawing order */
+        for (k = 0; k < n; k++) {
+            const shadow_ring *s = &rg[k];
+            int yr = y - s->q.y;
+            double dy = -1.0;
+            if (s->q.w <= 0 || yr < 0 || yr >= s->q.h) { break; }
+            if (!s->plain) {
+                if (yr < s->rad) { dy = s->rr - (yr + 0.5); }
+                else if (yr >= s->q.h - s->rad) { dy = (yr + 0.5) - (s->q.h - s->rr); }
+            }
+            dys[k] = dy;
+            if (s->plain || dy < 0.0) { lo[k] = s->q.x; hi[k] = s->q.x + s->q.w; }
+            else { lo[k] = s->q.x + s->rad; hi[k] = s->q.x + s->q.w - s->rad; }
+            if (lo[k] > ilo) { ilo = lo[k]; }
+            if (hi[k] < ihi) { ihi = hi[k]; }
+            if (s->q.x < ux0) { ux0 = s->q.x; }
+            if (s->q.x + s->q.w > ux1) { ux1 = s->q.x + s->q.w; }
+            m++;
+        }
+        if (m == 0) { continue; }
+        if (m != lut_m) {
+            int v;
+            for (v = 0; v < 256; v++) {
+                int t = v;
+                for (k = 0; k < m; k++) {
+                    t = rg[k].a >= 255 ? 0 : DIV255(t * (255 - rg[k].a));
+                }
+                lut[v] = (lt_u8)t;
+            }
+            lut_m = m;
+        }
+        if (ux0 < cx0) { ux0 = cx0; }
+        if (ux1 > cx1) { ux1 = cx1; }
+        if (ihi < ilo) { ihi = ilo; }
+        for (x = ux0; x < ux1; x++) {
+            lt_u32 d = p[x];
+            if (x >= ilo && x < ihi) {
+                int xe = LT_MIN(ihi, ux1);
+                for (; x < xe; x++) {
+                    d = p[x];
+                    p[x] = (lt_u32)(0xFF000000UL | ((lt_u32)lut[(d >> 16) & 0xFF] << 16) |
+                                    ((lt_u32)lut[(d >> 8) & 0xFF] << 8) | (lt_u32)lut[d & 0xFF]);
+                }
+                x--;
+                continue;
+            }
+            for (k = 0; k < m; k++) {
+                int cv = ring_cov(&rg[k], x, lo[k], hi[k], dys[k]);
+                if (cv > 0) { d = shadow_px(d, cv < 255 ? DIV255(rg[k].a * cv) : rg[k].a); }
+            }
+            p[x] = d;
+        }
+    }
+    lt_free(lo); lt_free(dys); lt_free(rg);
+    mark_clipped(g, r.x - n + g->ox, r.y - n + n / 2 + g->oy, r.w + 2 * n, r.h + 2 * n);
 }
 
 void lt_gfx_fill_rect_vgrad(lt_gfx *g, lt_rect r, lt_color top, lt_color bottom)
@@ -784,7 +981,8 @@ void lt_gfx_line(lt_gfx *g, double x0, double y0, double x1, double y1, double w
                  lt_color c)
 {
     double dx, dy, len2, len, rad, rr, wcap;
-    int py, ya, yb;
+    int py, ya, yb, ca;
+    lt_rect vc;
     if (g->rec != NULL) {
         double ax = x0 + g->ox, bx = x1 + g->ox, ay = y0 + g->oy, by = y1 + g->oy;
         double r2 = (width < 0.0 ? 0.0 : width) / 2.0 + 0.5;
@@ -818,6 +1016,8 @@ void lt_gfx_line(lt_gfx *g, double x0, double y0, double x1, double y1, double w
     rr = rad + 0.5;
     if (g->canvas == NULL) { return; }
     prep(g);
+    vc = vis_clip(g);
+    ca = LT_COLOR_A(c);
     wcap = width < 1.0 ? width : 1.0;
     ya = ifloor((y0 < y1 ? y0 : y1) - rr);
     yb = iceil((y0 > y1 ? y0 : y1) + rr);
@@ -849,7 +1049,7 @@ void lt_gfx_line(lt_gfx *g, double x0, double y0, double x1, double y1, double w
             d = sqrt(qx * qx + qy * qy);
             cv = clamp01(rr - d);
             if (cv > wcap) { cv = wcap; }
-            if (cv > 0.0) { put_span(g, px, py, 1, c, cov255(cv)); }
+            if (cv > 0.0) { put_px_at(g, &vc, px, py, c, ca, cov255(cv)); }
         }
     }
     mark_clipped(g, ifloor(LT_MIN(x0, x1) - rr), ifloor(LT_MIN(y0, y1) - rr),
@@ -871,8 +1071,9 @@ typedef struct arc_ctx {
  * them. Fully covered runs are filled as one span. */
 static void arc_draw(lt_gfx *g, const arc_ctx *a, lt_color c)
 {
-    int py, ya, yb, convex;
+    int py, ya, yb, convex, ca = LT_COLOR_A(c);
     double ro = a->rout + 1.0;
+    lt_rect vc;
     double u0x = 0.0, u0y = 0.0, u1x = 0.0, u1y = 0.0;
     double rof = a->rout - 0.5, rif = a->rin + 0.5;
     if (!a->full) {
@@ -882,6 +1083,7 @@ static void arc_draw(lt_gfx *g, const arc_ctx *a, lt_color c)
     convex = a->sweep <= LT_PI;
     if (g->canvas == NULL) { return; }
     prep(g);
+    vc = vis_clip(g);
     ya = ifloor(a->cy - ro); yb = iceil(a->cy + ro);
     if (ya < a->by0) { ya = a->by0; }
     if (yb > a->by1 + 1) { yb = a->by1 + 1; }
@@ -891,7 +1093,9 @@ static void arc_draw(lt_gfx *g, const arc_ctx *a, lt_color c)
         double dy = py + 0.5 - a->cy, o2 = ro * ro - dy * dy, xo, xs = -1.0, xi = 0.0, xh = -1.0;
         double c0, c1, cb0 = 0.0, cb1 = 0.0;
         int xl, xr, px, sg, nseg, sx0[2], sx1[2];
-        if (o2 < 0.0) { continue; }
+        lt_u32 *row;
+        if (o2 < 0.0 || py < vc.y || py >= vc.y + vc.h) { continue; }
+        row = g->canvas->px + (size_t)py * (size_t)g->canvas->pitch;
         xo = sqrt(o2);
         xl = ifloor(a->cx - xo); xr = iceil(a->cx + xo);
         if (rof > 0.0 && rof * rof > dy * dy) { xs = sqrt(rof * rof - dy * dy); }
@@ -939,6 +1143,9 @@ static void arc_draw(lt_gfx *g, const arc_ctx *a, lt_color c)
         }
         for (sg = 0; sg < nseg; sg++) {
         int run = -1;
+        /* pixels outside the visible clip would be dropped by put_span: skip them */
+        if (sx0[sg] < vc.x) { sx0[sg] = vc.x; }
+        if (sx1[sg] > vc.x + vc.w - 1) { sx1[sg] = vc.x + vc.w - 1; }
         for (px = sx0[sg]; px <= sx1[sg]; px++) {
             double dx = px + 0.5 - a->cx, adx = fabs(dx), cv, ac;
             if (adx < xh) {                 /* inside the hole: nothing to draw */
@@ -968,7 +1175,7 @@ static void arc_draw(lt_gfx *g, const arc_ctx *a, lt_color c)
                 continue;
             }
             if (run >= 0) { put_span(g, run, py, px - run, c, 255); run = -1; }
-            if (cv > 0.0) { put_span(g, px, py, 1, c, cov255(cv)); }
+            if (cv > 0.0) { put_px(row + px, c, ca, cov255(cv)); }
         }
         if (run >= 0) { put_span(g, run, py, sx1[sg] + 1 - run, c, 255); }
         }
@@ -1165,7 +1372,8 @@ typedef struct edge { double x0, y0, y1, dxdy; } edge;
 
 void lt_gfx_fill_poly(lt_gfx *g, const double *xy, int n, lt_color c)
 {
-    int i, ne = 0, py, ya, yb, cx0, cx1, width;
+    int i, ne = 0, py, ya, yb, cx0, cx1, width, ca;
+    lt_rect vc;
     double miny = 1e30, maxy = -1e30, minx = 1e30, maxx = -1e30;
     edge *edges;
     double *xs, *acc;
@@ -1206,6 +1414,8 @@ void lt_gfx_fill_poly(lt_gfx *g, const double *xy, int n, lt_color c)
     }
     if (g->canvas == NULL) { return; }
     prep(g);
+    vc = vis_clip(g);
+    ca = LT_COLOR_A(c);
     edges = (edge *)lt_malloc((size_t)n * sizeof(edge));
     xs = (double *)lt_malloc((size_t)n * sizeof(double));
     for (i = 0; i < n; i++) {
@@ -1277,7 +1487,7 @@ void lt_gfx_fill_poly(lt_gfx *g, const double *xy, int n, lt_color c)
                 put_span(g, cx0 + s, py, x - s, c, 255);
                 continue;
             }
-            if (cv > 0) { put_span(g, cx0 + x, py, 1, c, cv); }
+            if (cv > 0) { put_px_at(g, &vc, cx0 + x, py, c, ca, cv); }
             acc[x] = 0.0;
             x++;
         }
@@ -1341,7 +1551,7 @@ void lt_gfx_blit_mask(lt_gfx *g, int x, int y, const lt_u8 *a, int w, int h, int
                       lt_color col, const lt_u8 *lut)
 {
     lt_canvas *c = g->canvas;
-    int x0, y0, x1, y1, j, i, ca, sr, sg, sb;
+    int x0, y0, x1, y1, j, i, ca;
     if (c == NULL || a == NULL || w <= 0 || h <= 0) { return; }
     if (g_measure != NULL) {
         lt_rect_union_into(g_measure, lt_rect_make(x + g->ox, y + g->oy, w, h));
@@ -1350,9 +1560,8 @@ void lt_gfx_blit_mask(lt_gfx *g, int x, int y, const lt_u8 *a, int w, int h, int
     if (g->rec != NULL) {
         lt_dcmd *k = rec_simple(g, LT_OP_MASK, lt_rect_make(x + g->ox, y + g->oy, w, h), col);
         if (k != NULL) {
-            int j;
             k->i[0] = x; k->i[1] = y; k->i[2] = w; k->i[3] = h;
-            k->off = g->rec != NULL ? lt_rec_bytes(g, a, 0) : 0;
+            k->off = lt_rec_bytes(g, a, 0);
             for (j = 0; j < h; j++) { (void)lt_rec_bytes(g, a + (size_t)j * (size_t)pitch, (long)w); }
             k->len = (long)w * (long)h;
             if (lut != NULL) { k->off2 = lt_rec_bytes(g, lut, 256); }
@@ -1369,27 +1578,21 @@ void lt_gfx_blit_mask(lt_gfx *g, int x, int y, const lt_u8 *a, int w, int h, int
     if (x1 <= x0 || y1 <= y0) { return; }
     ca = LT_COLOR_A(col);
     if (ca <= 0) { return; }
-    sr = LT_COLOR_R(col); sg = LT_COLOR_G(col); sb = LT_COLOR_B(col);
-    for (j = y0; j < y1; j++) {
-        const lt_u8 *src = a + (size_t)(j - y) * (size_t)pitch + (size_t)(x0 - x);
-        lt_u32 *dst = c->px + (size_t)j * (size_t)c->pitch + x0;
-        for (i = 0; i < x1 - x0; i++) {
-            int cv = src[i], al, ia, r, gg, b;
-            lt_u32 d;
-            if (cv == 0) { continue; }
-            if (lut != NULL) { cv = lut[cv]; }
-            al = ca >= 255 ? cv : DIV255(ca * cv);
-            if (al <= 0) { continue; }
-            if (al >= 255) {
-                dst[i] = LT_RGB(sr, sg, sb);
-                continue;
+    {
+        lt_u32 crb = col & LANES, cg = (col >> 8) & 0xFFU, opaque = (col | OPAQUE_MASK) & LT_U32_MASK;
+        for (j = y0; j < y1; j++) {
+            const lt_u8 *src = a + (size_t)(j - y) * (size_t)pitch + (size_t)(x0 - x);
+            lt_u32 *dst = c->px + (size_t)j * (size_t)c->pitch + x0;
+            for (i = 0; i < x1 - x0; i++) {
+                int cv = src[i];
+                lt_u32 al;
+                if (cv == 0) { continue; }
+                if (lut != NULL) { cv = lut[cv]; }
+                al = (lt_u32)(ca >= 255 ? cv : DIV255(ca * cv));
+                if (al == 0U) { continue; }
+                if (al >= 255U) { dst[i] = opaque; continue; }
+                dst[i] = blend_lanes(dst[i], crb * al, cg * al, 255U - al);
             }
-            ia = 255 - al;
-            d = dst[i];
-            r = sr * al + (int)((d >> 16) & 0xFF) * ia;
-            gg = sg * al + (int)((d >> 8) & 0xFF) * ia;
-            b = sb * al + (int)(d & 0xFF) * ia;
-            dst[i] = LT_RGB(DIV255(r), DIV255(gg), DIV255(b));
         }
     }
     mark(g, x0, y0, x1 - x0, y1 - y0);
@@ -1608,6 +1811,7 @@ void lt_gfx_replay(lt_gfx *g, const struct lt_rec *r, const lt_dcmd *k, lt_rect 
         lt_gfx_text_rot(g, k->f, k->d[0], k->d[1], k->d[2], b, k->d[3], k->i[0], k->i[1], k->c);
         break;
     case LT_OP_ICON: lt_gfx_icon(g, k->i[0], k->d[0], k->d[1], k->d[2], k->d[3], k->c); break;
+    case LT_OP_SHADOW: lt_gfx_shadow(g, ri, (int)k->d[0], (int)k->d[1], (int)k->d[2]); break;
     default: break;
     }
     g->clip = sclip;

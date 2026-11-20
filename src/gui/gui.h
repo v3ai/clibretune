@@ -165,6 +165,10 @@ void lt_gfx_blit_premul(lt_gfx *g, int x, int y, const lt_canvas *src);
 void lt_gfx_fill_rect(lt_gfx *g, lt_rect r, lt_color c);
 void lt_gfx_rect(lt_gfx *g, lt_rect r, lt_color c);           /* 1px outline */
 void lt_gfx_fill_round_rect(lt_gfx *g, lt_rect r, int radius, lt_color c);
+/* soft drop shadow under r: for i = spread..1 a black round rect r grown by i (shifted down by
+ * spread/2), radius radius+i, alpha alpha*(spread-i+1)^2/(1.5*spread^2+1) (at least 1) - drawn
+ * in one pass with exactly the pixels of those calls */
+void lt_gfx_shadow(lt_gfx *g, lt_rect r, int radius, int spread, int alpha);
 void lt_gfx_hline(lt_gfx *g, int x0, int x1, int y, lt_color c);
 void lt_gfx_vline(lt_gfx *g, int x, int y0, int y1, lt_color c);
 /* anti-aliased line, width in pixels (double) */

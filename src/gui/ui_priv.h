@@ -26,7 +26,7 @@ enum { UL_MAIN = 0, UL_WINDOW, UL_POPUP, UL_MODAL, UL_TIP };
 /* draw command types */
 enum { UC_CLIP = 0, UC_FILL, UC_RECT, UC_ROUND, UC_HLINE, UC_VLINE, UC_LINE, UC_TEXT,
        UC_VTEXT, UC_CFILL, UC_CIRCLE, UC_ARC, UC_POLY, UC_VGRAD, UC_BLIT, UC_CUSTOM,
-       UC_ICON, UC_FRRECT };
+       UC_ICON, UC_FRRECT, UC_SHADOW };
 
 typedef struct ui_cmd {
     int type;
