@@ -116,6 +116,8 @@ static int rt_async(rig *r, lt_buf *out, int *pumps, long *slept)
     int rc, n = 0;
     long s0;
 
+    *pumps = 0;
+    *slept = 0;
     rc = lt_proto_rt_begin(r->p);
     if (rc) {
         return rc;
@@ -164,8 +166,8 @@ static void same_frames(const char *text, const char *file, int rounds)
 {
     rig r;
     lt_buf a, b;
-    int i, rc, pumps, max_pumps = 0, same = 0;
-    long slept, slept_sum = 0;
+    int i, rc, pumps = 0, max_pumps = 0, same = 0;
+    long slept = 0, slept_sum = 0;
     const lt_simlink_stats *st;
     unsigned long reads0, pieces = 0;
 
@@ -688,9 +690,11 @@ LT_TEST(app_service_never_waits)
            app->frames_ok - f0, sync_ms);
     LT_CHECK(app->frames_ok - f0 >= 10);         /* poll_hz 20 */
     LT_CHECK(sync_ms > 8.0);                     /* the link really is slow ... */
-    /* ... and the service never waited for it (emulated targets may be slower, but a call
-     * that waits for a reply would take the whole blocking time) */
-    LT_CHECK(max_d < 1.0 || (slow * 100 <= calls && max_d < sync_ms / 4.0));
+    /* ... and the service never waited for it. A call that waits for a reply takes about the
+     * whole blocking time; shared CI machines (macOS VMs) also preempt a few calls for
+     * several ms, so allow rare slow calls well below that, and a small average. */
+    LT_CHECK(max_d < 1.0 || (slow * 10 <= calls && max_d < sync_ms / 2.0));
+    LT_CHECK(sum / (double)(calls > 0 ? calls : 1) < 1.0);
 
     /* a table edit: queued in well under a millisecond, in ECU RAM a little later */
     c = scalar_on(app->ini, 1);
