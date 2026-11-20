@@ -8,6 +8,54 @@
 
 #define ADAPT_MAX 64
 
+/* ---- asynchronous exchange state (see "asynchronous requests" in proto.h) ---- */
+#define AX_IDLE  0
+#define AX_WAIT  1      /* request sent, collecting the reply */
+#define AX_DRAIN 2      /* a framed reply failed part way: discard its tail, then flush input */
+#define AXK_RT    1
+#define AXK_WRITE 2
+#define AXK_RAW   3
+
+typedef struct ax_state {
+    int     phase, kind;
+    lt_bool framed;          /* msEnvelope reply (else legacy raw) */
+    lt_bool allow_empty;     /* legacy: silence until the timeout is an empty reply, no error */
+    size_t  expected;        /* legacy: complete at this many bytes (0 = by silence) */
+    size_t  need;            /* framed: 2 until the length is known, then 2+N+4 */
+    size_t  pl_off, pl_len;  /* the decoded payload inside rx */
+    size_t  want;            /* realtime: ochBlockSize (status byte strip) */
+    lt_bool burst;
+    int     timeout_ms, quiet_ms, pace_ms;
+    double  t0, deadline, last_rx;
+    size_t  drain_left;
+    double  drain_until, drain_last;
+    lt_buf  rx;
+} ax_state;
+
+typedef struct rt_result {   /* a finished request waiting for its pump */
+    int ready, rc;
+    unsigned long seq;
+    lt_proto_err err;
+    lt_buf data;
+} rt_result;
+
+typedef struct wr_chunk {
+    int    page;
+    size_t off, len;
+    int    done;
+} wr_chunk;
+
+typedef struct wr_job {      /* the asynchronous RAM writer */
+    lt_ecu_mem *mem;
+    wr_chunk   *ch;
+    size_t      n, cap, next;    /* chunks [0,next) were sent */
+    int         inflight;        /* chunk next-1 waits for its acknowledgement */
+    size_t      cmd_len;         /* its frame length (pacing) */
+    int         burn_page;       /* >= 0: auto-burn sent, settling until next_tx_at */
+    int         result;          /* 0 none, 1 all written, <0 failed (collected by write_pump) */
+    lt_proto_err err;
+} wr_job;
+
 struct lt_proto {
     lt_proto_io    io;
     const lt_ini  *ini;
@@ -31,6 +79,13 @@ struct lt_proto {
     int            n_samples, head;
     double         sum_us;
     double         cur_timeout;
+    /* asynchronous requests */
+    ax_state       ax;
+    rt_result      rtr, rawr;       /* realtime / raw command results */
+    wr_job         job;
+    double         next_tx_at;      /* pacing: nothing is sent before this time */
+    int            want_kind;       /* a request of this kind was refused: it goes next ... */
+    double         want_at;         /* ... for 100 ms */
 };
 
 /* ---------------------------------------------------------------------- */
@@ -311,11 +366,25 @@ lt_proto *lt_proto_new(const lt_proto_io *io, const lt_ini *ini, const lt_proto_
     }
     p->order = p->declared_order;
     p->cur_timeout = 375.0;
+    lt_buf_init(&p->ax.rx);
+    lt_buf_init(&p->rtr.data);
+    lt_buf_init(&p->rawr.data);
+    p->job.burn_page = -1;
     return p;
 }
 
+static void async_abort(lt_proto *p);
+
 void lt_proto_free(lt_proto *p)
 {
+    if (!p) {
+        return;
+    }
+    async_abort(p);
+    lt_buf_free(&p->ax.rx);
+    lt_buf_free(&p->rtr.data);
+    lt_buf_free(&p->rawr.data);
+    lt_free(p->job.ch);
     lt_free(p);
 }
 
@@ -324,6 +393,7 @@ void lt_proto_close(lt_proto *p)
     if (!p) {
         return;
     }
+    async_abort(p);
     p->cancel = 1;
     p->state = LT_CONN_DISCONNECTED;
     if (p->io.close) {
@@ -390,7 +460,25 @@ const lt_proto_stats *lt_proto_stats_get(const lt_proto *p)
 /* ---------------------------------------------------------------------- */
 /* low level I/O                                                           */
 /* ---------------------------------------------------------------------- */
-static void clear_rx(lt_proto *p)
+/* Blocking paths call this before they touch the wire: whatever asynchronous work is in
+ * flight is completed first, so two exchanges can never share the byte stream. */
+static void settle(lt_proto *p);
+
+static lt_bool async_busy(const lt_proto *p)
+{
+    return (p->ax.phase != AX_IDLE || p->job.n > 0 || p->job.burn_page >= 0 ||
+            p->next_tx_at > 0.0) ? LT_TRUE : LT_FALSE;
+}
+
+static void io_settle(lt_proto *p)
+{
+    if (async_busy(p)) {
+        settle(p);
+    }
+}
+
+/* Unguarded primitives: the asynchronous machinery itself (and blocking paths that settled). */
+static void rx_clear_now(lt_proto *p)
 {
     lt_u8 tmp[256];
     int guard = 0, r;
@@ -407,7 +495,7 @@ static void clear_rx(lt_proto *p)
     }
 }
 
-static int write_all(lt_proto *p, const void *data, size_t n)
+static int raw_write(lt_proto *p, const void *data, size_t n)
 {
     if (n == 0) {
         return LT_OK;
@@ -419,9 +507,30 @@ static int write_all(lt_proto *p, const void *data, size_t n)
     return LT_OK;
 }
 
+static void clear_rx(lt_proto *p)
+{
+    io_settle(p);
+    rx_clear_now(p);
+}
+
+static int write_all(lt_proto *p, const void *data, size_t n)
+{
+    io_settle(p);
+    return raw_write(p, data, n);
+}
+
+/* What write_and_wait sleeps after sending n bytes (spec 6.2). */
+static int pace_ms(const lt_proto *p, size_t n)
+{
+    int wait, tx = (int)(((unsigned long)n * 10UL * 1000UL) / (unsigned long)baud_of(p));
+
+    wait = tx + 5;
+    return wait < min_wait_ms(p) ? min_wait_ms(p) : wait;
+}
+
 static int write_and_wait(lt_proto *p, const void *data, size_t n)
 {
-    int rc, wait, tx;
+    int rc;
 
     rc = write_all(p, data, n);
     if (rc) {
@@ -430,12 +539,7 @@ static int write_and_wait(lt_proto *p, const void *data, size_t n)
     if (p->io.flush) {
         p->io.flush(p->io.ud);
     }
-    tx = (int)(((unsigned long)n * 10UL * 1000UL) / (unsigned long)baud_of(p));
-    wait = tx + 5;
-    if (wait < min_wait_ms(p)) {
-        wait = min_wait_ms(p);
-    }
-    sleep_ms(p, wait);
+    sleep_ms(p, pace_ms(p, n));
     return LT_OK;
 }
 
@@ -446,6 +550,7 @@ static int rd_exact(lt_proto *p, lt_u8 *buf, size_t n, double deadline)
     double t, rem;
     int r, slice;
 
+    io_settle(p);
     while (have < n) {
         if (p->cancel) {
             return cancelled(p);
@@ -479,9 +584,11 @@ static int rd_exact(lt_proto *p, lt_u8 *buf, size_t n, double deadline)
 static void drain_n(lt_proto *p, size_t n)
 {
     lt_u8 tmp[256];
-    double deadline = now_ms(p) + 500.0;
+    double deadline;
     int r;
 
+    io_settle(p);
+    deadline = now_ms(p) + 500.0;
     while (n > 0 && now_ms(p) < deadline) {
         r = p->io.read(p->io.ud, tmp, (int)(n > sizeof(tmp) ? sizeof(tmp) : n), 10);
         if (r <= 0) {
@@ -862,6 +969,7 @@ int lt_proto_connect(lt_proto *p)
     if (p->state == LT_CONN_CONNECTED) {
         return fail(p, LT_EBUSY, LT_PE_ALREADY_CONNECTED, "already connected");
     }
+    async_abort(p);
     p->cancel = 0;
     p->state = LT_CONN_CONNECTING;
     p->sig[0] = '\0';
@@ -884,6 +992,7 @@ int lt_proto_connect(lt_proto *p)
 
 void lt_proto_disconnect(lt_proto *p)
 {
+    async_abort(p);
     p->cancel = 1;
     p->state = LT_CONN_DISCONNECTED;
     p->sig[0] = '\0';
@@ -1431,17 +1540,86 @@ static int burn_check(lt_proto *p, int page)
     return LT_OK;
 }
 
-int lt_proto_burn(lt_proto *p, int page, lt_ecu_mem *mem)
+/* Send the burn command of one page without waiting for anything. 0 sent (*settle_ms: how
+ * long the ECU needs before burn_finish), 1 the page has no burn command, <0 refused/failed. */
+static int burn_send(lt_proto *p, int page, int *settle_ms)
 {
-    lt_buf cmd;
-    int rc, list[256], i, np, delay;
+    lt_buf cmd, f;
+    int rc, i, delay;
     char pages_txt[128];
     size_t used;
+    const char *fm;
+    size_t fn;
+
+    if (any_set(p->failed)) {
+        pages_txt[0] = '\0';
+        used = 0;
+        for (i = 0; i < 256; i++) {
+            if (p->failed[i] && used < 100) {
+                lt_snprintf(pages_txt + used, sizeof(pages_txt) - used, "%s%d",
+                            used ? ", " : "", i);
+                used = strlen(pages_txt);
+            }
+        }
+        return fail(p, LT_EBUSY, LT_PE_PROTOCOL,
+                    "refusing to burn: page(s) %s failed to write or verify; write the tune "
+                    "again or reconnect first", pages_txt);
+    }
+    get_cmd(LIST(p, burn_commands), page, "B%2i", &fm, &fn);
+    if (fn == 0) {
+        return 1;   /* not burnable */
+    }
+    lt_buf_init(&cmd);
+    lt_cmd_build(&cmd, fm, fn, page_id(p, page), 0, 0, NULL, 0, cmd_le(p));
+    if (p->modern) {
+        lt_buf_init(&f);
+        lt_env_encode(p->order, (const lt_u8 *)cmd.data, cmd.len, &f);
+        p->stats.tx_packets++;
+        rc = raw_write(p, f.data, f.len);
+        lt_buf_free(&f);
+    } else {
+        rc = raw_write(p, cmd.data, cmd.len);
+    }
+    if (rc == LT_OK && p->io.flush) {
+        p->io.flush(p->io.ud);
+    }
+    lt_buf_free(&cmd);
+    delay = p->ini ? ini_ms(p->ini->proto.page_activation_delay) : 2000;
+    if (delay < 2000) {
+        delay = 2000;
+    }
+    *settle_ms = delay + LT_BURN_SETTLE_MS;
+    return rc;
+}
+
+/* After the settle time: check what the ECU said and update the page bookkeeping. */
+static int burn_finish(lt_proto *p, int page, lt_ecu_mem *mem)
+{
+    int rc = burn_check(p, page);
+
+    rx_clear_now(p);
+    if (rc) {
+        return rc;                      /* page stays in the dirty (unburned) set */
+    }
+    if (p->last_written == page) {
+        p->last_written = -1;
+    }
+    set_bit(p->dirty, page, 0);
+    if (mem && !any_set(p->dirty)) {
+        lt_ecu_mem_mark_burned(mem);
+    }
+    return LT_OK;
+}
+
+int lt_proto_burn(lt_proto *p, int page, lt_ecu_mem *mem)
+{
+    int rc, list[256], i, np, settle_ms = 0;
 
     rc = need_conn(p);
     if (rc) {
         return rc;
     }
+    io_settle(p);          /* queued RAM writes go first: never burn half an update */
     if (page < 0) {
         np = (int)lt_proto_dirty_pages(p, list, 256);
         if (np == 0) {
@@ -1459,62 +1637,15 @@ int lt_proto_burn(lt_proto *p, int page, lt_ecu_mem *mem)
         }
         return LT_OK;
     }
-    if (any_set(p->failed)) {
-        pages_txt[0] = '\0';
-        used = 0;
-        for (i = 0; i < 256; i++) {
-            if (p->failed[i] && used < 100) {
-                lt_snprintf(pages_txt + used, sizeof(pages_txt) - used, "%s%d",
-                            used ? ", " : "", i);
-                used = strlen(pages_txt);
-            }
-        }
-        return fail(p, LT_EBUSY, LT_PE_PROTOCOL,
-                    "refusing to burn: page(s) %s failed to write or verify; write the tune "
-                    "again or reconnect first", pages_txt);
+    rc = burn_send(p, page, &settle_ms);
+    if (rc == 1) {
+        return LT_OK;
     }
-    lt_buf_init(&cmd);
-    {
-        const char *f;
-        size_t fn;
-
-        get_cmd(LIST(p, burn_commands), page, "B%2i", &f, &fn);
-        if (fn == 0) {
-            lt_buf_free(&cmd);
-            return LT_OK;   /* not burnable */
-        }
-        lt_cmd_build(&cmd, f, fn, page_id(p, page), 0, 0, NULL, 0, cmd_le(p));
-    }
-    if (p->modern) {
-        rc = send_packet_no_response(p, (const lt_u8 *)cmd.data, cmd.len);
-    } else {
-        rc = write_all(p, cmd.data, cmd.len);
-        if (rc == LT_OK && p->io.flush) {
-            p->io.flush(p->io.ud);
-        }
-    }
-    lt_buf_free(&cmd);
     if (rc) {
         return rc;
     }
-    delay = p->ini ? ini_ms(p->ini->proto.page_activation_delay) : 2000;
-    if (delay < 2000) {
-        delay = 2000;
-    }
-    sleep_ms(p, delay + LT_BURN_SETTLE_MS);
-    rc = burn_check(p, page);
-    clear_rx(p);
-    if (rc) {
-        return rc;                      /* page stays in the dirty (unburned) set */
-    }
-    if (p->last_written == page) {
-        p->last_written = -1;
-    }
-    set_bit(p->dirty, page, 0);
-    if (mem && !any_set(p->dirty)) {
-        lt_ecu_mem_mark_burned(mem);
-    }
-    return LT_OK;
+    sleep_ms(p, settle_ms);
+    return burn_finish(p, page, mem);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -1592,9 +1723,43 @@ lt_rt_kind lt_proto_choose_runtime(const lt_proto *pc, const char **reason)
     return k;
 }
 
+/* The realtime command of spec 8 and the reply it expects (want = ochBlockSize or 0). */
+static void rt_command(lt_proto *p, lt_buf *cmd, size_t *want, lt_bool *burst)
+{
+    lt_rt_kind k = lt_proto_choose_runtime(p, NULL);
+    size_t w = p->ini ? (size_t)p->ini->proto.och_block_size : 0;
+
+    if (k == LT_RT_KIND_OCH && w == 0) {
+        k = LT_RT_KIND_BURST;
+    }
+    *want = w;
+    *burst = (k == LT_RT_KIND_BURST) ? LT_TRUE : LT_FALSE;
+    if (*burst) {
+        if (p->ini && p->ini->proto.burst_get_command.n > 0) {
+            lt_cmd_parse_string(p->ini->proto.burst_get_command.p,
+                                p->ini->proto.burst_get_command.n, cmd);
+        } else {
+            lt_buf_putc(cmd, 'A');
+        }
+        if (cmd->len == 0) {
+            lt_buf_putc(cmd, 'A');
+        }
+        if (!p->modern && cmd->len > 1) {
+            cmd->len = 1;
+        }
+    } else {
+        const lt_ini_blob *b = &p->ini->proto.och_get_command;
+
+        if (memchr(b->p, '%', b->n)) {
+            lt_cmd_build(cmd, b->p, b->n, 0, 0, (lt_u32)w, NULL, 0, cmd_le(p));
+        } else {
+            lt_buf_append(cmd, b->p, b->n);
+        }
+    }
+}
+
 int lt_proto_get_realtime(lt_proto *p, lt_buf *out)
 {
-    lt_rt_kind k;
     lt_buf cmd, reply;
     size_t want, dlen;
     int rc, off;
@@ -1604,33 +1769,9 @@ int lt_proto_get_realtime(lt_proto *p, lt_buf *out)
     if (rc) {
         return rc;
     }
-    k = lt_proto_choose_runtime(p, NULL);
-    want = p->ini ? (size_t)p->ini->proto.och_block_size : 0;
-    if (k == LT_RT_KIND_OCH && want == 0) {
-        k = LT_RT_KIND_BURST;
-    }
-    use_burst = (k == LT_RT_KIND_BURST) ? LT_TRUE : LT_FALSE;
     lt_buf_init(&cmd);
     lt_buf_init(&reply);
-    if (use_burst) {
-        if (p->ini && p->ini->proto.burst_get_command.n > 0) {
-            lt_cmd_parse_string(p->ini->proto.burst_get_command.p,
-                                p->ini->proto.burst_get_command.n, &cmd);
-        } else {
-            lt_buf_putc(&cmd, 'A');
-        }
-        if (cmd.len == 0) {
-            lt_buf_putc(&cmd, 'A');
-        }
-    } else {
-        const lt_ini_blob *b = &p->ini->proto.och_get_command;
-
-        if (memchr(b->p, '%', b->n)) {
-            lt_cmd_build(&cmd, b->p, b->n, 0, 0, (lt_u32)want, NULL, 0, cmd_le(p));
-        } else {
-            lt_buf_append(&cmd, b->p, b->n);
-        }
-    }
+    rt_command(p, &cmd, &want, &use_burst);
     if (p->modern) {
         rc = send_packet(p, (const lt_u8 *)cmd.data, cmd.len, &reply);
         if (rc == LT_OK) {
@@ -1643,9 +1784,6 @@ int lt_proto_get_realtime(lt_proto *p, lt_buf *out)
             }
         }
     } else {
-        if (use_burst && cmd.len > 1) {
-            cmd.len = 1;
-        }
         rc = raw_exchange(p, (const lt_u8 *)cmd.data, cmd.len, want,
                           lt_proto_effective_timeout_ms(p), inter_char_ms(p), LT_FALSE, &reply);
         if (rc == LT_OK) {
@@ -1655,6 +1793,827 @@ int lt_proto_get_realtime(lt_proto *p, lt_buf *out)
     lt_buf_free(&cmd);
     lt_buf_free(&reply);
     return rc;
+}
+
+/* ---------------------------------------------------------------------- */
+/* asynchronous requests                                                   */
+/* ---------------------------------------------------------------------- */
+/* Send one request without waiting and arm the reply collector. Framed requests get the
+ * deadline the blocking send_packet would have (pacing wait + effective timeout); legacy ones
+ * flush input first and end like raw_exchange (expected length, silence, timeout). */
+static int ax_send(lt_proto *p, const lt_u8 *cmd, size_t n, int kind, size_t expected,
+                   int timeout_ms, int quiet_ms, lt_bool allow_empty)
+{
+    ax_state *a = &p->ax;
+    lt_buf f;
+    int rc;
+
+    lt_buf_clear(&a->rx);
+    a->kind = kind;
+    a->framed = p->modern;
+    a->need = 2;
+    a->pl_off = a->pl_len = 0;
+    a->want = 0;
+    a->burst = LT_FALSE;
+    a->expected = expected;
+    a->allow_empty = allow_empty;
+    a->timeout_ms = timeout_ms > 0 && !p->modern ? timeout_ms : lt_proto_effective_timeout_ms(p);
+    a->quiet_ms = quiet_ms > 0 ? quiet_ms : inter_char_ms(p);
+    if (p->modern) {
+        lt_buf_init(&f);
+        lt_env_encode(p->order, cmd, n, &f);
+        p->stats.tx_packets++;
+        a->t0 = now_ms(p);
+        a->pace_ms = pace_ms(p, f.len);
+        rc = raw_write(p, f.data, f.len);
+        lt_buf_free(&f);
+    } else {
+        rx_clear_now(p);
+        a->t0 = now_ms(p);
+        a->pace_ms = pace_ms(p, n);
+        rc = raw_write(p, cmd, n);
+        if (rc == LT_OK) {
+            p->stats.tx_packets++;
+        }
+    }
+    if (rc) {
+        return rc;
+    }
+    if (p->io.flush) {
+        p->io.flush(p->io.ud);
+    }
+    a->deadline = a->t0 + (double)a->pace_ms + (double)a->timeout_ms;
+    a->last_rx = a->t0;
+    a->phase = AX_WAIT;
+    return LT_OK;
+}
+
+static void adapt_record_async(lt_proto *p)
+{
+    double el = now_ms(p) - p->ax.t0;
+
+    /* the blocking path measures from before its pacing sleep: record the same quantity */
+    adapt_record(p, el > (double)p->ax.pace_ms ? el : (double)p->ax.pace_ms);
+}
+
+static int ax_frame_done(lt_proto *p)
+{
+    ax_state *a = &p->ax;
+    const lt_u8 *body = (const lt_u8 *)a->rx.data, *pl;
+    size_t N = a->need - 6, pn;
+    int rc;
+
+    a->phase = AX_IDLE;
+    adapt_record_async(p);
+    p->stats.rx_packets++;
+    rc = lt_env_decode(p->order, p->cfg.permissive_crc, body, a->need, &pl, &pn, NULL);
+    if (rc == LT_OK) {
+        a->pl_off = (size_t)(pl - body);
+        a->pl_len = pn;
+        return 1;
+    }
+    if (rc == LT_ECRC) {
+        char m[200];
+
+        lt_strlcpy(m, lt_err_get(), sizeof(m));
+        fail(p, LT_ECRC, LT_PE_CRC_MISMATCH, "%s", m);
+        p->err.a = lt_proto_crc32(body + 2, N);
+        p->err.b = rd_order(p->order, body + 2 + N, 4);
+        return rc;
+    }
+    return fail(p, rc, LT_PE_INVALID_RESPONSE, "%s", lt_err_get());
+}
+
+static int ax_raw_done(lt_proto *p)
+{
+    ax_state *a = &p->ax;
+
+    a->phase = AX_IDLE;
+    if (a->rx.len > 0) {
+        p->stats.rx_packets++;
+        adapt_record_async(p);
+    }
+    a->pl_off = 0;
+    a->pl_len = a->rx.len;
+    return 1;
+}
+
+/* Discard the tail of a failed framed reply (the blocking drain_n, spread over pumps). */
+static void ax_drain(lt_proto *p, int wait_ms)
+{
+    ax_state *a = &p->ax;
+    lt_u8 tmp[256];
+    int r, first = 1;
+    double t;
+
+    while (a->drain_left > 0) {
+        r = p->io.read(p->io.ud, tmp,
+                       (int)(a->drain_left > sizeof(tmp) ? sizeof(tmp) : a->drain_left),
+                       first ? wait_ms : 0);
+        first = 0;
+        if (r < 0) {
+            a->drain_left = 0;
+            break;
+        }
+        if (r == 0) {
+            break;
+        }
+        a->drain_left -= (size_t)r;
+        a->drain_last = now_ms(p);
+    }
+    t = now_ms(p);
+    if (a->drain_left == 0 || t - a->drain_last >= 10.0 || t >= a->drain_until) {
+        rx_clear_now(p);
+        a->phase = AX_IDLE;
+    }
+}
+
+/* Collect what has arrived (waiting at most wait_ms for the first byte). 0 still waiting,
+ * 1 complete (payload at rx+pl_off), <0 failed (error set; the exchange is over or draining). */
+static int ax_step(lt_proto *p, int wait_ms)
+{
+    ax_state *a = &p->ax;
+    lt_u8 tmp[512];
+    size_t want;
+    int r, first = 1;
+    double t;
+
+    if (a->phase == AX_DRAIN) {
+        ax_drain(p, wait_ms);
+        return 0;
+    }
+    if (a->phase != AX_WAIT) {
+        return 0;
+    }
+    for (;;) {
+        want = sizeof(tmp);
+        if (a->framed && a->need - a->rx.len < want) {
+            want = a->need - a->rx.len;      /* never read past the frame */
+        }
+        r = p->io.read(p->io.ud, tmp, (int)want, first ? wait_ms : 0);
+        first = 0;
+        if (r < 0) {
+            a->phase = AX_IDLE;
+            adapt_reset(p);
+            return fail(p, LT_EIO, LT_PE_SERIAL, "read failed (connection closed)");
+        }
+        if (r == 0) {
+            break;
+        }
+        lt_buf_append(&a->rx, tmp, (size_t)r);
+        p->stats.rx_bytes += (unsigned long)r;
+        a->last_rx = now_ms(p);
+        if (a->framed) {
+            if (a->need == 2 && a->rx.len >= 2) {
+                a->need = 2 + (size_t)rd_order(p->order, (const lt_u8 *)a->rx.data, 2) + 4;
+            }
+            if (a->rx.len >= a->need) {
+                return ax_frame_done(p);
+            }
+        } else if (a->expected > 0 && a->rx.len >= a->expected) {
+            return ax_raw_done(p);
+        }
+    }
+    t = now_ms(p);
+    if (a->framed) {
+        if (t >= a->deadline) {
+            adapt_reset(p);
+            if (a->rx.len < 2) {
+                rx_clear_now(p);
+                a->phase = AX_IDLE;
+            } else {
+                a->phase = AX_DRAIN;
+                a->drain_left = a->need - a->rx.len;
+                a->drain_until = t + 500.0;
+                a->drain_last = t;
+            }
+            return fail(p, LT_ETIMEOUT, LT_PE_TIMEOUT, "response timeout");
+        }
+        return 0;
+    }
+    if (a->rx.len > 0 && t - a->last_rx > (double)a->quiet_ms) {
+        return ax_raw_done(p);
+    }
+    if (t - a->t0 > (double)a->timeout_ms) {
+        if (a->rx.len == 0 && !a->allow_empty) {
+            a->phase = AX_IDLE;
+            adapt_reset(p);
+            return fail(p, LT_ETIMEOUT, LT_PE_TIMEOUT, "response timeout");
+        }
+        return ax_raw_done(p);
+    }
+    return 0;
+}
+
+/* A realtime or raw reply is complete (rc 1) or failed: keep the result for its pump. Status
+ * byte handling as in lt_proto_get_realtime / lt_proto_send_raw_response. */
+static void rt_complete(lt_proto *p, rt_result *res, int rc)
+{
+    ax_state *a = &p->ax;
+    size_t dlen;
+    int off;
+
+    lt_buf_clear(&res->data);
+    if (rc == 1 && a->framed) {
+        off = lt_proto_strip_status((const lt_u8 *)a->rx.data + a->pl_off, a->pl_len, a->want,
+                                    a->kind == AXK_RAW ? "raw command" :
+                                    (a->burst ? "Burst" : "OCH"), &dlen);
+        if (off < 0) {
+            rc = fail(p, LT_EPROTO, LT_PE_PROTOCOL, "%s", lt_err_get());
+        } else {
+            lt_buf_append(&res->data, a->rx.data + a->pl_off + (size_t)off, dlen);
+        }
+    } else if (rc == 1) {
+        lt_buf_append(&res->data, a->rx.data, a->rx.len);
+    }
+    res->ready = 1;
+    res->rc = rc == 1 ? LT_OK : rc;
+    res->err = p->err;
+}
+
+/* Fairness between request kinds: one refused because the wire was busy goes next. */
+static lt_bool yield_to_other(lt_proto *p, int kind)
+{
+    if (p->want_kind == 0 || p->want_kind == kind) {
+        return LT_FALSE;
+    }
+    if (now_ms(p) - p->want_at >= 100.0) {
+        p->want_kind = 0;
+        return LT_FALSE;
+    }
+    return LT_TRUE;
+}
+
+static void want_wire(lt_proto *p, int kind)
+{
+    if (!yield_to_other(p, kind) && p->want_kind != kind) {
+        p->want_kind = kind;
+        p->want_at = now_ms(p);
+    }
+}
+
+static void got_wire(lt_proto *p, int kind)
+{
+    if (p->want_kind == kind) {
+        p->want_kind = 0;
+    }
+}
+
+/* ---- the asynchronous RAM writer ---- */
+static void job_reset(lt_proto *p)
+{
+    p->job.n = p->job.next = 0;
+    p->job.inflight = 0;
+    p->job.burn_page = -1;
+    p->job.mem = NULL;
+}
+
+/* Give every range that is not safely in ECU RAM back to the dirty set and report rc. */
+static void job_fail(lt_proto *p, int rc, int page)
+{
+    wr_job *j = &p->job;
+    size_t i, k;
+    lt_bool open_page;
+
+    for (i = 0; i < j->n; i++) {
+        open_page = j->ch[i].done ? LT_FALSE : LT_TRUE;
+        for (k = 0; k < j->n && !open_page; k++) {
+            if (j->ch[k].page == j->ch[i].page && !j->ch[k].done) {
+                open_page = LT_TRUE;
+            }
+        }
+        if (open_page && j->mem) {
+            lt_ecu_mem_mark_dirty(j->mem, j->ch[i].page, j->ch[i].off, j->ch[i].len);
+        }
+    }
+    if (page >= 0) {
+        set_bit(p->failed, page, 1);
+    }
+    j->result = rc;
+    j->err = p->err;
+    job_reset(p);
+}
+
+/* Chunk `idx` reached ECU RAM: page bookkeeping as write_memory / write_dirty do it. */
+static void job_chunk_done(lt_proto *p, size_t idx)
+{
+    wr_job *j = &p->job;
+    int page = j->ch[idx].page;
+    size_t k;
+
+    j->ch[idx].done = 1;
+    p->last_written = page;
+    set_bit(p->dirty, page, 1);
+    for (k = 0; k < j->n; k++) {
+        if (j->ch[k].page == page && !j->ch[k].done) {
+            return;
+        }
+    }
+    if (j->mem) {
+        lt_ecu_mem_mark_page_pending(j->mem, page);
+    }
+    set_bit(p->failed, page, 0);
+}
+
+static void job_check_done(lt_proto *p)
+{
+    if (p->job.n > 0 && p->job.next >= p->job.n && !p->job.inflight && p->job.burn_page < 0) {
+        if (p->job.result == 0) {
+            p->job.result = 1;          /* an uncollected failure is not overwritten */
+        }
+        job_reset(p);
+    }
+}
+
+/* Is the pacing gap over? (An in-process device needs none.) */
+static lt_bool gate_open(lt_proto *p)
+{
+    if (p->next_tx_at <= 0.0) {
+        return LT_TRUE;
+    }
+    if (p->cfg.instant_link || now_ms(p) >= p->next_tx_at) {
+        p->next_tx_at = 0.0;
+        return LT_TRUE;
+    }
+    return LT_FALSE;
+}
+
+/* Send the next queued chunk (or the auto-burn it needs first). */
+static void job_send(lt_proto *p)
+{
+    wr_job *j = &p->job;
+    wr_chunk *c = &j->ch[j->next];
+    const lt_u8 *data;
+    lt_buf cmd;
+    int rc, settle_ms = 0, page = c->page;
+
+    if (p->cfg.auto_burn_on_page_change && p->last_written >= 0 &&
+        p->last_written != page && !any_set(p->failed)) {
+        rc = burn_send(p, p->last_written, &settle_ms);
+        if (rc == 1) {
+            p->last_written = -1;          /* nothing to burn */
+            return;
+        }
+        if (rc) {
+            job_fail(p, rc, -1);
+            return;
+        }
+        j->burn_page = p->last_written;
+        p->next_tx_at = now_ms(p) + (double)settle_ms;
+        return;
+    }
+    data = j->mem ? lt_ecu_mem_read(j->mem, page, c->off, c->len) : NULL;
+    if (!data) {
+        job_fail(p, fail(p, LT_ERANGE, LT_PE_PROTOCOL, "page %d changed while it was being "
+                         "written", page), page);
+        return;
+    }
+    lt_buf_init(&cmd);
+    rc = build_page_cmd(p, LIST(p, page_chunk_write_commands), "C%2i%2o%2c%v", page,
+                        (lt_u32)c->off, (lt_u32)c->len, data, c->len, "write", &cmd);
+    if (rc == LT_OK) {
+        j->cmd_len = cmd.len;
+        if (p->modern) {
+            rc = ax_send(p, (const lt_u8 *)cmd.data, cmd.len, AXK_WRITE, 0, 0, 0, LT_FALSE);
+            if (rc == LT_OK) {
+                j->next++;
+                j->inflight = 1;
+            }
+        } else {
+            /* legacy writes are silent: pace like write_and_wait + inter-frame delay */
+            rc = raw_write(p, cmd.data, cmd.len);
+            if (rc == LT_OK) {
+                if (p->io.flush) {
+                    p->io.flush(p->io.ud);
+                }
+                p->stats.tx_packets++;
+                p->next_tx_at = now_ms(p) + (double)pace_ms(p, cmd.len) +
+                                (double)lt_proto_inter_frame_delay_ms(p, cmd.len);
+                j->next++;
+                job_chunk_done(p, j->next - 1);
+                job_check_done(p);
+            }
+        }
+    }
+    lt_buf_free(&cmd);
+    if (rc) {
+        p->ax.phase = AX_IDLE;
+        job_fail(p, rc, page);
+    }
+}
+
+/* A framed write acknowledgement is complete (rc 1) or failed. */
+static void write_complete(lt_proto *p, int rc)
+{
+    wr_job *j = &p->job;
+    ax_state *a = &p->ax;
+    int page = j->ch[j->next - 1].page;
+
+    j->inflight = 0;
+    if (rc == 1) {
+        rc = status_error(p, (const lt_u8 *)a->rx.data + a->pl_off, a->pl_len);
+    }
+    if (rc < 0) {
+        job_fail(p, rc, page);
+        return;
+    }
+    p->next_tx_at = now_ms(p) + (double)lt_proto_inter_frame_delay_ms(p, j->cmd_len);
+    job_chunk_done(p, j->next - 1);
+    job_check_done(p);
+}
+
+static void ax_complete(lt_proto *p, int rc)
+{
+    if (p->ax.kind == AXK_RT) {
+        rt_complete(p, &p->rtr, rc);
+    } else if (p->ax.kind == AXK_RAW) {
+        rt_complete(p, &p->rawr, rc);
+    } else if (p->ax.kind == AXK_WRITE && p->job.n > 0 && p->job.inflight) {
+        write_complete(p, rc);
+    }
+}
+
+/* Drive everything that is in flight as far as it goes without waiting (wait_ms > 0: the
+ * first read may wait that long; used by settle). */
+static void advance(lt_proto *p, int wait_ms)
+{
+    int rc, rounds, was;
+
+    for (rounds = 0; rounds < 64; rounds++) {
+        if (p->ax.phase != AX_IDLE) {
+            was = p->ax.phase;
+            rc = ax_step(p, wait_ms);
+            wait_ms = 0;
+            if (was == AX_WAIT && rc != 0) {
+                ax_complete(p, rc);
+            }
+            if (p->ax.phase != AX_IDLE) {
+                if (p->job.n > p->job.next && p->ax.kind != AXK_WRITE) {
+                    want_wire(p, AXK_WRITE);
+                }
+                return;                  /* still on the wire */
+            }
+        }
+        if (p->job.burn_page >= 0) {
+            if (!gate_open(p)) {
+                return;
+            }
+            rc = burn_finish(p, p->job.burn_page, NULL);
+            p->job.burn_page = -1;
+            if (rc) {
+                job_fail(p, rc, -1);
+                return;
+            }
+            continue;
+        }
+        if (p->job.n == 0 || p->job.next >= p->job.n || yield_to_other(p, AXK_WRITE) ||
+            !gate_open(p)) {
+            job_check_done(p);
+            return;
+        }
+        got_wire(p, AXK_WRITE);
+        job_send(p);
+    }
+}
+
+/* The cancel flag stops what is in flight; the blocking caller reports it. */
+static void settle_cancel(lt_proto *p)
+{
+    ax_state *a = &p->ax;
+
+    if (a->phase == AX_WAIT) {
+        a->phase = AX_IDLE;
+        adapt_reset(p);
+        if (a->framed && a->rx.len >= 2 && a->need > a->rx.len) {
+            a->phase = AX_DRAIN;                 /* leave the wire clean */
+            a->drain_left = a->need - a->rx.len;
+            a->drain_until = now_ms(p) + 500.0;
+            a->drain_last = now_ms(p);
+        } else {
+            rx_clear_now(p);
+        }
+        fail(p, LT_ECANCEL, LT_PE_CANCELLED, "operation cancelled");
+        ax_complete(p, LT_ECANCEL);
+    }
+    if (p->job.n > 0 && a->phase == AX_IDLE) {
+        job_fail(p, fail(p, LT_ECANCEL, LT_PE_CANCELLED, "operation cancelled"), -1);
+    }
+}
+
+/* Blocking completion of everything asynchronous (the guard of every blocking path). */
+static void settle(lt_proto *p)
+{
+    double t, rem;
+    int wait, guard;
+
+    for (guard = 0; guard < 1000000 && async_busy(p); guard++) {
+        p->want_kind = 0;                       /* the blocking caller is next, nobody else */
+        if (p->cancel) {
+            settle_cancel(p);
+        }
+        t = now_ms(p);
+        if (p->ax.phase == AX_WAIT) {
+            rem = (p->ax.framed ? p->ax.deadline : p->ax.t0 + (double)p->ax.timeout_ms) - t;
+            wait = rem > 20.0 ? 20 : (rem < 1.0 ? 1 : (int)rem + 1);
+            if (!p->ax.framed && p->ax.rx.len > 0 && wait > 2) {
+                wait = 2;                       /* silence ends a legacy reply: look often */
+            }
+        } else if (p->ax.phase == AX_DRAIN) {
+            wait = 10;
+        } else {
+            wait = 0;
+            if (!gate_open(p)) {
+                sleep_ms(p, (int)(p->next_tx_at - t) + 1);
+                p->next_tx_at = 0.0;           /* waited as the blocking path sleeps */
+            }
+        }
+        advance(p, wait);
+        if (async_busy(p) && wait > 0 && now_ms(p) - t < 1.0) {
+            sleep_ms(p, 1);                     /* io without a real wait (tests, sims) */
+        }
+    }
+}
+
+static void async_abort(lt_proto *p)
+{
+    if (p->job.n > 0) {
+        job_fail(p, LT_ENOTCONN, -1);
+    }
+    p->job.result = 0;
+    job_reset(p);
+    p->ax.phase = AX_IDLE;
+    p->rtr.ready = 0;
+    p->rawr.ready = 0;
+    p->next_tx_at = 0.0;
+    p->want_kind = 0;
+}
+
+int lt_proto_rt_begin(lt_proto *p)
+{
+    lt_buf cmd;
+    size_t want;
+    lt_bool burst;
+    int rc;
+
+    rc = need_conn(p);
+    if (rc) {
+        return rc;
+    }
+    advance(p, 0);
+    if (p->rtr.ready) {
+        return LT_EBUSY;                         /* collect the previous frame first */
+    }
+    if (p->ax.phase != AX_IDLE || p->job.burn_page >= 0 || !gate_open(p) ||
+        yield_to_other(p, AXK_RT)) {
+        if (p->ax.phase != AX_IDLE || (p->job.n > 0 && p->job.burn_page < 0)) {
+            want_wire(p, AXK_RT);                /* goes next when the wire frees */
+        }
+        return LT_EBUSY;
+    }
+    got_wire(p, AXK_RT);
+    lt_buf_init(&cmd);
+    rt_command(p, &cmd, &want, &burst);
+    rc = ax_send(p, (const lt_u8 *)cmd.data, cmd.len, AXK_RT, p->modern ? 0 : want, 0, 0,
+                 LT_FALSE);
+    lt_buf_free(&cmd);
+    if (rc) {
+        p->ax.phase = AX_IDLE;
+        return rc;
+    }
+    p->ax.want = want;
+    p->ax.burst = burst;
+    return LT_OK;
+}
+
+int lt_proto_rt_pump(lt_proto *p, lt_buf *out)
+{
+    if (p->state != LT_CONN_CONNECTED) {
+        if (!lt_proto_rt_pending(p)) {
+            return 0;
+        }
+        async_abort(p);
+        return need_conn(p);
+    }
+    advance(p, 0);
+    if (!p->rtr.ready) {
+        return 0;
+    }
+    p->rtr.ready = 0;
+    if (p->rtr.rc < 0) {
+        p->err = p->rtr.err;
+        lt_err_set("%s", p->err.msg);
+        return p->rtr.rc;
+    }
+    lt_buf_append(out, p->rtr.data.data, p->rtr.data.len);
+    return 1;
+}
+
+lt_bool lt_proto_rt_pending(const lt_proto *p)
+{
+    return (p->rtr.ready || (p->ax.phase == AX_WAIT && p->ax.kind == AXK_RT)) ? LT_TRUE
+                                                                             : LT_FALSE;
+}
+
+static int raw_ticket(const lt_proto *p)
+{
+    return (int)(p->rawr.seq % 32767UL) + 1;
+}
+
+int lt_proto_raw_begin(lt_proto *p, const lt_u8 *bytes, size_t n, int timeout_ms)
+{
+    int rc;
+
+    rc = need_conn(p);
+    if (rc) {
+        return rc;
+    }
+    advance(p, 0);
+    if (p->ax.phase != AX_IDLE || p->job.burn_page >= 0 || !gate_open(p) ||
+        yield_to_other(p, AXK_RAW)) {
+        if (p->ax.phase != AX_IDLE || (p->job.n > 0 && p->job.burn_page < 0)) {
+            want_wire(p, AXK_RAW);
+        }
+        return LT_EBUSY;
+    }
+    got_wire(p, AXK_RAW);
+    p->rawr.ready = 0;                           /* an uncollected older reply is dropped */
+    p->rawr.seq++;
+    rc = ax_send(p, bytes, n, AXK_RAW, 0, timeout_ms, 50, LT_TRUE);
+    if (rc) {
+        p->ax.phase = AX_IDLE;
+        return rc;
+    }
+    return raw_ticket(p);
+}
+
+int lt_proto_raw_pump(lt_proto *p, int ticket, lt_buf *out)
+{
+    lt_bool inflight = (p->ax.phase == AX_WAIT && p->ax.kind == AXK_RAW) ? LT_TRUE : LT_FALSE;
+
+    if (ticket != raw_ticket(p) || (!inflight && !p->rawr.ready)) {
+        return fail(p, LT_ENOENT, LT_PE_PROTOCOL, "the command's reply is gone");
+    }
+    if (p->state != LT_CONN_CONNECTED) {
+        async_abort(p);
+        return need_conn(p);
+    }
+    advance(p, 0);
+    if (!p->rawr.ready) {
+        return 0;
+    }
+    p->rawr.ready = 0;
+    if (p->rawr.rc < 0) {
+        p->err = p->rawr.err;
+        lt_err_set("%s", p->err.msg);
+        return p->rawr.rc;
+    }
+    lt_buf_append(out, p->rawr.data.data, p->rawr.data.len);
+    return 1;
+}
+
+/* Queue [off, off+len) of page, merged into a queued, unsent chunk where it fits. */
+static void job_add(lt_proto *p, int page, size_t off, size_t len, size_t chunk)
+{
+    wr_job *j = &p->job;
+    size_t i, lo, hi, k, nb;
+
+    while (len > 0) {
+        k = len < chunk ? len : chunk;
+        for (i = j->next; i < j->n; i++) {
+            wr_chunk *c = &j->ch[i];
+
+            if (c->page != page || off > c->off + c->len || c->off > off + k) {
+                continue;
+            }
+            lo = c->off < off ? c->off : off;
+            hi = c->off + c->len > off + k ? c->off + c->len : off + k;
+            if (hi - lo <= chunk) {
+                c->off = lo;
+                c->len = hi - lo;
+                break;
+            }
+        }
+        if (i == j->n) {
+            if (j->n == j->cap) {
+                if (!lt_mul_size(j->cap ? j->cap * 2 : 16, sizeof(wr_chunk), &nb)) {
+                    return;
+                }
+                j->cap = j->cap ? j->cap * 2 : 16;
+                j->ch = (wr_chunk *)lt_realloc(j->ch, nb);
+            }
+            j->ch[j->n].page = page;
+            j->ch[j->n].off = off;
+            j->ch[j->n].len = k;
+            j->ch[j->n].done = 0;
+            j->n++;
+        }
+        off += k;
+        len -= k;
+    }
+}
+
+int lt_proto_write_dirty_begin(lt_proto *p, lt_ecu_mem *mem)
+{
+    int pages[256];
+    size_t np, i, nr, r, total = 0, chunk;
+    lt_range *rg;
+    int rc;
+
+    rc = need_conn(p);
+    if (rc) {
+        return rc;
+    }
+    if (p->job.n > 0 && p->job.mem != mem) {
+        settle(p);                               /* another shadow: finish that one first */
+    }
+    chunk = (size_t)lt_proto_effective_write_chunk(p);
+    np = lt_ecu_mem_dirty_pages(mem, pages, 256);
+    if (np > 256) {
+        np = 256;   /* proto tracks page ids 0..255 only */
+    }
+    for (i = 0; i < np; i++) {
+        if (!lt_ecu_mem_page(mem, pages[i], NULL)) {
+            continue;
+        }
+        nr = lt_ecu_mem_dirty_ranges(mem, pages[i], NULL, 0);
+        rg = (lt_range *)lt_malloc((nr + 1) * sizeof(lt_range));
+        nr = lt_ecu_mem_dirty_ranges(mem, pages[i], rg, nr);
+        for (r = 0; r < nr; r++) {
+            job_add(p, pages[i], rg[r].start, rg[r].len, chunk);
+            lt_ecu_mem_clear_dirty(mem, pages[i], rg[r].start, rg[r].len);
+            total += rg[r].len;
+        }
+        lt_free(rg);
+    }
+    if (p->job.n > 0) {
+        p->job.mem = mem;
+    }
+    advance(p, 0);
+    return total > 0x7fffffffUL ? 0x7fffffff : (int)total;
+}
+
+int lt_proto_write_pump(lt_proto *p)
+{
+    int r;
+
+    if (p->state == LT_CONN_CONNECTED) {
+        advance(p, 0);
+    } else if (p->job.n > 0) {
+        async_abort(p);
+    }
+    r = p->job.result;
+    if (r == 0) {
+        return 0;
+    }
+    p->job.result = 0;
+    if (r < 0) {
+        p->err = p->job.err;
+        lt_err_set("%s", p->err.msg);
+    }
+    return r;
+}
+
+lt_bool lt_proto_write_pending(const lt_proto *p)
+{
+    return (p->job.n > 0 || p->job.burn_page >= 0 || p->job.result != 0) ? LT_TRUE : LT_FALSE;
+}
+
+int lt_proto_async_wait_ms(const lt_proto *p)
+{
+    const ax_state *a = &p->ax;
+    double t = now_ms(p), est, bms = 10000.0 / (double)baud_of(p), end;
+    size_t left;
+
+    if (p->rtr.ready || p->job.result != 0) {
+        return 0;
+    }
+    if (a->phase == AX_WAIT) {
+        if (a->framed) {
+            left = a->need > 2 ? a->need - a->rx.len : 2 + a->want + 1 + 4 - a->rx.len;
+            end = a->deadline;
+        } else {
+            left = a->expected > a->rx.len ? a->expected - a->rx.len : 1;
+            end = a->rx.len > 0 ? a->last_rx + (double)a->quiet_ms + 1.0
+                                : a->t0 + (double)a->timeout_ms + 1.0;
+        }
+        est = (double)left * bms;
+        if (est > end - t) {
+            est = end - t;
+        }
+        return est < 1.0 ? 1 : (est > 10.0 ? 10 : (int)est);
+    }
+    if (a->phase == AX_DRAIN) {
+        return 5;
+    }
+    if (p->job.n > 0 || p->job.burn_page >= 0) {
+        return p->next_tx_at > t ? (int)(p->next_tx_at - t) + 1 : 0;
+    }
+    return p->next_tx_at > t ? (int)(p->next_tx_at - t) + 1 : -1;   /* only a pacing gap */
+}
+
+void lt_proto_async_finish(lt_proto *p)
+{
+    io_settle(p);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -2060,6 +3019,27 @@ int lt_proto_logger_start(lt_proto *p, const lt_ini_logger *lg)
 int lt_proto_logger_stop(lt_proto *p, const lt_ini_logger *lg)
 {
     return blob_send(p, &lg->stop_command);
+}
+
+int lt_proto_logger_read_begin(lt_proto *p, const lt_ini_logger *lg)
+{
+    lt_buf c;
+    int rc, to;
+
+    rc = need_conn(p);
+    if (rc) {
+        return rc;
+    }
+    if (lg->data_read_command.n == 0) {
+        return fail(p, LT_EPROTO, LT_PE_PROTOCOL, "logger has no data read command");
+    }
+    lt_buf_init(&c);
+    lt_cmd_parse_string(lg->data_read_command.p, lg->data_read_command.n, &c);
+    to = lg->data_read_timeout_ms > 0 ? (int)lg->data_read_timeout_ms
+                                      : lt_proto_effective_timeout_ms(p);
+    rc = lt_proto_raw_begin(p, (const lt_u8 *)c.data, c.len, to);
+    lt_buf_free(&c);
+    return rc;
 }
 
 int lt_proto_logger_read(lt_proto *p, const lt_ini_logger *lg, lt_buf *out)
