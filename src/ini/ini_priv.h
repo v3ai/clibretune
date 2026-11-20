@@ -107,6 +107,7 @@ typedef struct ini_ctx {
     lt_buf logger_raw;             /* raw [LoggerDefinition] lines */
     lt_map included;               /* normalised paths already seen */
     lt_vec std_panels;             /* lt_ini_dialog* synthesised lazily */
+    lt_map managed;                /* symbols whose #set/#unset lines are ignored (options) */
 } ini_ctx;
 
 #define INI_MAX_INCLUDE_DEPTH 16

@@ -324,7 +324,8 @@ typedef struct lt_ini_dialog {
 
 typedef struct lt_ini_indicator {
     char *expression, *label_off, *label_on;
-    char *off_fg, *off_bg, *on_fg, *on_bg;   /* colour names or #rrggbb; NULL = default */
+    char *off_fg, *off_bg, *on_fg, *on_bg;   /* colour names or #rrggbb; NULL = default. INI order:
+                                             * offBg, offFg, onBg, onFg (as [FrontPage]) */
 } lt_ini_indicator;
 typedef struct lt_ini_indicator_panel {
     char *name; int columns; char *vis_cond;
@@ -372,7 +373,7 @@ lt_bool lt_ini_gauge_is_normal(const lt_ini_gauge *g, double v);
 
 typedef struct lt_ini_fp_indicator {
     char *expression, *label_off, *label_on;
-    char *bg_off, *fg_off, *bg_on, *fg_on;      /* NOTE order differs from [UserDefined] */
+    char *bg_off, *fg_off, *bg_on, *fg_on;      /* INI order offBg, offFg, onBg, onFg */
 } lt_ini_fp_indicator;
 typedef struct lt_ini_frontpage {
     char **gauges; size_t n_gauges;             /* gauge1..gaugeN names ("" = unset) */
@@ -406,7 +407,29 @@ size_t  lt_ini_logger_decode(const lt_ini_logger *lg, const lt_u8 *rec, size_t l
 lt_bool lt_ini_logger_is_empty(const lt_ini_logger *lg, const lt_u8 *rec, size_t len);
 size_t  lt_ini_logger_record_count(const lt_ini_logger *lg, size_t payload_len);
 
-typedef struct lt_ini_port_editor { char *name, *label, *enable_cond; } lt_ini_port_editor;
+/* [PortEditor]: TunerStudio programmable on/off outputs (MS2/MS3 "std_port_edit").
+ * Either "portEditor = name, \"Title\"" or "name = \"Title\"" starts an editor; the keys below
+ * attach to the last one. Each *_const names an array constant with one element per port
+ * (NULL when the INI does not map it):
+ *   enabledPorts = c[, "port 1", "port 2", ...]   per port on/off (labels name the ports)
+ *   outputCanID, outputOffset, outputSize          channel of condition 1 (offset/size of the
+ *                                                  output channel in the realtime block)
+ *   operators = c[, "<", "=", ">", "&"]            operator; stored as the character code
+ *   threshold, hysteresis                          condition 1 values (raw channel units)
+ *   powerOnValue, triggerValue                     pin state at power on / when active
+ *   conditionRelationship = c[, " ", "&", "|"]     joins condition 1 and 2 (char code)
+ *   outputOffset2, outputSize2, operators2, threshold2, hysteresis2   condition 2
+ *   portNames = "a", "b", ...                      alternative to the enabledPorts labels */
+typedef struct lt_ini_port_editor {
+    char *name, *label, *enable_cond, *help_topic;
+    char *enabled_const, *can_id_const, *offset_const, *size_const, *op_const,
+         *threshold_const, *hysteresis_const, *power_on_const, *trigger_const,
+         *connector_const, *offset2_const, *size2_const, *op2_const, *threshold2_const,
+         *hysteresis2_const;
+    char **port_names; size_t n_port_names;
+    char **op_labels;  size_t n_op_labels;      /* empty = "<", "=", ">", "&" */
+    char **conn_labels; size_t n_conn_labels;   /* empty = " ", "&", "|" */
+} lt_ini_port_editor;
 typedef struct lt_ini_key_action { char *key, *action, *label, *cond; } lt_ini_key_action;
 
 /* ====================================================================== */
@@ -517,6 +540,11 @@ typedef struct lt_ini {
 typedef struct lt_ini_options {
     const char *const *symbols;  /* preprocessor seed symbols (#set), e.g. "CELSIUS", "LAMBDA" */
     size_t n_symbols;
+    /* symbols the caller decides (project settings): "#set"/"#unset" lines in the file that
+     * name one of them, or one of the seed symbols, are ignored, so the file's own defaults
+     * cannot override the project's choice. NULL = only the seed symbols are protected. */
+    const char *const *managed;
+    size_t n_managed;
 } lt_ini_options;
 void     lt_ini_options_default(lt_ini_options *o);   /* empty seed (NULL opts == this) */
 
@@ -540,6 +568,16 @@ const lt_ini_dialog  *lt_ini_find_dialog(const lt_ini *ini, const char *name);
 const lt_ini_help    *lt_ini_find_help(const lt_ini *ini, const char *name);
 const lt_ini_cmd     *lt_ini_find_command(const lt_ini *ini, const char *name);
 const lt_ini_ref_table *lt_ini_find_ref_table(const lt_ini *ini, const char *name);
+const lt_ini_indicator_panel *lt_ini_find_ind_panel(const lt_ini *ini, const char *name);
+const lt_ini_readout_panel   *lt_ini_find_readout_panel(const lt_ini *ini, const char *name);
+const lt_ini_port_editor     *lt_ini_find_port_editor(const lt_ini *ini, const char *name);   /* NULL = first */
+/* constant listed under [ConstantsExtensions] requiresPowerCycle */
+lt_bool lt_ini_needs_power_cycle(const lt_ini *ini, const char *name);
+/* [SettingGroups]: a group without options is an on/off flag (its name is the symbol); else
+ * each option value is a symbol and "DEFAULT" means "none of them". */
+lt_bool lt_ini_setting_is_flag(const lt_ini_setting_group *g);
+/* the option of g active in this parse (index), or -1 for DEFAULT / none */
+int     lt_ini_setting_active(const lt_ini *ini, const lt_ini_setting_group *g);
 /* Built-in std_* dialog synthesised from constants (std_injection, std_ms3Rtc);
  * owned by ini; NULL if the name is not synthesisable. */
 const lt_ini_dialog  *lt_ini_std_panel(lt_ini *ini, const char *name);

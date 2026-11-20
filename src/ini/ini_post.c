@@ -304,9 +304,16 @@ void ini_free_contents(lt_ini *ini)
     for (i = 0; i < ini->n_loggers; i++) ini_free_logger(&ini->loggers[i]);
     if (ini->loggers) lt_free(ini->loggers);
     for (i = 0; i < ini->n_port_editors; i++) {
-        fr(ini->port_editors[i].name);
-        fr(ini->port_editors[i].label);
-        fr(ini->port_editors[i].enable_cond);
+        lt_ini_port_editor *pe = &ini->port_editors[i];
+        fr(pe->name); fr(pe->label); fr(pe->enable_cond); fr(pe->help_topic);
+        fr(pe->enabled_const); fr(pe->can_id_const); fr(pe->offset_const); fr(pe->size_const);
+        fr(pe->op_const); fr(pe->threshold_const); fr(pe->hysteresis_const);
+        fr(pe->power_on_const); fr(pe->trigger_const); fr(pe->connector_const);
+        fr(pe->offset2_const); fr(pe->size2_const); fr(pe->op2_const);
+        fr(pe->threshold2_const); fr(pe->hysteresis2_const);
+        ini_free_str_array(pe->port_names, pe->n_port_names);
+        ini_free_str_array(pe->op_labels, pe->n_op_labels);
+        ini_free_str_array(pe->conn_labels, pe->n_conn_labels);
     }
     if (ini->port_editors) lt_free(ini->port_editors);
     for (i = 0; i < ini->n_key_actions; i++) {
@@ -356,6 +363,7 @@ void ini_free_contents(lt_ini *ini)
         }
         lt_map_free(&cx->defines);
         lt_map_free(&cx->included);
+        lt_map_free(&cx->managed);
         lt_buf_free(&cx->logger_raw);
         for (i = 0; i < cx->std_panels.len; i++)
             ini_free_dialog(LT_VEC_AT(&cx->std_panels, lt_ini_dialog *, i));
@@ -421,6 +429,64 @@ const lt_ini_ref_table *lt_ini_find_ref_table(const lt_ini *ini, const char *nam
     for (i = 0; i < ini->n_ref_tables; i++)
         if (strcmp(ini->ref_tables[i]->name, name) == 0) return ini->ref_tables[i];
     return NULL;
+}
+
+const lt_ini_indicator_panel *lt_ini_find_ind_panel(const lt_ini *ini, const char *name)
+{
+    size_t i;
+    if (name == NULL) return NULL;
+    for (i = 0; i < ini->n_ind_panels; i++)
+        if (ini->ind_panels[i]->name != NULL && strcmp(ini->ind_panels[i]->name, name) == 0)
+            return ini->ind_panels[i];
+    return NULL;
+}
+
+const lt_ini_readout_panel *lt_ini_find_readout_panel(const lt_ini *ini, const char *name)
+{
+    size_t i;
+    if (name == NULL) return NULL;
+    for (i = 0; i < ini->n_readout_panels; i++)
+        if (ini->readout_panels[i]->name != NULL &&
+            strcmp(ini->readout_panels[i]->name, name) == 0)
+            return ini->readout_panels[i];
+    return NULL;
+}
+
+const lt_ini_port_editor *lt_ini_find_port_editor(const lt_ini *ini, const char *name)
+{
+    size_t i;
+    if (name == NULL) return ini->n_port_editors > 0 ? &ini->port_editors[0] : NULL;
+    for (i = 0; i < ini->n_port_editors; i++)
+        if (ini->port_editors[i].name != NULL && strcmp(ini->port_editors[i].name, name) == 0)
+            return &ini->port_editors[i];
+    return NULL;
+}
+
+lt_bool lt_ini_needs_power_cycle(const lt_ini *ini, const char *name)
+{
+    size_t i;
+    if (name == NULL) return LT_FALSE;
+    for (i = 0; i < ini->n_requires_power_cycle; i++)
+        if (strcmp(ini->requires_power_cycle[i], name) == 0) return LT_TRUE;
+    return LT_FALSE;
+}
+
+lt_bool lt_ini_setting_is_flag(const lt_ini_setting_group *g)
+{
+    return g != NULL && g->n_options == 0;
+}
+
+int lt_ini_setting_active(const lt_ini *ini, const lt_ini_setting_group *g)
+{
+    size_t i;
+    if (g == NULL) return -1;
+    if (g->n_options == 0) return lt_ini_symbol_active(ini, g->name) ? 0 : -1;
+    for (i = 0; i < g->n_options; i++) {
+        const char *v = g->options[i].value;
+        if (v != NULL && v[0] != '\0' && strcmp(v, "DEFAULT") != 0 && lt_ini_symbol_active(ini, v))
+            return (int)i;
+    }
+    return -1;
 }
 
 lt_bool lt_ini_symbol_active(const lt_ini *ini, const char *sym)

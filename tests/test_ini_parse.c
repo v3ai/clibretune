@@ -1201,10 +1201,10 @@ LT_TEST(dialogs)
     LT_CHECK_INT(ip->n_inds, 2);
     LT_CHECK_STR(ip->inds[0].expression, "isTuningNow");
     LT_CHECK_STR(ip->inds[0].label_on, "Tuning Detected");
-    LT_CHECK_STR(ip->inds[0].off_fg, "white");
-    LT_CHECK_STR(ip->inds[0].off_bg, "black");
-    LT_CHECK_STR(ip->inds[0].on_fg, "green");
-    LT_CHECK_STR(ip->inds[0].on_bg, "black");
+    LT_CHECK_STR(ip->inds[0].off_bg, "white");   /* offBg, offFg, onBg, onFg */
+    LT_CHECK_STR(ip->inds[0].off_fg, "black");
+    LT_CHECK_STR(ip->inds[0].on_bg, "green");
+    LT_CHECK_STR(ip->inds[0].on_fg, "black");
     LT_CHECK_STR(ip->inds[1].label_off, "{ x }");
     d = lt_ini_find_dialog(ini, "fuelClosedLoopDialog");
     LT_CHECK_STR(d->layout_hint, "xAxis");
