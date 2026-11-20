@@ -65,7 +65,10 @@ int lt_usb_set_alt(lt_usb_dev *d, int iface, int alt);
 int lt_usb_control(lt_usb_dev *d, lt_u8 request_type, lt_u8 request, lt_u16 value,
                    lt_u16 index, void *data, lt_u16 length, int timeout_ms);
 
-/* Bulk transfer; endpoint bit 7 set = IN (device-to-host). Returns bytes or LT_USB_E*. */
+/* Bulk transfer; endpoint bit 7 set = IN (device-to-host). Returns bytes or LT_USB_E*.
+ * The endpoint's interface must be claimed. A stalled endpoint is cleared (CLEAR_FEATURE
+ * ENDPOINT_HALT) before LT_USB_EPIPE is returned, so the next transfer can proceed.
+ * timeout_ms <= 0 waits without a time limit (also for lt_usb_control). */
 int lt_usb_bulk(lt_usb_dev *d, lt_u8 endpoint, void *data, int length, int timeout_ms);
 
 /* Descriptors. Configuration descriptor of the active configuration (whole, with its

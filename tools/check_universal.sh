@@ -83,7 +83,7 @@ for f in $(find src tests -name '*.c' | sort | only_filter); do
                 *) if is_marked "$f"; then
                        # other POSIX flavours that only need POSIX headers
                        case $f in
-                           src/plat/posix/os_bsd.c) EXTRAPLAT="$EXTRAPLAT $f" ;;
+                           src/plat/posix/os_bsd.c|src/plat/posix/usb_bsd.c) EXTRAPLAT="$EXTRAPLAT $f" ;;
                            # be_cocoa.c declares the Objective-C runtime by hand (no Apple
                            # headers), so every host compiler can check it
                            src/gui/os/macos/be_cocoa.c) EXTRAPLAT="$EXTRAPLAT $f" ;;
