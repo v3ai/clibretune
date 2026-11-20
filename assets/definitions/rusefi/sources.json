@@ -1,0 +1,2234 @@
+[
+ {
+  "file": "rusefi/release_20260812/alphax-2chan/rusefi_alphax-2chan.ini",
+  "family": "rusefi",
+  "board": "alphax-2chan",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_alphax-2chan.zip",
+  "member": "rusefi.snapshot.alphax-2chan/rusefi_alphax-2chan.ini",
+  "signature": "rusEFI master.2026.08.13.alphax-2chan.1894864159",
+  "size": 801607,
+  "sha256": "6ed479795e90dd1464625fe3117bbb2630f0b0bf9e62f02143f135e6c491b24d",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/alphax-4chan/rusefi_alphax-4chan.ini",
+  "family": "rusefi",
+  "board": "alphax-4chan",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_alphax-4chan.zip",
+  "member": "rusefi.snapshot.alphax-4chan/rusefi_alphax-4chan.ini",
+  "signature": "rusEFI master.2026.08.13.alphax-4chan.3253056687",
+  "size": 812661,
+  "sha256": "8c621a11ac94f59f009d02198af9eb7ffc5b91addf304a11e33e2eefb7c43311",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/alphax-4chan_f7/rusefi_alphax-4chan_f7.ini",
+  "family": "rusefi",
+  "board": "alphax-4chan_f7",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_alphax-4chan_f7.zip",
+  "member": "rusefi.snapshot.alphax-4chan_f7/rusefi_alphax-4chan_f7.ini",
+  "signature": "rusEFI master.2026.08.13.alphax-4chan_f7.3253056687",
+  "size": 812664,
+  "sha256": "592a598947b4757e3e9b694bcf52bca353b4d21bc4d05580824b78400888a236",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/alphax-4k-gdi/rusefi_alphax-4k-gdi.ini",
+  "family": "rusefi",
+  "board": "alphax-4k-gdi",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_alphax-4k-gdi.zip",
+  "member": "rusefi.snapshot.alphax-4k-gdi/rusefi_alphax-4k-gdi.ini",
+  "signature": "rusEFI master.2026.08.13.alphax-4k-gdi.3999200795",
+  "size": 800803,
+  "sha256": "b0a14d9fb7462bd73c032d1496e25289acb95d1bbb9a34594963470f84d04ad0",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/alphax-8chan/rusefi_alphax-8chan.ini",
+  "family": "rusefi",
+  "board": "alphax-8chan",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_alphax-8chan.zip",
+  "member": "rusefi.snapshot.alphax-8chan/rusefi_alphax-8chan.ini",
+  "signature": "rusEFI master.2026.08.13.alphax-8chan.1895592679",
+  "size": 811140,
+  "sha256": "7a7e56aa63f648b0574777e39798692e9e1a5ff9151784f8b126903d98eb9ee2",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/alphax-8chan_f7/rusefi_alphax-8chan_f7.ini",
+  "family": "rusefi",
+  "board": "alphax-8chan_f7",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_alphax-8chan_f7.zip",
+  "member": "rusefi.snapshot.alphax-8chan_f7/rusefi_alphax-8chan_f7.ini",
+  "signature": "rusEFI master.2026.08.13.alphax-8chan_f7.4126290111",
+  "size": 810633,
+  "sha256": "54852eebf56899611083f33c91f59a73d3d4334cfeb1527458a7458c28deb7b0",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/alphax-gold/rusefi_alphax-gold.ini",
+  "family": "rusefi",
+  "board": "alphax-gold",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_alphax-gold.zip",
+  "member": "rusefi.snapshot.alphax-gold/rusefi_alphax-gold.ini",
+  "signature": "rusEFI master.2026.08.13.alphax-gold.472572311",
+  "size": 806907,
+  "sha256": "139f69240070aaf86fa7682002e4e1ee7a9ed63f8093ec5ce3f136bdb884abc2",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/alphax-silver-a/rusefi_alphax-silver-a.ini",
+  "family": "rusefi",
+  "board": "alphax-silver-a",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_alphax-silver-a.zip",
+  "member": "rusefi.snapshot.alphax-silver-a/rusefi_alphax-silver-a.ini",
+  "signature": "rusEFI master.2026.08.13.alphax-silver-a.3418062504",
+  "size": 801873,
+  "sha256": "9abfb850e695814ffed1ce7431a51e5f7cd651bfe0bb82e68c1ba7f5e517d266",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/alphax-silver/rusefi_alphax-silver.ini",
+  "family": "rusefi",
+  "board": "alphax-silver",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_alphax-silver.zip",
+  "member": "rusefi.snapshot.alphax-silver/rusefi_alphax-silver.ini",
+  "signature": "rusEFI master.2026.08.13.alphax-silver.3772414730",
+  "size": 804120,
+  "sha256": "91e3191b84447d4b08a8c4469c5689d725b6df1594c3ab52cd86f06c42bb073a",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/canBridge/rusefi_canBridge.ini",
+  "family": "rusefi",
+  "board": "canBridge",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_canBridge.zip",
+  "member": "rusefi.snapshot.canBridge/rusefi_canBridge.ini",
+  "signature": "rusEFI main.2026.08.13.canBridge.1573223931",
+  "size": 785270,
+  "sha256": "f26ea3908a8d9bfaae4fba6031040592a8cbe235684901ef6e2b68cdff4efde3",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/f407-discovery/rusefi_f407-discovery.ini",
+  "family": "rusefi",
+  "board": "f407-discovery",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_f407-discovery.zip",
+  "member": "rusefi.snapshot.f407-discovery/rusefi_f407-discovery.ini",
+  "signature": "rusEFI master.2026.08.13.f407-discovery.1736042103",
+  "size": 810840,
+  "sha256": "f0155ff43d2b39c5d17986d876edd8fd6d4b27528ba1fc988f29bb9cbae20a3a",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/f429-discovery/rusefi_f429-discovery.ini",
+  "family": "rusefi",
+  "board": "f429-discovery",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_f429-discovery.zip",
+  "member": "rusefi.snapshot.f429-discovery/rusefi_f429-discovery.ini",
+  "signature": "rusEFI master.2026.08.13.f429-discovery.3146958710",
+  "size": 808563,
+  "sha256": "19d2a93f41ccd1b909846f4c4ffbd8e4788c6f49621f3f70f78e5a608ecd402c",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/frankenso_na6/rusefi_frankenso_na6.ini",
+  "family": "rusefi",
+  "board": "frankenso_na6",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_frankenso_na6.zip",
+  "member": "rusefi.snapshot.frankenso_na6/rusefi_frankenso_na6.ini",
+  "signature": "rusEFI master.2026.08.13.frankenso_na6.1180592988",
+  "size": 806551,
+  "sha256": "e601f14f7c4c21cd605a178ffd86d6586e6e51c9c8b26604c31ec60525e83e8a",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/hellen-gm-e67/rusefi_hellen-gm-e67.ini",
+  "family": "rusefi",
+  "board": "hellen-gm-e67",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_hellen-gm-e67.zip",
+  "member": "rusefi.snapshot.hellen-gm-e67/rusefi_hellen-gm-e67.ini",
+  "signature": "rusEFI master.2026.08.13.hellen-gm-e67.1202780480",
+  "size": 807055,
+  "sha256": "42c67194fe5b21c07d4bd279d52ed0bf9f2abd0406f6ad77caabe04b17604f44",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/hellen-honda-k/rusefi_hellen-honda-k.ini",
+  "family": "rusefi",
+  "board": "hellen-honda-k",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_hellen-honda-k.zip",
+  "member": "rusefi.snapshot.hellen-honda-k/rusefi_hellen-honda-k.ini",
+  "signature": "rusEFI master.2026.08.13.hellen-honda-k.4273564979",
+  "size": 774525,
+  "sha256": "3aaea32ce43d9107bef91cad11a880a3784cec5a958cb7751acdad9761a0e7cc",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/hellen-nb1/rusefi_hellen-nb1.ini",
+  "family": "rusefi",
+  "board": "hellen-nb1",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_hellen-nb1.zip",
+  "member": "rusefi.snapshot.hellen-nb1/rusefi_hellen-nb1.ini",
+  "signature": "rusEFI master.2026.08.13.hellen-nb1.3390106612",
+  "size": 806936,
+  "sha256": "0933401c215ef84c8195c1d55320f2e1567a143dc169f508e97070768744a8ef",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/hellen121nissan/rusefi_hellen121nissan.ini",
+  "family": "rusefi",
+  "board": "hellen121nissan",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_hellen121nissan.zip",
+  "member": "rusefi.snapshot.hellen121nissan/rusefi_hellen121nissan.ini",
+  "signature": "rusEFI master.2026.08.13.hellen121nissan.585987606",
+  "size": 802650,
+  "sha256": "52f39aedceef42fc99ce7209beca83df259db26dbbd62e37ee8a2dfabe9c6115",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/hellen121vag/rusefi_hellen121vag.ini",
+  "family": "rusefi",
+  "board": "hellen121vag",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_hellen121vag.zip",
+  "member": "rusefi.snapshot.hellen121vag/rusefi_hellen121vag.ini",
+  "signature": "rusEFI master.2026.08.13.hellen121vag.4287160863",
+  "size": 807960,
+  "sha256": "36c539b57868468aa39d9cd359cb40713e670e630ffdd18270a6c624585a6473",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/hellen128/rusefi_hellen128.ini",
+  "family": "rusefi",
+  "board": "hellen128",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_hellen128.zip",
+  "member": "rusefi.snapshot.hellen128/rusefi_hellen128.ini",
+  "signature": "rusEFI master.2026.08.13.hellen128.3269886144",
+  "size": 807456,
+  "sha256": "1c2c4f4b61fa64c496f062d1fc73d4c6a60e98600c68fffe288b0a2ab2d68b30",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/hellen154hyundai/rusefi_hellen154hyundai.ini",
+  "family": "rusefi",
+  "board": "hellen154hyundai",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_hellen154hyundai.zip",
+  "member": "rusefi.snapshot.hellen154hyundai/rusefi_hellen154hyundai.ini",
+  "signature": "rusEFI master.2026.08.13.hellen154hyundai.978665720",
+  "size": 798214,
+  "sha256": "14282b08469a4ecb4e176c661dbdb95ec7c2fb127da05e53b99a43e342ca722f",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/hellen154hyundai_f7/rusefi_hellen154hyundai_f7.ini",
+  "family": "rusefi",
+  "board": "hellen154hyundai_f7",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_hellen154hyundai_f7.zip",
+  "member": "rusefi.snapshot.hellen154hyundai_f7/rusefi_hellen154hyundai_f7.ini",
+  "signature": "rusEFI master.2026.08.13.hellen154hyundai_f7.1597696016",
+  "size": 795229,
+  "sha256": "faf4b48f89717bdc618d24f827f1a16c0f25c43b857d8118ca0f56a4ad12dd43",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/hellen72/rusefi_hellen72.ini",
+  "family": "rusefi",
+  "board": "hellen72",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_hellen72.zip",
+  "member": "rusefi.snapshot.hellen72/rusefi_hellen72.ini",
+  "signature": "rusEFI master.2026.08.13.hellen72.2848872710",
+  "size": 808516,
+  "sha256": "de34a543c8badbfa4013344e18322aeed1781c4256922753a5155ca42eb5a2ed",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/hellenNA6/rusefi_hellenNA6.ini",
+  "family": "rusefi",
+  "board": "hellenNA6",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_hellenNA6.zip",
+  "member": "rusefi.snapshot.hellenNA6/rusefi_hellenNA6.ini",
+  "signature": "rusEFI master.2026.08.13.hellenNA6.1557074018",
+  "size": 807648,
+  "sha256": "ba0584a2f80dd0485a0ced62aca96d5e81e3fc0c0503d40288252a3d95c38273",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/hellenNA8_96/rusefi_hellenNA8_96.ini",
+  "family": "rusefi",
+  "board": "hellenNA8_96",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_hellenNA8_96.zip",
+  "member": "rusefi.snapshot.hellenNA8_96/rusefi_hellenNA8_96.ini",
+  "signature": "rusEFI master.2026.08.13.hellenNA8_96.3621303600",
+  "size": 806868,
+  "sha256": "0057b8bde4459a0f3687b4f934a5694070243f504a6b1d5ed1ff21ebd9d67a7e",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/mega100/rusefi_mega100.ini",
+  "family": "rusefi",
+  "board": "mega100",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_mega100.zip",
+  "member": "rusefi.snapshot.mega100/rusefi_mega100.ini",
+  "signature": "rusEFI main.2026.08.13.mega100.2374925757",
+  "size": 812516,
+  "sha256": "1f034986274f5cf6e2a4e71e9165f5fc0a5a1a1c801f3e065b937a2ca89e04cd",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/mega144-f7/rusefi_mega144-f7.ini",
+  "family": "rusefi",
+  "board": "mega144-f7",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_mega144-f7.zip",
+  "member": "rusefi.snapshot.mega144-f7/rusefi_mega144-f7.ini",
+  "signature": "rusEFI main.2026.08.13.mega144-f7.1905470738",
+  "size": 809804,
+  "sha256": "1a4f0ac619cabf58539bee2d9d3ac63392c44fd7d36d5a935947ab01968de35b",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/mre-legacy_f4/rusefi_mre-legacy_f4.ini",
+  "family": "rusefi",
+  "board": "mre-legacy_f4",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_mre-legacy_f4.zip",
+  "member": "rusefi.snapshot.mre-legacy_f4/rusefi_mre-legacy_f4.ini",
+  "signature": "rusEFI master.2026.08.13.mre-legacy_f4.2025699770",
+  "size": 810581,
+  "sha256": "dd949f7ad909cd9836dedcd64161cf5dafd5237a42652e62aee1b28772cc11b7",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/mre_f4/rusefi_mre_f4.ini",
+  "family": "rusefi",
+  "board": "mre_f4",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_mre_f4.zip",
+  "member": "rusefi.snapshot.mre_f4/rusefi_mre_f4.ini",
+  "signature": "rusEFI master.2026.08.13.mre_f4.2201523565",
+  "size": 810028,
+  "sha256": "b0250b574420dd92bcb960d1108fb64485c44782689d6e49cb3a2cd44cb42d3a",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/mre_f7/rusefi_mre_f7.ini",
+  "family": "rusefi",
+  "board": "mre_f7",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_mre_f7.zip",
+  "member": "rusefi.snapshot.mre_f7/rusefi_mre_f7.ini",
+  "signature": "rusEFI master.2026.08.13.mre_f7.2201523565",
+  "size": 810028,
+  "sha256": "dda7bdb1e5f82ce536a1e7dc346d0ab270a9b21d66edf632904603b50213e2fb",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/nano/rusefi_nano.ini",
+  "family": "rusefi",
+  "board": "nano",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_nano.zip",
+  "member": "rusefi.snapshot.nano/rusefi_nano.ini",
+  "signature": "rusEFI main.2026.08.13.nano.3179513852",
+  "size": 785623,
+  "sha256": "79ef3cff83badf5fc4b18269698cd37b86d5c687b0a581c60cd433e3ac21c084",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/nissan-z31/rusefi_nissan-z31.ini",
+  "family": "rusefi",
+  "board": "nissan-z31",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_nissan-z31.zip",
+  "member": "rusefi.snapshot.nissan-z31/rusefi_nissan-z31.ini",
+  "signature": "rusEFI main.2026.08.13.nissan-z31.3005276152",
+  "size": 807889,
+  "sha256": "2e0b72b4b5ba89445cf04e23a79e4d18978fb43d4124366f2bb35430ca22d7af",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/proteus_f4/rusefi_proteus_f4.ini",
+  "family": "rusefi",
+  "board": "proteus_f4",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_proteus_f4.zip",
+  "member": "rusefi.snapshot.proteus_f4/rusefi_proteus_f4.ini",
+  "signature": "rusEFI master.2026.08.13.proteus_f4.357168325",
+  "size": 823036,
+  "sha256": "8606cbc0970c6919e474fdd6a23c6aeab24951f84bd399b08977a9c058288a1e",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/proteus_f7/rusefi_proteus_f7.ini",
+  "family": "rusefi",
+  "board": "proteus_f7",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_proteus_f7.zip",
+  "member": "rusefi.snapshot.proteus_f7/rusefi_proteus_f7.ini",
+  "signature": "rusEFI master.2026.08.13.proteus_f7.3559263380",
+  "size": 823613,
+  "sha256": "de57aa13d07e1854bc5b98e6699377fed1d50e31342a2a0d582c614fa8c69c7d",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/proteus_h7/rusefi_proteus_h7.ini",
+  "family": "rusefi",
+  "board": "proteus_h7",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_proteus_h7.zip",
+  "member": "rusefi.snapshot.proteus_h7/rusefi_proteus_h7.ini",
+  "signature": "rusEFI master.2026.08.13.proteus_h7.3446781115",
+  "size": 823619,
+  "sha256": "3b3de533e26a2e36e4e9f58ee430c8a0109c066748fd0b5a1040cf99f511819d",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/r-ecu/rusefi_r-ecu.ini",
+  "family": "rusefi",
+  "board": "r-ecu",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_r-ecu.zip",
+  "member": "rusefi.snapshot.r-ecu/rusefi_r-ecu.ini",
+  "signature": "rusEFI main.2026.08.13.r-ecu.2231202110",
+  "size": 793062,
+  "sha256": "d37a34a0a6ebb3ae7a89fee6107a4954468938cf5de827993e6828b72f998fff",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/small-can-board/rusefi_small-can-board.ini",
+  "family": "rusefi",
+  "board": "small-can-board",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_small-can-board.zip",
+  "member": "rusefi.snapshot.small-can-board/rusefi_small-can-board.ini",
+  "signature": "rusEFI master.2026.08.13.small-can-board.3978280772",
+  "size": 804010,
+  "sha256": "a4b0589c0e726db8811652bfe3770fdda4f0711ff5c0e318b63e2849c75f231b",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/stm32f429_nucleo/rusefi_stm32f429_nucleo.ini",
+  "family": "rusefi",
+  "board": "stm32f429_nucleo",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_stm32f429_nucleo.zip",
+  "member": "rusefi.snapshot.stm32f429_nucleo/rusefi_stm32f429_nucleo.ini",
+  "signature": "rusEFI master.2026.08.13.stm32f429_nucleo.1410515215",
+  "size": 808423,
+  "sha256": "13775fb4b2c97d3210f7230f7b9660c3bea2e816b8a8f7f5a4c6395f24895c4e",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/stm32f767_nucleo/rusefi_stm32f767_nucleo.ini",
+  "family": "rusefi",
+  "board": "stm32f767_nucleo",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_stm32f767_nucleo.zip",
+  "member": "rusefi.snapshot.stm32f767_nucleo/rusefi_stm32f767_nucleo.ini",
+  "signature": "rusEFI master.2026.08.13.stm32f767_nucleo.2248539466",
+  "size": 808578,
+  "sha256": "7d0a738e5ebb49b0b03044cc4a8379dba83a04bc6d0f3fd472577de7fbd5857b",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/stm32h743_nucleo/rusefi_stm32h743_nucleo.ini",
+  "family": "rusefi",
+  "board": "stm32h743_nucleo",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_stm32h743_nucleo.zip",
+  "member": "rusefi.snapshot.stm32h743_nucleo/rusefi_stm32h743_nucleo.ini",
+  "signature": "rusEFI master.2026.08.13.stm32h743_nucleo.2248539466",
+  "size": 808578,
+  "sha256": "6f99200752c9a1f5e6242cb623ac9cace105230989e47e8b67ac7760f23d34db",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/subaru_eg33_f7/rusefi_subaru_eg33_f7.ini",
+  "family": "rusefi",
+  "board": "subaru_eg33_f7",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_subaru_eg33_f7.zip",
+  "member": "rusefi.snapshot.subaru_eg33_f7/rusefi_subaru_eg33_f7.ini",
+  "signature": "rusEFI master.2026.08.13.subaru_eg33_f7.1806319024",
+  "size": 812045,
+  "sha256": "faab48209af74fa2bac6d99fd252f44ae63f04d8d079138553820e8781a27779",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": [
+   {
+    "board": "subaru_eg33_f7_no_bl",
+    "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_subaru_eg33_f7_no_bl.zip",
+    "member": "rusefi.snapshot.subaru_eg33_f7_no_bl/rusefi_subaru_eg33_f7.ini"
+   }
+  ]
+ },
+ {
+  "file": "rusefi/release_20260812/super-uaefi/rusefi_super-uaefi.ini",
+  "family": "rusefi",
+  "board": "super-uaefi",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_super-uaefi.zip",
+  "member": "rusefi.snapshot.super-uaefi/rusefi_super-uaefi.ini",
+  "signature": "rusEFI master.2026.08.13.super-uaefi.754701050",
+  "size": 802801,
+  "sha256": "115b28eaa8cabfc0941978476f67ffad79af8bb3dbc9788921b6766ca2b58481",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/t-b-g/rusefi_t-b-g.ini",
+  "family": "rusefi",
+  "board": "t-b-g",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_t-b-g.zip",
+  "member": "rusefi.snapshot.t-b-g/rusefi_t-b-g.ini",
+  "signature": "rusEFI master.2026.08.13.t-b-g.2248539466",
+  "size": 808567,
+  "sha256": "b92a383f4394c03ff120927b9fbe41363135a44c98df4a04963f746f92ee18e4",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/uaefi-obd1/rusefi_uaefi-obd1.ini",
+  "family": "rusefi",
+  "board": "uaefi-obd1",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_uaefi-obd1.zip",
+  "member": "rusefi.snapshot.uaefi-obd1/rusefi_uaefi-obd1.ini",
+  "signature": "rusEFI main.2026.08.13.uaefi-obd1.3090386621",
+  "size": 793106,
+  "sha256": "c866aa50138c455e5660615de990dae0c237e23103de67e268ae973e37efdf12",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/uaefi/rusefi_uaefi.ini",
+  "family": "rusefi",
+  "board": "uaefi",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_uaefi.zip",
+  "member": "rusefi.snapshot.uaefi/rusefi_uaefi.ini",
+  "signature": "rusEFI master.2026.08.13.uaefi.3426640946",
+  "size": 824934,
+  "sha256": "c3f92cfc8d15ed2147a93209063e07089deede0468c3567379fbe48ad893bbe6",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/uaefi121/rusefi_uaefi121.ini",
+  "family": "rusefi",
+  "board": "uaefi121",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_uaefi121.zip",
+  "member": "rusefi.snapshot.uaefi121/rusefi_uaefi121.ini",
+  "signature": "rusEFI master.2026.08.13.uaefi121.4031680391",
+  "size": 823838,
+  "sha256": "0cd5be62c867b9f57761f06dede0eac7f86548f7f2b31a171dcf8961664426ca",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/uaefi_pro/rusefi_uaefi_pro.ini",
+  "family": "rusefi",
+  "board": "uaefi_pro",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_uaefi_pro.zip",
+  "member": "rusefi.snapshot.uaefi_pro/rusefi_uaefi_pro.ini",
+  "signature": "rusEFI master.2026.08.13.uaefi_pro.3151813420",
+  "size": 824941,
+  "sha256": "2179cb0cf83c92de19246bfed51bc9b05f6028ae98fa595374d4580e94a28ac6",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260812/uaefi_pro_h7/rusefi_uaefi_pro_h7.ini",
+  "family": "rusefi",
+  "board": "uaefi_pro_h7",
+  "version": "release_20260812",
+  "tags": [
+   "release_20260812"
+  ],
+  "commit": "a6d6d77b8876b5941c2ec12da8b28a00b9d7b538",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260812/rusefi_bundle_uaefi_pro_h7.zip",
+  "member": "rusefi.snapshot.uaefi_pro_h7/rusefi_uaefi_pro_h7.ini",
+  "signature": "rusEFI master.2026.08.12.uaefi_pro_h7.399522647",
+  "size": 824877,
+  "sha256": "94ce0febfea2c64987dd1e666d830730b27abb619059ccf51f590dcc7856d4cc",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260812",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260220_2/alphax-2chan/rusefi_alphax-2chan.ini",
+  "family": "rusefi",
+  "board": "alphax-2chan",
+  "version": "release_20260220_2",
+  "tags": [
+   "release_20260220_2"
+  ],
+  "commit": "11cc73c311f2bb9420e115b0b7c18374dc72ac53",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260220_2/rusefi_bundle_alphax-2chan.zip",
+  "member": "rusefi.master.alphax-2chan/rusefi_alphax-2chan.ini",
+  "signature": "rusEFI master.2026.02.20.alphax-2chan.2644478575",
+  "size": 698667,
+  "sha256": "022906769a2831abfd3d93bc31eb352614963f77ae52582726fb7b16cf614ad2",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260220_2",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260220_2/alphax-4chan/rusefi_alphax-4chan.ini",
+  "family": "rusefi",
+  "board": "alphax-4chan",
+  "version": "release_20260220_2",
+  "tags": [
+   "release_20260220_2"
+  ],
+  "commit": "11cc73c311f2bb9420e115b0b7c18374dc72ac53",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260220_2/rusefi_bundle_alphax-4chan.zip",
+  "member": "rusefi.master.alphax-4chan/rusefi_alphax-4chan.ini",
+  "signature": "rusEFI master.2026.02.20.alphax-4chan.2584025484",
+  "size": 708783,
+  "sha256": "dab6624cf33f6a5082eafad1c10b95068db854c09c32c1b245fa920ae3241a11",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260220_2",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260220_2/alphax-4chan_f7/rusefi_alphax-4chan_f7.ini",
+  "family": "rusefi",
+  "board": "alphax-4chan_f7",
+  "version": "release_20260220_2",
+  "tags": [
+   "release_20260220_2"
+  ],
+  "commit": "11cc73c311f2bb9420e115b0b7c18374dc72ac53",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260220_2/rusefi_bundle_alphax-4chan_f7.zip",
+  "member": "rusefi.master.alphax-4chan_f7/rusefi_alphax-4chan_f7.ini",
+  "signature": "rusEFI master.2026.02.20.alphax-4chan_f7.2584025484",
+  "size": 708786,
+  "sha256": "75cbcb4e47053163938059f4ee67097c61118721a9bcb0601194be8c52a0b3c1",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260220_2",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260220_2/alphax-4k-gdi/rusefi_alphax-4k-gdi.ini",
+  "family": "rusefi",
+  "board": "alphax-4k-gdi",
+  "version": "release_20260220_2",
+  "tags": [
+   "release_20260220_2"
+  ],
+  "commit": "11cc73c311f2bb9420e115b0b7c18374dc72ac53",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260220_2/rusefi_bundle_alphax-4k-gdi.zip",
+  "member": "rusefi.master.alphax-4k-gdi/rusefi_alphax-4k-gdi.ini",
+  "signature": "rusEFI master.2026.02.20.alphax-4k-gdi.3192087232",
+  "size": 696996,
+  "sha256": "d1e8f10c70bc4003a0970ca3659762056a44b29a98bf45c18446a44ccaf7a262",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260220_2",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260220_2/alphax-8chan/rusefi_alphax-8chan.ini",
+  "family": "rusefi",
+  "board": "alphax-8chan",
+  "version": "release_20260220_2",
+  "tags": [
+   "release_20260220_2"
+  ],
+  "commit": "11cc73c311f2bb9420e115b0b7c18374dc72ac53",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260220_2/rusefi_bundle_alphax-8chan.zip",
+  "member": "rusefi.master.alphax-8chan/rusefi_alphax-8chan.ini",
+  "signature": "rusEFI master.2026.02.20.alphax-8chan.4101053961",
+  "size": 706654,
+  "sha256": "d9bf47c3ae7069077285ac25209a3a687d9eaa966e44d8ef9dab641f3e77a666",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260220_2",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260220_2/alphax-8chan_f7/rusefi_alphax-8chan_f7.ini",
+  "family": "rusefi",
+  "board": "alphax-8chan_f7",
+  "version": "release_20260220_2",
+  "tags": [
+   "release_20260220_2"
+  ],
+  "commit": "11cc73c311f2bb9420e115b0b7c18374dc72ac53",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260220_2/rusefi_bundle_alphax-8chan_f7.zip",
+  "member": "rusefi.master.alphax-8chan_f7/rusefi_alphax-8chan_f7.ini",
+  "signature": "rusEFI master.2026.02.20.alphax-8chan_f7.2331668614",
+  "size": 706726,
+  "sha256": "a6d0f7e85a3ead9f2c4394ff59a57ebaf94a8b2a392c40bcd4f90faef8ac4353",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260220_2",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260220_2/alphax-gold/rusefi_alphax-gold.ini",
+  "family": "rusefi",
+  "board": "alphax-gold",
+  "version": "release_20260220_2",
+  "tags": [
+   "release_20260220_2"
+  ],
+  "commit": "11cc73c311f2bb9420e115b0b7c18374dc72ac53",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260220_2/rusefi_bundle_alphax-gold.zip",
+  "member": "rusefi.master.alphax-gold/rusefi_alphax-gold.ini",
+  "signature": "rusEFI master.2026.02.20.alphax-gold.4176837809",
+  "size": 703105,
+  "sha256": "e15ce3731b12307f9c2e3499938a8df8f8aca050b1553519e69e4bd2b9144f6e",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260220_2",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260220_2/alphax-silver-a/rusefi_alphax-silver-a.ini",
+  "family": "rusefi",
+  "board": "alphax-silver-a",
+  "version": "release_20260220_2",
+  "tags": [
+   "release_20260220_2"
+  ],
+  "commit": "11cc73c311f2bb9420e115b0b7c18374dc72ac53",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260220_2/rusefi_bundle_alphax-silver-a.zip",
+  "member": "rusefi.master.alphax-silver-a/rusefi_alphax-silver-a.ini",
+  "signature": "rusEFI master.2026.02.20.alphax-silver-a.1661249504",
+  "size": 698160,
+  "sha256": "56533ebe07848d42dae5fc81e0a4fe44a253b303e347fa1fb60970429c6a25ab",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260220_2",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260220_2/alphax-silver/rusefi_alphax-silver.ini",
+  "family": "rusefi",
+  "board": "alphax-silver",
+  "version": "release_20260220_2",
+  "tags": [
+   "release_20260220_2"
+  ],
+  "commit": "11cc73c311f2bb9420e115b0b7c18374dc72ac53",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260220_2/rusefi_bundle_alphax-silver.zip",
+  "member": "rusefi.master.alphax-silver/rusefi_alphax-silver.ini",
+  "signature": "rusEFI master.2026.02.20.alphax-silver.781658882",
+  "size": 700316,
+  "sha256": "d0ca5b9c2761fea89d8c147b84a52df2b27da48cf07052c3c237e9051b5e9397",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260220_2",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260220_2/f407-discovery/rusefi_f407-discovery.ini",
+  "family": "rusefi",
+  "board": "f407-discovery",
+  "version": "release_20260220_2",
+  "tags": [
+   "release_20260220_2"
+  ],
+  "commit": "11cc73c311f2bb9420e115b0b7c18374dc72ac53",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260220_2/rusefi_bundle_f407-discovery.zip",
+  "member": "rusefi.master.f407-discovery/rusefi_f407-discovery.ini",
+  "signature": "rusEFI master.2026.02.20.f407-discovery.428014686",
+  "size": 707114,
+  "sha256": "c35edc43f643398b6ada2eb2b050e1528b54f27686e473a4f8e951700d211c7d",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260220_2",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260220_2/f429-discovery/rusefi_f429-discovery.ini",
+  "family": "rusefi",
+  "board": "f429-discovery",
+  "version": "release_20260220_2",
+  "tags": [
+   "release_20260220_2"
+  ],
+  "commit": "11cc73c311f2bb9420e115b0b7c18374dc72ac53",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260220_2/rusefi_bundle_f429-discovery.zip",
+  "member": "rusefi.master.f429-discovery/rusefi_f429-discovery.ini",
+  "signature": "rusEFI master.2026.02.20.f429-discovery.2049852588",
+  "size": 706194,
+  "sha256": "0e2b1b65818809da34b5bfd8dadd020422c115801393ce3e268969478e46c996",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260220_2",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260220_2/frankenso_na6/rusefi_frankenso_na6.ini",
+  "family": "rusefi",
+  "board": "frankenso_na6",
+  "version": "release_20260220_2",
+  "tags": [
+   "release_20260220_2"
+  ],
+  "commit": "11cc73c311f2bb9420e115b0b7c18374dc72ac53",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260220_2/rusefi_bundle_frankenso_na6.zip",
+  "member": "rusefi.master.frankenso_na6/rusefi_frankenso_na6.ini",
+  "signature": "rusEFI master.2026.02.20.frankenso_na6.971542221",
+  "size": 704163,
+  "sha256": "5132488de98472d0b590411c99c22991036670643cf2285cb6110557fc6da4ea",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260220_2",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260220_2/hellen-gm-e67/rusefi_hellen-gm-e67.ini",
+  "family": "rusefi",
+  "board": "hellen-gm-e67",
+  "version": "release_20260220_2",
+  "tags": [
+   "release_20260220_2"
+  ],
+  "commit": "11cc73c311f2bb9420e115b0b7c18374dc72ac53",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260220_2/rusefi_bundle_hellen-gm-e67.zip",
+  "member": "rusefi.master.hellen-gm-e67/rusefi_hellen-gm-e67.ini",
+  "signature": "rusEFI master.2026.02.20.hellen-gm-e67.2882784812",
+  "size": 703291,
+  "sha256": "3d0d5d8948b2821d2db158cefb3302d51624c4c282e1e81d4de5358c85cc4e43",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260220_2",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260220_2/hellen-honda-k/rusefi_hellen-honda-k.ini",
+  "family": "rusefi",
+  "board": "hellen-honda-k",
+  "version": "release_20260220_2",
+  "tags": [
+   "release_20260220_2"
+  ],
+  "commit": "11cc73c311f2bb9420e115b0b7c18374dc72ac53",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260220_2/rusefi_bundle_hellen-honda-k.zip",
+  "member": "rusefi.master.hellen-honda-k/rusefi_hellen-honda-k.ini",
+  "signature": "rusEFI master.2026.02.20.hellen-honda-k.2746209019",
+  "size": 674597,
+  "sha256": "c4ddaeba8e8fffa9e9a2cac1fb84e8900a0a3eeaff5e8d5757838a776c2f0224",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260220_2",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260220_2/hellen-nb1/rusefi_hellen-nb1.ini",
+  "family": "rusefi",
+  "board": "hellen-nb1",
+  "version": "release_20260220_2",
+  "tags": [
+   "release_20260220_2"
+  ],
+  "commit": "11cc73c311f2bb9420e115b0b7c18374dc72ac53",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260220_2/rusefi_bundle_hellen-nb1.zip",
+  "member": "rusefi.master.hellen-nb1/rusefi_hellen-nb1.ini",
+  "signature": "rusEFI master.2026.02.20.hellen-nb1.2137086651",
+  "size": 703172,
+  "sha256": "dbe713e4d82cb94326052c3a54b93adbeaa76f2d00cc5f12e4c1c93cc3aaf5cb",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260220_2",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260220_2/hellen121nissan/rusefi_hellen121nissan.ini",
+  "family": "rusefi",
+  "board": "hellen121nissan",
+  "version": "release_20260220_2",
+  "tags": [
+   "release_20260220_2"
+  ],
+  "commit": "11cc73c311f2bb9420e115b0b7c18374dc72ac53",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260220_2/rusefi_bundle_hellen121nissan.zip",
+  "member": "rusefi.master.hellen121nissan/rusefi_hellen121nissan.ini",
+  "signature": "rusEFI master.2026.02.20.hellen121nissan.340234523",
+  "size": 698977,
+  "sha256": "929cc5069f48ff8a7fee1793e3d68df63befadbeb84cdb3787e305f623fd8f1f",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260220_2",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260220_2/hellen121vag/rusefi_hellen121vag.ini",
+  "family": "rusefi",
+  "board": "hellen121vag",
+  "version": "release_20260220_2",
+  "tags": [
+   "release_20260220_2"
+  ],
+  "commit": "11cc73c311f2bb9420e115b0b7c18374dc72ac53",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260220_2/rusefi_bundle_hellen121vag.zip",
+  "member": "rusefi.master.hellen121vag/rusefi_hellen121vag.ini",
+  "signature": "rusEFI master.2026.02.20.hellen121vag.580332051",
+  "size": 703570,
+  "sha256": "60c03ea4426632e41f7a0873ab2fd665c478e95d258f3ce2136b81c4b4c3cf1c",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260220_2",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260220_2/hellen128/rusefi_hellen128.ini",
+  "family": "rusefi",
+  "board": "hellen128",
+  "version": "release_20260220_2",
+  "tags": [
+   "release_20260220_2"
+  ],
+  "commit": "11cc73c311f2bb9420e115b0b7c18374dc72ac53",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260220_2/rusefi_bundle_hellen128.zip",
+  "member": "rusefi.master.hellen128/rusefi_hellen128.ini",
+  "signature": "rusEFI master.2026.02.20.hellen128.771316075",
+  "size": 703691,
+  "sha256": "9c0ac698f9d6ea8aa785dae186bcdce91ebded3c9fd73d8c290ed4c0753f4612",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260220_2",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260220_2/hellen154hyundai/rusefi_hellen154hyundai.ini",
+  "family": "rusefi",
+  "board": "hellen154hyundai",
+  "version": "release_20260220_2",
+  "tags": [
+   "release_20260220_2"
+  ],
+  "commit": "11cc73c311f2bb9420e115b0b7c18374dc72ac53",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260220_2/rusefi_bundle_hellen154hyundai.zip",
+  "member": "rusefi.master.hellen154hyundai/rusefi_hellen154hyundai.ini",
+  "signature": "rusEFI master.2026.02.20.hellen154hyundai.2834652935",
+  "size": 694544,
+  "sha256": "b348271ad2ba11f75ca374989e788de52913058606330fc5caea9dafe2239db9",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260220_2",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260220_2/hellen154hyundai_f7/rusefi_hellen154hyundai_f7.ini",
+  "family": "rusefi",
+  "board": "hellen154hyundai_f7",
+  "version": "release_20260220_2",
+  "tags": [
+   "release_20260220_2"
+  ],
+  "commit": "11cc73c311f2bb9420e115b0b7c18374dc72ac53",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260220_2/rusefi_bundle_hellen154hyundai_f7.zip",
+  "member": "rusefi.master.hellen154hyundai_f7/rusefi_hellen154hyundai_f7.ini",
+  "signature": "rusEFI master.2026.02.20.hellen154hyundai_f7.3598124286",
+  "size": 698498,
+  "sha256": "d5d22b9699bd9aa7f13bf12bcc889aa0ce5f317d659da4525bbd992a4b836b83",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260220_2",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260220_2/hellen72/rusefi_hellen72.ini",
+  "family": "rusefi",
+  "board": "hellen72",
+  "version": "release_20260220_2",
+  "tags": [
+   "release_20260220_2"
+  ],
+  "commit": "11cc73c311f2bb9420e115b0b7c18374dc72ac53",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260220_2/rusefi_bundle_hellen72.zip",
+  "member": "rusefi.master.hellen72/rusefi_hellen72.ini",
+  "signature": "rusEFI master.2026.02.20.hellen72.298649968",
+  "size": 704751,
+  "sha256": "3f6ebce2c35be9088545bd922cd32fd438cc71243c3b0a7c9ab984df813e5871",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260220_2",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260220_2/hellenNA6/rusefi_hellenNA6.ini",
+  "family": "rusefi",
+  "board": "hellenNA6",
+  "version": "release_20260220_2",
+  "tags": [
+   "release_20260220_2"
+  ],
+  "commit": "11cc73c311f2bb9420e115b0b7c18374dc72ac53",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260220_2/rusefi_bundle_hellenNA6.zip",
+  "member": "rusefi.master.hellenNA6/rusefi_hellenNA6.ini",
+  "signature": "rusEFI master.2026.02.20.hellenNA6.2529183547",
+  "size": 703884,
+  "sha256": "f76a1cc51d64b0b2b62b267c77d6de20b975425e58f00448ef6e3f0b192d4be0",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260220_2",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260220_2/hellenNA8_96/rusefi_hellenNA8_96.ini",
+  "family": "rusefi",
+  "board": "hellenNA8_96",
+  "version": "release_20260220_2",
+  "tags": [
+   "release_20260220_2"
+  ],
+  "commit": "11cc73c311f2bb9420e115b0b7c18374dc72ac53",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260220_2/rusefi_bundle_hellenNA8_96.zip",
+  "member": "rusefi.master.hellenNA8_96/rusefi_hellenNA8_96.ini",
+  "signature": "rusEFI master.2026.02.20.hellenNA8_96.3971530084",
+  "size": 703104,
+  "sha256": "f970fc90fa2eb2923b4d05ac8cb3a60255d4bc3a6ebb07a3db4ad3e887d0121a",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260220_2",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260220_2/mre-legacy_f4/rusefi_mre-legacy_f4.ini",
+  "family": "rusefi",
+  "board": "mre-legacy_f4",
+  "version": "release_20260220_2",
+  "tags": [
+   "release_20260220_2"
+  ],
+  "commit": "11cc73c311f2bb9420e115b0b7c18374dc72ac53",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260220_2/rusefi_bundle_mre-legacy_f4.zip",
+  "member": "rusefi.master.mre-legacy_f4/rusefi_mre-legacy_f4.ini",
+  "signature": "rusEFI master.2026.02.20.mre-legacy_f4.2995655513",
+  "size": 706163,
+  "sha256": "353f561aa77ccfda4d9f33a76cb9e52c94f7a542f6ea3d5f68515f546e3dcc46",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260220_2",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260220_2/mre_f4/rusefi_mre_f4.ini",
+  "family": "rusefi",
+  "board": "mre_f4",
+  "version": "release_20260220_2",
+  "tags": [
+   "release_20260220_2"
+  ],
+  "commit": "11cc73c311f2bb9420e115b0b7c18374dc72ac53",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260220_2/rusefi_bundle_mre_f4.zip",
+  "member": "rusefi.master.mre_f4/rusefi_mre_f4.ini",
+  "signature": "rusEFI master.2026.02.20.mre_f4.2995655513",
+  "size": 706156,
+  "sha256": "184945ee66f9839effa2f0aca12f44666fba4a7c8f1e8b466ea0a7eca849c33d",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260220_2",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260220_2/mre_f7/rusefi_mre_f7.ini",
+  "family": "rusefi",
+  "board": "mre_f7",
+  "version": "release_20260220_2",
+  "tags": [
+   "release_20260220_2"
+  ],
+  "commit": "11cc73c311f2bb9420e115b0b7c18374dc72ac53",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260220_2/rusefi_bundle_mre_f7.zip",
+  "member": "rusefi.master.mre_f7/rusefi_mre_f7.ini",
+  "signature": "rusEFI master.2026.02.20.mre_f7.2995655513",
+  "size": 706156,
+  "sha256": "1890a0d7b56e1f7ae2e45133ad15e49bf3378d14f299277e42b0757eeaf67210",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260220_2",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260220_2/proteus_f4/rusefi_proteus_f4.ini",
+  "family": "rusefi",
+  "board": "proteus_f4",
+  "version": "release_20260220_2",
+  "tags": [
+   "release_20260220_2"
+  ],
+  "commit": "11cc73c311f2bb9420e115b0b7c18374dc72ac53",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260220_2/rusefi_bundle_proteus_f4.zip",
+  "member": "rusefi.master.proteus_f4/rusefi_proteus_f4.ini",
+  "signature": "rusEFI master.2026.02.20.proteus_f4.2745372806",
+  "size": 719156,
+  "sha256": "6eeeb57f1de609d01c4c8c74a525e6fa8cbb9a938bf6ce7b3204b18009ba5d56",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260220_2",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260220_2/proteus_f7/rusefi_proteus_f7.ini",
+  "family": "rusefi",
+  "board": "proteus_f7",
+  "version": "release_20260220_2",
+  "tags": [
+   "release_20260220_2"
+  ],
+  "commit": "11cc73c311f2bb9420e115b0b7c18374dc72ac53",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260220_2/rusefi_bundle_proteus_f7.zip",
+  "member": "rusefi.master.proteus_f7/rusefi_proteus_f7.ini",
+  "signature": "rusEFI master.2026.02.20.proteus_f7.3600809840",
+  "size": 719164,
+  "sha256": "3921596881e06276e5f921f39c15226de26a6e0a4dad477bf047c16e47e30187",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260220_2",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260220_2/proteus_h7/rusefi_proteus_h7.ini",
+  "family": "rusefi",
+  "board": "proteus_h7",
+  "version": "release_20260220_2",
+  "tags": [
+   "release_20260220_2"
+  ],
+  "commit": "11cc73c311f2bb9420e115b0b7c18374dc72ac53",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260220_2/rusefi_bundle_proteus_h7.zip",
+  "member": "rusefi.master.proteus_h7/rusefi_proteus_h7.ini",
+  "signature": "rusEFI master.2026.02.20.proteus_h7.3486009183",
+  "size": 719164,
+  "sha256": "248fe26e70851c89c0cd6fd6d759240170f0f83c29cb198b7350c142d2f15161",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260220_2",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260220_2/small-can-board/rusefi_small-can-board.ini",
+  "family": "rusefi",
+  "board": "small-can-board",
+  "version": "release_20260220_2",
+  "tags": [
+   "release_20260220_2"
+  ],
+  "commit": "11cc73c311f2bb9420e115b0b7c18374dc72ac53",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260220_2/rusefi_bundle_small-can-board.zip",
+  "member": "rusefi.master.small-can-board/rusefi_small-can-board.ini",
+  "signature": "rusEFI master.2026.02.20.small-can-board.2863798632",
+  "size": 702293,
+  "sha256": "58ac9ba7f8e736713d27e7c63cfd4e1dc3ecdd8d6df0918bb8fadc032f8a71fa",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260220_2",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260220_2/stm32f767_nucleo/rusefi_stm32f767_nucleo.ini",
+  "family": "rusefi",
+  "board": "stm32f767_nucleo",
+  "version": "release_20260220_2",
+  "tags": [
+   "release_20260220_2"
+  ],
+  "commit": "11cc73c311f2bb9420e115b0b7c18374dc72ac53",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260220_2/rusefi_bundle_stm32f767_nucleo.zip",
+  "member": "rusefi.master.stm32f767_nucleo/rusefi_stm32f767_nucleo.ini",
+  "signature": "rusEFI master.2026.02.20.stm32f767_nucleo.1203338896",
+  "size": 706191,
+  "sha256": "10c4686a597f14e82def1478543e25728b88e09d38d2d56bcb71db3fc045cf7e",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260220_2",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260220_2/stm32h743_nucleo/rusefi_stm32h743_nucleo.ini",
+  "family": "rusefi",
+  "board": "stm32h743_nucleo",
+  "version": "release_20260220_2",
+  "tags": [
+   "release_20260220_2"
+  ],
+  "commit": "11cc73c311f2bb9420e115b0b7c18374dc72ac53",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260220_2/rusefi_bundle_stm32h743_nucleo.zip",
+  "member": "rusefi.master.stm32h743_nucleo/rusefi_stm32h743_nucleo.ini",
+  "signature": "rusEFI master.2026.02.20.stm32h743_nucleo.1203338896",
+  "size": 706191,
+  "sha256": "44a1f4c1163f1e3307b45f853335aefda693ab9fa37631cfe7e587bbf8bd0d1a",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260220_2",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260220_2/subaru_eg33_f7/rusefi_subaru_eg33_f7.ini",
+  "family": "rusefi",
+  "board": "subaru_eg33_f7",
+  "version": "release_20260220_2",
+  "tags": [
+   "release_20260220_2"
+  ],
+  "commit": "11cc73c311f2bb9420e115b0b7c18374dc72ac53",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260220_2/rusefi_bundle_subaru_eg33_f7.zip",
+  "member": "rusefi.master.subaru_eg33_f7/rusefi_subaru_eg33_f7.ini",
+  "signature": "rusEFI master.2026.02.20.subaru_eg33_f7.2958844459",
+  "size": 709705,
+  "sha256": "3d9b98cfd421c78cf113d05d7cc6b756281b0665550ae53ce657378e2e481d8a",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260220_2",
+  "same_as": [
+   {
+    "board": "subaru_eg33_f7_no_bl",
+    "url": "https://github.com/rusefi/rusefi/releases/download/release_20260220_2/rusefi_bundle_subaru_eg33_f7_no_bl.zip",
+    "member": "rusefi.master.subaru_eg33_f7_no_bl/rusefi_subaru_eg33_f7.ini"
+   }
+  ]
+ },
+ {
+  "file": "rusefi/release_20260220_2/super-uaefi/rusefi_super-uaefi.ini",
+  "family": "rusefi",
+  "board": "super-uaefi",
+  "version": "release_20260220_2",
+  "tags": [
+   "release_20260220_2"
+  ],
+  "commit": "11cc73c311f2bb9420e115b0b7c18374dc72ac53",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260220_2/rusefi_bundle_super-uaefi.zip",
+  "member": "rusefi.master.super-uaefi/rusefi_super-uaefi.ini",
+  "signature": "rusEFI master.2026.02.20.super-uaefi.194172444",
+  "size": 703876,
+  "sha256": "eced1d77aa69cde74033165458991536709a6796aefa3fc7b426617d140c6e8c",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260220_2",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260220_2/t-b-g/rusefi_t-b-g.ini",
+  "family": "rusefi",
+  "board": "t-b-g",
+  "version": "release_20260220_2",
+  "tags": [
+   "release_20260220_2"
+  ],
+  "commit": "11cc73c311f2bb9420e115b0b7c18374dc72ac53",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260220_2/rusefi_bundle_t-b-g.zip",
+  "member": "rusefi.master.t-b-g/rusefi_t-b-g.ini",
+  "signature": "rusEFI master.2026.02.20.t-b-g.1203338896",
+  "size": 706180,
+  "sha256": "0bcc90214410e23b1395243f79d3f4078b2cab16bc3b3ca2ba1092092ce3d9dc",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260220_2",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260220_2/uaefi/rusefi_uaefi.ini",
+  "family": "rusefi",
+  "board": "uaefi",
+  "version": "release_20260220_2",
+  "tags": [
+   "release_20260220_2"
+  ],
+  "commit": "11cc73c311f2bb9420e115b0b7c18374dc72ac53",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260220_2/rusefi_bundle_uaefi.zip",
+  "member": "rusefi.master.uaefi/rusefi_uaefi.ini",
+  "signature": "rusEFI master.2026.02.20.uaefi.4211171972",
+  "size": 720610,
+  "sha256": "a0eb97bea8baca9224c6cd2430829c6500605bb9d85bb0204fa19b49550f6553",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260220_2",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260220_2/uaefi121/rusefi_uaefi121.ini",
+  "family": "rusefi",
+  "board": "uaefi121",
+  "version": "release_20260220_2",
+  "tags": [
+   "release_20260220_2"
+  ],
+  "commit": "11cc73c311f2bb9420e115b0b7c18374dc72ac53",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260220_2/rusefi_bundle_uaefi121.zip",
+  "member": "rusefi.master.uaefi121/rusefi_uaefi121.ini",
+  "signature": "rusEFI master.2026.02.20.uaefi121.3704440716",
+  "size": 719510,
+  "sha256": "d07dde621fad33aa148fa83cafd507c202f5f0dce0e8698cdf2e3e4931c61633",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260220_2",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260220_2/uaefi_pro/rusefi_uaefi_pro.ini",
+  "family": "rusefi",
+  "board": "uaefi_pro",
+  "version": "release_20260220_2",
+  "tags": [
+   "release_20260220_2"
+  ],
+  "commit": "11cc73c311f2bb9420e115b0b7c18374dc72ac53",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260220_2/rusefi_bundle_uaefi_pro.zip",
+  "member": "rusefi.master.uaefi_pro/rusefi_uaefi_pro.ini",
+  "signature": "rusEFI master.2026.02.20.uaefi_pro.2363743642",
+  "size": 720615,
+  "sha256": "882f94ca240747af7b267c3bd999f31f3eb9b6e37200eefe629591e1510fd6a1",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260220_2",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20260220_2/uaefi_pro_h7/rusefi_uaefi_pro_h7.ini",
+  "family": "rusefi",
+  "board": "uaefi_pro_h7",
+  "version": "release_20260220_2",
+  "tags": [
+   "release_20260220_2"
+  ],
+  "commit": "11cc73c311f2bb9420e115b0b7c18374dc72ac53",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20260220_2/rusefi_bundle_uaefi_pro_h7.zip",
+  "member": "rusefi.master.uaefi_pro_h7/rusefi_uaefi_pro_h7.ini",
+  "signature": "rusEFI master.2026.02.20.uaefi_pro_h7.1552092069",
+  "size": 720618,
+  "sha256": "3165d7b5ee2a6954a4ae59eb07e015e6d42f86f862fa870b07601e9388a7d538",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20260220_2",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20251018/alphax-2chan/rusefi_alphax-2chan.ini",
+  "family": "rusefi",
+  "board": "alphax-2chan",
+  "version": "release_20251018",
+  "tags": [
+   "release_20251018"
+  ],
+  "commit": "6f495091cf1dccd498284c181a9da9a71eb6a9a2",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20251018/rusefi_bundle_alphax-2chan.zip",
+  "member": "rusefi.master.alphax-2chan/rusefi_alphax-2chan.ini",
+  "signature": "rusEFI master.2025.10.18.alphax-2chan.2727274769",
+  "size": 667643,
+  "sha256": "c53872d9f6c6de2800ea4b5b2e9ffcd482574d7775dbe31c495c2d9e4f79466f",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20251018",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20251018/alphax-4chan/rusefi_alphax-4chan.ini",
+  "family": "rusefi",
+  "board": "alphax-4chan",
+  "version": "release_20251018",
+  "tags": [
+   "release_20251018"
+  ],
+  "commit": "6f495091cf1dccd498284c181a9da9a71eb6a9a2",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20251018/rusefi_bundle_alphax-4chan.zip",
+  "member": "rusefi.master.alphax-4chan/rusefi_alphax-4chan.ini",
+  "signature": "rusEFI master.2025.10.18.alphax-4chan.1401787134",
+  "size": 677969,
+  "sha256": "f493687a77e3af7312e4071ea4a24293568eab589c7c856c514a0c7a1d9b28a5",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20251018",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20251018/alphax-4chan_f7/rusefi_alphax-4chan_f7.ini",
+  "family": "rusefi",
+  "board": "alphax-4chan_f7",
+  "version": "release_20251018",
+  "tags": [
+   "release_20251018"
+  ],
+  "commit": "6f495091cf1dccd498284c181a9da9a71eb6a9a2",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20251018/rusefi_bundle_alphax-4chan_f7.zip",
+  "member": "rusefi.master.alphax-4chan_f7/rusefi_alphax-4chan_f7.ini",
+  "signature": "rusEFI master.2025.10.18.alphax-4chan_f7.1401787134",
+  "size": 677975,
+  "sha256": "93c0e0e28c87b8998d5384ac488670615944a2103cadc90c7146a45eeca9d51e",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20251018",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20251018/alphax-4k-gdi/rusefi_alphax-4k-gdi.ini",
+  "family": "rusefi",
+  "board": "alphax-4k-gdi",
+  "version": "release_20251018",
+  "tags": [
+   "release_20251018"
+  ],
+  "commit": "6f495091cf1dccd498284c181a9da9a71eb6a9a2",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20251018/rusefi_bundle_alphax-4k-gdi.zip",
+  "member": "rusefi.master.alphax-4k-gdi/rusefi_alphax-4k-gdi.ini",
+  "signature": "rusEFI master.2025.10.18.alphax-4k-gdi.2169635262",
+  "size": 666119,
+  "sha256": "8c9005e8b3e5778fee861e4498488dacb0cc5f4188ccae1c7a17c94e941ab190",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20251018",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20251018/alphax-8chan/rusefi_alphax-8chan.ini",
+  "family": "rusefi",
+  "board": "alphax-8chan",
+  "version": "release_20251018",
+  "tags": [
+   "release_20251018"
+  ],
+  "commit": "6f495091cf1dccd498284c181a9da9a71eb6a9a2",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20251018/rusefi_bundle_alphax-8chan.zip",
+  "member": "rusefi.master.alphax-8chan/rusefi_alphax-8chan.ini",
+  "signature": "rusEFI master.2025.10.18.alphax-8chan.2673909081",
+  "size": 677409,
+  "sha256": "a8e8d6daf77f4be88c002a4d05540e8e4fa8689cb83d10931b42434ac9bd1d71",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20251018",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20251018/alphax-8chan_f7/rusefi_alphax-8chan_f7.ini",
+  "family": "rusefi",
+  "board": "alphax-8chan_f7",
+  "version": "release_20251018",
+  "tags": [
+   "release_20251018"
+  ],
+  "commit": "6f495091cf1dccd498284c181a9da9a71eb6a9a2",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20251018/rusefi_bundle_alphax-8chan_f7.zip",
+  "member": "rusefi.master.alphax-8chan_f7/rusefi_alphax-8chan_f7.ini",
+  "signature": "rusEFI master.2025.10.18.alphax-8chan_f7.3790336982",
+  "size": 677484,
+  "sha256": "2947d395288f192cca68ca88616aa03458d3ce867cbab2ab4f21b092d80a05bd",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20251018",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20251018/alphax-gold/rusefi_alphax-gold.ini",
+  "family": "rusefi",
+  "board": "alphax-gold",
+  "version": "release_20251018",
+  "tags": [
+   "release_20251018"
+  ],
+  "commit": "6f495091cf1dccd498284c181a9da9a71eb6a9a2",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20251018/rusefi_bundle_alphax-gold.zip",
+  "member": "rusefi.master.alphax-gold/rusefi_alphax-gold.ini",
+  "signature": "rusEFI master.2025.10.18.alphax-gold.4023245713",
+  "size": 672083,
+  "sha256": "4daa901e6e897a3fb9a859780eab4d9987b3279e928dcefc2f76132f5499b917",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20251018",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20251018/alphax-silver-a/rusefi_alphax-silver-a.ini",
+  "family": "rusefi",
+  "board": "alphax-silver-a",
+  "version": "release_20251018",
+  "tags": [
+   "release_20251018"
+  ],
+  "commit": "6f495091cf1dccd498284c181a9da9a71eb6a9a2",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20251018/rusefi_bundle_alphax-silver-a.zip",
+  "member": "rusefi.master.alphax-silver-a/rusefi_alphax-silver-a.ini",
+  "signature": "rusEFI master.2025.10.18.alphax-silver-a.1544930462",
+  "size": 666992,
+  "sha256": "cb626cfb4f0cde3d4f9d50cbc7ed51074ca5b7a38310785c07e01b0b55a6c6ac",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20251018",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20251018/alphax-silver/rusefi_alphax-silver.ini",
+  "family": "rusefi",
+  "board": "alphax-silver",
+  "version": "release_20251018",
+  "tags": [
+   "release_20251018"
+  ],
+  "commit": "6f495091cf1dccd498284c181a9da9a71eb6a9a2",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20251018/rusefi_bundle_alphax-silver.zip",
+  "member": "rusefi.master.alphax-silver/rusefi_alphax-silver.ini",
+  "signature": "rusEFI master.2025.10.18.alphax-silver.508626603",
+  "size": 666986,
+  "sha256": "3b0625c7d3a3ab150aebb4321848b856ce38f579d1c1c0e61100291ca197d3ef",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20251018",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20251018/f407-discovery/rusefi_f407-discovery.ini",
+  "family": "rusefi",
+  "board": "f407-discovery",
+  "version": "release_20251018",
+  "tags": [
+   "release_20251018"
+  ],
+  "commit": "6f495091cf1dccd498284c181a9da9a71eb6a9a2",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20251018/rusefi_bundle_f407-discovery.zip",
+  "member": "rusefi.master.f407-discovery/rusefi_f407-discovery.ini",
+  "signature": "rusEFI master.2025.10.18.f407-discovery.647208736",
+  "size": 678166,
+  "sha256": "a54e8e5a57d446b725431e10600f23d02bdaa1eca527149251da718a07be36d2",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20251018",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20251018/f429-discovery/rusefi_f429-discovery.ini",
+  "family": "rusefi",
+  "board": "f429-discovery",
+  "version": "release_20251018",
+  "tags": [
+   "release_20251018"
+  ],
+  "commit": "6f495091cf1dccd498284c181a9da9a71eb6a9a2",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20251018/rusefi_bundle_f429-discovery.zip",
+  "member": "rusefi.master.f429-discovery/rusefi_f429-discovery.ini",
+  "signature": "rusEFI master.2025.10.18.f429-discovery.562102348",
+  "size": 677245,
+  "sha256": "653f83a855197cb9c0ca696f56872a40fbc0fe4bf0a2fbd5744a9327525d6748",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20251018",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20251018/frankenso_na6/rusefi_frankenso_na6.ini",
+  "family": "rusefi",
+  "board": "frankenso_na6",
+  "version": "release_20251018",
+  "tags": [
+   "release_20251018"
+  ],
+  "commit": "6f495091cf1dccd498284c181a9da9a71eb6a9a2",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20251018/rusefi_bundle_frankenso_na6.zip",
+  "member": "rusefi.master.frankenso_na6/rusefi_frankenso_na6.ini",
+  "signature": "rusEFI master.2025.10.18.frankenso_na6.117042611",
+  "size": 675111,
+  "sha256": "2c7e7f1ccea32411f1f9c7204aa50c335724b627064c9b29867d89bd28f96d17",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20251018",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20251018/hellen-honda-k/rusefi_hellen-honda-k.ini",
+  "family": "rusefi",
+  "board": "hellen-honda-k",
+  "version": "release_20251018",
+  "tags": [
+   "release_20251018"
+  ],
+  "commit": "6f495091cf1dccd498284c181a9da9a71eb6a9a2",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20251018/rusefi_bundle_hellen-honda-k.zip",
+  "member": "rusefi.master.hellen-honda-k/rusefi_hellen-honda-k.ini",
+  "signature": "rusEFI master.2025.10.18.hellen-honda-k.1525485971",
+  "size": 642683,
+  "sha256": "e73e8b9f42cbb7e1d2dc177af0da57e473e74469f521d20c8938c325cabc8e93",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20251018",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20251018/hellen-nb1/rusefi_hellen-nb1.ini",
+  "family": "rusefi",
+  "board": "hellen-nb1",
+  "version": "release_20251018",
+  "tags": [
+   "release_20251018"
+  ],
+  "commit": "6f495091cf1dccd498284c181a9da9a71eb6a9a2",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20251018/rusefi_bundle_hellen-nb1.zip",
+  "member": "rusefi.master.hellen-nb1/rusefi_hellen-nb1.ini",
+  "signature": "rusEFI master.2025.10.18.hellen-nb1.1081096645",
+  "size": 673738,
+  "sha256": "a268839c2aac61c874fcc6a85b0cfb7e2eca96e88daf9a047783e7e7658b659f",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20251018",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20251018/hellen121nissan/rusefi_hellen121nissan.ini",
+  "family": "rusefi",
+  "board": "hellen121nissan",
+  "version": "release_20251018",
+  "tags": [
+   "release_20251018"
+  ],
+  "commit": "6f495091cf1dccd498284c181a9da9a71eb6a9a2",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20251018/rusefi_bundle_hellen121nissan.zip",
+  "member": "rusefi.master.hellen121nissan/rusefi_hellen121nissan.ini",
+  "signature": "rusEFI master.2025.10.18.hellen121nissan.1923415113",
+  "size": 669950,
+  "sha256": "d945797dfbdef2a2e2591df49fa482e879b99d7eebdb204db7aa61915149e0cc",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20251018",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20251018/hellen121vag/rusefi_hellen121vag.ini",
+  "family": "rusefi",
+  "board": "hellen121vag",
+  "version": "release_20251018",
+  "tags": [
+   "release_20251018"
+  ],
+  "commit": "6f495091cf1dccd498284c181a9da9a71eb6a9a2",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20251018/rusefi_bundle_hellen121vag.zip",
+  "member": "rusefi.master.hellen121vag/rusefi_hellen121vag.ini",
+  "signature": "rusEFI master.2025.10.18.hellen121vag.3401125043",
+  "size": 673170,
+  "sha256": "863fd4c61bf532f8f2fba8c4662df27355bccd32d6316f2abd487280f14b00ee",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20251018",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20251018/hellen128/rusefi_hellen128.ini",
+  "family": "rusefi",
+  "board": "hellen128",
+  "version": "release_20251018",
+  "tags": [
+   "release_20251018"
+  ],
+  "commit": "6f495091cf1dccd498284c181a9da9a71eb6a9a2",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20251018/rusefi_bundle_hellen128.zip",
+  "member": "rusefi.master.hellen128/rusefi_hellen128.ini",
+  "signature": "rusEFI master.2025.10.18.hellen128.1060733775",
+  "size": 673337,
+  "sha256": "ae104ceddeffe84e3c7e04f5efd1c2b90f88243784e87259cd9e0a16225a371b",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20251018",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20251018/hellen154hyundai/rusefi_hellen154hyundai.ini",
+  "family": "rusefi",
+  "board": "hellen154hyundai",
+  "version": "release_20251018",
+  "tags": [
+   "release_20251018"
+  ],
+  "commit": "6f495091cf1dccd498284c181a9da9a71eb6a9a2",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20251018/rusefi_bundle_hellen154hyundai.zip",
+  "member": "rusefi.master.hellen154hyundai/rusefi_hellen154hyundai.ini",
+  "signature": "rusEFI master.2025.10.18.hellen154hyundai.2863250015",
+  "size": 665154,
+  "sha256": "51ad8f22b76c4c02bf8afe8980f046efcd2d8359a070d3b254d8e631a96ec7c0",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20251018",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20251018/hellen154hyundai_f7/rusefi_hellen154hyundai_f7.ini",
+  "family": "rusefi",
+  "board": "hellen154hyundai_f7",
+  "version": "release_20251018",
+  "tags": [
+   "release_20251018"
+  ],
+  "commit": "6f495091cf1dccd498284c181a9da9a71eb6a9a2",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20251018/rusefi_bundle_hellen154hyundai_f7.zip",
+  "member": "rusefi.master.hellen154hyundai_f7/rusefi_hellen154hyundai_f7.ini",
+  "signature": "rusEFI master.2025.10.18.hellen154hyundai_f7.2096490809",
+  "size": 667411,
+  "sha256": "480d32b0d667230abdf500a4eb90a4d2bf0a6e623808bc25ec122ffb34cc15e7",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20251018",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20251018/hellen72/rusefi_hellen72.ini",
+  "family": "rusefi",
+  "board": "hellen72",
+  "version": "release_20251018",
+  "tags": [
+   "release_20251018"
+  ],
+  "commit": "6f495091cf1dccd498284c181a9da9a71eb6a9a2",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20251018/rusefi_bundle_hellen72.zip",
+  "member": "rusefi.master.hellen72/rusefi_hellen72.ini",
+  "signature": "rusEFI master.2025.10.18.hellen72.786197006",
+  "size": 674294,
+  "sha256": "5114c767b3682e32be3e29da59790795d7ddf8d3e021b57c4ec032a10e6ccc7b",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20251018",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20251018/hellenNA6/rusefi_hellenNA6.ini",
+  "family": "rusefi",
+  "board": "hellenNA6",
+  "version": "release_20251018",
+  "tags": [
+   "release_20251018"
+  ],
+  "commit": "6f495091cf1dccd498284c181a9da9a71eb6a9a2",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20251018/rusefi_bundle_hellenNA6.zip",
+  "member": "rusefi.master.hellenNA6/rusefi_hellenNA6.ini",
+  "signature": "rusEFI master.2025.10.18.hellenNA6.2849055813",
+  "size": 673549,
+  "sha256": "b028bf38a258586cee84ef01df445261a1b335340df96ae5f81fa2bcec53c7ac",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20251018",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20251018/hellenNA8_96/rusefi_hellenNA8_96.ini",
+  "family": "rusefi",
+  "board": "hellenNA8_96",
+  "version": "release_20251018",
+  "tags": [
+   "release_20251018"
+  ],
+  "commit": "6f495091cf1dccd498284c181a9da9a71eb6a9a2",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20251018/rusefi_bundle_hellenNA8_96.zip",
+  "member": "rusefi.master.hellenNA8_96/rusefi_hellenNA8_96.ini",
+  "signature": "rusEFI master.2025.10.18.hellenNA8_96.3551125018",
+  "size": 673662,
+  "sha256": "a14fd62641803e461f4d9c67334c03d699af0c301b751776f7bbbf4cae3c6ae0",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20251018",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20251018/mre-legacy_f4/rusefi_mre-legacy_f4.ini",
+  "family": "rusefi",
+  "board": "mre-legacy_f4",
+  "version": "release_20251018",
+  "tags": [
+   "release_20251018"
+  ],
+  "commit": "6f495091cf1dccd498284c181a9da9a71eb6a9a2",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20251018/rusefi_bundle_mre-legacy_f4.zip",
+  "member": "rusefi.master.mre-legacy_f4/rusefi_mre-legacy_f4.ini",
+  "signature": "rusEFI master.2025.10.18.mre-legacy_f4.2694553818",
+  "size": 672892,
+  "sha256": "eb5af51826abe3e5223d0194e4acefc2e8b27ba78ba7cd510e733dc8f5d13e5e",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20251018",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20251018/mre_f4/rusefi_mre_f4.ini",
+  "family": "rusefi",
+  "board": "mre_f4",
+  "version": "release_20251018",
+  "tags": [
+   "release_20251018"
+  ],
+  "commit": "6f495091cf1dccd498284c181a9da9a71eb6a9a2",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20251018/rusefi_bundle_mre_f4.zip",
+  "member": "rusefi.master.mre_f4/rusefi_mre_f4.ini",
+  "signature": "rusEFI master.2025.10.18.mre_f4.2694553818",
+  "size": 672878,
+  "sha256": "2ea48ceba272fa457ecded0dd66877259e5165d29c339c73482efcf5f12c613d",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20251018",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20251018/mre_f7/rusefi_mre_f7.ini",
+  "family": "rusefi",
+  "board": "mre_f7",
+  "version": "release_20251018",
+  "tags": [
+   "release_20251018"
+  ],
+  "commit": "6f495091cf1dccd498284c181a9da9a71eb6a9a2",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20251018/rusefi_bundle_mre_f7.zip",
+  "member": "rusefi.master.mre_f7/rusefi_mre_f7.ini",
+  "signature": "rusEFI master.2025.10.18.mre_f7.2694553818",
+  "size": 672878,
+  "sha256": "623923e9140b9356447c328089fdfa082b01e82b3d75c6e08f4e410aa947d687",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20251018",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20251018/proteus_f4/rusefi_proteus_f4.ini",
+  "family": "rusefi",
+  "board": "proteus_f4",
+  "version": "release_20251018",
+  "tags": [
+   "release_20251018"
+  ],
+  "commit": "6f495091cf1dccd498284c181a9da9a71eb6a9a2",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20251018/rusefi_bundle_proteus_f4.zip",
+  "member": "rusefi.master.proteus_f4/rusefi_proteus_f4.ini",
+  "signature": "rusEFI master.2025.10.18.proteus_f4.2530537040",
+  "size": 674961,
+  "sha256": "b71712b290c873fefb61d369da2f3eed9f308c95458183c13c77a060999e46eb",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20251018",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20251018/proteus_f7/rusefi_proteus_f7.ini",
+  "family": "rusefi",
+  "board": "proteus_f7",
+  "version": "release_20251018",
+  "tags": [
+   "release_20251018"
+  ],
+  "commit": "6f495091cf1dccd498284c181a9da9a71eb6a9a2",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20251018/rusefi_bundle_proteus_f7.zip",
+  "member": "rusefi.master.proteus_f7/rusefi_proteus_f7.ini",
+  "signature": "rusEFI master.2025.10.18.proteus_f7.3823632806",
+  "size": 674969,
+  "sha256": "57990053d96254d135ffb79f4589a83971402cf7872dc2fc497af9f5ce58ec2e",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20251018",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20251018/proteus_h7/rusefi_proteus_h7.ini",
+  "family": "rusefi",
+  "board": "proteus_h7",
+  "version": "release_20251018",
+  "tags": [
+   "release_20251018"
+  ],
+  "commit": "6f495091cf1dccd498284c181a9da9a71eb6a9a2",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20251018/rusefi_bundle_proteus_h7.zip",
+  "member": "rusefi.master.proteus_h7/rusefi_proteus_h7.ini",
+  "signature": "rusEFI master.2025.10.18.proteus_h7.4206868873",
+  "size": 674969,
+  "sha256": "78c3083a9542540bed463c183bc38f782df10193339b165ccbcc5fe981a4c4e3",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20251018",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20251018/small-can-board/rusefi_small-can-board.ini",
+  "family": "rusefi",
+  "board": "small-can-board",
+  "version": "release_20251018",
+  "tags": [
+   "release_20251018"
+  ],
+  "commit": "6f495091cf1dccd498284c181a9da9a71eb6a9a2",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20251018/rusefi_bundle_small-can-board.zip",
+  "member": "rusefi.master.small-can-board/rusefi_small-can-board.ini",
+  "signature": "rusEFI master.2025.10.18.small-can-board.2510518806",
+  "size": 673034,
+  "sha256": "8ab3402cfb3d7ca80f04ba92d1e648d9d1bc3f3ebbd17ac1c99941da758761b6",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20251018",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20251018/stm32f767_nucleo/rusefi_stm32f767_nucleo.ini",
+  "family": "rusefi",
+  "board": "stm32f767_nucleo",
+  "version": "release_20251018",
+  "tags": [
+   "release_20251018"
+  ],
+  "commit": "6f495091cf1dccd498284c181a9da9a71eb6a9a2",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20251018/rusefi_bundle_stm32f767_nucleo.zip",
+  "member": "rusefi.master.stm32f767_nucleo/rusefi_stm32f767_nucleo.ini",
+  "signature": "rusEFI master.2025.10.18.stm32f767_nucleo.2024283630",
+  "size": 677246,
+  "sha256": "7800d0e7795a2cdcea0b125e037480b16365c4b311ebb99f7f0bddebc49ce10b",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20251018",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20251018/stm32h743_nucleo/rusefi_stm32h743_nucleo.ini",
+  "family": "rusefi",
+  "board": "stm32h743_nucleo",
+  "version": "release_20251018",
+  "tags": [
+   "release_20251018"
+  ],
+  "commit": "6f495091cf1dccd498284c181a9da9a71eb6a9a2",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20251018/rusefi_bundle_stm32h743_nucleo.zip",
+  "member": "rusefi.master.stm32h743_nucleo/rusefi_stm32h743_nucleo.ini",
+  "signature": "rusEFI master.2025.10.18.stm32h743_nucleo.2024283630",
+  "size": 677246,
+  "sha256": "fed1c236a802980b909071170ae0d346cc0ccd56188352324ecfa8818ca656df",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20251018",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20251018/subaru_eg33_f7/rusefi_subaru_eg33_f7.ini",
+  "family": "rusefi",
+  "board": "subaru_eg33_f7",
+  "version": "release_20251018",
+  "tags": [
+   "release_20251018"
+  ],
+  "commit": "6f495091cf1dccd498284c181a9da9a71eb6a9a2",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20251018/rusefi_bundle_subaru_eg33_f7.zip",
+  "member": "rusefi.master.subaru_eg33_f7/rusefi_subaru_eg33_f7.ini",
+  "signature": "rusEFI master.2025.10.18.subaru_eg33_f7.2404188501",
+  "size": 678645,
+  "sha256": "2ea0f567595e08bbb37cce4776f122d9ccc2652295ae305c10ac8f08c3c0a808",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20251018",
+  "same_as": [
+   {
+    "board": "subaru_eg33_f7_no_bl",
+    "url": "https://github.com/rusefi/rusefi/releases/download/release_20251018/rusefi_bundle_subaru_eg33_f7_no_bl.zip",
+    "member": "rusefi.master.subaru_eg33_f7_no_bl/rusefi_subaru_eg33_f7.ini"
+   }
+  ]
+ },
+ {
+  "file": "rusefi/release_20251018/super-uaefi/rusefi_super-uaefi.ini",
+  "family": "rusefi",
+  "board": "super-uaefi",
+  "version": "release_20251018",
+  "tags": [
+   "release_20251018"
+  ],
+  "commit": "6f495091cf1dccd498284c181a9da9a71eb6a9a2",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20251018/rusefi_bundle_super-uaefi.zip",
+  "member": "rusefi.master.super-uaefi/rusefi_super-uaefi.ini",
+  "signature": "rusEFI master.2025.10.18.super-uaefi.3443723900",
+  "size": 673758,
+  "sha256": "5b0422dceea3cb805006ad38446bcc3983bffcfa28c4dd84531c860d1b8d8584",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20251018",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20251018/t-b-g/rusefi_t-b-g.ini",
+  "family": "rusefi",
+  "board": "t-b-g",
+  "version": "release_20251018",
+  "tags": [
+   "release_20251018"
+  ],
+  "commit": "6f495091cf1dccd498284c181a9da9a71eb6a9a2",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20251018/rusefi_bundle_t-b-g.zip",
+  "member": "rusefi.master.t-b-g/rusefi_t-b-g.ini",
+  "signature": "rusEFI master.2025.10.18.t-b-g.2024283630",
+  "size": 677224,
+  "sha256": "69b2d24610cbf9b77b17c43271c44911bb5c50d73e20aff305ccae0ff7c94c4c",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20251018",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20251018/uaefi/rusefi_uaefi.ini",
+  "family": "rusefi",
+  "board": "uaefi",
+  "version": "release_20251018",
+  "tags": [
+   "release_20251018"
+  ],
+  "commit": "6f495091cf1dccd498284c181a9da9a71eb6a9a2",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20251018/rusefi_bundle_uaefi.zip",
+  "member": "rusefi.master.uaefi/rusefi_uaefi.ini",
+  "signature": "rusEFI master.2025.10.18.uaefi.3224282627",
+  "size": 678869,
+  "sha256": "34c1f8b0eb678bf4c19798c95a9f8b491b7c3ef1bce70af5d6fd751f856fc3bd",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20251018",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20251018/uaefi121/rusefi_uaefi121.ini",
+  "family": "rusefi",
+  "board": "uaefi121",
+  "version": "release_20251018",
+  "tags": [
+   "release_20251018"
+  ],
+  "commit": "6f495091cf1dccd498284c181a9da9a71eb6a9a2",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20251018/rusefi_bundle_uaefi121.zip",
+  "member": "rusefi.master.uaefi121/rusefi_uaefi121.ini",
+  "signature": "rusEFI master.2025.10.18.uaefi121.1446397341",
+  "size": 673509,
+  "sha256": "2e1acd346d74aeff6651eb9f71bc1b14084e395ecd78a56c51524b28669d9107",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20251018",
+  "same_as": []
+ },
+ {
+  "file": "rusefi/release_20251018/uaefi_pro/rusefi_uaefi_pro.ini",
+  "family": "rusefi",
+  "board": "uaefi_pro",
+  "version": "release_20251018",
+  "tags": [
+   "release_20251018"
+  ],
+  "commit": "6f495091cf1dccd498284c181a9da9a71eb6a9a2",
+  "url": "https://github.com/rusefi/rusefi/releases/download/release_20251018/rusefi_bundle_uaefi_pro.zip",
+  "member": "rusefi.master.uaefi_pro/rusefi_uaefi_pro.ini",
+  "signature": "rusEFI master.2025.10.18.uaefi_pro.3083606301",
+  "size": 678878,
+  "sha256": "ebcc648e280813f47bc011d57d99c0773d2dce7ccdd885d6964e5d921e2c2d25",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see license.txt)",
+  "source": "https://github.com/rusefi/rusefi/releases/tag/release_20251018",
+  "same_as": []
+ }
+]

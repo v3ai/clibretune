@@ -1,0 +1,218 @@
+[
+ {
+  "file": "fome/release_260501_02/atlas/fome_atlas.ini",
+  "family": "fome",
+  "board": "atlas",
+  "version": "release_260501_02",
+  "tags": [
+   "release_260501_02"
+  ],
+  "commit": "343fb818014f082a14dc7dd25e69c29cfbd5bafb",
+  "url": "https://github.com/FOME-Tech/fome-fw/releases/download/release_260501_02/fome_bundle_atlas.zip",
+  "member": "fome.release_2605p1.atlas/fome_atlas.ini",
+  "signature": "rusEFI (FOME) .2026.06.03.atlas.3685778166",
+  "size": 627621,
+  "sha256": "cbfc324a67b33c56e6380025cc921bc5fde5268e2a1e4782d0a42c4b35fb2dab",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see LICENSE)",
+  "source": "https://github.com/FOME-Tech/fome-fw/releases/tag/release_260501_02",
+  "same_as": []
+ },
+ {
+  "file": "fome/release_260501_02/f407-discovery/fome_f407-discovery.ini",
+  "family": "fome",
+  "board": "f407-discovery",
+  "version": "release_260501_02",
+  "tags": [
+   "release_260501_02"
+  ],
+  "commit": "343fb818014f082a14dc7dd25e69c29cfbd5bafb",
+  "url": "https://github.com/FOME-Tech/fome-fw/releases/download/release_260501_02/fome_bundle_f407-discovery.zip",
+  "member": "fome.release_2605p1.f407-discovery/fome_f407-discovery.ini",
+  "signature": "rusEFI (FOME) .2026.06.03.f407-discovery.4098187908",
+  "size": 773988,
+  "sha256": "81f4d9269981fecf3b41a25d3754f8c946fa5eb94b59abef79b17738eb776226",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see LICENSE)",
+  "source": "https://github.com/FOME-Tech/fome-fw/releases/tag/release_260501_02",
+  "same_as": []
+ },
+ {
+  "file": "fome/release_260501_02/hellen-nb1/fome_hellen-nb1.ini",
+  "family": "fome",
+  "board": "hellen-nb1",
+  "version": "release_260501_02",
+  "tags": [
+   "release_260501_02"
+  ],
+  "commit": "343fb818014f082a14dc7dd25e69c29cfbd5bafb",
+  "url": "https://github.com/FOME-Tech/fome-fw/releases/download/release_260501_02/fome_bundle_hellen-nb1.zip",
+  "member": "fome.release_2605p1.hellen-nb1/fome_hellen-nb1.ini",
+  "signature": "rusEFI (FOME) .2026.06.03.hellen-nb1.3794596440",
+  "size": 617324,
+  "sha256": "8b6390c080803da9c43f1a41fb907dee564236d4f9f95fc3609d4ad439693c1c",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see LICENSE)",
+  "source": "https://github.com/FOME-Tech/fome-fw/releases/tag/release_260501_02",
+  "same_as": []
+ },
+ {
+  "file": "fome/release_260501_02/hellen128/fome_hellen128.ini",
+  "family": "fome",
+  "board": "hellen128",
+  "version": "release_260501_02",
+  "tags": [
+   "release_260501_02"
+  ],
+  "commit": "343fb818014f082a14dc7dd25e69c29cfbd5bafb",
+  "url": "https://github.com/FOME-Tech/fome-fw/releases/download/release_260501_02/fome_bundle_hellen128.zip",
+  "member": "fome.release_2605p1.hellen128/fome_hellen128.ini",
+  "signature": "rusEFI (FOME) .2026.06.03.hellen128.2509865539",
+  "size": 615928,
+  "sha256": "37ab171955bb495da129ea053ef660a2ecc94f12a8bec665c4633aa84d8ac23f",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see LICENSE)",
+  "source": "https://github.com/FOME-Tech/fome-fw/releases/tag/release_260501_02",
+  "same_as": []
+ },
+ {
+  "file": "fome/release_260501_02/hellen72/fome_hellen72.ini",
+  "family": "fome",
+  "board": "hellen72",
+  "version": "release_260501_02",
+  "tags": [
+   "release_260501_02"
+  ],
+  "commit": "343fb818014f082a14dc7dd25e69c29cfbd5bafb",
+  "url": "https://github.com/FOME-Tech/fome-fw/releases/download/release_260501_02/fome_bundle_hellen72.zip",
+  "member": "fome.release_2605p1.hellen72/fome_hellen72.ini",
+  "signature": "rusEFI (FOME) .2026.06.03.hellen72.3837753939",
+  "size": 644419,
+  "sha256": "c7fd6cae88c8018d20c691bc9b8075acd75cfaa4effe5a046380a2e03164c6ec",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see LICENSE)",
+  "source": "https://github.com/FOME-Tech/fome-fw/releases/tag/release_260501_02",
+  "same_as": []
+ },
+ {
+  "file": "fome/release_260501_02/hellenNA6/fome_hellenNA6.ini",
+  "family": "fome",
+  "board": "hellenNA6",
+  "version": "release_260501_02",
+  "tags": [
+   "release_260501_02"
+  ],
+  "commit": "343fb818014f082a14dc7dd25e69c29cfbd5bafb",
+  "url": "https://github.com/FOME-Tech/fome-fw/releases/download/release_260501_02/fome_bundle_hellenNA6.zip",
+  "member": "fome.release_2605p1.hellenNA6/fome_hellenNA6.ini",
+  "signature": "rusEFI (FOME) .2026.06.03.hellenNA6.2288212125",
+  "size": 617891,
+  "sha256": "53f14f9475ecf0c27ef3e411574f8d7477a29a50f883fdb74f0b25746f74be2f",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see LICENSE)",
+  "source": "https://github.com/FOME-Tech/fome-fw/releases/tag/release_260501_02",
+  "same_as": []
+ },
+ {
+  "file": "fome/release_260501_02/hellenNA8_96/fome_hellenNA8_96.ini",
+  "family": "fome",
+  "board": "hellenNA8_96",
+  "version": "release_260501_02",
+  "tags": [
+   "release_260501_02"
+  ],
+  "commit": "343fb818014f082a14dc7dd25e69c29cfbd5bafb",
+  "url": "https://github.com/FOME-Tech/fome-fw/releases/download/release_260501_02/fome_bundle_hellenNA8_96.zip",
+  "member": "fome.release_2605p1.hellenNA8_96/fome_hellenNA8_96.ini",
+  "signature": "rusEFI (FOME) .2026.06.03.hellenNA8_96.3616644565",
+  "size": 609186,
+  "sha256": "1cedc1270cd29511ead423ff41dc78d869a0f3fcfb206e484610fd9bc120b513",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see LICENSE)",
+  "source": "https://github.com/FOME-Tech/fome-fw/releases/tag/release_260501_02",
+  "same_as": []
+ },
+ {
+  "file": "fome/release_260501_02/mre_f4/fome_mre_f4.ini",
+  "family": "fome",
+  "board": "mre_f4",
+  "version": "release_260501_02",
+  "tags": [
+   "release_260501_02"
+  ],
+  "commit": "343fb818014f082a14dc7dd25e69c29cfbd5bafb",
+  "url": "https://github.com/FOME-Tech/fome-fw/releases/download/release_260501_02/fome_bundle_mre_f4.zip",
+  "member": "fome.release_2605p1.mre_f4/fome_mre_f4.ini",
+  "signature": "rusEFI (FOME) .2026.06.03.mre_f4.2710544988",
+  "size": 637606,
+  "sha256": "0c11faddc924e8270927efbac33ba930b5705c9b45eaf176b2a2dd9b079a3a83",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see LICENSE)",
+  "source": "https://github.com/FOME-Tech/fome-fw/releases/tag/release_260501_02",
+  "same_as": []
+ },
+ {
+  "file": "fome/release_260501_02/mre_f7/fome_mre_f7.ini",
+  "family": "fome",
+  "board": "mre_f7",
+  "version": "release_260501_02",
+  "tags": [
+   "release_260501_02"
+  ],
+  "commit": "343fb818014f082a14dc7dd25e69c29cfbd5bafb",
+  "url": "https://github.com/FOME-Tech/fome-fw/releases/download/release_260501_02/fome_bundle_mre_f7.zip",
+  "member": "fome.release_2605p1.mre_f7/fome_mre_f7.ini",
+  "signature": "rusEFI (FOME) .2026.06.03.mre_f7.2710544988",
+  "size": 637606,
+  "sha256": "6a727cca5cdfbe2df02327a4ad4d0d2886e0ea82e56f011ce41a78e073ed9dbc",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see LICENSE)",
+  "source": "https://github.com/FOME-Tech/fome-fw/releases/tag/release_260501_02",
+  "same_as": []
+ },
+ {
+  "file": "fome/release_260501_02/proteus_f4/fome_proteus_f4.ini",
+  "family": "fome",
+  "board": "proteus_f4",
+  "version": "release_260501_02",
+  "tags": [
+   "release_260501_02"
+  ],
+  "commit": "343fb818014f082a14dc7dd25e69c29cfbd5bafb",
+  "url": "https://github.com/FOME-Tech/fome-fw/releases/download/release_260501_02/fome_bundle_proteus_f4.zip",
+  "member": "fome.release_2605p1.proteus_f4/fome_proteus_f4.ini",
+  "signature": "rusEFI (FOME) .2026.06.03.proteus_f4.3416487136",
+  "size": 634697,
+  "sha256": "97aab96e04051819ae7487dd2cb1b79d4dc4b1f531578e7b2d4869ffa6bb192e",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see LICENSE)",
+  "source": "https://github.com/FOME-Tech/fome-fw/releases/tag/release_260501_02",
+  "same_as": []
+ },
+ {
+  "file": "fome/release_260501_02/proteus_f7/fome_proteus_f7.ini",
+  "family": "fome",
+  "board": "proteus_f7",
+  "version": "release_260501_02",
+  "tags": [
+   "release_260501_02"
+  ],
+  "commit": "343fb818014f082a14dc7dd25e69c29cfbd5bafb",
+  "url": "https://github.com/FOME-Tech/fome-fw/releases/download/release_260501_02/fome_bundle_proteus_f7.zip",
+  "member": "fome.release_2605p1.proteus_f7/fome_proteus_f7.ini",
+  "signature": "rusEFI (FOME) .2026.06.03.proteus_f7.3416487136",
+  "size": 634697,
+  "sha256": "6254fbc80e6d808814bdcfeaf3a377227d96ecc1b23552cddc9af2f8f3b277c0",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see LICENSE)",
+  "source": "https://github.com/FOME-Tech/fome-fw/releases/tag/release_260501_02",
+  "same_as": []
+ },
+ {
+  "file": "fome/release_260501_02/proteus_h7/fome_proteus_h7.ini",
+  "family": "fome",
+  "board": "proteus_h7",
+  "version": "release_260501_02",
+  "tags": [
+   "release_260501_02"
+  ],
+  "commit": "343fb818014f082a14dc7dd25e69c29cfbd5bafb",
+  "url": "https://github.com/FOME-Tech/fome-fw/releases/download/release_260501_02/fome_bundle_proteus_h7.zip",
+  "member": "fome.release_2605p1.proteus_h7/fome_proteus_h7.ini",
+  "signature": "rusEFI (FOME) .2026.06.03.proteus_h7.3416487136",
+  "size": 634697,
+  "sha256": "3303f54616599a0280029f8fadc5152018d88010b302b48fa8a369969df99762",
+  "licence": "GPL-3.0 (with the rusEFI additional terms, see LICENSE)",
+  "source": "https://github.com/FOME-Tech/fome-fw/releases/tag/release_260501_02",
+  "same_as": []
+ }
+]

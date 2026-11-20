@@ -75,3 +75,9 @@ int lt_serial_perm_fix(char *cmd, size_t cap)
     if (cap > 0) cmd[0] = '\0';
     return 0;
 }
+
+int lt_plat_volume_list(char ***paths)
+{
+    static const char *const parents[] = { "/Volumes" };
+    return lt_posix_volume_scan(parents, LT_COUNTOF(parents), paths);
+}

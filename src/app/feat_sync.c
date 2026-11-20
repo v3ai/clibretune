@@ -2,13 +2,20 @@
  *   - signature mismatch dialog with matching INIs from the local INI library
  *   - project tune vs ECU tune choice (Use LibreTune / Ignore / Use ECU settings)
  *   - Connect ECU wizard: scan, pick the INI by signature, name the project, connect
+ *   - automatic definition choice (project/inidb.h): on connect, a signature that differs from
+ *     the open definition is resolved against the ECU's USB drive, the INI library and the
+ *     definitions bundled with the program: exact = switch silently (one toast), near = switch
+ *     with a one-line warning and "Find Exact INI...", none = the mismatch dialog as before
+ *   - lt_feat_sync_connect_auto: connect, identify, pick the INI, open or create the project
  * Wording follows the original SignatureMismatchDialog / TuneMismatchDialog.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
+#include <stdlib.h>
 #include <string.h>
 #include "feat.h"
 #include "sync_logic.h"
 #include "ports_logic.h"
+#include "../project/inidb.h"
 
 #define CH 8
 #define CV 16
@@ -16,10 +23,17 @@
 #define FD_SYNC_INI (LT_APP_FD_USER0 + 20)
 #define FD_WIZ_INI  (LT_APP_FD_USER0 + 21)
 
-/* shared (per app) state: the pending tune choice */
+#define BUNDLE_ID "bundle:"
+
+/* shared (per app) state: the pending tune choice, the automatic definition switch */
 typedef struct sync_state {
     lt_sync_cmp *cmp;
     int sync_after_sig;             /* run the tune check when the signature dialog is left */
+    char auto_ecu[128];             /* ECU signature the definition was resolved for */
+    char auto_pick[160];            /* signature of the definition switched to */
+    int  auto_near;                 /* that definition is only the nearest build */
+    char near_label[200];           /* warning dialog: definition in use */
+    char near_ecu[128];             /*                 ECU signature */
 } sync_state;
 
 static void sync_cleanup(lt_app *app, void *p)
@@ -85,15 +99,205 @@ static void tune_check(lt_app *app)
     (void)lt_app_dialog_push(app, "tune_sync", "", "Difference Report");
 }
 
+/* ------------------------------------------------------------------ */
+/* automatic definition choice                                         */
+static int switch_ini(lt_app *app, const char *ini_path);
+
+static lt_bool same_sig(const char *a, const char *b)
+{
+    return lt_inidb_distance(a, b) == 0;
+}
+
+/* the warning shown while a near-match definition is in use */
+static void show_near(lt_app *app, const char *label, const char *ecu_sig)
+{
+    sync_state *st = get_state(app);
+    if (label != st->near_label) { lt_strlcpy(st->near_label, label, sizeof(st->near_label)); }
+    lt_strlcpy(st->near_ecu, ecu_sig, sizeof(st->near_ecu));
+    (void)lt_app_dialog_push(app, "inidb_near", ecu_sig, "Closest ECU Definition");
+}
+
+/* The ECU's signature differs from the open definition: resolve it (USB drive, INI library,
+ * bundle). Returns 0 = not handled (ask the user), 1 = switching (the reconnect runs the checks),
+ * 2 = handled, continue with the tune check. */
+static int auto_resolve(lt_app *app)
+{
+    sync_state *st = get_state(app);
+    const char *ecu = app->signature;
+    const char *cur = app->ini != NULL && app->ini->signature != NULL ? app->ini->signature : "";
+    lt_ini_repo repo;
+    lt_inidb_pick pk;
+    char *path = NULL;
+    int q, rc;
+    if (ecu[0] == '\0') { return 0; }
+    if (strcmp(st->auto_ecu, ecu) == 0) {
+        /* the reconnect after our own switch; a near match still differs, which is expected */
+        if (st->auto_pick[0] != '\0' && same_sig(cur, st->auto_pick)) {
+            if (st->auto_near && strcmp(st->near_ecu, ecu) != 0) {
+                show_near(app, st->near_label, ecu);
+            }
+            return 2;
+        }
+        return 0;                       /* tried for this ECU already: the user decides */
+    }
+    lt_strlcpy(st->auto_ecu, ecu, sizeof(st->auto_ecu));
+    st->auto_pick[0] = '\0';
+    st->auto_near = 0;
+    if (lt_ini_repo_open(&repo, NULL) != 0) { return 0; }
+    q = lt_inidb_resolve(ecu, &repo, LT_INIDB_USE_DRIVE, &pk);
+    if (q == LT_INIDB_NONE) { lt_ini_repo_close(&repo); return 0; }
+    if (q == LT_INIDB_NEAR) {
+        /* keep the open definition when it is at least as close as the pick */
+        long dc = lt_inidb_distance(ecu, cur);
+        if (dc > 0 && dc <= pk.distance) {
+            lt_ini_repo_close(&repo);
+            lt_snprintf(st->near_label, sizeof(st->near_label), "%s (the open definition)", cur);
+            lt_strlcpy(st->auto_pick, cur, sizeof(st->auto_pick));
+            st->auto_near = 1;
+            show_near(app, st->near_label, ecu);
+            return 2;
+        }
+    }
+    rc = lt_inidb_pick_path(&repo, &pk, &path);
+    lt_ini_repo_close(&repo);
+    if (rc != 0 || path == NULL) { lt_free(path); return 0; }
+    lt_strlcpy(st->auto_pick, pk.signature, sizeof(st->auto_pick));
+    lt_strlcpy(st->near_label, pk.label, sizeof(st->near_label));
+    st->auto_near = q == LT_INIDB_NEAR;
+    st->near_ecu[0] = '\0';
+    st->sync_after_sig = 0;
+    if (q == LT_INIDB_EXACT) {
+        lt_app_toast(app, 1, "ECU definition: %s", pk.label);
+    } else {
+        lt_app_toast(app, 2, "No exact definition for %s: using the closest, %s", ecu, pk.label);
+    }
+    rc = switch_ini(app, path);
+    lt_free(path);
+    return rc == 0 ? 1 : 0;
+}
+
 static void on_connect(lt_app *app)
 {
     sync_state *st = get_state(app);
     if (app->proto != NULL && lt_proto_signature_mismatch(app->proto)) {
+        int h = auto_resolve(app);
+        if (h == 1) { return; }
+        if (h == 2) { tune_check(app); return; }
         st->sync_after_sig = 1;
         (void)lt_app_dialog_push(app, "sig_mismatch", app->signature, "INI Signature Mismatch");
         return;
     }
     tune_check(app);
+}
+
+/* "Closest ECU Definition": one line of warning and the way to the exact file */
+static void near_draw(lt_app *app, lt_app_dialog *d)
+{
+    lt_ui *ui = app->ui;
+    const lt_theme *t = lt_ui_theme(ui);
+    sync_state *st = get_state(app);
+    int open = d->open, w1 = -1, w2[2];
+    char line[480];
+    const char *ecu = st->near_ecu[0] != '\0' ? st->near_ecu : d->target;
+    if (lt_ui_modal_begin(ui, "Closest ECU Definition", CH * 76, CV * 11, &open)) {
+        lt_ui_layout_row(ui, 1, &w1, 0);
+        lt_snprintf(line, sizeof(line), "No exact definition for this firmware (%s): using the "
+                    "closest build, %s. Some settings may not match.", ecu, st->near_label);
+        lt_ui_label_wrap(ui, line, t->warning);
+        w2[0] = -1; w2[1] = -1;
+        lt_ui_layout_row(ui, 2, w2, 0);
+        if (lt_ui_button(ui, "Find Exact INI...")) {
+            char sig[128];
+            lt_strlcpy(sig, ecu, sizeof(sig));
+            lt_ui_modal_end(ui);
+            d->open = 0;
+            lt_feat_online_open(app, sig);
+            return;
+        }
+        if (lt_ui_button_ex(ui, "Continue", LT_UI_BTN_DEFAULT)) { open = 0; }
+        lt_ui_modal_end(ui);
+    }
+    d->open = open;
+}
+
+/* the definitions worth offering for ecu_sig: the resolve pick first (preselected), then the
+ * INI library's exact/partial matches, then other bundled builds of the same board, closest first */
+static int collect_defs(lt_ini_repo *repo, int repo_ok, const char *sig, lt_sync_ini_match *m,
+                        int cap, lt_inidb_pick *pk)
+{
+    lt_sync_ini_match tmp[MAX_MATCH];
+    int n = 0, i, k, nt;
+    size_t bi, nb = lt_inidb_count();
+    long *dist;
+    (void)lt_inidb_resolve(sig, repo_ok ? repo : NULL, LT_INIDB_USE_DRIVE, pk);
+    if (pk->quality != LT_INIDB_NONE && n < cap) {
+        m[n].id[0] = '\0';
+        if (pk->src == LT_INIDB_SRC_BUNDLE) {
+            lt_snprintf(m[n].id, sizeof(m[n].id), "%s%ld", BUNDLE_ID, pk->bundle);
+        } else if (pk->src == LT_INIDB_SRC_REPO) {
+            lt_strlcpy(m[n].id, pk->repo_id, sizeof(m[n].id));
+        } else if (repo_ok) {           /* the ECU's own drive: keep a copy in the library */
+            char *id = NULL;
+            if (lt_ini_repo_import(repo, pk->path, &id) == 0) {
+                lt_strlcpy(m[n].id, id, sizeof(m[n].id));
+            }
+            lt_free(id);
+        }
+        if (m[n].id[0] != '\0') {
+            lt_strlcpy(m[n].name, pk->label, sizeof(m[n].name));
+            lt_strlcpy(m[n].signature, pk->signature, sizeof(m[n].signature));
+            m[n].kind = pk->quality == LT_INIDB_EXACT ? LT_SIG_EXACT : LT_SIG_PARTIAL;
+            n++;
+        }
+    }
+    nt = repo_ok ? lt_sync_find_inis(repo, sig, tmp, MAX_MATCH) : 0;
+    for (i = 0; i < nt && n < cap; i++) {
+        for (k = 0; k < n; k++) {
+            if (strcmp(m[k].id, tmp[i].id) == 0) { break; }
+        }
+        if (k == n) { m[n++] = tmp[i]; }
+    }
+    if (nb == 0) { return n; }
+    dist = (long *)lt_malloc(nb * sizeof(long));
+    for (bi = 0; bi < nb; bi++) { dist[bi] = lt_inidb_distance(sig, lt_inidb_at(bi)->signature); }
+    while (n < cap) {                   /* bundled builds of the same board, closest first */
+        long best = -1L;
+        size_t bsel = 0;
+        char lab[160];
+        for (bi = 0; bi < nb; bi++) {
+            if (dist[bi] >= 0 && (best < 0 || dist[bi] < best)) { best = dist[bi]; bsel = bi; }
+        }
+        if (best < 0) { break; }
+        dist[bsel] = -1L;
+        lt_snprintf(m[n].id, sizeof(m[n].id), "%s%lu", BUNDLE_ID, (unsigned long)bsel);
+        for (k = 0; k < n; k++) {
+            if (strcmp(m[k].id, m[n].id) == 0) { break; }
+        }
+        if (k < n) { continue; }
+        lt_inidb_label(lt_inidb_at(bsel), lab, sizeof(lab));
+        lt_snprintf(m[n].name, sizeof(m[n].name), "%s (bundled)", lab);
+        lt_strlcpy(m[n].signature, lt_inidb_at(bsel)->signature, sizeof(m[n].signature));
+        m[n].kind = best == 0 ? LT_SIG_EXACT : LT_SIG_PARTIAL;
+        n++;
+    }
+    lt_free(dist);
+    return n;
+}
+
+/* path of an offered definition: bundled ones are unpacked into the INI library first */
+static char *match_path(lt_ini_repo *repo, const lt_sync_ini_match *m)
+{
+    char *id = NULL, *path = NULL;
+    size_t bl = strlen(BUNDLE_ID);
+    if (strncmp(m->id, BUNDLE_ID, bl) == 0) {
+        long idx = atol(m->id + bl);
+        if (idx >= 0 && lt_inidb_materialise(repo, lt_inidb_at((size_t)idx), &id) == 0) {
+            path = lt_ini_repo_path(repo, id);
+        }
+        lt_free(id);
+        return path;
+    }
+    return lt_ini_repo_path(repo, m->id);
 }
 
 /* ------------------------------------------------------------------ */
@@ -225,13 +429,14 @@ typedef struct sig_state {
     lt_ini_repo repo; int repo_ok;
     lt_sync_ini_match m[MAX_MATCH]; int n_m, sel;
     int preview, online_gen;
+    lt_inidb_pick pk;
 } sig_state;
 
 static void sig_reload(sig_state *s)
 {
     if (s->repo_ok) { lt_ini_repo_close(&s->repo); s->repo_ok = 0; }
     s->repo_ok = lt_ini_repo_open(&s->repo, NULL) == 0;
-    s->n_m = s->repo_ok ? lt_sync_find_inis(&s->repo, s->ecu_sig, s->m, MAX_MATCH) : 0;
+    s->n_m = collect_defs(&s->repo, s->repo_ok, s->ecu_sig, s->m, MAX_MATCH, &s->pk);
     s->sel = 0;
 }
 
@@ -240,7 +445,7 @@ static const char *sig_item(void *ud, int i)
     static char buf[300];
     sig_state *s = (sig_state *)ud;
     lt_snprintf(buf, sizeof(buf), "%s   [%s]   %s", s->m[i].name, s->m[i].signature,
-                s->m[i].kind == LT_SIG_EXACT ? "Exact" : "Partial");
+                s->m[i].kind == LT_SIG_EXACT ? "Exact" : "Near");
     return buf;
 }
 
@@ -370,8 +575,8 @@ static void sig_draw(lt_app *app, lt_app_dialog *d)
             lt_ui_layout_row(ui, 1, &w1, CV * 5);
             lt_ui_listbox_cb(ui, "inis", &s->sel, s->n_m, sig_item, s);
         } else {
-            lt_ui_label_ex(ui, "No matching INI files found in the local repository.", t->muted,
-                           LT_UI_ALIGN_LEFT);
+            lt_ui_label_ex(ui, "No matching INI files in the INI library or among the definitions "
+                               "bundled with LibreTune.", t->muted, LT_UI_ALIGN_LEFT);
         }
         if (s->note[0] != '\0') { lt_ui_label_wrap(ui, s->note, t->text2); }
         w3[0] = -1; w3[1] = -1; w3[2] = -1;
@@ -390,7 +595,7 @@ static void sig_draw(lt_app *app, lt_app_dialog *d)
         lt_ui_modal_end(ui);
     }
     if (act == 1 && !s->preview) {
-        char *path = lt_ini_repo_path(&s->repo, s->m[s->sel].id);
+        char *path = s->repo_ok ? match_path(&s->repo, &s->m[s->sel]) : NULL;
         if (path != NULL) {
             sync_state *st = get_state(app);
             st->sync_after_sig = 0;      /* the reconnect runs its own checks */
@@ -431,14 +636,59 @@ typedef struct wiz_state {
     long baud;
     lt_ini_repo repo; int repo_ok;
     lt_sync_ini_match m[MAX_MATCH]; int n_m, sel;
+    lt_inidb_pick pk;
 } wiz_state;
+
+/* default project name for a picked definition: "rusEFI proteus_f4", "Speeduino 202501" */
+static void pick_name(const lt_inidb_pick *pk, const char *sig, char *out, size_t cap)
+{
+    lt_sig_info si;
+    const lt_inidb_def *d = pk->src == LT_INIDB_SRC_BUNDLE ? lt_inidb_at((size_t)pk->bundle) : NULL;
+    if (d != NULL && d->board[0] != '\0') {
+        lt_snprintf(out, cap, "%s %s", lt_inidb_family_title(d->family), d->board);
+    } else if (lt_sig_parse(sig, &si) == 0 && si.family == LT_SIGFAM_RUSEFI) {
+        lt_snprintf(out, cap, "%s %s", si.variant[0] != '\0' ? si.variant : "rusEFI", si.board);
+    } else if (lt_sig_parse(sig, &si) == 0 && si.family == LT_SIGFAM_SPEEDUINO) {
+        lt_snprintf(out, cap, "Speeduino %ld%02ld", si.when / 12L, si.when % 12L + 1L);
+    } else {
+        lt_strlcpy(out, "My ECU", cap);
+    }
+}
+
+/* create a project named `name` (or "name 2", "name 3", ... when taken) with ini_path and open it */
+static int create_project(lt_app *app, const char *name, const char *ini_path, char *dir_out,
+                          size_t cap)
+{
+    lt_project p;
+    lt_ini *probe = lt_ini_load_file(ini_path, NULL);
+    char nm[96], *dir;
+    int rc = LT_EEXIST, k;
+    if (probe == NULL) { return LT_EDATA; }
+    for (k = 1; k < 100 && rc == LT_EEXIST; k++) {
+        if (k == 1) { lt_strlcpy(nm, name, sizeof(nm)); }
+        else { lt_snprintf(nm, sizeof(nm), "%s %d", name, k); }
+        rc = lt_project_create(nm, ini_path, probe->signature != NULL ? probe->signature : "", NULL,
+                               &p);
+    }
+    lt_ini_free(probe);
+    if (rc < 0) { return rc; }
+    dir = lt_strdup(p.path);
+    lt_project_close(&p);
+    if (dir_out != NULL) { lt_strlcpy(dir_out, dir, cap); }
+    rc = lt_app_open_project(app, dir);
+    lt_free(dir);
+    return rc;
+}
 
 static void wiz_match(wiz_state *w)
 {
     if (w->repo_ok) { lt_ini_repo_close(&w->repo); w->repo_ok = 0; }
     w->repo_ok = lt_ini_repo_open(&w->repo, NULL) == 0;
-    w->n_m = w->repo_ok ? lt_sync_find_inis(&w->repo, w->sig, w->m, MAX_MATCH) : 0;
+    w->n_m = collect_defs(&w->repo, w->repo_ok, w->sig, w->m, MAX_MATCH, &w->pk);
     w->sel = 0;
+    if (strcmp(w->name, "My ECU") == 0 || w->name[0] == '\0') {
+        pick_name(&w->pk, w->sig, w->name, sizeof(w->name));
+    }
 }
 
 static const char *wiz_item(void *ud, int i)
@@ -446,7 +696,7 @@ static const char *wiz_item(void *ud, int i)
     static char buf[300];
     wiz_state *w = (wiz_state *)ud;
     lt_snprintf(buf, sizeof(buf), "%s   [%s]   %s", w->m[i].name, w->m[i].signature,
-                w->m[i].kind == LT_SIG_EXACT ? "Exact" : "Partial");
+                w->m[i].kind == LT_SIG_EXACT ? "Exact" : "Near");
     return buf;
 }
 
@@ -475,18 +725,59 @@ static void wiz_scan_step(wiz_state *w)
     }
 }
 
+/* the definition status line of step 2 */
+static void wiz_pick_line(lt_app *app, wiz_state *w)
+{
+    const lt_theme *t = lt_ui_theme(app->ui);
+    char line[400];
+    int w1 = -1;
+    lt_ui_layout_row(app->ui, 1, &w1, 0);
+    if (w->pk.quality == LT_INIDB_EXACT) {
+        lt_snprintf(line, sizeof(line), "Exact definition found: %s", w->pk.label);
+        lt_ui_label_wrap(app->ui, line, t->success);
+    } else if (w->pk.quality == LT_INIDB_NEAR) {
+        lt_snprintf(line, sizeof(line), "No exact definition for this firmware; the closest is %s. "
+                    "Some settings may not match.", w->pk.label);
+        lt_ui_label_wrap(app->ui, line, t->warning);
+    } else if (w->n_m == 0) {
+        lt_ui_label_wrap(app->ui, "No definition for this firmware in the INI library or among the "
+                                  "bundled definitions. Browse for the INI that belongs to it, or "
+                                  "search online.", t->warning);
+    }
+    if (w->pk.drive_compressed) {
+        lt_ui_label_wrap(app->ui, "The ECU's USB drive only holds a compressed INI (rusefi.ini.7z), "
+                                  "which LibreTune cannot unpack.", t->muted);
+    }
+}
+
 static void wiz_draw(lt_app *app, lt_app_dialog *d)
 {
     lt_ui *ui = app->ui;
     const lt_theme *t = lt_ui_theme(ui);
     wiz_state *w = (wiz_state *)d->data;
-    int open = d->open, w1 = -1, w2[2], create = 0;
+    int open = d->open, w1 = -1, w2[2], w3[3], create = 0;
     const char *picked;
     if (w == NULL) {
         w = (wiz_state *)lt_calloc(1, sizeof(*w));
         d->data = w;
         lt_strlcpy(w->name, "My ECU", sizeof(w->name));
-        wiz_scan_start(app, w);
+        if (d->target[0] != '\0') {
+            /* "port\tbaud\tsignature": an ECU already identified (lt_feat_sync_connect_auto) */
+            char tmp[300], *b, *g;
+            lt_strlcpy(tmp, d->target, sizeof(tmp));
+            b = strchr(tmp, '\t');
+            g = b != NULL ? strchr(b + 1, '\t') : NULL;
+            if (g != NULL) {
+                *b = '\0';
+                *g = '\0';
+                lt_strlcpy(w->port, tmp, sizeof(w->port));
+                w->baud = atol(b + 1);
+                lt_strlcpy(w->sig, g + 1, sizeof(w->sig));
+                w->step = 1;
+                wiz_match(w);
+            }
+        }
+        if (w->step == 0) { wiz_scan_start(app, w); }
     }
     if (w->step == 0) { wiz_scan_step(w); }
     if (w->step == 0) { lt_ui_request_redraw(ui); }
@@ -500,7 +791,7 @@ static void wiz_draw(lt_app *app, lt_app_dialog *d)
             lt_snprintf(w->err, sizeof(w->err), "Import failed: %s", lt_err_get());
         }
     }
-    if (lt_ui_modal_begin(ui, "Connect ECU", CH * 76, CV * 22, &open)) {
+    if (lt_ui_modal_begin(ui, "Connect ECU", CH * 76, CV * 24, &open)) {
         lt_ui_layout_row(ui, 1, &w1, 0);
         if (w->step == 0) {
             char b[240];
@@ -529,22 +820,25 @@ static void wiz_draw(lt_app *app, lt_app_dialog *d)
             }
             lt_ui_label(ui, "Signature");
             lt_ui_label_ex(ui, w->sig, t->text, LT_UI_ALIGN_LEFT);
+            wiz_pick_line(app, w);
             lt_ui_layout_row(ui, 1, &w1, 0);
             if (w->n_m > 0) {
-                lt_ui_label_ex(ui, w->m[0].kind == LT_SIG_EXACT ? "Matching INI files found:"
-                                                                 : "Similar INI files found:",
+                lt_ui_label_ex(ui, w->m[0].kind == LT_SIG_EXACT ? "Matching definitions:"
+                                                                 : "Similar definitions:",
                                t->text2, LT_UI_ALIGN_LEFT);
                 lt_ui_layout_row(ui, 1, &w1, CV * 5);
                 lt_ui_listbox_cb(ui, "inis", &w->sel, w->n_m, wiz_item, w);
-            } else {
-                lt_ui_label_wrap(ui, "No matching INI files found in the local repository. Browse "
-                                     "for the INI that belongs to this firmware.", t->warning);
             }
-            lt_ui_layout_row(ui, 1, &w1, 0);
+            w3[0] = -1; w3[1] = -1; w3[2] = -1;
+            lt_ui_layout_row(ui, 3, w3, 0);
             if (lt_ui_button(ui, "Browse for INI File...")) {
                 lt_app_file_dialog(app, FD_WIZ_INI, LT_UI_FILE_OPEN, NULL, "",
                                    "ECU definitions|*.ini|All files|*");
             }
+            if (lt_ui_button(ui, w->pk.quality == LT_INIDB_NEAR ? "Find Exact INI..." : "Search Online")) {
+                lt_feat_online_open(app, w->sig);
+            }
+            lt_ui_label(ui, "");
             w2[0] = CH * 18; w2[1] = -1;
             lt_ui_layout_row(ui, 2, w2, 0);
             lt_ui_label(ui, "Project name");
@@ -562,19 +856,20 @@ static void wiz_draw(lt_app *app, lt_app_dialog *d)
         lt_ui_modal_end(ui);
     }
     if (create) {
-        char *ini_path = lt_ini_repo_path(&w->repo, w->m[w->sel].id);
+        char *ini_path = w->repo_ok ? match_path(&w->repo, &w->m[w->sel]) : NULL;
         char port[128], name[64];
         long baud = w->baud;
         lt_strlcpy(port, w->port, sizeof(port));
         lt_strlcpy(name, w->name, sizeof(name));
-        if (ini_path != NULL && lt_app_new_project(app, name, ini_path) == 0) {
+        if (ini_path != NULL && create_project(app, name, ini_path, NULL, 0) == 0) {
             /* the new project closed this dialog (and freed d/w): nothing may touch them now */
             lt_free(ini_path);
-            (void)lt_app_connect_serial(app, port, baud);
+            if (strcmp(port, "demo") == 0) { (void)lt_app_connect_demo(app); }
+            else { (void)lt_app_connect_serial(app, port, baud); }
             return;
         }
         lt_free(ini_path);
-        lt_strlcpy(w->err, "Cannot create the project.", sizeof(w->err));
+        lt_snprintf(w->err, sizeof(w->err), "Cannot create the project: %s", lt_err_get());
     }
     d->open = open;
 }
@@ -597,6 +892,119 @@ static void act_wizard(lt_app *app)
     (void)lt_app_dialog_push(app, "connect_wizard", "", "Connect ECU");
 }
 
+/* ------------------------------------------------------------------ */
+/* connect, identify, pick the INI, open or create the project          */
+
+/* the newest project whose definition has exactly signature sig; 1 found (dir in out) */
+static int find_project(const char *sig, char *out, size_t cap)
+{
+    lt_project_info *v = NULL;
+    size_t n = 0, i;
+    int found = 0;
+    if (lt_project_list(&v, &n, NULL) != 0) { return 0; }
+    for (i = 0; i < n && !found; i++) {
+        if (v[i].signature != NULL && v[i].path != NULL && same_sig(v[i].signature, sig)) {
+            lt_strlcpy(out, v[i].path, cap);
+            found = 1;
+        }
+    }
+    lt_project_info_free(v, n);
+    return found;
+}
+
+static int probe_port(const char *port, long baud, char *sig, size_t cap)
+{
+    lt_disc_cfg cfg;
+    lt_disc_result *res = NULL;
+    size_t n = 0, k;
+    int rc = LT_ETIMEOUT;
+    long b = baud;
+    lt_disc_cfg_default(&cfg);
+    if (b > 0) {
+        cfg.bauds = &b;
+        cfg.n_bauds = 1;
+    }
+    if (lt_disc_run(&cfg, &port, 1, &res, &n) == 0 && res != NULL) {
+        for (k = 0; k < n; k++) {
+            if (res[k].kind == LT_DISC_SIGNATURE) {
+                lt_strlcpy(sig, res[k].signature, cap);
+                rc = 0;
+                break;
+            }
+        }
+    }
+    lt_free(res);
+    if (rc != 0) { lt_err_set("No ECU answered on %s", port); }
+    return rc;
+}
+
+int lt_feat_sync_connect_auto(lt_app *app, const char *port, long baud, const char *signature,
+                              lt_feat_auto *res)
+{
+    lt_feat_auto tmp;
+    lt_feat_auto *r = res != NULL ? res : &tmp;
+    sync_state *st = get_state(app);
+    char sig[128], dir[512], name[96], *path = NULL;
+    lt_ini_repo repo;
+    lt_inidb_pick pk;
+    int q, rc, demo;
+    memset(r, 0, sizeof(*r));
+    if (port == NULL || port[0] == '\0') {
+        lt_err_set("No port given");
+        return LT_EINVAL;
+    }
+    demo = strcmp(port, "demo") == 0;
+    if (signature != NULL && signature[0] != '\0') {
+        lt_strlcpy(sig, signature, sizeof(sig));
+    } else if (demo) {
+        lt_err_set("The demo ECU needs a signature to answer with");
+        return LT_EINVAL;
+    } else {
+        rc = probe_port(port, baud, sig, sizeof(sig));
+        if (rc < 0) { return rc; }
+    }
+    lt_strlcpy(r->signature, sig, sizeof(r->signature));
+    if (lt_ini_repo_open(&repo, NULL) != 0) { return LT_EIO; }
+    q = lt_inidb_resolve(sig, &repo, LT_INIDB_USE_DRIVE, &pk);
+    if (q == LT_INIDB_NONE) {
+        char tgt[300];
+        lt_ini_repo_close(&repo);
+        lt_snprintf(tgt, sizeof(tgt), "%s\t%ld\t%s", port, baud, sig);
+        (void)lt_app_dialog_push(app, "connect_wizard", tgt, "Connect ECU");
+        lt_err_set("No ECU definition fits %s", sig);
+        return LT_ENOENT;
+    }
+    r->quality = q;
+    lt_strlcpy(r->label, pk.label, sizeof(r->label));
+    dir[0] = '\0';
+    if (find_project(pk.signature, dir, sizeof(dir))) {
+        lt_ini_repo_close(&repo);
+        rc = lt_app_open_project(app, dir);
+    } else {
+        rc = lt_inidb_pick_path(&repo, &pk, &path);
+        lt_ini_repo_close(&repo);
+        if (rc == 0) {
+            pick_name(&pk, sig, name, sizeof(name));
+            rc = create_project(app, name, path, dir, sizeof(dir));
+            r->created = rc == 0;
+        }
+        lt_free(path);
+    }
+    if (rc < 0) { return rc; }
+    lt_strlcpy(r->project, dir, sizeof(r->project));
+    /* the on-connect check must not resolve this ECU again */
+    lt_strlcpy(st->auto_ecu, sig, sizeof(st->auto_ecu));
+    lt_strlcpy(st->auto_pick, pk.signature, sizeof(st->auto_pick));
+    lt_strlcpy(st->near_label, pk.label, sizeof(st->near_label));
+    st->auto_near = q == LT_INIDB_NEAR;
+    st->near_ecu[0] = '\0';
+    if (q == LT_INIDB_EXACT) { lt_app_toast(app, 1, "ECU definition: %s", pk.label); }
+    rc = demo ? lt_app_connect_demo(app) : lt_app_connect_serial(app, port, baud);
+    if (rc < 0) { return rc; }
+    if (q == LT_INIDB_NEAR && strcmp(st->near_ecu, sig) != 0) { show_near(app, pk.label, sig); }
+    return q;
+}
+
 void lt_feat_sync_register(lt_app_ext *reg)
 {
     lt_app_dialog_kind dk;
@@ -605,6 +1013,8 @@ void lt_feat_sync_register(lt_app_ext *reg)
     dk.kind = "sig_mismatch"; dk.draw = sig_draw; dk.close = sig_close;
     lt_ext_add_dialog_kind(reg, &dk);
     dk.kind = "connect_wizard"; dk.draw = wiz_draw; dk.close = wiz_close;
+    lt_ext_add_dialog_kind(reg, &dk);
+    dk.kind = "inidb_near"; dk.draw = near_draw; dk.close = NULL;
     lt_ext_add_dialog_kind(reg, &dk);
     lt_ext_add_on_connect(reg, on_connect);
     lt_ext_add_menu_item(reg, LT_EXT_MENU_FILE, "Connect ECU &Wizard...", NULL, act_wizard, NULL);

@@ -14,6 +14,7 @@
 #define LT_BASETUNE_H
 
 #include "tune.h"
+#include "../lt_lzb.h"
 
 LT_BEGIN_DECLS
 
@@ -47,12 +48,7 @@ extern const char        lt_basetune_commit[];   /* upstream commit the files co
 size_t             lt_basetune_count(void);
 const lt_basetune *lt_basetune_at(size_t i);            /* NULL when out of range */
 const lt_basetune *lt_basetune_find(const char *key);   /* by key, NULL when unknown */
-/* Unpack the library format of tools/gen_basetunes.py (LZ77, byte oriented): each sequence is a
- * token (high nibble literal count, low nibble match length - 4; 15 = more length bytes follow,
- * each 255 adds 255 and continues), the literals, then - unless the output is complete - a 3-byte
- * little-endian distance back into the output and the match. Writes exactly outlen bytes; 0 ok,
- * -1 on malformed or truncated input (never reads or writes out of bounds). */
-int      lt_lzb_decode(const unsigned char *in, size_t inlen, unsigned char *out, size_t outlen);
+/* the library is unpacked with lt_lzb_decode (src/lt_lzb.h, included here) */
 /* the file as one malloc'd NUL-terminated buffer; *len (may be NULL) = size; NULL + lt_err when
  * the embedded data is damaged */
 char    *lt_basetune_text(const lt_basetune *b, size_t *len);

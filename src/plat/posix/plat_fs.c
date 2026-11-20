@@ -242,3 +242,28 @@ int lt_posix_serial_scan(const char *const *prefixes, size_t nprefix,
     *names = out;
     return n;
 }
+
+int lt_posix_volume_scan(const char *const *parents, size_t nparent, char ***out)
+{
+    char **res = NULL;
+    int n = 0, cap = 0;
+    size_t j;
+
+    *out = NULL;
+    for (j = 0; j < nparent; j++) {
+        char **names = NULL;
+        int k, nn;
+        if (parents[j] == NULL || parents[j][0] == '\0') continue;
+        nn = lt_plat_list_dir(parents[j], &names);
+        for (k = 0; k < nn; k++) {
+            char *p;
+            if (names[k][0] == '.') continue;
+            p = lt_path_join(parents[j], names[k]);
+            if (lt_plat_is_dir(p)) n = lt_plat_names_add(&res, n, &cap, p);
+            lt_free(p);
+        }
+        if (nn > 0) lt_plat_free_list(names, nn);
+    }
+    *out = res;
+    return n;
+}

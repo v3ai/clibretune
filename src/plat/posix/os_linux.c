@@ -242,3 +242,25 @@ int lt_serial_perm_fix(char *cmd, size_t cap)
     lt_snprintf(cmd, cap, "sudo usermod -aG %s $USER", (!dialout && uucp) ? "uucp" : "dialout");
     return 1;
 }
+
+int lt_plat_volume_list(char ***paths)
+{
+    char *user = lt_plat_getenv("USER");
+    char *a, *b;
+    const char *parents[3];
+    int n;
+    if (user == NULL || user[0] == '\0') {
+        lt_free(user);
+        user = lt_strdup("-");
+    }
+    a = lt_path_join("/media", user);
+    b = lt_path_join("/run/media", user);
+    parents[0] = a;
+    parents[1] = b;
+    parents[2] = "/media";
+    n = lt_posix_volume_scan(parents, 3, paths);
+    lt_free(a);
+    lt_free(b);
+    lt_free(user);
+    return n;
+}

@@ -77,6 +77,30 @@ void lt_feat_migrate_show(lt_app *app, const char *title, const char *intro, lt_
 /* Difference Report "Ignore": project tune is kept, also on disconnect; tests and scripts */
 void lt_feat_sync_ignore(lt_app *app);
 
+/* What lt_feat_sync_connect_auto did. */
+typedef struct lt_feat_auto {
+    int  quality;            /* LT_INIDB_EXACT / LT_INIDB_NEAR (project/inidb.h), 0 none */
+    int  created;            /* 1 a new project was created, 0 an existing one was opened */
+    char signature[128];     /* the ECU's signature */
+    char label[200];         /* the definition used ("rusEFI proteus_f4 - release_20260812 (bundled)") */
+    char project[512];       /* project directory */
+} lt_feat_auto;
+/* One call for the welcome / connect screens once a port answers:
+ *   1. identify: signature as given (the caller probed the port) or, when NULL/"", probe port at
+ *      baud (lt_disc_run); port "demo" = the simulator
+ *   2. pick the definition (lt_inidb_resolve): the ECU's USB drive, the INI library, the bundle;
+ *      exact, else the nearest build of the same board
+ *   3. open the newest project whose definition has exactly that signature, or create one
+ *      ("rusEFI proteus_f4", "Speeduino 202501"; a number is appended when the name is taken)
+ *   4. connect (demo: the simulator answers with the picked definition)
+ * Returns LT_INIDB_EXACT (one toast names the definition) or LT_INIDB_NEAR (a one-line warning
+ * with "Find Exact INI..." is shown), or negative: LT_ENOENT when no definition fits (the Connect
+ * ECU wizard opens at its definition step: browse for a file / search online), LT_ETIMEOUT when
+ * nothing answered on port, other LT_E* when the project or the link failed (lt_err_get). res
+ * (may be NULL) is filled in every case. */
+int  lt_feat_sync_connect_auto(lt_app *app, const char *port, long baud, const char *signature,
+                               lt_feat_auto *res);
+
 void lt_feat_logging_register(lt_app_ext *reg);  /* smart recording, sample rate, rec channels, alerts */
 void lt_feat_math_register(lt_app_ext *reg);     /* math channels editor */
 void lt_feat_afrdelay_register(lt_app_ext *reg);  /* AFR delay test dialog */

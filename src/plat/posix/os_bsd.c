@@ -97,3 +97,9 @@ int lt_serial_perm_fix(char *cmd, size_t cap)
     lt_snprintf(cmd, cap, "sudo pw groupmod dialer -m $USER");
     return 1;
 }
+
+int lt_plat_volume_list(char ***paths)
+{
+    static const char *const parents[] = { "/media", "/mnt" };
+    return lt_posix_volume_scan(parents, LT_COUNTOF(parents), paths);
+}
