@@ -16,7 +16,7 @@
 typedef struct guard_state {
     /* unburned */
     lt_tune *base;                   /* what the ECU's flash holds: taken when nothing was pending */
-    unsigned long base_hash, hash;
+    unsigned long base_hash, hash, cmp_hash;   /* cmp_hash: memory the count was made for */
     int unburned;                    /* last count (0 none, LT_GUARD_SOME unknown) */
     double t_check;
     /* question */
@@ -82,6 +82,8 @@ static void update_unburned(lt_app *app, guard_state *g)
         return;
     }
     if (g->base == NULL) { g->unburned = LT_GUARD_SOME; return; }
+    if (g->unburned != 0 && g->hash == g->cmp_hash) { return; }    /* nothing changed since */
+    g->cmp_hash = g->hash;
     {
         lt_sync_cmp *c = lt_sync_compare(app->ini, g->base, app->mem);
         int n = c != NULL && c->diff != NULL ? (int)c->diff->n : 0;
