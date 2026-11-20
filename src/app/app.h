@@ -221,6 +221,8 @@ void lt_app_close_project(lt_app *app);        /* back to the welcome screen */
 int  lt_app_save_tune(lt_app *app);            /* project tune or Save As when none */
 int  lt_app_save_tune_as(lt_app *app, const char *path);
 int  lt_app_load_tune(lt_app *app, const char *path);
+/* same with a tune already in memory (ownership taken, also on error); label is shown in the toast */
+int  lt_app_load_tune_mem(lt_app *app, lt_tune *t, const char *label);
 int  lt_app_reset_defaults(lt_app *app);
 /* demo mode: ini_path may be NULL = search the bundled demo.ini */
 int  lt_app_start_demo(lt_app *app, const char *ini_path);

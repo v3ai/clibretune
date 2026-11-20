@@ -7,3 +7,5 @@
 # one registration line per feature: concurrent additions merge cleanly
 src/app/app_features.c merge=union
 src/app/feat.h merge=union
+# third-party base tunes: stored byte for byte as published upstream (some use CRLF)
+assets/basetunes/** -text

@@ -109,6 +109,16 @@ static void newproj_draw(lt_app *app, lt_app_dialog *d)
             }
             lt_ui_text(ui, "inipath", s->ini, sizeof(s->ini), 0);
         }
+        {   /* the built-in Speeduino base tunes (feat_basetune.c) */
+            int wbt[2];
+            wbt[0] = -1; wbt[1] = 200;
+            lt_ui_layout_row(ui, 2, wbt, 0);
+            lt_ui_label_ex(ui, lt_tr("Or start from a built-in Speeduino base tune:"), t->text2, LT_UI_ALIGN_LEFT);
+            if (lt_ui_button(ui, lt_tr("From a Base Tune..."))) {
+                (void)lt_app_dialog_push(app, "basetunes", "new", "New Project from Base Tune");
+                open = 0;
+            }
+        }
         lt_ui_layout_row(ui, 1, &w1, 0);
         lt_ui_checkbox(ui, lt_tr("Open the base map wizard after creating"), &s->basemap);
         if (s->err[0] != '\0') { lt_ui_label_ex(ui, s->err, t->error, LT_UI_ALIGN_LEFT); }

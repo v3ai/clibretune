@@ -102,6 +102,19 @@ Tools > Firmware Update flashes ECUs with no external tool:
 - With `--demo` (or `LT_FW_SIM=1`) simulated bootloaders (DfuSe, OpenBLT on USB / UART / CAN, STK500v2,
   HalfKay) run the whole flow without hardware; the serial methods offer a "simulated port".
 
+## Base tunes
+
+File > New Project from Base Tune (also from the New Project dialog) and File > Load Base Tune open
+the built-in Base Tune library: the 14 tunes of the official Speeduino tunes repository
+(Generic, Audi, BMW, Mazda, Mitsubishi), embedded in the program. The browser filters by make and
+searches name, board, provider, description and firmware, and shows each tune's author. For a new
+project it picks the matching Speeduino INI from the INI library (or lets you choose an INI file, look
+one up online, or connect to the ECU first). When the tune's firmware version differs from the
+definition, or some values do not fit it, the migration report lists what does not map before
+anything is applied. Base tunes are a starting point only: check injector, trigger and ignition
+settings before starting an engine. rusEFI, FOME and miata-ecus boards do not need them: their
+firmware carries its own base calibration (connect and read it).
+
 ## Keyboard shortcuts
 
 Ctrl+N new project, Ctrl+O load tune, Ctrl+S save, Ctrl+Shift+S save as, Ctrl+B burn,
@@ -137,3 +150,13 @@ GPL-2.0-or-later (see `LICENSE`). Based on the original LibreTune project
 icons are from Lucide (ISC, `assets/icons/LICENSE`). The 8x16 bitmap font used by the terminal
 backend is GNU Unifont-derived (GPL-2.0-or-later with the font embedding exception); the legacy
 vector font uses Hershey fonts data.
+
+The built-in base tunes are **not** under the GPL. They are the Speeduino base tunes from
+https://github.com/speeduino/Tunes (commit 99b2a62e402144fa38c911f937b2b6571c8a720a) by the
+Speeduino project and contributors (the author of each tune is shown in the browser and listed in
+`assets/basetunes/speeduino/README.md`), licensed under Creative Commons Attribution-NonCommercial
+4.0 (CC BY-NC 4.0, `assets/basetunes/speeduino/LICENSE`), embedded unmodified by
+`tools/gen_basetunes.py` into `src/tune/basetune_data.c`. LibreTune is free software and is never
+sold; because the program bundle contains these non-commercial tunes, it must not be sold either. To
+distribute a build commercially, first regenerate the data without them
+(`python3 tools/gen_basetunes.py --empty`). Help > About lists all licences.

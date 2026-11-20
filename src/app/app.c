@@ -920,10 +920,16 @@ int lt_app_save_tune_as(lt_app *app, const char *path)
 int lt_app_load_tune(lt_app *app, const char *path)
 {
     lt_tune *t;
-    int pg;
     if (app->ini == NULL) { return -1; }
     t = lt_tune_load(path);
     if (t == NULL) { lt_app_toast(app, 3, "Cannot load tune: %s", lt_err_get()); return -1; }
+    return lt_app_load_tune_mem(app, t, lt_path_base(path));
+}
+
+int lt_app_load_tune_mem(lt_app *app, lt_tune *t, const char *label)
+{
+    int pg;
+    if (app->ini == NULL) { lt_tune_free(t); return -1; }
     lt_tune_apply_to_pages(t, app->ini);
     if (app->mem != NULL && app->conn != LT_APP_OFFLINE) {
         lt_pagesrc ps = lt_app_pages(app);
@@ -941,7 +947,7 @@ int lt_app_load_tune(lt_app *app, const char *path)
         app->modified = 1;
         rebind(app);
     }
-    lt_app_toast(app, 1, "Loaded %s", lt_path_base(path));
+    lt_app_toast(app, 1, "Loaded %s", label != NULL ? label : "tune");
     return 0;
 }
 

@@ -243,6 +243,12 @@ void  lt_migration_init(lt_migration_report *r);            /* empty report: aut
 void  lt_migration_clear(lt_migration_report *r);
 void  lt_migration_compare(lt_migration_report *out, const lt_manifest_entry *saved, size_t n,
                            const lt_ini *ini);
+/* Same report for a tune file against an INI. With a constantManifest this is lt_migration_compare;
+ * without one (TunerStudio .msq files, base tunes) the named constants are compared: INI constants
+ * the tune lacks -> missing_in_tune, tune constants the INI lacks -> missing_in_ini, values that do
+ * not fit the INI constant (unknown option label, element count, text vs number) -> type_changed
+ * (old_type = the tune's value, new_type = the INI type, description = why). */
+void  lt_migration_compare_tune(lt_migration_report *out, const lt_tune *t, const lt_ini *ini);
 lt_bool lt_migration_has_changes(const lt_migration_report *r);
 char *lt_migration_summary(const lt_migration_report *r);   /* "2 new constants, 1 type changes" */
 

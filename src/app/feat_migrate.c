@@ -2,6 +2,8 @@
  *   File -> Update Project INI...   pick a definition (INI library or file), review the migration
  *                                   report against the project tune, then switch the project to it
  *   Tools -> Tune Migration Report  report of the open tune against the open definition
+ *   lt_feat_migrate_show            the same dialog for any tune file vs INI report (base tunes),
+ *                                   with a continuation run by "Continue with Tune"
  * The update re-resolves the tune: every constant keeps its value by name, constants new in the
  * INI get their defaults, the tune is re-stamped with the new INI version and saved, then the
  * project is reopened (the ECU connection is closed).
@@ -26,12 +28,45 @@ typedef struct mig_dlg {
     char file[512];
     char target[512];      /* chosen INI path (stage 1) */
     char err[200];
+    int  ext;              /* report handed over by lt_feat_migrate_show (a tune file vs an INI) */
+    char intro[600];
+    lt_ext_action_fn cont;
 } mig_dlg;
 
 typedef struct mig_state {
     int  pending;          /* deferred update, run from the tick (it replaces the whole session) */
     char path[512];
+    lt_migration_report ext;   /* lt_feat_migrate_show: waiting for its dialog to open */
+    int  has_ext;
+    char ext_intro[600];
+    lt_ext_action_fn ext_cont;
 } mig_state;
+
+static void mig_state_free(lt_app *app, void *p)
+{
+    mig_state *s = (mig_state *)p;
+    LT_UNUSED(app);
+    if (s->has_ext) { lt_migration_clear(&s->ext); }
+    s->has_ext = 0;
+}
+
+static mig_state *mig_st(lt_app *app)
+{
+    return (mig_state *)lt_ext_state(app, "migrate", sizeof(mig_state), mig_state_free);
+}
+
+void lt_feat_migrate_show(lt_app *app, const char *title, const char *intro, lt_migration_report *rep,
+                          lt_ext_action_fn on_continue)
+{
+    mig_state *s = mig_st(app);
+    if (s->has_ext) { lt_migration_clear(&s->ext); }
+    s->ext = *rep;                 /* ownership moves into the state, then into the dialog */
+    lt_migration_init(rep);
+    s->has_ext = 1;
+    lt_strlcpy(s->ext_intro, intro != NULL ? intro : "", sizeof(s->ext_intro));
+    s->ext_cont = on_continue;
+    (void)lt_app_dialog_push(app, "migration", "external", title != NULL ? title : "Tune Migration Report");
+}
 
 /* ---- the update itself ---- */
 int lt_feat_migrate_apply(lt_app *app, const char *new_ini)
@@ -83,7 +118,7 @@ int lt_feat_migrate_apply(lt_app *app, const char *new_ini)
 
 static void mig_tick(lt_app *app)
 {
-    mig_state *s = (mig_state *)lt_ext_state(app, "migrate", sizeof(*s), NULL);
+    mig_state *s = mig_st(app);
     if (s->pending) {
         char path[512];
         lt_strlcpy(path, s->path, sizeof(path));
@@ -163,6 +198,10 @@ static void change_section(lt_ui *ui, const char *title, int kind, const lt_cons
             if (kind == 0) {
                 lt_snprintf(det, sizeof(det), "%s \xE2\x86\x92 %s", c[i].old_type != NULL ? c[i].old_type : "?",
                             c[i].new_type != NULL ? c[i].new_type : "?");
+            } else if (kind == 3) {
+                lt_snprintf(det, sizeof(det), "%s \xE2\x86\x92 %s: %s", c[i].old_type != NULL ? c[i].old_type : "?",
+                            c[i].new_type != NULL ? c[i].new_type : "?",
+                            c[i].description != NULL ? c[i].description : "");
             } else if (kind == 1) {
                 lt_snprintf(det, sizeof(det), "scale: %.4f \xE2\x86\x92 %.4f", c[i].old_scale, c[i].new_scale);
             } else {
@@ -184,6 +223,43 @@ static const char *severity_text(const char *sev)
     return "No Changes";
 }
 
+/* report of a tune file against an INI (lt_feat_migrate_show): what does not map */
+static void report_body_ext(lt_app *app, mig_dlg *s)
+{
+    lt_ui *ui = app->ui;
+    const lt_theme *t = lt_ui_theme(ui);
+    const lt_migration_report *r = &s->rep;
+    char buf[160];
+    int w1 = -1;
+    if (s->intro[0] != '\0') {
+        lt_ui_label_wrap(ui, s->intro, t->text2);
+        lt_ui_layout_row(ui, 1, &w1, 0);
+    }
+    lt_ui_text_style(ui, (int)LT_FONT_SANS_SEMIBOLD, LT_UI_FS_MD);
+    if (!s->has_changes) {
+        lt_ui_label_ex(ui, "Every value of the tune maps onto this ECU definition", t->success, LT_UI_ALIGN_LEFT);
+        lt_ui_text_style_reset(ui);
+        return;
+    }
+    lt_ui_label_ex(ui, r->n_type > 0 || r->n_missing_in_ini > 0 ? "Some values do not map" : "Minor differences",
+                   r->n_type > 0 || r->n_missing_in_ini > 0 ? t->warning : t->info, LT_UI_ALIGN_LEFT);
+    lt_ui_text_style_reset(ui);
+    lt_ui_layout_row(ui, 1, &w1, 0);
+    lt_ui_label_ex(ui, s->summary, t->muted, LT_UI_ALIGN_LEFT);
+    lt_ui_layout_row(ui, 1, &w1, 0);
+    lt_ui_separator(ui);
+    lt_snprintf(buf, sizeof(buf), "Values that do not fit (%lu)  -  Kept at the INI default",
+                (unsigned long)r->n_type);
+    lt_ui_layout_row(ui, 1, &w1, 0);
+    change_section(ui, buf, 3, r->type_changed, r->n_type, 1);
+    lt_snprintf(buf, sizeof(buf), "Not in this INI (%lu)  -  Not Applied", (unsigned long)r->n_missing_in_ini);
+    lt_ui_layout_row(ui, 1, &w1, 0);
+    names_section(ui, buf, r->missing_in_ini, r->n_missing_in_ini);
+    lt_snprintf(buf, sizeof(buf), "Not in the tune (%lu)  -  Using INI Defaults", (unsigned long)r->n_missing_in_tune);
+    lt_ui_layout_row(ui, 1, &w1, 0);
+    names_section(ui, buf, r->missing_in_tune, r->n_missing_in_tune);
+}
+
 static void report_body(lt_app *app, mig_dlg *s)
 {
     lt_ui *ui = app->ui;
@@ -193,6 +269,10 @@ static void report_body(lt_app *app, mig_dlg *s)
     int w1 = -1;
     lt_color c;
     lt_ui_layout_row(ui, 1, &w1, 0);
+    if (s->ext) {
+        report_body_ext(app, s);
+        return;
+    }
     if (!s->has_changes) {
         lt_ui_label_ex(ui, "No migration report available.", t->text, LT_UI_ALIGN_CENTER);
         lt_ui_layout_row(ui, 1, &w1, 0);
@@ -245,7 +325,22 @@ static void mig_init(lt_app *app, lt_app_dialog *d)
     d->data = s;
     lt_migration_init(&s->rep);
     s->update = strcmp(d->target, "update") == 0;
-    if (s->update) {
+    if (strcmp(d->target, "external") == 0) {
+        mig_state *st = mig_st(app);
+        s->ext = 1;
+        if (st->has_ext) {
+            s->rep = st->ext;            /* take ownership */
+            lt_migration_init(&st->ext);
+            st->has_ext = 0;
+        }
+        lt_strlcpy(s->intro, st->ext_intro, sizeof(s->intro));
+        s->cont = st->ext_cont;
+        st->ext_cont = NULL;
+        s->has_changes = lt_migration_has_changes(&s->rep);
+        lt_snprintf(s->summary, sizeof(s->summary), "%lu values do not fit, %lu not in this INI, "
+                    "%lu INI constants not in the tune", (unsigned long)s->rep.n_type,
+                    (unsigned long)s->rep.n_missing_in_ini, (unsigned long)s->rep.n_missing_in_tune);
+    } else if (s->update) {
         s->repo_ok = lt_ini_repo_open(&s->repo, NULL) == 0;
         if (!s->repo_ok || s->repo.n == 0) { s->source = 1; }
     } else {
@@ -314,8 +409,8 @@ static void mig_draw(lt_app *app, lt_app_dialog *d)
     mig_dlg *s = (mig_dlg *)d->data;
     int open = d->open, w1 = -1, wf[3], fh;
     if (s == NULL) { mig_init(app, d); s = (mig_dlg *)d->data; }
-    if (lt_ui_modal_begin(ui, s->update && s->stage == 0 ? "Update Project INI" : "INI Version Migration",
-                          760, 540, &open)) {
+    if (lt_ui_modal_begin(ui, s->update && s->stage == 0 ? "Update Project INI"
+                              : s->ext ? d->title : "INI Version Migration", 760, 540, &open)) {
         fh = lt_ui_cell_mode(ui) ? 16 : 30;
         if (s->update && s->stage == 0) {
             stage_pick(app, d, s, &open);
@@ -333,18 +428,21 @@ static void mig_draw(lt_app *app, lt_app_dialog *d)
             }
             wf[0] = -1; wf[1] = 110; wf[2] = 170;
             lt_ui_layout_row(ui, 3, wf, 0);
-            if (s->rep.requires_user_review) {
+            if (s->ext && s->cont != NULL) {
+                lt_ui_label_ex(ui, "Check the values listed above after loading", t->warning, LT_UI_ALIGN_LEFT);
+            } else if (s->rep.requires_user_review) {
                 lt_ui_label_ex(ui, "Review type changes before burning to ECU", t->warning, LT_UI_ALIGN_LEFT);
             } else {
                 lt_ui_label(ui, "");
             }
-            if (lt_ui_button(ui, "Dismiss")) { open = 0; }
+            if (lt_ui_button(ui, s->ext && s->cont != NULL ? "Cancel" : "Dismiss")) { open = 0; }
             if (lt_ui_button_ex(ui, "Continue with Tune", LT_UI_BTN_DEFAULT)) {
                 if (s->update) {
-                    mig_state *ms = (mig_state *)lt_ext_state(app, "migrate", sizeof(*ms), NULL);
+                    mig_state *ms = mig_st(app);
                     lt_strlcpy(ms->path, s->target, sizeof(ms->path));
                     ms->pending = 1;
                 }
+                if (s->ext && s->cont != NULL) { s->cont(app); }
                 open = 0;
             }
         }
