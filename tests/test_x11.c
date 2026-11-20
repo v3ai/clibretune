@@ -94,9 +94,11 @@ int main(void) {
     CHECK(w == 320 && h == 200);
     lt_canvas_init(&c, 320, 200);
     memset(c.px, 0x7f, sizeof(lt_u32) * 320 * 200);
-    b->present(b, &c, NULL, lt_rect_make(0, 0, 320, 200));
+    /* Bell first: the mock answers the PutImage with events, so once they arrive the Bell
+     * request ahead of it is in the log (sent after it, the log could be read too early) */
     CHECK(b->beep != NULL);
     if (b->beep != NULL) b->beep(b);                /* core protocol Bell request */
+    b->present(b, &c, NULL, lt_rect_make(0, 0, 320, 200));
     CHECK(next_ev(b, &ev) && ev.type == LT_EV_EXPOSE);
     CHECK(next_ev(b, &ev) && ev.type == LT_EV_KEY_DOWN && ev.key == 'a');
     CHECK(next_ev(b, &ev) && ev.type == LT_EV_TEXT && strcmp(ev.text, "a") == 0);

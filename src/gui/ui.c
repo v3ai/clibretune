@@ -352,6 +352,7 @@ lt_bool lt_ui_text_focused(const lt_ui *ui) { return ui->edit.id != 0 ? LT_TRUE 
 lt_point lt_ui_mouse(const lt_ui *ui) { lt_point p; p.x = ui->mx; p.y = ui->my; return p; }
 int lt_ui_mods(const lt_ui *ui) { return ui->mods; }
 int lt_ui_wheel(const lt_ui *ui) { return ui->wheel; }
+int lt_ui_wheel_take(lt_ui *ui) { int w = ui->wheel; ui->wheel = 0; return w; }
 lt_bool lt_ui_mouse_down(const lt_ui *ui, int b) { return (ui->mbtn & (1 << b)) ? LT_TRUE : LT_FALSE; }
 lt_u32 lt_ui_focus(const lt_ui *ui) { return ui->focus; }
 void lt_ui_set_focus(lt_ui *ui, lt_u32 id) { ui->focus = id; ui_request(ui); }
@@ -1244,6 +1245,16 @@ int ui_interact(lt_ui *ui, lt_u32 id, lt_rect r, int flags)
         ui->press_claimed = 1;
     }
     return res;
+}
+
+int lt_ui_hit(lt_ui *ui, const char *label, lt_rect r)
+{
+    int res = ui_interact(ui, lt_ui_id(ui, label), r, 0), out = 0;
+    if (res & UI_HOVER) { out |= LT_UI_HIT_HOVER; }
+    if (res & UI_ACTIVE) { out |= LT_UI_HIT_DOWN; }
+    if (res & UI_PRESS) { out |= LT_UI_HIT_PRESS; }
+    if (res & UI_DBLCLICK) { out |= LT_UI_HIT_DOUBLE; }
+    return out;
 }
 
 void ui_focus_ring(lt_ui *ui, lt_rect r, int radius)

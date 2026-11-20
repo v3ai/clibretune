@@ -380,7 +380,7 @@ Orig = path under `ref/LibreTune/crates/`. `app/` = `libretune-app/src/component
 - Status: PARTIAL | Priority: P2 | Effort: S
 - Have: recommendation grid with heat colouring, strip.
 - Missing: switchable weighting / change / coverage maps, zoom and pan, trace line of visited cells in the grid, Y flip.
-- Status update: PARTIAL: value/weighting/change/coverage views, trace line, Y flip; zoom and pan not done
+- Status update: DONE: value/weighting/change/coverage views, trace line, Y flip; zoom 25-400% (Ctrl+wheel anchored at the mouse, +/- keys, toolbar -/100%/+/fit, Ctrl+0 reset; cell text scales, labels thin out) and pan (middle/right drag, Alt+arrows) in `tables_autotune.c`, math in `autotune/at_view.c`
 - Orig: `docs/src/features/autotune/recommendations.md`, CHANGELOG 2026-11-02.
 
 ### G-53 Tune health, anomalies, predicted fills
@@ -388,7 +388,7 @@ Orig = path under `ref/LibreTune/crates/`. `app/` = `libretune-app/src/component
 - Have: health card (`lt_health_score`).
 - Missing: anomaly list/overlay (`lt_anomaly_detect`), predicted fills for empty cells (`lt_predict_cells`),
   dyno table overlay, "Tune Health" tab.
-- Status update: PARTIAL: anomaly outline and list, predicted fills (show/apply); dyno overlay not done
+- Status update: DONE: anomaly outline and list, predicted fills (show/apply); Health tab "Dyno overlay" loads a dyno CSV and maps it onto the tuned table (`lt_dyno_map_to_table`, boost-as-load factor): outlined cells with a power/torque/AFR bar, values at high zoom, hovered/cursor cell readout (`tables_autotune.c`, `autotune/at_view.c`)
 - Orig: `app/tuner-ui/TuneHealth.tsx`, `cmd/tune_health.rs`, `core/autotune/{anomaly,predictor,health}.rs`.
 
 ### G-54 AutoTune export and proposals
@@ -402,7 +402,7 @@ Orig = path under `ref/LibreTune/crates/`. `app/` = `libretune-app/src/component
 - Have: "Replay log..." applies a log through AutoTune (`lt_replay`).
 - Missing: analysis report (sample weighting, "which samples count", why dropped, validation against unseen
   samples), accel-enrichment analysis (`lt_ae_*` unused), declared analyze filters from INI.
-- Status update: PARTIAL: replay report (counted/dropped/validation), accel-enrichment analysis, INI filter count; per-sample verdict table not shown
+- Status update: DONE: replay report (counted/dropped/validation, totals fixed), accel-enrichment analysis, INI filter count; per-sample verdict pane under the grid (`app/at_samples.c`): verdict timeline with cursor-cell ticks, legend chips as reason filters, filter combo, cursor-cell filter, scrollable table (time, rpm, load, AFR, cell, verdict); a row or strip click moves the grid cursor
 - Orig: `app/tuner-ui/DatalogViewer.tsx`, `cmd/analyse_log.rs`, `cmd/analyze_filters.rs`, `core/autotune/{replay,accel_enrich}.rs`.
 
 ---------------------------------------------------------------------------------------------------

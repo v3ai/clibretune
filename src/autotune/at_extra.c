@@ -287,13 +287,12 @@ void lt_atx_delay_model_json(lt_buf *out, const lt_flow_fit *fit)
 
 void lt_atx_replay_report(lt_buf *out, const lt_replay_report *rep, size_t n_declared_filters)
 {
-    size_t i, rejected = 0, cells_cov = 0;
-    unsigned long accepted;
-    for (i = 0; i < rep->n_rejections; i++) { rejected += (size_t)rep->rejections[i].count; }
-    accepted = rep->samples_all > (unsigned long)rejected ? rep->samples_all - (unsigned long)rejected : 0ul;
-    lt_buf_printf(out, "Samples in log: %lu\nCounted: %lu (%.0f%%)\nDropped: %lu\n", rep->samples_all, accepted,
-                  rep->samples_all ? 100.0 * (double)accepted / (double)rep->samples_all : 0.0,
-                  (unsigned long)rejected);
+    size_t i, cells_cov = 0;
+    unsigned long accepted = rep->samples_all, rejected = 0, total;   /* samples_all counts the accepted */
+    for (i = 0; i < rep->n_rejections; i++) { rejected += rep->rejections[i].count; }
+    total = accepted + rejected;
+    lt_buf_printf(out, "Samples in log: %lu\nCounted: %lu (%.0f%%)\nDropped: %lu\n", total, accepted,
+                  total ? 100.0 * (double)accepted / (double)total : 0.0, rejected);
     for (i = 0; i < rep->n_rejections && i < 8; i++) {
         lt_buf_printf(out, "  %s: %lu\n", rep->rejections[i].reason, rep->rejections[i].count);
     }

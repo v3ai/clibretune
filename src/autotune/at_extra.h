@@ -30,6 +30,77 @@ void   lt_atx_trace_push(lt_atx_trace *t, unsigned x, unsigned y);   /* repeats 
 size_t lt_atx_trace_count(const lt_atx_trace *t);
 int    lt_atx_trace_at(const lt_atx_trace *t, size_t i, unsigned *x, unsigned *y); /* 0 = oldest */
 
+/* ---- heat map zoom and pan (G-52), implemented in at_view.c ----
+ * The zoom is a percentage of the normal cell size.  Scroll offsets, anchors and views are in
+ * device pixels; cell sizes passed to lt_atx_zoom_anchor are device pixels too. */
+#define LT_ATX_ZOOM_MIN 25
+#define LT_ATX_ZOOM_MAX 400
+#define LT_ATX_ZOOM_DEF 100
+int lt_atx_zoom_clamp(int pct);
+/* zoom after `notches` steps (> 0 zooms in, x1.25 each); a result within 6% of 100 snaps to 100 */
+int lt_atx_zoom_step(int pct, int notches);
+/* largest zoom (never above 100) at which cols x rows cells of the base size fit the view */
+int lt_atx_zoom_fit(int view_w, int view_h, int cols, int rows, int base_cw, int base_ch);
+/* base_px scaled by the zoom, at least min_px */
+int lt_atx_zoom_px(int base_px, int pct, int min_px);
+/* font size of cell text at the zoom: base_px scaled, kept within 8..22 */
+int lt_atx_zoom_font(int base_px, int pct);
+/* scroll offset that keeps the content point under `anchor` (offset in the view) in place when
+ * the cell size changes from old_cell to new_cell; clamped to the new content of count cells */
+int lt_atx_zoom_anchor(int scroll, int anchor, int old_cell, int new_cell, int count, int view);
+/* scroll offset limited to 0 .. content - view */
+int lt_atx_pan_clamp(int scroll, int content, int view);
+/* label every n-th axis cell so labels stay at least min_px apart (1 = every cell) */
+int lt_atx_label_stride(int cell_px, int min_px);
+
+/* ---- dyno overlay on the tuned table (G-53), at_view.c ---- */
+enum { LT_ATX_DYNO_HP = 0, LT_ATX_DYNO_TQ, LT_ATX_DYNO_AFR, LT_ATX_DYNO_COUNT };
+const char *lt_atx_dyno_name(int what);
+/* idx[row * cols + col] = index of that cell in `cells` or -1 (idx holds rows * cols ints) */
+void    lt_atx_dyno_index(const lt_dyno_cell *cells, size_t n, size_t rows, size_t cols, int *idx);
+lt_bool lt_atx_dyno_value(const lt_dyno_cell *c, int what, double *v);
+/* range of `what` over the cells that have it; LT_FALSE (lo = hi = 0) when none has it */
+lt_bool lt_atx_dyno_range(const lt_dyno_cell *cells, size_t n, int what, double *lo, double *hi);
+/* short cell label: "142 hp", "180 ft", "12.6" ("" when the cell lacks the value) */
+void    lt_atx_dyno_label(const lt_dyno_cell *c, int what, char *out, size_t cap);
+
+/* ---- per-sample verdicts of a replay (G-55), at_view.c ---- */
+#define LT_ATX_VREASONS 16
+typedef struct lt_atx_vrow {
+    double t, rpm, load, afr;     /* log time (s), operating point, measured AFR */
+    unsigned cx, cy;              /* nearest table cell of the operating point */
+    int reason;                   /* -1 = counted, else index into lt_atx_verdicts.reason */
+} lt_atx_vrow;
+typedef struct lt_atx_verdicts {
+    lt_atx_vrow *rows; size_t n;
+    const char *reason[LT_ATX_VREASONS];        /* distinct reasons, count desc then name asc */
+    unsigned long count[LT_ATX_VREASONS];
+    size_t nreason;
+    unsigned long counted;
+} lt_atx_verdicts;
+void lt_atx_verdicts_init(lt_atx_verdicts *v);
+/* one row per log row from the replay's verdicts; the log supplies time and operating point.
+ * Reasons beyond LT_ATX_VREASONS - 1 distinct ones share the last slot ("other"). 0 or <0. */
+int  lt_atx_verdicts_build(lt_atx_verdicts *v, const lt_replay_report *rep, const lt_log *log,
+                           const lt_at_channels *ch, const double *xbins, size_t nx,
+                           const double *ybins, size_t ny);
+void lt_atx_verdicts_free(lt_atx_verdicts *v);
+enum { LT_ATX_VF_ALL = 0, LT_ATX_VF_COUNTED, LT_ATX_VF_DROPPED, LT_ATX_VF_REASON };
+typedef struct lt_atx_vfilter {
+    int kind;                     /* LT_ATX_VF_* */
+    int reason;                   /* LT_ATX_VF_REASON: reason index */
+    int cx, cy;                   /* only rows in this cell; -1 = any cell */
+} lt_atx_vfilter;
+lt_bool lt_atx_verdict_match(const lt_atx_verdicts *v, size_t i, const lt_atx_vfilter *f);
+/* indices of matching rows in log order (up to cap written); returns the number of matches */
+size_t  lt_atx_verdicts_select(const lt_atx_verdicts *v, const lt_atx_vfilter *f, size_t *idx,
+                               size_t cap);
+/* the verdict most rows of [from, to) share (ties: lower index; counted is -1 and ranks first):
+ * a reason index, -1 = counted, -2 = no rows */
+int     lt_atx_verdict_dominant(const lt_atx_verdicts *v, size_t from, size_t to);
+/* timeline column of a row and back: column = row * w / n, row = column * n / w */
+size_t  lt_atx_verdict_row_at(size_t n, int w, int x);
+
 /* ---- load source (G-50) ---- */
 enum { LT_ATX_LOAD_MAP = 0, LT_ATX_LOAD_MAF, LT_ATX_LOAD_TPS };
 const char *lt_atx_load_name(int src);

@@ -159,6 +159,8 @@ lt_bool lt_ui_mouse_down(const lt_ui *ui, int button);
 int lt_ui_mods(const lt_ui *ui);
 /* wheel notches (+1 up) received this frame and not consumed by a scroll area */
 int lt_ui_wheel(const lt_ui *ui);
+/* the same, and consumes them (a zoom gesture that a scroll area under the mouse must not see) */
+int lt_ui_wheel_take(lt_ui *ui);
 lt_u32 lt_ui_focus(const lt_ui *ui);
 void   lt_ui_set_focus(lt_ui *ui, lt_u32 id);
 lt_rect lt_ui_last_rect(const lt_ui *ui);       /* rect of the last widget */
@@ -421,6 +423,13 @@ void    lt_ui_context_open(lt_ui *ui, const char *id, int x, int y);
 void    lt_ui_popups_close(lt_ui *ui);
 lt_bool lt_ui_popup_open(const lt_ui *ui);       /* any menu/combo/context popup open */
 
+/* Invisible interactive area for custom-drawn widgets (rows of a virtual table, strips):
+ * LT_UI_HIT_* bits. Popups, modals and layers are respected like for any widget. */
+#define LT_UI_HIT_HOVER  1
+#define LT_UI_HIT_DOWN   2   /* pressed inside and still held */
+#define LT_UI_HIT_PRESS  4   /* pressed this frame */
+#define LT_UI_HIT_DOUBLE 8   /* the press is a double click */
+int lt_ui_hit(lt_ui *ui, const char *id, lt_rect r);
 /* Tooltip for the previous widget (shown after 500 ms hover) */
 void lt_ui_tooltip(lt_ui *ui, const char *text);
 /* Toast: kind 0 info, 1 success, 2 warning, 3 error; auto-dismiss after 4 s */

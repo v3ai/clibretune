@@ -1,6 +1,7 @@
 /* tables_autotune.c - AutoTune tab: live VE analyze, recommendations grid, settings, replay.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
+#include <stdio.h>
 #include <string.h>
 #include <math.h>
 #include "tables_priv.h"
@@ -13,6 +14,7 @@
 #define AT_FD_REPLAY (LT_APP_FD_USER0 + 20)
 #define AT_FD_CSV (LT_APP_FD_USER0 + 21)
 #define AT_FD_PROP (LT_APP_FD_USER0 + 22)
+#define AT_FD_DYNO (LT_APP_FD_USER0 + 23)
 
 /* one tuned table: its collection state, views and recommendations */
 typedef struct at_slot {
@@ -58,6 +60,25 @@ typedef struct at_tab {
     const char *tgt_opts[28]; size_t n_tgt;
     const char *dly_opts[18]; size_t n_dly;
     char tgt_lbl0[96];
+    /* heat map zoom and pan (G-52): zoom in % of the normal cell size; a zoom moves the scroll
+     * on the next frame (zpend), when the grid has the new content size */
+    int zoom, base_cw, base_ch;
+    int pan_drag, pan_prev, pan_mx, pan_my, pan_sx, pan_sy;
+    int zpend, zsx, zsy;
+    lt_rect gview;                 /* grid viewport and scroll of the last frame */
+    int gsx, gsy;
+    int goto_r, goto_c;            /* move the grid cursor to this data cell (-1 none) */
+    int hov_r, hov_c;              /* data cell under the mouse (-1 none) */
+    /* dyno overlay (G-53) */
+    lt_dyno_run dyno;
+    int have_dyno, dyno_on, dyno_what, dyno_boost, dyno_dirty;
+    double dyno_factor, dyno_sig;
+    lt_dyno_cell *dcells; size_t ndcells;
+    int *didx; size_t didx_n;
+    char dyno_msg[200];
+    /* per-sample verdicts of the last replay (G-55) */
+    lt_at_samples sv;
+    int split_h;
 } at_tab;
 
 static at_tab *g_at = NULL;
@@ -482,6 +503,13 @@ static void at_replay(lt_app *app, at_tab *st, const char *path)
         lt_free(st->report);
         st->report = lt_buf_take(&rb);
         st->ptab = 3;
+        if (lt_atx_verdicts_build(&st->sv.vd, &rep, &log, &st->ch, st->s.ve.x, st->s.ve.cols, st->s.ve.y,
+                                  st->s.ve.rows) == 0 && st->sv.vd.n > 0) {
+            lt_at_samples_reset(&st->sv);
+            st->sv.on = 1;
+        } else {
+            st->sv.on = 0;
+        }
         lt_app_toast(app, 1, "Replay: %d cells proposed", (int)rep.ncells);
     }
     lt_replay_report_free(&rep);
@@ -504,12 +532,145 @@ static void at_sel_cells(at_tab *st, int lock, int unlock_all)
     }
 }
 
+/* ---- heat map zoom and pan (G-52) ---- */
+#define AT_MIN_CW 12
+#define AT_MIN_CH 8
+
+/* zoom to nz keeping the content point at (ax, ay) of the grid viewport in place */
+static void at_zoom_to(lt_app *app, at_tab *st, int nz, int ax, int ay)
+{
+    lt_ui *ui = app->ui;
+    int cols = (int)st->s.ve.cols, rows = (int)st->s.ve.rows;
+    nz = lt_atx_zoom_clamp(nz);
+    if (nz == st->zoom) { return; }
+    if (st->base_cw > 0 && st->gview.w > 0) {
+        int ocw = lt_ui_px(ui, lt_atx_zoom_px(st->base_cw, st->zoom, AT_MIN_CW));
+        int och = lt_ui_px(ui, lt_atx_zoom_px(st->base_ch, st->zoom, AT_MIN_CH));
+        int ncw = lt_ui_px(ui, lt_atx_zoom_px(st->base_cw, nz, AT_MIN_CW));
+        int nch = lt_ui_px(ui, lt_atx_zoom_px(st->base_ch, nz, AT_MIN_CH));
+        st->zsx = lt_atx_zoom_anchor(st->gsx, ax, ocw, ncw, cols, st->gview.w);
+        st->zsy = lt_atx_zoom_anchor(st->gsy, ay, och, nch, rows, st->gview.h);
+        st->zpend = 1;
+    }
+    st->zoom = nz;
+    lt_ui_request_redraw(ui);
+}
+
+/* 0: back to 100% at the top left corner; 1: zoom out until the whole table fits */
+static void at_zoom_reset(lt_app *app, at_tab *st, int fit)
+{
+    lt_ui *ui = app->ui;
+    int sb = lt_ui_theme(ui)->scrollbar_w;
+    st->zoom = LT_ATX_ZOOM_DEF;
+    if (fit && st->base_cw > 0 && st->gview.w > 0) {
+        st->zoom = lt_atx_zoom_fit(lt_ui_unpx(ui, st->gview.w - sb), lt_ui_unpx(ui, st->gview.h - sb),
+                                   (int)st->s.ve.cols, (int)st->s.ve.rows, st->base_cw, st->base_ch);
+    }
+    st->zsx = 0; st->zsy = 0; st->zpend = 1;
+    lt_ui_request_redraw(ui);
+}
+
+/* keyboard: + / - zoom around the centre, Ctrl+0 resets, Alt+arrows pan by one cell */
+static void at_zoom_keys(lt_app *app, at_tab *st)
+{
+    lt_ui *ui = app->ui;
+    int cx = st->gview.w / 2, cy = st->gview.h / 2, dx = 0, dy = 0;
+    if (lt_tabs_key(ui, '+') || lt_ui_key_pressed(ui, '=', 0) || lt_ui_key_pressed(ui, '=', LT_MOD_CTRL) ||
+        lt_ui_key_pressed(ui, '+', LT_MOD_CTRL)) {
+        at_zoom_to(app, st, lt_atx_zoom_step(st->zoom, 1), cx, cy);
+    }
+    if (lt_ui_key_pressed(ui, '-', 0) || lt_ui_key_pressed(ui, '-', LT_MOD_CTRL)) {
+        at_zoom_to(app, st, lt_atx_zoom_step(st->zoom, -1), cx, cy);
+    }
+    if (lt_ui_key_pressed(ui, '0', LT_MOD_CTRL)) { at_zoom_reset(app, st, 0); }
+    if (lt_ui_key_pressed(ui, LT_KEY_LEFT, LT_MOD_ALT)) { dx = -1; }
+    if (lt_ui_key_pressed(ui, LT_KEY_RIGHT, LT_MOD_ALT)) { dx = 1; }
+    if (lt_ui_key_pressed(ui, LT_KEY_UP, LT_MOD_ALT)) { dy = -1; }
+    if (lt_ui_key_pressed(ui, LT_KEY_DOWN, LT_MOD_ALT)) { dy = 1; }
+    if ((dx != 0 || dy != 0) && st->base_cw > 0) {
+        st->zsx = st->gsx + dx * lt_ui_px(ui, lt_atx_zoom_px(st->base_cw, st->zoom, AT_MIN_CW));
+        st->zsy = st->gsy + dy * lt_ui_px(ui, lt_atx_zoom_px(st->base_ch, st->zoom, AT_MIN_CH));
+        if (st->zsx < 0) { st->zsx = 0; }
+        if (st->zsy < 0) { st->zsy = 0; }
+        st->zpend = 1;
+        lt_ui_request_redraw(ui);
+    }
+}
+
+/* inside the grid (its data area is the innermost scroll): pending scroll, Ctrl+wheel zoom at
+ * the mouse, middle / right button drag pans */
+static void at_zoom_pan(lt_app *app, at_tab *st)
+{
+    lt_ui *ui = app->ui;
+    lt_rect v = lt_ui_scroll_view(ui);
+    lt_point m = lt_ui_mouse(ui);
+    int sx = 0, sy = 0, inside, down;
+    lt_ui_scroll_get(ui, &sx, &sy);
+    if (st->zpend) {
+        st->zpend = 0;
+        sx = st->zsx; sy = st->zsy;
+        lt_ui_scroll_set(ui, sx, sy);
+    }
+    st->gview = v; st->gsx = sx; st->gsy = sy;
+    inside = lt_rect_contains(v, m.x, m.y) && !lt_ui_popup_open(ui) && st->pend_kind == 0;
+    if (inside && (lt_ui_mods(ui) & LT_MOD_CTRL) && lt_ui_wheel(ui) != 0) {
+        int wh = lt_ui_wheel_take(ui);
+        at_zoom_to(app, st, lt_atx_zoom_step(st->zoom, wh), m.x - v.x, m.y - v.y);
+    }
+    down = lt_ui_mouse_down(ui, LT_MB_MIDDLE) || lt_ui_mouse_down(ui, LT_MB_RIGHT);
+    if (!down) {
+        st->pan_drag = 0;
+    } else if (!st->pan_drag && !st->pan_prev && inside) {
+        st->pan_drag = 1;
+        st->pan_mx = m.x; st->pan_my = m.y; st->pan_sx = sx; st->pan_sy = sy;
+    } else if (st->pan_drag) {
+        int nx = st->pan_sx - (m.x - st->pan_mx), ny = st->pan_sy - (m.y - st->pan_my);
+        if (nx < 0) { nx = 0; }
+        if (ny < 0) { ny = 0; }
+        if (nx != sx || ny != sy) { lt_ui_scroll_set(ui, nx, ny); }
+    }
+    st->pan_prev = down;
+}
+
+/* ---- dyno overlay (G-53): project the loaded run onto the shown table ---- */
+static void at_dyno_map(at_tab *st)
+{
+    size_t rows = st->s.ve.rows, cols = st->s.ve.cols, n = rows * cols, i;
+    double sig = (double)n + (st->dyno_boost ? st->dyno_factor * 7.0 : 0.0);
+    if (!st->have_dyno || n == 0 || st->s.ve.y == NULL || st->s.ve.x == NULL) { st->ndcells = 0; return; }
+    for (i = 0; i < cols; i++) { sig += st->s.ve.x[i] * (double)(i + 1); }
+    for (i = 0; i < rows; i++) { sig += st->s.ve.y[i] * (double)(i + 3) * 1.5; }
+    if (!st->dyno_dirty && st->didx != NULL && st->didx_n == n && fabs(sig - st->dyno_sig) < 1e-9) { return; }
+    lt_free(st->dcells);
+    lt_free(st->didx);
+    st->dcells = (lt_dyno_cell *)lt_calloc(n + 1, sizeof(lt_dyno_cell));
+    st->ndcells = lt_dyno_map_to_table(&st->dyno, st->s.ve.x, cols, st->s.ve.y, rows,
+                                       st->dyno_boost ? st->dyno_factor : 0.0, st->dcells, n);
+    st->didx = (int *)lt_calloc(n + 1, sizeof(int));
+    st->didx_n = n;
+    lt_atx_dyno_index(st->dcells, st->ndcells, rows, cols, st->didx);
+    st->dyno_sig = sig;
+    st->dyno_dirty = 0;
+}
+
+static const lt_dyno_cell *at_dyno_cell(const at_tab *st, int row, int col)
+{
+    size_t k;
+    if (!st->have_dyno || st->didx == NULL || row < 0 || col < 0) { return NULL; }
+    k = (size_t)row * st->s.ve.cols + (size_t)col;
+    if (k >= st->didx_n || st->didx[k] < 0) { return NULL; }
+    return &st->dcells[st->didx[k]];
+}
+
 static void at_grid(lt_app *app, at_tab *st)
 {
     lt_ui *ui = app->ui;
     const lt_theme *th = lt_ui_theme(ui);
     int rows = (int)st->s.ve.rows, cols = (int)st->s.ve.cols, cell = lt_ui_cell_mode(ui);
     int cw = cell ? 64 : 66, ch = cell ? 16 : 24, rhw = cell ? 64 : 72, chh = cell ? 16 : 24;
+    int zcw, zch, zoomed, text_ok, small_ok, fpx = 12, rstride = 1, cstride = 1;
+    double dlo = 0.0, dhi = 0.0, hsz = 9.0;
+    lt_color dyc = LT_RGB(0xD0, 0x4C, 0xF0);
     char b[48];
     double zlo = 1e300, zhi = -1e300, mh = 0.0, mw = 0.0, mc = 0.0;
     size_t k;
@@ -519,21 +680,53 @@ static void at_grid(lt_app *app, at_tab *st)
         if (st->s.ve.z[k] > zhi) { zhi = st->s.ve.z[k]; }
     }
     if (!cell && cols > 0) {
-        int avail = lt_ui_unpx(ui, lt_ui_layout_width(ui) - th->scrollbar_w - th->spacing_x) - 360 - rhw - 2, fit = avail / cols;
+        int avail = lt_ui_unpx(ui, lt_ui_layout_width(ui) - th->scrollbar_w - th->spacing_x) - rhw - 2, fit = avail / cols;
         if (fit > cw) { cw = fit > 80 ? 80 : fit; }
     }
-    if (!lt_ui_grid_begin(ui, "atgrid", rows, cols, cw, ch, rhw, chh)) { return; }
+    if (st->zoom <= 0) { st->zoom = LT_ATX_ZOOM_DEF; }
+    zcw = cw; zch = ch;
+    if (!cell) {
+        st->base_cw = cw; st->base_ch = ch;
+        zcw = lt_atx_zoom_px(cw, st->zoom, AT_MIN_CW);
+        zch = lt_atx_zoom_px(ch, st->zoom, AT_MIN_CH);
+        fpx = lt_atx_zoom_font(12, st->zoom);
+        rstride = lt_atx_label_stride(zch, 16);
+        cstride = lt_atx_label_stride(zcw, 40);
+        if (st->zoom > 100) { hsz = 9.0 * (st->zoom > 150 ? 1.5 : (double)st->zoom / 100.0); }
+    }
+    zoomed = !cell && st->zoom != LT_ATX_ZOOM_DEF;
+    text_ok = cell || (zcw >= 30 && zch >= 14);
+    small_ok = !cell && zcw >= 44 && zch >= 20;
+    if (st->dyno_on) {
+        at_dyno_map(st);
+        (void)lt_atx_dyno_range(st->dcells, st->ndcells, st->dyno_what, &dlo, &dhi);
+    }
+    if (!lt_ui_grid_begin(ui, "atgrid", rows, cols, zcw, zch, rhw, chh)) { return; }
     {
-        int r0, r1, c0, c1, r, c;
+        int r0, r1, c0, c1, r, c, gr = 0, gc = 0;
+        if (!cell) { at_zoom_pan(app, st); }
+        if (st->goto_r >= 0 && st->goto_r < rows && st->goto_c >= 0 && st->goto_c < cols) {
+            int vr = st->ybottom ? rows - 1 - st->goto_r : st->goto_r;
+            lt_ui_grid_set_cursor(ui, vr, st->goto_c);
+            lt_ui_scroll_ensure_visible(ui, lt_ui_grid_cell_rect(ui, vr, st->goto_c));
+        }
+        st->goto_r = st->goto_c = -1;
+        lt_ui_grid_cursor(ui, &gr, &gc);
+        st->cur_r = st->ybottom ? rows - 1 - gr : gr;
+        st->cur_c = gc;
+        st->hov_r = st->hov_c = -1;
+        if (lt_ui_grid_hover(ui, &gr, &gc)) { st->hov_r = st->ybottom ? rows - 1 - gr : gr; st->hov_c = gc; }
         lt_ui_grid_visible(ui, &r0, &r1, &c0, &c1);
         lt_ui_grid_corner(ui, "Y \\ X");
         for (c = c0; c <= c1; c++) {
-            lt_tabs_fmt(b, sizeof(b), st->s.ve.x[c], lt_tabs_const_digits(app->ini, st->s.t->x_const));
+            if (c % cstride == 0) { lt_tabs_fmt(b, sizeof(b), st->s.ve.x[c], lt_tabs_const_digits(app->ini, st->s.t->x_const)); }
+            else { b[0] = '\0'; }
             lt_ui_grid_header(ui, 1, c, b);
         }
         for (r = r0; r <= r1; r++) {
             int dr = st->ybottom ? rows - 1 - r : r;
-            lt_tabs_fmt(b, sizeof(b), st->s.ve.y[dr], lt_tabs_const_digits(app->ini, st->s.t->y_const));
+            if (r % rstride == 0) { lt_tabs_fmt(b, sizeof(b), st->s.ve.y[dr], lt_tabs_const_digits(app->ini, st->s.t->y_const)); }
+            else { b[0] = '\0'; }
             lt_ui_grid_header(ui, 0, r, b);
         }
         for (r = r0; r <= r1; r++) {
@@ -544,6 +737,7 @@ static void at_grid(lt_app *app, at_tab *st)
                 int locked = lt_at_is_cell_locked(st->s.at, (unsigned)c, (unsigned)dr);
                 lt_rect cr;
                 int pi = -1, an = 0;
+                const lt_dyno_cell *dc = st->dyno_on ? at_dyno_cell(st, dr, c) : NULL;
                 if (st->show_pred && ri < 0) {
                     for (k = 0; k < st->n_pc; k++) { if (st->pc[k].row == (size_t)dr && st->pc[k].col == (size_t)c) { pi = (int)k; break; } }
                 }
@@ -580,14 +774,39 @@ static void at_grid(lt_app *app, at_tab *st)
                     lt_tabs_fmt(b, sizeof(b), cur, st->s.zdig);
                 }
                 if (locked) { bg = lt_color_mix(bg, th->warning, 90); }
-                lt_ui_grid_cell(ui, r, c, b, bg, fg);
+                if (!text_ok) { b[0] = '\0'; }
                 cr = lt_ui_grid_cell_rect(ui, r, c);
-                if (ri >= 0 && !cell) {
-                    lt_snprintf(b, sizeof(b), "%u", st->s.recs[ri].hit_count);
-                    lt_ui_draw_vtext(ui, cr.x + 3, cr.y + 7, b, 9.0, 0.0, 0, 1, 1.0, fg);
+                if (zoomed) {
+                    /* the cell text follows the zoom */
+                    lt_ui_grid_cell(ui, r, c, NULL, bg, fg);
+                    if (b[0] != '\0') { lt_ui_draw_text_in_f(ui, cr, b, fg, LT_UI_ALIGN_CENTER, (int)LT_FONT_SANS, fpx); }
+                } else {
+                    lt_ui_grid_cell(ui, r, c, b, bg, fg);
                 }
-                if (locked && !cell) { lt_ui_draw_vtext(ui, cr.x + cr.w - 3, cr.y + 7, "L", 9.0, 0.0, 2, 1, 1.0, th->warning); }
+                if (ri >= 0 && small_ok) {
+                    lt_snprintf(b, sizeof(b), "%u", st->s.recs[ri].hit_count);
+                    lt_ui_draw_vtext(ui, cr.x + 3, cr.y + 7, b, hsz, 0.0, 0, 1, 1.0, fg);
+                }
+                if (locked && small_ok) { lt_ui_draw_vtext(ui, cr.x + cr.w - 3, cr.y + 7, "L", hsz, 0.0, 2, 1, 1.0, th->warning); }
                 if (an) { lt_ui_draw_rect(ui, cr, th->error); }
+                if (dc != NULL) {
+                    double dv = 0.0;
+                    lt_ui_grid_mark(ui, r, c, dyc, cell ? 1 : 2);
+                    if (!cell && lt_atx_dyno_value(dc, st->dyno_what, &dv)) {
+                        /* bar along the bottom: the value within the run's range on this table */
+                        double fr = dhi > dlo ? (dv - dlo) / (dhi - dlo) : 1.0;
+                        int bw = cr.w - 8, bh = lt_ui_px(ui, 3), by = cr.y + cr.h - bh - 3;
+                        if (fr < 0.05) { fr = 0.05; }
+                        if (fr > 1.0) { fr = 1.0; }
+                        lt_ui_draw_fill(ui, lt_rect_make(cr.x + 4, by, bw, bh), LT_RGBA(0, 0, 0, 90));
+                        lt_ui_draw_fill(ui, lt_rect_make(cr.x + 4, by, (int)((double)bw * fr), bh), dyc);
+                        if (zch >= 56 && zcw >= 72) {
+                            /* room below the zoomed value for the dyno figure itself */
+                            lt_atx_dyno_label(dc, st->dyno_what, b, sizeof(b));
+                            lt_ui_draw_vtext(ui, cr.x + cr.w - 5, by - lt_ui_px(ui, 7), b, 10.0, 0.0, 2, 1, 1.0, fg);
+                        }
+                    }
+                }
             }
         }
         if (st->trace_on && !cell) {
@@ -748,6 +967,7 @@ static void at_refs_group(lt_app *app, at_tab *st)
 
 static void at_health_card(lt_app *app, at_tab *st);
 static void at_health_extras(lt_app *app, at_tab *st);
+static void at_dyno_group(lt_app *app, at_tab *st);
 static void at_session_group(lt_app *app, at_tab *st);
 static void at_report_group(lt_app *app, at_tab *st);
 static void ati(lt_vk_item *it, int kind, int icon, const char *label, const char *tip);
@@ -773,7 +993,7 @@ static void at_panel(lt_app *app, at_tab *st)
         ati(&pt[4], LT_VK_END, 0, NULL, NULL);
         h2 = lt_vk_toolbar_in(ui, pt, lt_rect_make(tr.x, tr.y + lt_ui_px(ui, 2), tr.w, lt_ui_px(ui, 28)));
         if (h2 >= 0 && h2 <= 3) { st->ptab = h2; }
-        if (st->ptab == 0) { at_health_card(app, st); at_health_extras(app, st); }
+        if (st->ptab == 0) { at_health_card(app, st); at_health_extras(app, st); at_dyno_group(app, st); }
     }
     if ((lt_ui_cell_mode(ui) || st->ptab == 0) && lt_ui_group_begin(ui, "Statistics", 0)) {
         lt_at_reject rj[8];
@@ -842,7 +1062,7 @@ static void at_panel(lt_app *app, at_tab *st)
         numrow(ui, "Max cell value", "amx", &st->auth.max_cell_value, 0.0, 255.0, 1.0, 0, &ch);
         lt_ui_group_end(ui);
     }
-    if (lt_ui_cell_mode(ui)) { at_health_extras(app, st); }
+    if (lt_ui_cell_mode(ui)) { at_health_extras(app, st); at_dyno_group(app, st); }
     if (lt_ui_cell_mode(ui) || st->ptab == 2) { at_session_group(app, st); }
     if (lt_ui_cell_mode(ui) || st->ptab == 3) { at_report_group(app, st); }
     lt_ui_scroll_end(ui);
@@ -1081,6 +1301,100 @@ static void at_health_extras(lt_app *app, at_tab *st)
     lt_ui_group_end(ui);
 }
 
+/* ---- Health tab: dyno overlay (G-53) ---- */
+static void at_dyno_free(at_tab *st)
+{
+    if (st->have_dyno) { lt_dyno_run_free(&st->dyno); }
+    memset(&st->dyno, 0, sizeof(st->dyno));
+    st->have_dyno = 0;
+    lt_free(st->dcells); st->dcells = NULL; st->ndcells = 0;
+    lt_free(st->didx); st->didx = NULL; st->didx_n = 0;
+}
+
+static void at_dyno_load(at_tab *st, const char *path)
+{
+    lt_dyno_run run;
+    if (lt_dyno_from_csv(path, lt_path_base(path), &run) < 0) {
+        lt_snprintf(st->dyno_msg, sizeof(st->dyno_msg), "Cannot load %s: %s", lt_path_base(path), lt_err_get());
+        return;
+    }
+    at_dyno_free(st);
+    st->dyno = run;
+    st->have_dyno = 1;
+    st->dyno_on = 1;
+    st->dyno_dirty = 1;
+    st->dyno_msg[0] = '\0';
+}
+
+static void at_dyno_group(lt_app *app, at_tab *st)
+{
+    lt_ui *ui = app->ui;
+    const lt_theme *th = lt_ui_theme(ui);
+    int w1 = -1, w2[2], on, sel, r, c;
+    static const char *const whats[LT_ATX_DYNO_COUNT] = { "Power", "Torque", "AFR" };
+    const lt_dyno_cell *dc;
+    char b[240];
+    if (!st->s.loaded || !lt_ui_group_begin(ui, "Dyno overlay", 0)) { return; }
+    lt_ui_layout_row(ui, 1, &w1, 0);
+    if (lt_ui_button_ex(ui, st->have_dyno ? "Load another dyno run..." : "Load dyno run (CSV)...", 0)) {
+        lt_app_file_dialog(app, AT_FD_DYNO, LT_UI_FILE_OPEN, NULL, "", "CSV Files|*.csv;*.txt;*.tsv|All Files|*");
+    }
+    if (st->dyno_msg[0] != '\0') { lt_ui_label_wrap(ui, st->dyno_msg, th->error); }
+    if (!st->have_dyno) {
+        lt_ui_label_wrap(ui, "Overlay a dyno pull on this table: the cells it ran through are outlined and a bar "
+                             "shows the power, torque or AFR measured there.", th->text2);
+        lt_ui_group_end(ui);
+        return;
+    }
+    lt_snprintf(b, sizeof(b), "%s: %lu points", st->dyno.name != NULL ? st->dyno.name : "run", (unsigned long)st->dyno.n);
+    if (st->dyno.has_peak_hp) {
+        size_t l = strlen(b);
+        lt_snprintf(b + l, sizeof(b) - l, ", %.0f HP @ %.0f", st->dyno.peak_hp, st->dyno.peak_hp_rpm);
+    }
+    if (st->dyno.has_peak_tq) {
+        size_t l = strlen(b);
+        lt_snprintf(b + l, sizeof(b) - l, ", %.0f ft-lb @ %.0f", st->dyno.peak_tq, st->dyno.peak_tq_rpm);
+    }
+    lt_ui_label_wrap(ui, b, th->text);
+    lt_ui_layout_row(ui, 1, &w1, 0);
+    on = st->dyno_on;
+    if (lt_ui_checkbox(ui, "Show on the grid", &on)) { st->dyno_on = on; }
+    w2[0] = 130; w2[1] = -1;
+    lt_ui_layout_row(ui, 2, w2, 0);
+    lt_ui_label(ui, "Bar shows");
+    sel = st->dyno_what;
+    if (lt_ui_combo(ui, "dywhat", &sel, whats, LT_ATX_DYNO_COUNT)) { st->dyno_what = sel; }
+    on = st->dyno_boost;
+    if (lt_ui_checkbox(ui, "Boost as load x", &on)) { st->dyno_boost = on; st->dyno_dirty = 1; }
+    if (lt_ui_number(ui, "dyfac", &st->dyno_factor, 0.01, 100.0, 0.1, 2) & LT_UI_CHANGED) { st->dyno_dirty = 1; }
+    at_dyno_map(st);
+    lt_ui_layout_row(ui, 1, &w1, 0);
+    lt_snprintf(b, sizeof(b), "%lu cell%s hold dyno samples%s", (unsigned long)st->ndcells, st->ndcells == 1 ? "" : "s",
+                st->dyno_boost ? "" : " (no boost column used: top load row)");
+    lt_ui_label_wrap(ui, b, th->text2);
+    r = st->hov_r >= 0 ? st->hov_r : st->cur_r;
+    c = st->hov_r >= 0 ? st->hov_c : st->cur_c;
+    dc = at_dyno_cell(st, r, c);
+    if (r >= 0 && c >= 0 && (size_t)r < st->s.ve.rows && (size_t)c < st->s.ve.cols) {
+        size_t l;
+        lt_snprintf(b, sizeof(b), "%s cell %.0f x %.0f: ", st->hov_r >= 0 ? "Hovered" : "Cursor",
+                    st->s.ve.x[c], st->s.ve.y[r]);
+        l = strlen(b);
+        if (dc == NULL) { lt_snprintf(b + l, sizeof(b) - l, "no dyno samples"); }
+        else {
+            lt_snprintf(b + l, sizeof(b) - l, "%lu sample%s", (unsigned long)dc->samples, dc->samples == 1 ? "" : "s");
+            l = strlen(b);
+            if (dc->has_hp) { lt_snprintf(b + l, sizeof(b) - l, ", %.0f HP", dc->hp); l = strlen(b); }
+            if (dc->has_tq) { lt_snprintf(b + l, sizeof(b) - l, ", %.0f ft-lb", dc->tq_val); l = strlen(b); }
+            if (dc->has_afr) { lt_snprintf(b + l, sizeof(b) - l, ", AFR %.2f", dc->afr); }
+        }
+        lt_ui_label_wrap(ui, b, dc != NULL ? th->text : th->muted);
+    }
+    lt_ui_layout_row(ui, 1, &w1, 0);
+    if (lt_ui_button_ex(ui, "Remove dyno run", LT_UI_BTN_FLAT)) { at_dyno_free(st); st->dyno_on = 0; }
+    lt_ui_group_end(ui);
+}
+
 /* ---- Session tab: second table, load source, update mode, delay test ---- */
 static void at_session_group(lt_app *app, at_tab *st)
 {
@@ -1189,12 +1503,18 @@ static void at_report_group(lt_app *app, at_tab *st)
         if (st->report != NULL) { lt_ui_label_wrap(ui, st->report, th->text2); }
         else { lt_ui_label_wrap(ui, "Replay a data log to see which samples counted, why others were dropped and how "
                                     "the proposal validates against unseen samples.", th->text2); }
+        lt_ui_layout_row(ui, 1, &w1, 0);
+        if (lt_ui_button_ex(ui, st->sv.on ? "Hide the sample table" : "Show every sample and its verdict",
+                            st->sv.vd.n == 0 ? LT_UI_BTN_DISABLED : 0) && st->sv.vd.n > 0) {
+            st->sv.on = !st->sv.on;
+        }
         lt_ui_group_end(ui);
     }
 }
 
 /* ---- header / heat-map strip (pixel mode) ---- */
-enum { AT_REPLAY, AT_RESET, AT_START, AT_APPLY, AT_BURN, AT_LOCK, AT_UNLOCK, AT_FLIP, AT_TAB_H, AT_TAB_S, AT_TRACE, AT_HMODE };
+enum { AT_REPLAY, AT_RESET, AT_START, AT_APPLY, AT_BURN, AT_LOCK, AT_UNLOCK, AT_FLIP, AT_TAB_H, AT_TAB_S, AT_TRACE, AT_HMODE,
+       AT_ZIN, AT_ZOUT, AT_ZRESET, AT_ZFIT, AT_SAMPLES };
 
 static void ati(lt_vk_item *it, int kind, int icon, const char *label, const char *tip)
 {
@@ -1247,9 +1567,10 @@ static int at_heat_strip(lt_app *app, at_tab *st)
 {
     lt_ui *ui = app->ui;
     const lt_theme *th = lt_ui_theme(ui);
-    lt_vk_item it[10];
-    int n = 0, ids[10], hit, w1 = -1;
+    lt_vk_item it[16];
+    int n = 0, ids[16], hit, w1 = -1;
     lt_rect r;
+    char zl[16];
     lt_ui_layout_row(ui, 1, &w1, 40);
     r = lt_ui_layout_next(ui);
     lt_ui_draw_fill(ui, r, th->bg_toolbar);
@@ -1259,6 +1580,15 @@ static int at_heat_strip(lt_app *app, at_tab *st)
     ati(&it[n], LT_VK_BTN, LT_ICON_LAYERS, lt_atx_map_name(st->hm_mode), "Heat map view: value, weighting, change, coverage"); ids[n++] = AT_HMODE;
     ati(&it[n], LT_VK_BTN, LT_ICON_ROUTE, NULL, "Trace line: the path of the operating point through the table"); it[n].on = st->trace_on; ids[n++] = AT_TRACE;
     ati(&it[n], LT_VK_BTN, LT_ICON_ARROW_UP_DOWN, NULL, "Y axis: zero at the bottom"); it[n].on = st->ybottom; ids[n++] = AT_FLIP;
+    ati(&it[n], LT_VK_SEP, 0, NULL, NULL); ids[n++] = -1;
+    ati(&it[n], LT_VK_BTN, LT_ICON_ZOOM_OUT, NULL, "Zoom out (-, Ctrl+wheel)"); it[n].disabled = st->zoom <= LT_ATX_ZOOM_MIN; ids[n++] = AT_ZOUT;
+    lt_snprintf(zl, sizeof(zl), "%d%%", st->zoom > 0 ? st->zoom : 100);
+    ati(&it[n], LT_VK_BTN, 0, zl, "Zoom: click for 100% (Ctrl+0). Drag with the middle or right button to pan, Alt+arrows step"); ids[n++] = AT_ZRESET;
+    ati(&it[n], LT_VK_BTN, LT_ICON_ZOOM_IN, NULL, "Zoom in (+, Ctrl+wheel)"); it[n].disabled = st->zoom >= LT_ATX_ZOOM_MAX; ids[n++] = AT_ZIN;
+    ati(&it[n], LT_VK_BTN, LT_ICON_MAXIMIZE, NULL, "Zoom to fit the whole table"); ids[n++] = AT_ZFIT;
+    ati(&it[n], LT_VK_SEP, 0, NULL, NULL); ids[n++] = -1;
+    ati(&it[n], LT_VK_BTN, LT_ICON_LIST, "Samples", "Every sample of the last log replay and why it counted or not");
+    it[n].on = st->sv.on; it[n].disabled = st->sv.vd.n == 0; ids[n++] = AT_SAMPLES;
     ati(&it[n], LT_VK_BTN, LT_ICON_LOCK, "Lock", "Toggle lock on the selected cells (L); locked cells are not changed"); ids[n++] = AT_LOCK;
     ati(&it[n], LT_VK_BTN, LT_ICON_LOCK_OPEN, "Unlock", "Unlock every cell"); ids[n++] = AT_UNLOCK;
     ati(&it[n], LT_VK_END, 0, NULL, NULL);
@@ -1367,6 +1697,8 @@ static void at_cmd(lt_app *app, at_tab *st, int cmd)
         lt_at_start(st->s.at); st->running = was; st->s.nrecs = 0; st->replay = 0; st->info[0] = '\0';
         if (!was) { lt_at_stop(st->s.at); }
         lt_atx_trace_clear(&st->s.trace);
+        lt_at_samples_free(&st->sv);
+        st->sv.on = 0;
         if (st->sec_on && st->o.at != NULL) {
             lt_at_start(st->o.at);
             if (!was) { lt_at_stop(st->o.at); }
@@ -1382,8 +1714,38 @@ static void at_cmd(lt_app *app, at_tab *st, int cmd)
     case AT_FLIP: st->ybottom = !st->ybottom; break;
     case AT_TRACE: st->trace_on = !st->trace_on; break;
     case AT_HMODE: st->hm_mode = (st->hm_mode + 1) % LT_ATX_MAP_COUNT; break;
+    case AT_ZIN: at_zoom_to(app, st, lt_atx_zoom_step(st->zoom, 1), st->gview.w / 2, st->gview.h / 2); break;
+    case AT_ZOUT: at_zoom_to(app, st, lt_atx_zoom_step(st->zoom, -1), st->gview.w / 2, st->gview.h / 2); break;
+    case AT_ZRESET: at_zoom_reset(app, st, 0); break;
+    case AT_ZFIT: at_zoom_reset(app, st, 1); break;
+    case AT_SAMPLES: if (st->sv.vd.n > 0) { st->sv.on = !st->sv.on; } break;
     default: break;
     }
+}
+
+/* scripted use (screenshots, demos): LT_AT_ZOOM=percent, LT_AT_DYNO=dyno.csv,
+ * LT_AT_REPLAY=log file, LT_AT_PTAB=panel tab 0..3, LT_AT_CURSOR=row,col of the grid cursor */
+static void at_script_env(lt_app *app, at_tab *st)
+{
+    char *e = lt_plat_getenv("LT_AT_ZOOM");
+    long v = 0;
+    if (e != NULL && lt_parse_long(e, &v)) { st->zoom = lt_atx_zoom_clamp((int)LT_CLAMP(v, 0L, 1000L)); }
+    lt_free(e);
+    e = lt_plat_getenv("LT_AT_DYNO");
+    if (e != NULL) { at_dyno_load(st, e); }
+    lt_free(e);
+    e = lt_plat_getenv("LT_AT_REPLAY");
+    if (e != NULL) { at_replay(app, st, e); }
+    lt_free(e);
+    e = lt_plat_getenv("LT_AT_PTAB");
+    if (e != NULL && lt_parse_long(e, &v)) { st->ptab = (int)LT_CLAMP(v, 0L, 3L); }
+    lt_free(e);
+    e = lt_plat_getenv("LT_AT_CURSOR");
+    if (e != NULL) {
+        int rr = -1, cc = -1;
+        if (sscanf(e, "%d,%d", &rr, &cc) == 2) { st->goto_r = rr; st->goto_c = cc; }
+    }
+    lt_free(e);
 }
 
 static void at_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
@@ -1406,8 +1768,12 @@ static void at_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
         for (i = 0; i < (int)st->ntables; i++) {
             if (app->ini->ve_analyze.ve_table != NULL && strcmp(st->names[i], app->ini->ve_analyze.ve_table) == 0) { st->s.tsel = i; }
         }
+        st->zoom = LT_ATX_ZOOM_DEF;
+        st->goto_r = st->goto_c = st->hov_r = st->hov_c = -1;
+        st->dyno_factor = 1.0;
         at_defaults(app, st);
         at_load(app, st);
+        at_script_env(app, st);
     }
     if (!st->s.loaded) {
         lt_ui_layout_row(ui, 1, &w1, 0);
@@ -1426,8 +1792,11 @@ static void at_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
     if (picked != NULL) { at_export_csv(app, st, picked); }
     picked = lt_app_file_result(app, AT_FD_PROP);
     if (picked != NULL) { at_save_proposal(app, st, picked); }
+    picked = lt_app_file_result(app, AT_FD_DYNO);
+    if (picked != NULL) { at_dyno_load(st, picked); }
     if (lt_ui_key_pressed(ui, ' ', 0)) { if (st->running) { at_stop(st); } else { at_start(app, st); } }
     if (lt_ui_key_pressed(ui, 'l', 0)) { at_sel_cells(st, 2, 0); }
+    if (!lt_ui_cell_mode(ui)) { at_zoom_keys(app, st); }
     st->frame++;
     if (!st->hr_valid || st->frame % 20 == 0 || st->hr_stamp != lt_at_total_samples(st->s.at)) {
         st->hr_stamp = lt_at_total_samples(st->s.at);
@@ -1463,7 +1832,25 @@ static void at_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
     }
     wm[0] = -1; wm[1] = 360;
     lt_ui_layout_row(ui, 2, wm, lt_ui_cell_mode(ui) ? -1 : -27);
-    at_grid(app, st);
+    if (st->sv.on && st->sv.vd.n > 0) {
+        /* grid above, the replay's samples below (G-55) */
+        lt_rect area = lt_ui_layout_next(ui), pa, pb;
+        int mn = lt_ui_cell_mode(ui) ? 5 * 16 : lt_ui_px(ui, 150), sh, gx = -1, gy = -1;
+        sh = st->split_h > 0 ? st->split_h : area.h * 50 / 100;
+        (void)lt_ui_splitter(ui, "atsplit", area, 0, &sh, mn, mn, &pa, &pb);
+        st->split_h = sh;
+        lt_ui_region_begin(ui, pa, 0);
+        lt_ui_layout_row(ui, 1, &w1, -1);
+        at_grid(app, st);
+        lt_ui_region_end(ui);
+        lt_ui_region_begin(ui, pb, 0);
+        lt_at_samples_draw(app, &st->sv, st->s.ve.x, st->s.ve.cols, st->s.ve.y, st->s.ve.rows, st->cur_c, st->cur_r,
+                           &gx, &gy);
+        if (gx >= 0 && gy >= 0) { st->goto_c = gx; st->goto_r = gy; }
+        lt_ui_region_end(ui);
+    } else {
+        at_grid(app, st);
+    }
     at_panel(app, st);
     if (!lt_ui_cell_mode(ui)) { at_legend(app); }
     at_pending_draw(app, st);
@@ -1480,6 +1867,8 @@ static void at_close(lt_app *app, lt_app_tab *tab)
     slot_free_views(&st->o);
     if (st->o.at != NULL) { lt_at_free(st->o.at); }
     lt_free(st->report);
+    lt_at_samples_free(&st->sv);
+    at_dyno_free(st);
     lt_at_filters_clear(&st->f);
     if (st->s.at != NULL) { lt_at_free(st->s.at); }
     lt_free(st);
