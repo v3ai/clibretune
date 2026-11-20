@@ -119,6 +119,7 @@ jobs:
       - name: Collect files and checksums
         run: |
           cp tests/fixtures/ini/demo.ini dist/demo.ini
+          cp packaging/linux/50-libretune.rules dist/50-libretune.rules
           chmod +x dist/libretune-linux-* dist/libretune-macos-universal
           cd dist
           sha256sum * > SHA256SUMS

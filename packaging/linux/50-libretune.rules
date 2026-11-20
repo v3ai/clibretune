@@ -1,0 +1,19 @@
+# udev rules for LibreTune's firmware flasher: give the logged-in user access to ECU
+# bootloaders without running LibreTune as root.
+#
+# Install:
+#   sudo cp 50-libretune.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload
+# then unplug and replug the device.
+#
+# Serial ECU connections (/dev/ttyACM*, /dev/ttyUSB*) are not covered here: most
+# distributions grant those to the "dialout" (or "uucp") group:
+#   sudo usermod -aG dialout $USER     (log out and back in)
+
+# STM32 ROM bootloader, USB DFU (rusEFI, FOME, epicEFI, miata-ecus, Speeduino STM32)
+SUBSYSTEM=="usb", ATTR{idVendor}=="0483", ATTR{idProduct}=="df11", MODE="0660", TAG+="uaccess"
+# OpenBLT bootloader over USB (rusEFI / miata-ecus updates without the BOOT button)
+SUBSYSTEM=="usb", ATTR{idVendor}=="1d50", ATTR{idProduct}=="60ac", MODE="0660", TAG+="uaccess"
+# Teensy HalfKay bootloader (Speeduino on Teensy 3.5 / 3.6 / 4.1)
+SUBSYSTEM=="usb", ATTR{idVendor}=="16c0", ATTR{idProduct}=="0478", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="16c0", ATTRS{idProduct}=="0478", MODE="0660", TAG+="uaccess"
