@@ -47,7 +47,7 @@ typedef struct mp_state {
     char load_msg[300]; int load_err;
 } mp_state;
 
-static void strv_free(char **v, size_t n)
+static void names_free(char **v, size_t n)
 {
     size_t i;
     for (i = 0; i < n; i++) { lt_free(v[i]); }
@@ -56,7 +56,7 @@ static void strv_free(char **v, size_t n)
 
 static void save_clear(mp_state *s)
 {
-    strv_free(s->dnames, s->nd);
+    names_free(s->dnames, s->nd);
     s->dnames = NULL; s->nd = 0;
     lt_free(s->dsel); s->dsel = NULL;
     if (s->dref != NULL) { lt_tune_free(s->dref); s->dref = NULL; }
@@ -71,7 +71,7 @@ static void load_clear(mp_state *s)
 {
     if (s->part != NULL) { lt_tune_free(s->part); s->part = NULL; }
     if (s->cur != NULL) { lt_tune_free(s->cur); s->cur = NULL; }
-    strv_free(s->lnames, s->nl);
+    names_free(s->lnames, s->nl);
     s->lnames = NULL; s->nl = 0;
     s->loaded_path[0] = '\0';
 }
@@ -264,7 +264,7 @@ static void compute_diff(lt_app *app, mp_state *s)
 {
     lt_tune *ref, *cur;
     size_t i;
-    strv_free(s->dnames, s->nd);
+    names_free(s->dnames, s->nd);
     s->dnames = NULL; s->nd = 0;
     lt_free(s->dsel); s->dsel = NULL;
     if (s->dref != NULL) { lt_tune_free(s->dref); s->dref = NULL; }
@@ -411,7 +411,7 @@ static void do_save(lt_app *app, mp_state *s, const char *picked)
         lt_snprintf(s->save_msg, sizeof(s->save_msg), "Cannot save: %s", lt_err_get());
         s->save_err = 1;
     }
-    strv_free(names, n);
+    names_free(names, n);
 }
 
 static void save_draw(lt_app *app, lt_app_dialog *d)
@@ -498,7 +498,7 @@ static void save_draw(lt_app *app, lt_app_dialog *d)
             lt_snprintf(b, sizeof(b), "%lu constant%s will be written", (unsigned long)n, n == 1 ? "" : "s");
             lt_ui_label_ex(ui, b, t->text2, LT_UI_ALIGN_LEFT);
         }
-        strv_free(names, n);
+        names_free(names, n);
         w[0] = -1; w[1] = 150; w[2] = 100;
         lt_ui_layout_row(ui, 3, w, 0);
         lt_ui_label(ui, "");

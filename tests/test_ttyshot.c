@@ -148,7 +148,7 @@ LT_TEST(main_view_120x40_256)
 LT_TEST(menu_open)
 {
     char l[1024];
-    render(80, 30, NULL, "alt+f", NULL, 0, "build/ttyshot_menu80.ppm");   /* tall enough for the whole File menu */
+    render(80, 34, NULL, "alt+f", NULL, 0, "build/ttyshot_menu80.ppm");   /* tall enough for the whole File menu */
     line_of(1, l, sizeof(l));
     LT_CHECK(strncmp(l, "\xE2\x95\xAD\xE2\x94\x80", 6) == 0);        /* top-left corner then a rule */
     line_of(2, l, sizeof(l));

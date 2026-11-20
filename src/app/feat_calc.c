@@ -290,7 +290,8 @@ static void tab_units(lt_app *app, calc_state *s)
     const lt_calc_fuel *fuel;
     int w1 = -1, w[4], i, nf = lt_calc_fuel_count();
     char b[240], n1[48];
-    for (i = 0; i < nf && i < 16; i++) { fuels[i] = lt_calc_fuel_get(i)->name; }
+    if (nf > 16) { nf = 16; }
+    for (i = 0; i < 16; i++) { fuels[i] = i < nf ? lt_calc_fuel_get(i)->name : ""; }
     if (s->fuel < 0 || s->fuel >= nf) { s->fuel = 0; }
     fuel = lt_calc_fuel_get(s->fuel);
     g_density = fuel->density;
