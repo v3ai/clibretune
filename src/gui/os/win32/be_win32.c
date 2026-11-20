@@ -1,7 +1,11 @@
 /* be_win32.c - native Win32 GDI pixel backend.
  *
  * One top-level window; the app canvas (32-bit XRGB) is copied to the client
- * area with SetDIBitsToDevice (1:1, no scaling). The process is marked
+ * area with SetDIBitsToDevice (1:1, no scaling), only the presented rectangles
+ * (WM_PAINT: only the invalid rectangle). When the app takes its canvas memory
+ * from canvas_pixels, the canvas is a DIB section selected into a memory DC
+ * and presenting is a BitBlt of the dirty rectangles (no conversion, no
+ * per-frame allocation). The process is marked
  * per-monitor DPI aware, so the canvas is in physical pixels and Windows never
  * bitmap-scales it; scale_hint reports dpi/96 and WM_DPICHANGED resizes the
  * window to the suggested rectangle and raises LT_EV_SCALE. Input arrives through the window procedure into a small ring queue that
@@ -44,6 +48,11 @@ typedef struct wb_state {
     int fullscreen;             /* borderless monitor-sized mode active */
     LONG_PTR fs_style;          /* style to restore */
     WINDOWPLACEMENT fs_place;   /* placement to restore */
+    HBITMAP dib;                /* canvas_pixels memory (DIB section), or NULL */
+    HDC dib_dc;                 /* memory DC with dib selected */
+    HGDIOBJ dib_old;            /* the DC's original bitmap */
+    void *dib_px;
+    int dib_w, dib_h;
 } wb_state;
 
 /* ---- dynamically bound user32 DPI entry points (Win10+; absent earlier) ---- */
@@ -164,6 +173,15 @@ static int wb_put_utf8(char *d, lt_u32 cp)
 static lt_event *wb_new_event(wb_state *w, lt_ev_type t)
 {
     lt_event *e;
+    if ((t == LT_EV_MOUSE_MOVE || t == LT_EV_RESIZE) && w->qn > 0) {
+        /* coalesce: only the newest pointer position / size matters */
+        e = &w->q[(w->qh + w->qn - 1) % WB_EVQ_CAP];
+        if (e->type == t) {
+            memset(e, 0, sizeof(*e));
+            e->type = t;
+            return e;
+        }
+    }
     if (w->qn >= WB_EVQ_CAP) {
         return NULL;
     }
@@ -260,27 +278,6 @@ static int wb_hi16(LPARAM v)
 }
 
 /* ---- painting ---- */
-/* Copy the whole canvas to the window DC. Partial updates are not used:
- * SetDIBitsToDevice source-y handling of top-down DIBs differs between
- * Windows versions and wine, and a full 1:1 copy is cheap. */
-static void wb_blit(wb_state *w, HDC dc)
-{
-    BITMAPINFO bmi;
-    lt_canvas *c = w->canvas;
-    if (c == NULL || c->px == NULL || c->w <= 0 || c->h <= 0) {
-        return;
-    }
-    memset(&bmi, 0, sizeof(bmi));
-    bmi.bmiHeader.biSize = (DWORD)sizeof(BITMAPINFOHEADER);
-    bmi.bmiHeader.biWidth = c->pitch;
-    bmi.bmiHeader.biHeight = -c->h;         /* negative = top-down */
-    bmi.bmiHeader.biPlanes = 1;
-    bmi.bmiHeader.biBitCount = 32;
-    bmi.bmiHeader.biCompression = BI_RGB;
-    (void)SetDIBitsToDevice(dc, 0, 0, (DWORD)c->w, (DWORD)c->h, 0, 0, 0, (UINT)c->h,
-                            c->px, &bmi, DIB_RGB_COLORS);
-}
-
 /* blit one rectangle of the canvas: the sub-image is addressed through a pointer offset and the
  * canvas pitch, so no bottom-up/top-down source origin arithmetic is involved */
 static void wb_blit_rect(wb_state *w, HDC dc, lt_rect r)
@@ -292,6 +289,12 @@ static void wb_blit_rect(wb_state *w, HDC dc, lt_rect r)
     }
     r = lt_rect_intersect(r, lt_rect_make(0, 0, c->w, c->h));
     if (r.w <= 0 || r.h <= 0) {
+        return;
+    }
+    if (w->dib_dc != NULL && c->px == (lt_u32 *)w->dib_px && c->w <= w->dib_w &&
+        c->h <= w->dib_h) {
+        /* the canvas is our DIB section: a plain blit, GDI reads it in place */
+        (void)BitBlt(dc, r.x, r.y, r.w, r.h, w->dib_dc, r.x, r.y, SRCCOPY);
         return;
     }
     memset(&bmi, 0, sizeof(bmi));
@@ -371,8 +374,11 @@ static LRESULT CALLBACK wb_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         return 0;
     }
     case WM_PAINT:
+        /* only what was invalidated (uncovered, restored), not the whole canvas */
         BeginPaint(hwnd, &ps);
-        wb_blit(w, ps.hdc);
+        wb_blit_rect(w, ps.hdc, lt_rect_make((int)ps.rcPaint.left, (int)ps.rcPaint.top,
+                                             (int)(ps.rcPaint.right - ps.rcPaint.left),
+                                             (int)(ps.rcPaint.bottom - ps.rcPaint.top)));
         EndPaint(hwnd, &ps);
         return 0;
     case WM_KILLFOCUS:
@@ -489,7 +495,9 @@ static int wb_open(lt_backend *b, const char *title, int cw, int ch)
     if (!w->class_ok) {
         memset(&wc, 0, sizeof(wc));
         wc.cbSize = (UINT)sizeof(wc);
-        wc.style = CS_HREDRAW | CS_VREDRAW;
+        /* no CS_HREDRAW | CS_VREDRAW: a resize invalidates only the newly uncovered strip
+         * (the app redraws and presents the whole frame after LT_EV_RESIZE anyway) */
+        wc.style = 0;
         wc.lpfnWndProc = wb_wndproc;
         wc.hInstance = w->hinst;
         wc.hCursor = LoadCursorW(NULL, MAKEINTRESOURCEW(32512));   /* IDC_ARROW */
@@ -530,12 +538,30 @@ static int wb_open(lt_backend *b, const char *title, int cw, int ch)
     return 0;
 }
 
+static void wb_dib_free(wb_state *w)
+{
+    if (w->dib_dc != NULL) {
+        (void)GdiFlush();
+        (void)SelectObject(w->dib_dc, w->dib_old);
+        (void)DeleteDC(w->dib_dc);
+    }
+    if (w->dib != NULL) {
+        (void)DeleteObject(w->dib);
+    }
+    w->dib = NULL;
+    w->dib_dc = NULL;
+    w->dib_old = NULL;
+    w->dib_px = NULL;
+    w->dib_w = w->dib_h = 0;
+}
+
 static void wb_close(lt_backend *b)
 {
     wb_state *w = (wb_state *)b->impl;
     if (w == NULL) {
         return;
     }
+    wb_dib_free(w);
     if (w->opened) {
         (void)DestroyWindow(w->hwnd);
         w->hwnd = NULL;
@@ -570,7 +596,8 @@ static int wb_poll(lt_backend *b, lt_event *ev, int timeout_ms)
     while (w->qn == 0 && timeout_ms != 0) {
         double t0 = lt_plat_now_ms();
         ms = timeout_ms < 0 ? INFINITE : (DWORD)timeout_ms;
-        (void)MsgWaitForMultipleObjects(0, NULL, FALSE, ms, QS_ALLINPUT);
+        /* MWMO_INPUTAVAILABLE: also wake for input that is queued but was already seen */
+        (void)MsgWaitForMultipleObjectsEx(0, NULL, ms, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
         wb_pump(w);
         if (w->qn == 0 && timeout_ms > 0) {
             /* woke for a message that produced no event: wait out the rest */
@@ -607,6 +634,67 @@ static void wb_present(lt_backend *b, lt_canvas *canvas, lt_cells *cells, lt_rec
     }
     wb_blit_rect(w, dc, dirty);
     (void)ReleaseDC(w->hwnd, dc);
+}
+
+/* every rectangle of a frame through one window DC */
+static void wb_present_rects(lt_backend *b, lt_canvas *canvas, const lt_rect *rects, int n)
+{
+    wb_state *w = (wb_state *)b->impl;
+    HDC dc;
+    int i;
+    if (!w->opened || canvas == NULL || rects == NULL || n <= 0) {
+        return;
+    }
+    w->canvas = canvas;
+    dc = GetDC(w->hwnd);
+    if (dc == NULL) {
+        return;
+    }
+    for (i = 0; i < n; i++) {
+        if (rects[i].w > 0 && rects[i].h > 0) {
+            wb_blit_rect(w, dc, rects[i]);
+        }
+    }
+    (void)ReleaseDC(w->hwnd, dc);
+}
+
+/* zero copy: the canvas memory is a top-down 32-bit DIB section (0x00RRGGBB words, exactly
+ * the lt_canvas format), presented with BitBlt */
+static lt_u32 *wb_canvas_pixels(lt_backend *b, int cw, int ch)
+{
+    wb_state *w = (wb_state *)b->impl;
+    BITMAPINFO bmi;
+    void *bits = NULL;
+    if (!w->opened || cw <= 0 || ch <= 0) {
+        return NULL;
+    }
+    if (w->dib != NULL && w->dib_w == cw && w->dib_h == ch) {
+        (void)GdiFlush();               /* queued blits have read the previous frame */
+        return (lt_u32 *)w->dib_px;
+    }
+    wb_dib_free(w);
+    memset(&bmi, 0, sizeof(bmi));
+    bmi.bmiHeader.biSize = (DWORD)sizeof(BITMAPINFOHEADER);
+    bmi.bmiHeader.biWidth = cw;
+    bmi.bmiHeader.biHeight = -ch;           /* top-down: row 0 first, stride cw * 4 */
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 32;
+    bmi.bmiHeader.biCompression = BI_RGB;
+    w->dib = CreateDIBSection(NULL, &bmi, DIB_RGB_COLORS, &bits, NULL, 0);
+    if (w->dib == NULL || bits == NULL) {
+        wb_dib_free(w);
+        return NULL;
+    }
+    w->dib_dc = CreateCompatibleDC(NULL);
+    if (w->dib_dc == NULL) {
+        wb_dib_free(w);
+        return NULL;
+    }
+    w->dib_old = SelectObject(w->dib_dc, w->dib);
+    w->dib_px = bits;
+    w->dib_w = cw;
+    w->dib_h = ch;
+    return (lt_u32 *)bits;
 }
 
 static void wb_size(lt_backend *b, int *pw, int *ph)
@@ -839,6 +927,8 @@ lt_backend *lt_backend_win32_create(void)
     b->get_geometry = wb_get_geometry;
     b->set_fullscreen = wb_set_fullscreen;
     b->beep = wb_beep;
+    b->present_rects = wb_present_rects;
+    b->canvas_pixels = wb_canvas_pixels;
     b->impl = w;
     return b;
 }

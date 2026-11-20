@@ -141,3 +141,32 @@ int lt_backend_beep(lt_backend *b)
     b->beep(b);
     return 1;
 }
+
+void lt_backend_present_rects(lt_backend *b, lt_canvas *canvas, const lt_rect *rects, int n)
+{
+    int i;
+    lt_rect bb;
+    if (b == NULL || b->present == NULL || rects == NULL || n <= 0) { return; }
+    if (b->present_rects != NULL) {
+        b->present_rects(b, canvas, rects, n);
+        return;
+    }
+    if (b->rect_present) {
+        for (i = 0; i < n; i++) { b->present(b, canvas, NULL, rects[i]); }
+        return;
+    }
+    bb = rects[0];
+    for (i = 1; i < n; i++) {
+        int x0 = LT_MIN(bb.x, rects[i].x), y0 = LT_MIN(bb.y, rects[i].y);
+        int x1 = LT_MAX(bb.x + bb.w, rects[i].x + rects[i].w);
+        int y1 = LT_MAX(bb.y + bb.h, rects[i].y + rects[i].h);
+        bb = lt_rect_make(x0, y0, x1 - x0, y1 - y0);
+    }
+    b->present(b, canvas, NULL, bb);
+}
+
+lt_u32 *lt_backend_canvas_pixels(lt_backend *b, int w, int h)
+{
+    if (b == NULL || b->canvas_pixels == NULL || w <= 0 || h <= 0) { return NULL; }
+    return b->canvas_pixels(b, w, h);
+}

@@ -1,5 +1,28 @@
 /* be_x11.c - X11 backend speaking the raw wire protocol (no Xlib/xcb).
  * Transport via lt_unix_connect / lt_tcp_connect from plat.h.
+ *
+ * Presenting
+ *   - Requests are queued in an output buffer. Ordinary requests are written at once; image
+ *     requests are batched and written when the frame ends (present_rects), when poll() runs
+ *     (the app always polls right after presenting) or when the buffer passes XOUT_FLUSH.
+ *   - MIT-SHM (local servers only: unix-socket connections, so never over ssh forwarding):
+ *     the image lives in a SysV segment the server attached, and a ShmPutImage request of 40
+ *     bytes replaces megabytes through the socket. Either the app draws straight into the
+ *     segment (canvas_pixels hook, zero copy) or present copies the dirty rectangles into it
+ *     (memcpy rows when the visual matches). The last ShmPutImage of a frame asks for a
+ *     completion event (the server works in order, so it stands for the whole frame); the
+ *     segment is only written again once it arrived, checked at the first present of the
+ *     next frame (or in canvas_pixels): normally it is already there, so there is no round
+ *     trip per frame. Each attach is verified once with a pattern read back through a pixmap
+ *     (a container with its own IPC namespace may attach a different segment). Any MIT-SHM
+ *     error, a refused or unverified attach (remote server, sandbox) or a missing extension
+ *     falls back to PutImage; LT_X11_SHM=0 forces the fallback.
+ *   - PutImage fallback: rows are copied with memcpy when the server's image format equals
+ *     the canvas words (32 bpp, depth 24, same byte order), converted otherwise.
+ *   - Expose: once a present covered the whole window, the last presented canvas is what the
+ *     window shows, so Expose events are answered by the backend (repaint of the exposed
+ *     box) instead of making the app redraw and re-send a full frame. Before that, and after
+ *     every size change, LT_EV_EXPOSE is passed to the app as before.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 #include <stdio.h>
@@ -12,6 +35,8 @@
 
 #define XQ_CAP 256
 #define XPKT_MAX 4096
+#define XOUT_FLUSH (1024UL * 1024UL)   /* write queued image requests beyond this many bytes */
+#define XSHM_WAIT_MS 2000                /* longest wait for a ShmPutImage completion */
 
 typedef struct x11 {
     lt_stream *s;
@@ -47,7 +72,29 @@ typedef struct x11 {
     int waiting, want_seq, got_reply, got_err;
     lt_u8 *reply;
     size_t reply_len;
+    lt_buf out;              /* requests not written yet */
+    int local;               /* unix-domain connection: the server shares our SysV IPC */
+    int native;              /* image bytes == canvas words (32 bpp, depth 24, our byte order) */
+    /* MIT-SHM */
+    int shm_state;           /* 1 usable, 0 not probed, -1 unavailable / failed */
+    int shm_major, shm_event;
+    int shm_err;             /* an error for a MIT-SHM request arrived */
+    lt_shm *seg;             /* segment the server attached (seg_xid) */
+    lt_u32 seg_xid;
+    int seg_attached;
+    int shm_busy;            /* ShmPutImage completions still outstanding */
+    int in_frame;            /* the segment was written since the last poll() */
+    /* Expose handled in the backend */
+    lt_canvas *last;         /* canvas of the last present */
+    int img_valid;           /* `last` holds everything the window shows */
+    int exp_pending, exp_ready;
+    lt_rect exp_box;
 } x11;
+
+static void shm_release(x11 *x);
+static void expose_repaint(x11 *x);
+static void conv_rows(const x11 *x, const lt_canvas *c, lt_rect r, lt_u8 *img, size_t stride,
+                      int img_x, int img_y);
 
 /* ------------------------------------------------------------------ */
 /* encoding                                                            */
@@ -74,18 +121,52 @@ static void req_begin(lt_buf *b, int op, int b1) {
     lt_buf_clear(b);
     p8(b, op); p8(b, b1); p8(b, 0); p8(b, 0);
 }
-/* finish (pad, fill length), send. returns 0 ok */
-static int req_end(x11 *x, lt_buf *b) {
+/* write every queued request; 0 ok */
+static int xflush(x11 *x) {
+    size_t off = 0;
+    if (x->out.len == 0) return x->dead ? -1 : 0;
+    if (x->dead) { lt_buf_clear(&x->out); return -1; }
+    while (off < x->out.len) {          /* lt_stream_write takes an int count */
+        size_t n = x->out.len - off;
+        if (n > 0x40000000UL) n = 0x40000000UL;
+        if (lt_stream_write(x->s, x->out.data + off, (int)n) < 0) { x->dead = 1; break; }
+        off += n;
+    }
+    lt_buf_clear(&x->out);
+    return x->dead ? -1 : 0;
+}
+
+/* store the length (in 4-byte words) of the request starting at byte `at` of buf */
+static int set_len(const x11 *x, lt_buf *b, size_t at) {
     lt_u8 t[2];
     size_t words;
     pad4(b);
-    words = b->len / 4;
-    if (words > 65535UL || x->dead) return -1;
+    words = (b->len - at) / 4;
+    if (words > 65535UL) return -1;
     if (x->msb) lt_wr_be(t, 2, (lt_u32)words); else lt_wr_le(t, 2, (lt_u32)words);
-    b->data[2] = (char)t[0]; b->data[3] = (char)t[1];
-    if (lt_stream_write(x->s, b->data, (int)b->len) < 0) { x->dead = 1; return -1; }
-    x->seq = (x->seq + 1) & 0xFFFF;
+    b->data[at + 2] = (char)t[0]; b->data[at + 3] = (char)t[1];
     return 0;
+}
+
+/* finish (pad, fill length) and send at once (after anything queued). returns 0 ok */
+static int req_end(x11 *x, lt_buf *b) {
+    if (x->dead || set_len(x, b, 0) < 0) return -1;
+    lt_buf_append(&x->out, b->data, b->len);
+    x->seq = (x->seq + 1) & 0xFFFF;
+    return xflush(x);
+}
+
+/* queued requests built straight in the output buffer (image data, no extra copy) */
+static size_t out_begin(x11 *x, int op, int b1) {
+    size_t at = x->out.len;
+    p8(&x->out, op); p8(&x->out, b1); p8(&x->out, 0); p8(&x->out, 0);
+    return at;
+}
+static int out_end(x11 *x, size_t at) {
+    if (set_len(x, &x->out, at) < 0) { x->out.len = at; return -1; }
+    x->seq = (x->seq + 1) & 0xFFFF;
+    if (x->out.len >= XOUT_FLUSH) return xflush(x);
+    return x->dead ? -1 : 0;
 }
 
 /* ------------------------------------------------------------------ */
@@ -221,6 +302,10 @@ static void handle_event(x11 *x, const lt_u8 *p) {
     int type = p[0] & 0x7F;
     lt_event ev;
     memset(&ev, 0, sizeof ev);
+    if (x->shm_major != 0 && type == x->shm_event) {     /* ShmCompletion */
+        if (x->shm_busy > 0) x->shm_busy--;
+        return;
+    }
     switch (type) {
     case 2: case 3:
         handle_key(x, type == 2, p[1], (int)r16(x, p + 28));
@@ -255,13 +340,36 @@ static void handle_event(x11 *x, const lt_u8 *p) {
     case 10:
         if (p[8] == 0) q_simple(x, LT_EV_FOCUS_LOST);
         break;
-    case 12:
-        if (r16(x, p + 16) == 0) q_simple(x, LT_EV_EXPOSE);
+    case 12: {
+        /* answered here (repaint from the last presented canvas, see x_poll) once that canvas
+         * holds the whole window; otherwise the app redraws */
+        lt_rect r = lt_rect_make((int)r16(x, p + 8), (int)r16(x, p + 10), (int)r16(x, p + 12),
+                                 (int)r16(x, p + 14));
+        int last_of_series = r16(x, p + 16) == 0;
+        if (x->img_valid) {
+            if (x->exp_pending) {
+                int x0 = LT_MIN(x->exp_box.x, r.x), y0 = LT_MIN(x->exp_box.y, r.y);
+                int x1 = LT_MAX(x->exp_box.x + x->exp_box.w, r.x + r.w);
+                int y1 = LT_MAX(x->exp_box.y + x->exp_box.h, r.y + r.h);
+                r = lt_rect_make(x0, y0, x1 - x0, y1 - y0);
+            }
+            x->exp_box = r;
+            x->exp_pending = 1;
+            if (last_of_series) x->exp_ready = 1;
+        } else if (last_of_series) {
+            x->exp_pending = x->exp_ready = 0;
+            q_simple(x, LT_EV_EXPOSE);
+        }
         break;
+    }
     case 22: {
         int w = (int)r16(x, p + 20), h = (int)r16(x, p + 22);
         if (w > 0 && h > 0 && (w != x->w || h != x->h)) {
             x->w = w; x->h = h;
+            /* the app redraws everything at the new size; until a full present the backend
+             * has no complete copy of the window */
+            x->img_valid = 0;
+            x->exp_pending = x->exp_ready = 0;
             ev.type = LT_EV_RESIZE; ev.x = w; ev.y = h;
             if (x->q_count > 0) {
                 lt_event *last = &x->q[(x->q_head + x->q_count - 1) % XQ_CAP];
@@ -297,9 +405,15 @@ static int process_packet(x11 *x) {
     }
     if (x->in_len < total) return 0;
     if (p[0] == 0) {
-        fprintf(stderr, "x11: error code %d major %d minor %d seq %u value 0x%lx\n",
-                p[1], p[10], (int)r16(x, p + 8), (unsigned)r16(x, p + 2),
-                (unsigned long)r32(x, p + 4));
+        if (x->shm_major != 0 && p[10] == x->shm_major) {
+            x->shm_err = 1;              /* MIT-SHM refused (remote server, limits): fall back */
+            if (getenv("LT_X11_DEBUG") != NULL)
+                fprintf(stderr, "x11: MIT-SHM error code %d minor %d\n", p[1], (int)r16(x, p + 8));
+        } else {
+            fprintf(stderr, "x11: error code %d major %d minor %d seq %u value 0x%lx\n",
+                    p[1], p[10], (int)r16(x, p + 8), (unsigned)r16(x, p + 2),
+                    (unsigned long)r32(x, p + 4));
+        }
         if (x->waiting && (int)r16(x, p + 2) == x->want_seq) x->got_err = 1;
     } else if (p[0] == 1) {
         if (x->waiting && (int)r16(x, p + 2) == x->want_seq && !x->got_reply) {
@@ -332,6 +446,7 @@ static int fill(x11 *x, int timeout_ms) {
 /* wait for the reply of request number `seq` (the seq it was sent with) */
 static int wait_reply(x11 *x, int seq, int timeout_ms) {
     double end = lt_plat_now_ms() + timeout_ms;
+    if (xflush(x) < 0) return -1;
     x->waiting = 1; x->want_seq = seq & 0xFFFF; x->got_reply = 0; x->got_err = 0;
     while (!x->got_reply && !x->got_err) {
         double left;
@@ -606,6 +721,8 @@ static int fetch_keymap(x11 *x, lt_buf *b) {
 
 static void x_free(x11 *x) {
     if (!x) return;
+    if (x->seg) lt_shm_destroy(x->seg);
+    lt_buf_free(&x->out);
     if (x->s) lt_stream_close(x->s);
     if (x->syms) lt_free(x->syms);
     if (x->in) lt_free(x->in);
@@ -1080,6 +1197,7 @@ static void x_close(lt_backend *be) {
     x11 *x = (x11 *)be->impl;
     lt_buf b;
     if (!x) return;
+    shm_release(x);
     if (x->win && !x->dead) {
         lt_buf_init(&b);
         req_begin(&b, 60, 0); p32(x, &b, x->gc); req_end(x, &b);
@@ -1095,9 +1213,12 @@ static int x_poll(lt_backend *be, lt_event *ev, int timeout_ms) {
     double end = 0;
     int first = 1;
     if (!x) return 0;
+    (void)xflush(x);                     /* the frame's queued images */
+    x->in_frame = 0;                     /* the next present starts a new frame */
     if (timeout_ms > 0) end = lt_plat_now_ms() + timeout_ms;
     for (;;) {
         int slice;
+        if (x->exp_ready) expose_repaint(x);
         if (x->q_count > 0) {
             *ev = x->q[x->q_head];
             x->q_head = (x->q_head + 1) % XQ_CAP;
@@ -1135,71 +1256,370 @@ static void x_size(lt_backend *be, int *w, int *h) {
     if (h) *h = x ? x->h : 0;
 }
 
-static void x_present(lt_backend *be, lt_canvas *c, lt_cells *cells, lt_rect dirty) {
-    x11 *x = (x11 *)be->impl;
-    lt_rect full, r;
+/* ---- MIT-SHM ---- */
+/* bytes per image row of width w in the server's ZPixmap format */
+static size_t row_bytes(const x11 *x, int w) {
+    return (size_t)((((long)w * x->bpp) + x->spad - 1) / x->spad) * (size_t)x->spad / 8U;
+}
+
+/* MIT-SHM present and usable? (one-time QueryExtension + ShmQueryVersion at startup) */
+static void shm_probe(x11 *x, lt_buf *b) {
+    static const char name[] = "MIT-SHM";
+    const char *e = getenv("LT_X11_SHM");
+    int major, event;
+    x->shm_state = -1;
+    if (!x->local || (e != NULL && e[0] == '0')) return;
+    req_begin(b, 98, 0);                                    /* QueryExtension */
+    p16(x, b, 7); p16(x, b, 0);
+    lt_buf_append(b, name, 7); lt_buf_append(b, "\0", 1);
+    if (req_end(x, b) < 0) return;
+    if (wait_reply(x, x->seq, 5000) < 0) { drop_reply(x); return; }
+    major = x->reply[8] ? x->reply[9] : 0;
+    event = x->reply[10];
+    drop_reply(x);
+    if (major == 0) return;
+    req_begin(b, major, 0);                                 /* ShmQueryVersion */
+    if (req_end(x, b) < 0) return;
+    if (wait_reply(x, x->seq, 5000) < 0) { drop_reply(x); return; }
+    if (x->reply_len >= 12 && (r16(x, x->reply + 8) > 1 ||
+                               (r16(x, x->reply + 8) == 1 && r16(x, x->reply + 10) >= 1))) {
+        x->shm_major = major;
+        x->shm_event = event;
+        x->shm_state = 1;
+    }
+    drop_reply(x);
+}
+
+/* wait until the server finished reading the segment (completion events) */
+static void shm_wait(x11 *x) {
+    double end;
+    if (x->shm_busy <= 0) return;
+    if (xflush(x) < 0) return;
+    end = lt_plat_now_ms() + XSHM_WAIT_MS;
+    while (x->shm_busy > 0 && !x->dead && !x->shm_err) {
+        double left;
+        if (process_packet(x)) continue;
+        left = end - lt_plat_now_ms();
+        if (left <= 0) {
+            fprintf(stderr, "x11: no MIT-SHM completion from the server, using PutImage\n");
+            x->shm_err = 1;
+            break;
+        }
+        if (fill(x, (int)left + 1) < 0) break;
+    }
+}
+
+/* the server stops using the segment; our mapping stays (the app may still draw into it)
+ * until shm_release */
+static void shm_detach(x11 *x) {
     lt_buf b;
-    int bpp_bytes, limit, cw, rows, y0, x0, yy, xx;
-    LT_UNUSED(cells);
-    if (!x || !c || !c->px || !x->win || x->dead) return;
-    full = lt_rect_make(0, 0, LT_MIN(c->w, x->w), LT_MIN(c->h, x->h));
-    r = lt_rect_intersect(dirty, full);
-    if (r.w <= 0 || r.h <= 0) return;
-    bpp_bytes = x->bpp / 8;
+    if (x->seg_attached && !x->dead) {
+        lt_buf_init(&b);
+        req_begin(&b, x->shm_major, 2);                     /* ShmDetach */
+        p32(x, &b, x->seg_xid);
+        (void)req_end(x, &b);
+        lt_buf_free(&b);
+    }
+    x->seg_attached = 0;
+    x->shm_busy = 0;
+}
+
+static void shm_release(x11 *x) {
+    shm_detach(x);
+    if (x->seg != NULL) lt_shm_destroy(x->seg);
+    x->seg = NULL;
+}
+
+/* give up on MIT-SHM for this connection; images sent through it may be lost: repaint */
+static void shm_fail(x11 *x) {
+    int had = x->seg_attached;
+    x->shm_state = -1;
+    x->shm_err = 0;
+    shm_detach(x);
+    if (had) {
+        fprintf(stderr, "x11: MIT-SHM failed, using PutImage\n");
+        x->img_valid = 0;
+        q_simple(x, LT_EV_EXPOSE);
+    }
+}
+
+/* Does the server really see our segment? Inside a container or sandbox with its own IPC
+ * namespace (Docker sharing /tmp/.X11-unix, Flatpak without --share=ipc) the same shmid can
+ * name nothing (attach error) or a different segment (silent garbage on screen). A pattern is
+ * put into a 4x1 pixmap through the segment and read back with GetImage. This is the one
+ * round trip of an attach (first frame, window growth), never one per frame; errors for the
+ * attach arrive before its reply. 1 = verified. */
+static int shm_verify(x11 *x, lt_buf *b) {
+    lt_u32 pat[4];
+    lt_canvas pc;
+    lt_u8 *img = (lt_u8 *)lt_shm_addr(x->seg);
+    size_t rb = row_bytes(x, 4), i;
+    lt_u32 pix = alloc_id(x), id = (lt_u32)lt_shm_id(x->seg);
+    int ok = 0;
+    for (i = 0; i < 4; i++)
+        pat[i] = (lt_u32)(((unsigned long)id * 2654435761UL + (unsigned long)(i + 1) * 0x9E3779B9UL)
+                          & 0xFFFFFFUL);
+    pc.px = pat; pc.w = 4; pc.h = 1; pc.pitch = 4;
+    conv_rows(x, &pc, lt_rect_make(0, 0, 4, 1), img, rb, 0, 0);
+    req_begin(b, 53, x->depth);                             /* CreatePixmap 4x1 */
+    p32(x, b, pix); p32(x, b, x->win); p16(x, b, 4); p16(x, b, 1);
+    if (req_end(x, b) < 0) return 0;
+    req_begin(b, x->shm_major, 3);                          /* ShmPutImage, no event */
+    p32(x, b, pix); p32(x, b, x->gc);
+    p16(x, b, 4); p16(x, b, 1); p16(x, b, 0); p16(x, b, 0); p16(x, b, 4); p16(x, b, 1);
+    p16(x, b, 0); p16(x, b, 0);
+    p8(b, x->depth); p8(b, 2); p8(b, 0); p8(b, 0);
+    p32(x, b, x->seg_xid); p32(x, b, 0);
+    if (req_end(x, b) < 0) return 0;
+    req_begin(b, 73, 2);                                    /* GetImage, ZPixmap */
+    p32(x, b, pix); p16(x, b, 0); p16(x, b, 0); p16(x, b, 4); p16(x, b, 1);
+    p32(x, b, 0xFFFFFFFFUL);
+    if (req_end(x, b) == 0 && wait_reply(x, x->seq, 5000) == 0 && x->reply_len >= 32 + rb) {
+        const lt_u8 *q = x->reply + 32;
+        ok = 1;
+        for (i = 0; i < 4; i++) {
+            if (x->bpp == 32) {     /* compare the 24 colour bits; the pad byte is undefined */
+                lt_u32 got = x->img_msb ? lt_rd_be(q + 4 * i, 4) : lt_rd_le(q + 4 * i, 4);
+                lt_u32 sent = x->img_msb ? lt_rd_be(img + 4 * i, 4) : lt_rd_le(img + 4 * i, 4);
+                if (((got ^ sent) & 0xFFFFFFUL) != 0) ok = 0;
+            } else if (q[2 * i] != img[2 * i] || q[2 * i + 1] != img[2 * i + 1]) {
+                ok = 0;
+            }
+        }
+    }
+    drop_reply(x);
+    req_begin(b, 54, 0);                                    /* FreePixmap */
+    p32(x, b, pix);
+    (void)req_end(x, b);
+    return ok && !x->shm_err;
+}
+
+/* a segment of at least `need` bytes attached by the server; 0 ok, -1 = use PutImage */
+static int shm_ensure(x11 *x, size_t need) {
+    lt_buf b;
+    size_t cap, screen;
+    int ok;
+    if (x->shm_state <= 0) return -1;
+    if (x->shm_err) { shm_fail(x); return -1; }
+    if (x->seg != NULL && x->seg_attached && lt_shm_size(x->seg) >= need) return 0;
+    shm_wait(x);
+    shm_release(x);
+    /* grow with slack so an interactive resize does not re-attach every frame */
+    cap = need + need / 4;
+    screen = row_bytes(x, x->root_w) * (size_t)(x->root_h > 0 ? x->root_h : 0);
+    if (cap > screen) cap = LT_MAX(need, screen);
+    x->seg = lt_shm_create(cap);
+    if (x->seg == NULL) {
+        x->shm_state = -1;
+        return -1;
+    }
+    if (x->seg_xid == 0) x->seg_xid = alloc_id(x);
+    lt_buf_init(&b);
+    req_begin(&b, x->shm_major, 1);                         /* ShmAttach, read-only */
+    p32(x, &b, x->seg_xid);
+    p32(x, &b, (lt_u32)lt_shm_id(x->seg));
+    p8(&b, 1); p8(&b, 0); p8(&b, 0); p8(&b, 0);
+    ok = req_end(x, &b) == 0 && shm_verify(x, &b);
+    if (!ok) {
+        if (!x->dead) {                                     /* ShmDetach (errors ignored) */
+            req_begin(&b, x->shm_major, 2);
+            p32(x, &b, x->seg_xid);
+            (void)req_end(x, &b);
+        }
+        lt_buf_free(&b);
+        lt_shm_destroy(x->seg);
+        x->seg = NULL;
+        x->shm_err = 0;
+        x->shm_state = -1;
+        if (getenv("LT_X11_DEBUG") != NULL)
+            fprintf(stderr, "x11: the server cannot use our MIT-SHM segment, using PutImage\n");
+        return -1;
+    }
+    lt_buf_free(&b);
+    x->seg_attached = 1;
+    lt_shm_unlink(x->seg);          /* reclaimed by the kernel once both sides detach */
+    return 0;
+}
+
+/* copy rectangle r of the canvas into an image with row stride `stride`, at (img_x, img_y);
+ * when the server format equals the canvas words a row is one memcpy */
+static void conv_rows(const x11 *x, const lt_canvas *c, lt_rect r, lt_u8 *img, size_t stride,
+                      int img_x, int img_y) {
+    int yy, xx;
+    for (yy = 0; yy < r.h; yy++) {
+        const lt_u32 *src = c->px + (size_t)(r.y + yy) * (size_t)c->pitch + (size_t)r.x;
+        lt_u8 *dst = img + (size_t)(img_y + yy) * stride + (size_t)img_x * (size_t)(x->bpp / 8);
+        if (x->native) {
+            memcpy(dst, src, (size_t)r.w * 4U);
+        } else if (x->bpp == 32 && !x->img_msb) {
+            for (xx = 0; xx < r.w; xx++) {          /* B G R pad: little-endian 0x00RRGGBB */
+                lt_u32 px = src[xx];
+                dst[0] = (lt_u8)px; dst[1] = (lt_u8)(px >> 8);
+                dst[2] = (lt_u8)(px >> 16); dst[3] = 0;
+                dst += 4;
+            }
+        } else if (x->bpp == 32) {
+            for (xx = 0; xx < r.w; xx++) {          /* pad R G B */
+                lt_u32 px = src[xx];
+                dst[0] = 0; dst[1] = (lt_u8)(px >> 16);
+                dst[2] = (lt_u8)(px >> 8); dst[3] = (lt_u8)px;
+                dst += 4;
+            }
+        } else {
+            for (xx = 0; xx < r.w; xx++) {          /* 16 bpp 5-6-5 */
+                lt_u32 px = src[xx];
+                lt_u32 v = (lt_u32)((((px >> 19) & 0x1FUL) << 11) |
+                                    (((px >> 10) & 0x3FUL) << 5) | ((px >> 3) & 0x1FUL));
+                if (x->img_msb) { dst[0] = (lt_u8)(v >> 8); dst[1] = (lt_u8)v; }
+                else { dst[0] = (lt_u8)v; dst[1] = (lt_u8)(v >> 8); }
+                dst += 2;
+            }
+        }
+    }
+}
+
+/* ShmPutImage of rectangle r (clipped to canvas and window); 0 sent, -1 = use PutImage.
+ * notify: ask for a completion event (the server handles requests in order, so the last
+ * image of a frame stands for all of them) */
+static int shm_present(x11 *x, lt_canvas *c, lt_rect r, int notify) {
+    int tw, th;
+    size_t at;
+    lt_u32 *seg_px = x->seg != NULL ? (lt_u32 *)lt_shm_addr(x->seg) : NULL;
+    if (x->shm_state <= 0) return -1;
+    if (x->shm_err) { shm_fail(x); return -1; }
+    if (seg_px != NULL && c->px == seg_px) {
+        /* zero copy: the app drew into the segment (canvas_pixels waited for the server) */
+        if (!x->seg_attached || !x->native ||
+            (size_t)c->pitch * (size_t)c->h * 4U > lt_shm_size(x->seg)) return -1;
+        tw = c->pitch;
+        th = c->h;
+    } else {
+        tw = c->w;
+        th = c->h;
+        if (shm_ensure(x, row_bytes(x, tw) * (size_t)th) < 0) return -1;
+        if (!x->in_frame) {
+            /* first write of a frame: the previous frame's images must have been read (the
+             * rectangles of one frame are disjoint, so later ones need no wait); normally
+             * the completions arrived long ago and this does not block */
+            shm_wait(x);
+            if (x->shm_err) { shm_fail(x); return -1; }
+        }
+        conv_rows(x, c, r, (lt_u8 *)lt_shm_addr(x->seg), row_bytes(x, tw), r.x, r.y);
+    }
+    if (tw > 65535 || th > 65535) return -1;
+    x->in_frame = 1;
+    at = out_begin(x, x->shm_major, 3);                     /* ShmPutImage */
+    p32(x, &x->out, x->win); p32(x, &x->out, x->gc);
+    p16(x, &x->out, (lt_u32)tw); p16(x, &x->out, (lt_u32)th);
+    p16(x, &x->out, (lt_u32)r.x); p16(x, &x->out, (lt_u32)r.y);
+    p16(x, &x->out, (lt_u32)r.w); p16(x, &x->out, (lt_u32)r.h);
+    p16(x, &x->out, (lt_u32)r.x); p16(x, &x->out, (lt_u32)r.y);
+    p8(&x->out, x->depth); p8(&x->out, 2); p8(&x->out, notify ? 1 : 0); p8(&x->out, 0);
+    p32(x, &x->out, x->seg_xid);
+    p32(x, &x->out, 0);
+    if (notify) x->shm_busy++;
+    (void)out_end(x, at);
+    return 0;
+}
+
+/* PutImage requests (split to the maximum request size), queued in the output buffer */
+static void put_image(x11 *x, const lt_canvas *c, lt_rect r) {
+    int bpp_bytes = x->bpp / 8, limit, cw, rows, y0, x0;
     limit = x->maxreq * 4 - 24 - 8; /* data bytes per request */
     if (limit > 262144 - 32) limit = 262144 - 32;
     cw = LT_MIN(r.w, limit / bpp_bytes);
     if (cw < 1) return;
-    rows = limit / ((((cw * x->bpp) + x->spad - 1) / x->spad) * x->spad / 8);
+    rows = limit / (int)row_bytes(x, cw);
     if (rows < 1) rows = 1;
-    lt_buf_init(&b);
     for (y0 = r.y; y0 < r.y + r.h; y0 += rows) {
         int sh = LT_MIN(rows, r.y + r.h - y0);
         for (x0 = r.x; x0 < r.x + r.w; x0 += cw) {
             int sw = LT_MIN(cw, r.x + r.w - x0);
-            int rowbytes = (((sw * x->bpp) + x->spad - 1) / x->spad) * x->spad / 8;
-            req_begin(&b, 72, 2);
-            p32(x, &b, x->win); p32(x, &b, x->gc);
-            p16(x, &b, (lt_u32)sw); p16(x, &b, (lt_u32)sh);
-            p16(x, &b, (lt_u32)x0); p16(x, &b, (lt_u32)y0);
-            p8(&b, 0); p8(&b, x->depth); p8(&b, 0); p8(&b, 0);
-            lt_buf_reserve(&b, (size_t)rowbytes * (size_t)sh + 8);
-            for (yy = 0; yy < sh; yy++) {
-                const lt_u32 *src = c->px + (size_t)(y0 + yy) * (size_t)c->pitch + (size_t)x0;
-                lt_u8 *dst = (lt_u8 *)b.data + b.len;
-                memset(dst, 0, (size_t)rowbytes);
-                if (x->bpp == 32 && !x->img_msb) {
-                    for (xx = 0; xx < sw; xx++) {       /* B G R pad: little-endian 0x00RRGGBB */
-                        lt_u32 px = src[xx];
-                        dst[0] = (lt_u8)px; dst[1] = (lt_u8)(px >> 8);
-                        dst[2] = (lt_u8)(px >> 16);
-                        dst += 4;
-                    }
-                } else {
-                    int written = 0;
-                    for (xx = 0; xx < sw; xx++) {
-                        lt_u32 px = src[xx];
-                        int rr = (int)((px >> 16) & 0xFF), gg = (int)((px >> 8) & 0xFF);
-                        int bb = (int)(px & 0xFF);
-                        if (x->bpp == 32) {
-                            dst[written] = 0; dst[written + 1] = (lt_u8)rr;
-                            dst[written + 2] = (lt_u8)gg; dst[written + 3] = (lt_u8)bb;
-                            written += 4;
-                        } else {
-                            lt_u32 v = ((lt_u32)(rr >> 3) << 11) | ((lt_u32)(gg >> 2) << 5) |
-                                       (lt_u32)(bb >> 3);
-                            if (x->img_msb) { dst[written] = (lt_u8)(v >> 8); dst[written + 1] = (lt_u8)v; }
-                            else { dst[written] = (lt_u8)v; dst[written + 1] = (lt_u8)(v >> 8); }
-                            written += 2;
-                        }
-                    }
-                }
-                b.len += (size_t)rowbytes;
-            }
-            if (req_end(x, &b) < 0) { lt_buf_free(&b); return; }
+            size_t rb = row_bytes(x, sw), at = out_begin(x, 72, 2);
+            p32(x, &x->out, x->win); p32(x, &x->out, x->gc);
+            p16(x, &x->out, (lt_u32)sw); p16(x, &x->out, (lt_u32)sh);
+            p16(x, &x->out, (lt_u32)x0); p16(x, &x->out, (lt_u32)y0);
+            p8(&x->out, 0); p8(&x->out, x->depth); p8(&x->out, 0); p8(&x->out, 0);
+            lt_buf_reserve(&x->out, rb * (size_t)sh + 8);
+            if (!x->native)             /* row padding bytes; native rows are fully written */
+                memset(x->out.data + x->out.len, 0, rb * (size_t)sh);
+            conv_rows(x, c, lt_rect_make(x0, y0, sw, sh), (lt_u8 *)x->out.data + x->out.len, rb,
+                      0, 0);
+            x->out.len += rb * (size_t)sh;
+            if (out_end(x, at) < 0) return;
         }
     }
-    lt_buf_free(&b);
+}
+
+static lt_rect clip_present(const x11 *x, const lt_canvas *c, lt_rect dirty) {
+    return lt_rect_intersect(dirty, lt_rect_make(0, 0, LT_MIN(c->w, x->w), LT_MIN(c->h, x->h)));
+}
+
+static void present_one(x11 *x, lt_canvas *c, lt_rect dirty, int notify) {
+    lt_rect r = clip_present(x, c, dirty);
+    x->last = c;
+    if (r.w <= 0 || r.h <= 0) return;
+    if (r.x == 0 && r.y == 0 && r.w == x->w && r.h == x->h) x->img_valid = 1;
+    if (shm_present(x, c, r, notify) == 0) return;
+    put_image(x, c, r);
+}
+
+/* queued; written by poll() (which the app calls right after presenting), present_rects or
+ * the size threshold */
+static void x_present(lt_backend *be, lt_canvas *c, lt_cells *cells, lt_rect dirty) {
+    x11 *x = (x11 *)be->impl;
+    LT_UNUSED(cells);
+    if (!x || !c || !c->px || !x->win || x->dead) return;
+    present_one(x, c, dirty, 1);
+}
+
+static void x_present_rects(lt_backend *be, lt_canvas *c, const lt_rect *rects, int n) {
+    x11 *x = (x11 *)be->impl;
+    int i, last;
+    if (!x || !c || !c->px || !x->win || x->dead || rects == NULL) return;
+    for (last = n - 1; last > 0; last--) {         /* the last image that will be sent */
+        lt_rect r = clip_present(x, c, rects[last]);
+        if (r.w > 0 && r.h > 0) break;
+    }
+    for (i = 0; i < n && !x->dead; i++) present_one(x, c, rects[i], i == last);
+    (void)xflush(x);
+}
+
+/* zero copy: the app's canvas memory is the shared segment */
+static lt_u32 *x_canvas_pixels(lt_backend *be, int w, int h) {
+    x11 *x = (x11 *)be->impl;
+    if (!x || x->dead || !x->win || w <= 0 || h <= 0 || w > 65535 || h > 65535) return NULL;
+    if (x->shm_state > 0 && x->shm_err) shm_fail(x);
+    if (x->shm_state <= 0 || !x->native) {
+        shm_release(x);                 /* the app was told to stop using it */
+        return NULL;
+    }
+    if (shm_ensure(x, (size_t)w * (size_t)h * 4U) < 0) {
+        shm_release(x);
+        return NULL;
+    }
+    shm_wait(x);                        /* the server read the last frame: safe to draw */
+    if (x->shm_err) {
+        shm_fail(x);
+        shm_release(x);
+        return NULL;
+    }
+    x->in_frame = 0;
+    return (lt_u32 *)lt_shm_addr(x->seg);
+}
+
+/* Expose answered from the last presented canvas */
+static void expose_repaint(x11 *x) {
+    lt_rect r = x->exp_box;
+    x->exp_pending = x->exp_ready = 0;
+    if (!x->img_valid || x->last == NULL || x->last->px == NULL || !x->win || x->dead) {
+        q_simple(x, LT_EV_EXPOSE);
+        return;
+    }
+    x->in_frame = 0;
+    present_one(x, x->last, r, 1);
+    (void)xflush(x);
+    x->in_frame = 0;
 }
 
 lt_backend *lt_backend_x11_create(void) {
@@ -1209,7 +1629,7 @@ lt_backend *lt_backend_x11_create(void) {
     x11 *x;
     lt_backend *be;
     lt_buf b;
-    int sq[8], i;
+    int sq[8], i, local = 0;
     lt_stream *s = NULL;
     static const char *names[8] = { "WM_PROTOCOLS", "WM_DELETE_WINDOW", "_NET_WM_NAME",
                                     "UTF8_STRING", "_NET_WM_STATE",
@@ -1218,18 +1638,22 @@ lt_backend *lt_backend_x11_create(void) {
                                     "_NET_WM_STATE_FULLSCREEN" };
     if (!disp || !disp[0]) return NULL;
     if (parse_display(disp, host, sizeof host, &num, path, sizeof path) < 0) return NULL;
-    if (path[0]) s = lt_unix_connect(path);
+    if (path[0]) { s = lt_unix_connect(path); local = 1; }
     else if (host[0] == '\0') {
         lt_snprintf(sock, sizeof sock, "/tmp/.X11-unix/X%d", num);
         s = lt_unix_connect(sock);
+        local = s != NULL;
         if (!s) s = lt_tcp_connect("127.0.0.1", 6000 + num, 2000);
     } else {
         s = lt_tcp_connect(host, 6000 + num, 3000);
     }
     if (!s) return NULL;
     x = (x11 *)lt_calloc(1, sizeof *x);
+    lt_buf_init(&x->out);
     x->s = s;
+    x->local = local;       /* MIT-SHM only over unix sockets: TCP may be ssh forwarding */
     if (do_setup(x, host, num) < 0) { x_free(x); return NULL; }
+    x->native = x->bpp == 32 && x->depth == 24 && x->img_msb == x->msb;
     lt_buf_init(&b);
     if (fetch_keymap(x, &b) < 0) {
         fprintf(stderr, "x11: GetKeyboardMapping failed\n");
@@ -1251,6 +1675,7 @@ lt_backend *lt_backend_x11_create(void) {
     fetch_resources(x, &b);
     fetch_xsettings(x, &b);
     fetch_randr(x, &b);
+    shm_probe(x, &b);
     lt_buf_free(&b);
     if (x->dead) { x_free(x); return NULL; }
     be = (lt_backend *)lt_calloc(1, sizeof *be);
@@ -1272,6 +1697,8 @@ lt_backend *lt_backend_x11_create(void) {
     be->get_geometry = x_get_geometry;
     be->set_fullscreen = x_set_fullscreen;
     be->beep = x_beep;
+    be->present_rects = x_present_rects;
+    be->canvas_pixels = x_canvas_pixels;
     be->impl = x;
     return be;
 }

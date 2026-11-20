@@ -54,11 +54,12 @@ Only per-platform files may include OS headers; they are chosen by the **build s
 - `src/plat/plat.h` is the universal OS interface; `plat_common.c` holds the shared
   universal parts. `os_<name>.c` hold OS identity, config dir, exe path, device names.
 - GUI backends that need OS APIs live in `src/gui/os/<os>/`; universal ones (`be_x11.c` raw X11
-  over plat sockets, `be_web.c`, `be_tty.c`) stay in `src/gui/` and are built everywhere.
+  over plat sockets, MIT-SHM through `lt_shm_*` on local servers; `be_web.c`, `be_tty.c`) stay
+  in `src/gui/` and are built everywhere. `tools/bench_present.sh` times the present paths.
   Each OS has one `stubs.c` providing the `lt_backend_*_create` constructors that do not exist
   on it (returning NULL), so no `#ifdef` is ever needed.
-- Native backends: `win32/be_win32.c` (GDI window, `SetDIBitsToDevice` 1:1 present, DPI aware, links
-  user32/gdi32 directly) and `macos/be_cocoa.c` (pure C over the Objective-C runtime: `NSWindow` +
+- Native backends: `win32/be_win32.c` (GDI window, `SetDIBitsToDevice` 1:1 present, or BitBlt
+  when the canvas is its DIB section, DPI aware, links user32/gdi32 directly) and `macos/be_cocoa.c` (pure C over the Objective-C runtime: `NSWindow` +
   an `NSView` subclass built with `objc_allocateClassPair`, own event pump, no Objective-C source,
   no Apple headers: the runtime/CoreGraphics prototypes are declared by hand so the file stays
   C89-strict and compiles on any host). The OS-independent half of the Cocoa backend (key codes,

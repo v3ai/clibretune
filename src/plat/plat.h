@@ -123,6 +123,21 @@ int  lt_stream_fd(lt_stream *s);
 /* unix domain socket connect (X11). NULL if unsupported. */
 lt_stream *lt_unix_connect(const char *path);
 
+/* ---- shared memory (X11 MIT-SHM) ---- */
+/* A System V shared memory segment of `size` bytes, attached read-write in this process and
+ * created with owner-only permissions, so a local X server can attach the same memory and
+ * read images from it without a copy through the socket. NULL where the OS has no SysV shared
+ * memory (Windows) or on failure (limits, sandbox). */
+typedef struct lt_shm lt_shm;
+lt_shm *lt_shm_create(size_t size);
+void   *lt_shm_addr(lt_shm *m);
+size_t  lt_shm_size(lt_shm *m);
+long    lt_shm_id(lt_shm *m);          /* the id another process attaches (shmid) */
+/* mark the segment for removal once every process has detached (IPC_RMID): call it after the
+ * peer attached, so the memory is reclaimed even if this process crashes */
+void    lt_shm_unlink(lt_shm *m);
+void    lt_shm_destroy(lt_shm *m);     /* detach; removes it too when not unlinked yet */
+
 /* ---- terminal (tty GUI backend) ---- */
 lt_bool lt_term_isatty(void);
 int  lt_term_raw_begin(void);   /* raw mode, no echo, mouse reporting off (backend enables) */

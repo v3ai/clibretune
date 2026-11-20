@@ -293,9 +293,12 @@ static void parse_input(web *w, const char *body, size_t len)
 
 /* ---- frame model ---- */
 
-static void web_update(web *w, const lt_canvas *c)
+/* Diff the tiles that intersect `dirty` (the presented region: nothing outside it changed;
+ * every tile after a size change) against the last presented canvas. Scanning only the dirty
+ * tiles keeps a small update cheap on a 4K canvas instead of comparing all 33 MB. */
+static void web_update(web *w, const lt_canvas *c, lt_rect dirty)
 {
-    int x, y, t, tx, ty, tw, th, changed = 0, ntiles;
+    int x, y, t, tx, ty, tw, th, changed = 0, ntiles, tx0, ty0, tx1, ty1;
     lt_u32 nseq = (w->seq + 1) & LT_U32_MASK;
     int resized = (w->prev == NULL || w->cw != c->w || w->ch != c->h);
 
@@ -312,8 +315,18 @@ static void web_update(web *w, const lt_canvas *c)
         w->tseq = (lt_u32 *)lt_calloc((size_t)ntiles, sizeof(lt_u32));
         w->size_seq = nseq;
     }
-    for (ty = 0; ty < w->nty; ty++) {
-        for (tx = 0; tx < w->ntx; tx++) {
+    if (resized) {
+        tx0 = 0; ty0 = 0; tx1 = w->ntx; ty1 = w->nty;
+    } else {
+        dirty = lt_rect_intersect(dirty, lt_rect_make(0, 0, w->cw, w->ch));
+        if (dirty.w <= 0 || dirty.h <= 0) return;
+        tx0 = dirty.x / WEB_TILE;
+        ty0 = dirty.y / WEB_TILE;
+        tx1 = (dirty.x + dirty.w + WEB_TILE - 1) / WEB_TILE;
+        ty1 = (dirty.y + dirty.h + WEB_TILE - 1) / WEB_TILE;
+    }
+    for (ty = ty0; ty < ty1; ty++) {
+        for (tx = tx0; tx < tx1; tx++) {
             int diff = resized;
             t = ty * w->ntx + tx;
             tw = LT_MIN(WEB_TILE, w->cw - tx * WEB_TILE);
@@ -755,10 +768,9 @@ static void web_present(lt_backend *b, lt_canvas *canvas, lt_cells *cells, lt_re
     web *w = W(b);
     lt_u32 old;
     LT_UNUSED(cells);
-    LT_UNUSED(dirty);
     if (w == NULL || canvas == NULL) return;
     old = w->seq;
-    web_update(w, canvas);
+    web_update(w, canvas, dirty);
     if (w->seq != old) wake_parked(w);
 }
 
