@@ -23,6 +23,7 @@ version, LibreTune commit) in the release notes.
 | Tuning, MegaSquirt | Same, on MS2/Extra and MS3 | Same |
 | Link faults | Unplug mid-burn and mid-log on each family | No corrupted project tune; the user is told the ECU may hold a partial burn |
 | AutoTune / WUE / Trim | One real session each with a wideband | Proposed changes are sane; applied values burn correctly |
+| UI speed on real desktops | Run with `LT_PERF=1` on Linux X11 and Xwayland (HiDPI and 1080p), Windows and macOS; the MIT-SHM zero-copy path, the Win32 DIB-section path and the Cocoa partial redraw were only tested against a mock X server, wine and a compile check | Frame times match `tools/bench_ui.sh`; no stale areas after resize, scale change or moving between monitors |
 | macOS USB | The IOKit backend (`src/plat/posix/usb_macos.c`) has only ever been compiled in CI | Scan lists the bootloader; a DFU flash completes |
 
 ## 2. Signed release builds
@@ -83,3 +84,7 @@ cars should review which base tunes to recommend, and the browser should then ma
   a new firmware release changes its INI.
 - Logs, CSV exports, Lua scripts and logger captures are still written in place (not via
   `lt_plat_write_atomic` like tunes and settings); a crash mid-write can truncate that one export.
+- **Full-screen redraws** (opening/closing a dialog, switching screens, changing the UI scale) still
+  cost 17-24 ms at 4K (p95) because whole-tile overdraw is not skipped; scrolling and the datalog
+  graph are about 3.5 ms a frame. Next step: per-tile occlusion (skip commands fully covered by a
+  later opaque command in that tile).

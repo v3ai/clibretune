@@ -49,6 +49,10 @@ Linux (x86-64, ARM64), Windows and macOS (universal) are attached to each releas
   - `win32` (Windows) and `cocoa` (macOS) are the native window backends; `auto` picks them first on
     their OS. On Windows `./build.sh app` (MinGW) or `build.bat` (MSVC) gives `build/libretune.exe`
     (console subsystem; add `-mwindows` to `LDFLAGS` for a console-less release build).
+- Rendering: only the screen tiles that changed are redrawn, and X11 presents through shared memory
+  (MIT-SHM, zero copy). If something looks wrong, `LT_RENDER=immediate` redraws every frame in full,
+  `LT_X11_SHM=0` uses plain PutImage, and `LT_RENDER_VERIFY=1` checks every frame against a full redraw.
+  `LT_PERF=1` prints frame and ECU-service timings each second.
 - Screenshot harness: `LT_SCREENSHOT=out.ppm [LT_SHOT_SIZE=WxH LT_SHOT_FRAMES=N LT_SHOT_OPEN=target LT_SHOT_CLICK=x,y LT_SHOT_THEME=.. LT_SCALE=150]`.
 - UI scale: `Auto` by default (X11: the desktop's `Xft.dpi`, XSETTINGS, `GDK_SCALE`/`QT_SCALE_FACTOR`,
   else the monitor's measured density from RandR; Windows: per-monitor DPI), or set
