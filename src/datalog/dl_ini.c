@@ -4,8 +4,48 @@
  */
 #include <string.h>
 #include "datalog.h"
+#include "dl_view.h"
 
 static lt_rt_set_fn g_rt_set;
+
+/* virtual channels appended to the INI channel list (see dl_view.h) */
+static char **g_vnames, **g_vunits;
+static size_t g_vn;
+
+void lt_datalog_set_virtual_channels(const char *const *names, const char *const *units, size_t n)
+{
+    size_t i;
+    lt_strv_free(g_vnames, g_vn);
+    lt_strv_free(g_vunits, g_vn);
+    g_vnames = NULL;
+    g_vunits = NULL;
+    g_vn = 0;
+    if (n == 0 || names == NULL) {
+        return;
+    }
+    g_vnames = (char **)lt_calloc(n, sizeof(char *));
+    g_vunits = (char **)lt_calloc(n, sizeof(char *));
+    for (i = 0; i < n; i++) {
+        g_vnames[i] = lt_strdup(names[i] != NULL ? names[i] : "");
+        g_vunits[i] = lt_strdup(units != NULL && units[i] != NULL ? units[i] : "");
+    }
+    g_vn = n;
+}
+
+size_t lt_datalog_virtual_count(void)
+{
+    return g_vn;
+}
+
+const char *lt_datalog_virtual_name(size_t i)
+{
+    return i < g_vn ? g_vnames[i] : "";
+}
+
+const char *lt_datalog_virtual_units(size_t i)
+{
+    return i < g_vn ? g_vunits[i] : "";
+}
 
 void lt_datalog_set_rt_setter(lt_rt_set_fn fn)
 {
@@ -22,7 +62,7 @@ size_t lt_datalog_channels_from_ini(const lt_ini *ini, char ***names, char ***un
     size_t i, n = 0, cap;
     char **nv, **uv;
 
-    cap = ini->n_dl_entries > 0 ? ini->n_dl_entries : ini->n_channels;
+    cap = (ini->n_dl_entries > 0 ? ini->n_dl_entries : ini->n_channels) + g_vn;
     nv = (char **)lt_calloc(cap + 1, sizeof(char *));
     uv = (char **)lt_calloc(cap + 1, sizeof(char *));
     if (ini->n_dl_entries > 0) {
@@ -58,6 +98,21 @@ size_t lt_datalog_channels_from_ini(const lt_ini *ini, char ***names, char ***un
             uv[n] = lt_strdup(ch->units ? ch->units : "");
             n++;
         }
+    }
+    for (i = 0; i < g_vn; i++) {
+        size_t k;
+        int dup = g_vnames[i][0] == '\0' || find_ch(ini, g_vnames[i]) != NULL;
+        for (k = 0; k < n && !dup; k++) {
+            if (strcmp(nv[k], g_vnames[i]) == 0) {
+                dup = 1;
+            }
+        }
+        if (dup) {
+            continue;
+        }
+        nv[n] = lt_strdup(g_vnames[i]);
+        uv[n] = lt_strdup(g_vunits[i]);
+        n++;
     }
     if (names) {
         *names = nv;

@@ -14,7 +14,9 @@ struct lt_recorder {
     char   **names, **units;
     double   hz;
     lt_bool  recording;
+    lt_log_format fmt;    /* LT_FMT_MLG or LT_FMT_MSL */
     lt_mlg_writer *w;
+    lt_msl_writer *tw;    /* MSL text writer (instead of w) */
     char    *path;        /* current file or "" */
     char    *finished;    /* last finished file or "" */
     char    *dir;         /* directory of the streaming file, or NULL */
@@ -47,6 +49,7 @@ lt_recorder *lt_rec_new(const char *const *names, const char *const *units, int 
         r->units[i] = dup_or_empty(units ? units[i] : NULL);
     }
     r->hz = 10.0;
+    r->fmt = LT_FMT_MLG;
     r->path = lt_strdup("");
     r->finished = lt_strdup("");
     r->tt = (double *)lt_calloc(LT_REC_TAIL, sizeof(double));
@@ -58,9 +61,14 @@ lt_recorder *lt_rec_new(const char *const *names, const char *const *units, int 
 static int rec_close_writer(lt_recorder *r)
 {
     int rc = 0;
-    if (r->w) {
-        rc = lt_mlg_close(r->w);
+    if (r->w || r->tw) {
+        if (r->w) {
+            rc = lt_mlg_close(r->w);
+        } else {
+            rc = lt_msl_close(r->tw);
+        }
         r->w = NULL;
+        r->tw = NULL;
         lt_free(r->finished);
         r->finished = lt_strdup(r->path);
     }
@@ -86,6 +94,33 @@ void lt_rec_free(lt_recorder *r)
     lt_free(r->tt);
     lt_free(r->tv);
     lt_free(r);
+}
+
+void lt_rec_set_format(lt_recorder *r, lt_log_format fmt)
+{
+    r->fmt = fmt == LT_FMT_MSL ? LT_FMT_MSL : LT_FMT_MLG;
+}
+
+lt_log_format lt_rec_format(const lt_recorder *r)
+{
+    return r->fmt;
+}
+
+/* path with a log extension (.mlg/.msl/.csv) replaced by the recorder format's; any other path
+ * is used as given (malloc'd) */
+static char *with_ext(const lt_recorder *r, const char *path)
+{
+    const char *e = lt_path_ext(path), *want = r->fmt == LT_FMT_MSL ? ".msl" : ".mlg";
+    size_t base;
+    char *o;
+    if (e == NULL || lt_log_format_from_ext(path) == LT_FMT_NONE) {
+        return lt_strdup(path);
+    }
+    base = strlen(path) - strlen(e);
+    o = (char *)lt_malloc(base + 8);
+    memcpy(o, path, base);
+    lt_strlcpy(o + base, want, 8);
+    return o;
 }
 
 void lt_rec_set_sample_rate(lt_recorder *r, double hz)
@@ -121,22 +156,29 @@ static void reset_timeline(lt_recorder *r)
     r->tail_head = 0;
 }
 
-static int rec_open_file(lt_recorder *r, const char *path)
+static int rec_open_file(lt_recorder *r, const char *given)
 {
+    char *path = with_ext(r, given);
     char *d = dir_of(path);
     if (d) {
         lt_plat_mkdirs(d);
     }
-    r->w = lt_mlg_open(path, (const char *const *)r->names, (const char *const *)r->units,
-                       r->n_ch, NULL);
-    if (!r->w) {
+    if (r->fmt == LT_FMT_MSL) {
+        r->tw = lt_msl_open(path, (const char *const *)r->names, (const char *const *)r->units,
+                            r->n_ch, NULL);
+    } else {
+        r->w = lt_mlg_open(path, (const char *const *)r->names, (const char *const *)r->units,
+                           r->n_ch, NULL);
+    }
+    if (!r->w && !r->tw) {
         lt_free(d);
+        lt_free(path);
         return LT_EIO;
     }
     lt_free(r->dir);
     r->dir = d;
     lt_free(r->path);
-    r->path = lt_strdup(path);
+    r->path = path;
     return 0;
 }
 
@@ -210,10 +252,10 @@ int lt_rec_record_at(lt_recorder *r, double now_ms, const double *values, int n)
     if (ts < r->last_ts) {
         ts = r->last_ts;
     }
-    if (r->w) {
-        int rc = lt_mlg_put(r->w, ts, values);
+    if (r->w || r->tw) {
+        int rc = r->w ? lt_mlg_put(r->w, ts, values) : lt_msl_put(r->tw, ts, values);
         if (rc == 0 && (r->rows + 1) % REC_FLUSH_ROWS == 0) {
-            rc = lt_mlg_flush(r->w);
+            rc = r->w ? lt_mlg_flush(r->w) : lt_msl_flush(r->tw);
         }
         if (rc != 0) {
             /* disk failure: stop recording, keep what is in memory */
@@ -239,13 +281,13 @@ int lt_rec_record(lt_recorder *r, const double *values, int n)
 void lt_rec_marker_at(lt_recorder *r, double now_ms, const char *text)
 {
     double ts = r->have_start ? (now_ms - r->start_ms) / 1000.0 : 0.0;
-    if (!r->recording || !r->w) {
+    if (!r->recording || (!r->w && !r->tw)) {
         return;
     }
     if (ts < r->last_ts) {
         ts = r->last_ts;
     }
-    if (lt_mlg_put_marker(r->w, ts, text) != 0) {
+    if ((r->w ? lt_mlg_put_marker(r->w, ts, text) : lt_msl_put_marker(r->tw, text)) != 0) {
         r->recording = LT_FALSE;
         rec_close_writer(r);
     }
@@ -256,17 +298,19 @@ void lt_rec_marker(lt_recorder *r, const char *text)
     lt_rec_marker_at(r, lt_plat_now_ms(), text);
 }
 
-static char *unique_path(const char *dir)
+static char *unique_path(const lt_recorder *r, const char *dir)
 {
-    char *base = lt_rec_default_path(dir);
+    char *dflt = lt_rec_default_path(dir);
+    char *base = with_ext(r, dflt);
     char *cand = lt_strdup(base);
     int k = 1;
+    lt_free(dflt);
     while (lt_file_exists(cand)) {
         size_t bl = strlen(base);
         lt_free(cand);
         cand = (char *)lt_malloc(bl + 16);
-        memcpy(cand, base, bl - 4);   /* strip ".mlg" */
-        lt_snprintf(cand + bl - 4, 20, "_%d.mlg", k++);
+        memcpy(cand, base, bl - 4);   /* strip the extension */
+        lt_snprintf(cand + bl - 4, 20, "_%d%s", k++, base + bl - 4);
     }
     lt_free(base);
     return cand;
@@ -278,7 +322,7 @@ void lt_rec_clear(lt_recorder *r)
     r->malformed = 0;
     if (r->recording && r->dir) {
         char *d = lt_strdup(r->dir);
-        char *np = unique_path(d);
+        char *np = unique_path(r, d);
         rec_close_writer(r);
         if (rec_open_file(r, np) != 0) {
             r->recording = LT_FALSE;
@@ -305,7 +349,7 @@ double lt_rec_duration(const lt_recorder *r)
 
 const char *lt_rec_path(const lt_recorder *r)
 {
-    if (r->w && r->path[0]) {
+    if ((r->w || r->tw) && r->path[0]) {
         return r->path;
     }
     return r->finished[0] ? r->finished : r->path;

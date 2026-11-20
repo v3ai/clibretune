@@ -501,7 +501,7 @@ int lt_app_log_toggle(lt_app *app)
     path = lt_rec_default_path(dir);
     i = (size_t)lt_rec_start(app->rec, path);
     if ((int)i < 0) { lt_app_toast(app, 3, "Cannot start log: %s", lt_err_get()); }
-    else { lt_app_toast(app, 1, "Logging to %s", lt_path_base(path)); }
+    else { lt_app_toast(app, 1, "Logging to %s", lt_path_base(lt_rec_path(app->rec))); }
     lt_free(path);
     lt_free(dir);
     return 0;

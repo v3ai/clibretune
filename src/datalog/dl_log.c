@@ -33,7 +33,14 @@ void lt_log_free(lt_log *l)
     lt_free(l->t);
     lt_free(l->v);
     lt_free(l->markers);
+    lt_free(l->header);
     lt_log_init(l);
+}
+
+void lt_log_set_header(lt_log *l, const char *header)
+{
+    lt_free(l->header);
+    l->header = header != NULL ? lt_strdup(header) : NULL;
 }
 
 void lt_log_set_channels(lt_log *l, const char *const *names, const char *const *units, int n)
@@ -44,6 +51,7 @@ void lt_log_set_channels(lt_log *l, const char *const *names, const char *const 
     lt_free(l->t);
     lt_free(l->v);
     lt_free(l->markers);
+    lt_free(l->header);
     lt_log_init(l);
     if (n < 0) {
         n = 0;
@@ -127,7 +135,16 @@ lt_log_format lt_log_format_from_ext(const char *path)
     if (lt_stricmp(e, ".mlg") == 0) {
         return LT_FMT_MLG;
     }
+    if (lt_stricmp(e, ".msl") == 0) {
+        return LT_FMT_MSL;
+    }
     return LT_FMT_NONE;
+}
+
+const char *lt_log_filter_all(void)
+{
+    return "Datalogs|*.mlg;*.msl;*.csv|MegaLogViewer binary|*.mlg|MegaLogViewer text|*.msl|"
+           "CSV|*.csv|All files|*";
 }
 
 const char *lt_log_format_ext(lt_log_format f)
@@ -135,6 +152,7 @@ const char *lt_log_format_ext(lt_log_format f)
     switch (f) {
     case LT_FMT_CSV: return "csv";
     case LT_FMT_MLG: return "mlg";
+    case LT_FMT_MSL: return "msl";
     default: return "";
     }
 }
@@ -144,6 +162,7 @@ int lt_log_read(const char *path, lt_log *out)
     switch (lt_log_format_from_ext(path)) {
     case LT_FMT_CSV: return lt_csv_read(path, out);
     case LT_FMT_MLG: return lt_mlg_read(path, out);
+    case LT_FMT_MSL: return lt_msl_read(path, out);
     default:
         lt_err_set("not a log format LibreTune reads: %s", path ? path : "(null)");
         return LT_EINVAL;
@@ -155,6 +174,7 @@ int lt_log_write(const char *path, const lt_log *log)
     switch (lt_log_format_from_ext(path)) {
     case LT_FMT_CSV: return lt_csv_write(path, log);
     case LT_FMT_MLG: return lt_mlg_write(path, log, NULL);
+    case LT_FMT_MSL: return lt_msl_write(path, log);
     default:
         lt_err_set("not a log format LibreTune writes: %s", path ? path : "(null)");
         return LT_EINVAL;
@@ -213,6 +233,54 @@ static lt_bool is_num(char *s)
     return lt_parse_double(unquote(s), &d);
 }
 
+/* "MARK 003 - text" -> text (or the whole line when no text follows); NULL when not a MARK line */
+static const char *mark_text(const char *line)
+{
+    const char *p = line;
+    while (*p == ' ' || *p == '\t') {
+        p++;
+    }
+    if (strncmp(p, "MARK", 4) != 0 || (p[4] != '\0' && p[4] != ' ' && p[4] != '\t' &&
+                                       !isdigit((unsigned char)p[4]))) {
+        return NULL;
+    }
+    p += 4;
+    while (*p == ' ' || *p == '\t' || isdigit((unsigned char)*p)) {
+        p++;
+    }
+    if (*p == '-') {
+        p++;
+        while (*p == ' ' || *p == '\t') {
+            p++;
+        }
+    }
+    return *p != '\0' ? p : line;
+}
+
+/* quoted title line before the header: returns 1 (and the text without quotes) unless its
+ * first cell is the "Time" column */
+static int title_line(char *line, char **text)
+{
+    char *p = lt_str_trim(line), *q;
+    size_t n;
+    if (p[0] != '"') {
+        return 0;
+    }
+    q = strchr(p + 1, '"');
+    if (q != NULL && (size_t)(q - (p + 1)) >= 4 && lt_strnicmp(p + 1, "time", 4) == 0) {
+        return 0;
+    }
+    if (q == NULL && lt_strnicmp(p + 1, "time", 4) == 0) {
+        return 0;
+    }
+    n = strlen(p);
+    if (n >= 2 && p[n - 1] == '"') {
+        p[n - 1] = '\0';
+    }
+    *text = p + 1;
+    return 1;
+}
+
 static void lower_inplace(char *s)
 {
     for (; *s; s++) {
@@ -233,9 +301,11 @@ int lt_csv_parse(const char *text, size_t len, lt_log *out)
     double *vals = NULL;
     int units_possible = 1, rc = 0;
     lt_log tmp;
+    lt_buf title;
 
     lt_log_init(&tmp);
     lt_log_init(out);
+    lt_buf_init(&title);
     if (len >= 3 && (unsigned char)p[0] == 0xEF && (unsigned char)p[1] == 0xBB &&
         (unsigned char)p[2] == 0xBF) {
         p += 3;
@@ -259,6 +329,17 @@ int lt_csv_parse(const char *text, size_t len, lt_log *out)
         p = next;
 
         if (!have_header) {
+            char *tt;
+            if (lt_str_trim(line)[0] == '\0') {
+                continue;
+            }
+            if (title_line(line, &tt)) {
+                if (title.len > 0) {
+                    lt_buf_putc(&title, '\n');
+                }
+                lt_buf_puts(&title, tt);
+                continue;
+            }
             have_header = 1;
             if (count_char(line, '\t') > count_char(line, ',')) {
                 delim = '\t';
@@ -303,12 +384,22 @@ int lt_csv_parse(const char *text, size_t len, lt_log *out)
             }
             lt_log_set_channels(&tmp, (const char *const *)names, (const char *const *)units,
                                 n_ch);
+            if (title.len > 0) {
+                lt_log_set_header(&tmp, (const char *)title.data);
+            }
             vals = (double *)lt_malloc((size_t)n_ch * sizeof(double));
             continue;
         }
         h = lt_str_trim(line);
         if (*h == '\0') {
             continue;
+        }
+        {
+            const char *mt = mark_text(h);
+            if (mt != NULL) {
+                lt_log_add_marker(&tmp, tmp.n > 0 ? tmp.t[tmp.n - 1] : 0.0, mt);
+                continue;
+            }
         }
         nf = split_line(h, delim, fields, maxf);
         if (nf > maxf) {
@@ -388,6 +479,7 @@ done:
     lt_free(line);
     lt_free(fields);
     lt_free(vals);
+    lt_buf_free(&title);
     free_strs(names, n_ch);
     free_strs(units, n_ch);
     lt_log_free(&tmp);

@@ -1,10 +1,13 @@
-/* tables_curve.c - curve editor tab: line plot with draggable points plus an editable list.
+/* tables_curve.c - curve editor tab: line plot with draggable points plus an editable list, and an
+ * optional X-Y log plot behind the curve (live points with age fade and/or the loaded datalog).
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 #include <string.h>
 #include <math.h>
 #include "tables_priv.h"
 #include "view_kit.h"
+#include "feat_log.h"
+#include "../plat/plat.h"
 
 typedef struct crv_tab {
     lt_tblview v;
@@ -26,6 +29,14 @@ typedef struct crv_tab {
     int select_all;
     lt_rect list_area;
     int scale_open, scale_mode; double scale_val;
+    /* X-Y log plot */
+    int xy_on, xy_src, xy_fade;    /* source 0 live, 1 loaded log, 2 both; fade index */
+    char xy_y[64];                 /* Y channel */
+    lt_xyring xy_ring;             /* live points (display units, time in s) */
+    unsigned long xy_frame;
+    double *xy_px, *xy_py, *xy_pa; /* this frame's points; alpha < 0 = log point */
+    int xy_n;
+    double xy_lo, xy_hi;           /* right axis range */
 } crv_tab;
 
 /* digits and constant limits in display units (G-90) */
@@ -138,11 +149,11 @@ static double clampy(const crv_tab *st, double v)
     return lt_tabs_round(v, st->ydig);
 }
 
-typedef struct plot_ctx { crv_tab *st; lt_rect r; lt_color line, grid, pt, sel, live, axis, bg; int hot, cell, pct; } plot_ctx;
+typedef struct plot_ctx { crv_tab *st; lt_rect r; lt_color line, grid, pt, sel, live, axis, bg, xy, xy_log; int hot, cell, pct, xy_on; } plot_ctx;
 
 /* plot margins at 100%; scaled by the UI scale kept in plot_ctx.pct */
 #define PL_L(p) lt_ui_px_pct(54, (p)->pct)
-#define PL_R(p) lt_ui_px_pct(20, (p)->pct)
+#define PL_R(p) lt_ui_px_pct((p)->xy_on ? 54 : 20, (p)->pct)
 #define PL_T(p) lt_ui_px_pct(18, (p)->pct)
 #define PL_B(p) lt_ui_px_pct(38, (p)->pct)
 
@@ -153,6 +164,176 @@ static double sx_of(const plot_ctx *p, double x)
 static double sy_of(const plot_ctx *p, double y)
 {
     return p->r.y + p->r.h - PL_B(p) - (y - p->st->py0) / (p->st->py1 - p->st->py0) * (p->r.h - PL_T(p) - PL_B(p));
+}
+
+/* ---- X-Y log plot (TunerStudio Ultra style): recorded points of the curve's X channel against a
+ * chosen Y channel, drawn behind the curve on their own right-hand scale ---- */
+#define XY_RING 900
+#define XY_LOGPTS 6000
+static const char *const xy_srcs[3] = { "Live", "Loaded log", "Live + log" };
+static const char *const xy_fades[4] = { "Fade 10 s", "Fade 30 s", "Fade 60 s", "No fade" };
+static const double xy_fade_v[4] = { 10.0, 30.0, 60.0, 0.0 };
+
+static const char *xy_chan_get(void *ud, int i)
+{
+    const lt_app *app = (const lt_app *)ud;
+    if ((size_t)i < app->ini->n_channels) { return app->ini->channels[i]->name; }
+    return lt_datalog_virtual_name((size_t)i - app->ini->n_channels);
+}
+
+static int xy_chan_count(const lt_app *app)
+{
+    return (int)(app->ini->n_channels + lt_datalog_virtual_count());
+}
+
+static int xy_chan_find(const lt_app *app, const char *name)
+{
+    int i, n = xy_chan_count(app);
+    for (i = 0; i < n; i++) { if (strcmp(xy_chan_get((void *)app, i), name) == 0) { return i; } }
+    return -1;
+}
+
+/* default Y: the channel of the curve's gauge, else a lambda / AFR channel */
+static void xy_default(lt_app *app, crv_tab *st)
+{
+    static const char *const words[] = { "lambdaValue", "AFRValue", "lambda", "afr", "ego" };
+    const lt_ini_gauge *g = st->c->gauge != NULL ? lt_ini_find_gauge(app->ini, st->c->gauge) : NULL;
+    int i, w, best = -1, best_rank = 99, n = xy_chan_count(app);
+    if (g != NULL && g->channel != NULL && xy_chan_find(app, g->channel) >= 0 &&
+        (st->c->x_channel == NULL || strcmp(g->channel, st->c->x_channel) != 0)) {
+        lt_strlcpy(st->xy_y, g->channel, sizeof(st->xy_y));
+        return;
+    }
+    for (w = 0; w < 5 && best < 0; w++) {
+        for (i = 0; i < n; i++) {
+            const char *nm = xy_chan_get(app, i);
+            int rk = lt_graph_name_rank(nm, words[w]);
+            if (rk < 0) { continue; }
+            if (best < 0 || rk < best_rank || (rk == best_rank && strlen(nm) < strlen(xy_chan_get(app, best)))) {
+                best = i; best_rank = rk;
+            }
+        }
+    }
+    lt_strlcpy(st->xy_y, best >= 0 ? xy_chan_get(app, best) : "", sizeof(st->xy_y));
+}
+
+/* sample the live stream on every new realtime frame */
+static void xy_sample(lt_app *app, crv_tab *st)
+{
+    double x, y, now = lt_ui_now(app->ui) / 1000.0;
+    if (st->xy_ring.cap == 0) { lt_xyring_init(&st->xy_ring, XY_RING); }
+    if (xy_fade_v[st->xy_fade] > 0.0) { lt_xyring_expire(&st->xy_ring, now, xy_fade_v[st->xy_fade]); }
+    if (st->c->x_channel == NULL || st->xy_y[0] == '\0' || app->rt == NULL) { return; }
+    if (app->conn != LT_APP_ONLINE && app->conn != LT_APP_DEMO) { return; }
+    if (app->frames_ok == st->xy_frame) { return; }
+    st->xy_frame = app->frames_ok;
+    if (!lt_app_channel_disp(app, st->c->x_channel, &x, NULL)) { return; }
+    if (!lt_app_channel_disp(app, st->xy_y, &y, NULL)) { return; }
+    (void)lt_xyring_push(&st->xy_ring, x, y, now);
+}
+
+/* build this frame's overlay points (screen independent: data units + alpha) */
+static void xy_collect(lt_app *app, crv_tab *st)
+{
+    const lt_log *L = st->xy_src != 0 ? lt_logx_shared_log(app) : NULL;
+    int n = 0, i, cap = XY_RING + XY_LOGPTS;
+    double now = lt_ui_now(app->ui) / 1000.0, lo = 1e300, hi = -1e300;
+    st->xy_n = 0;
+    if (st->xy_px == NULL) {
+        st->xy_px = (double *)lt_calloc((size_t)cap, sizeof(double));
+        st->xy_py = (double *)lt_calloc((size_t)cap, sizeof(double));
+        st->xy_pa = (double *)lt_calloc((size_t)cap, sizeof(double));
+    }
+    if (L != NULL && st->c->x_channel != NULL) {
+        int cx = lt_log_channel_index(L, st->c->x_channel), cy = lt_log_channel_index(L, st->xy_y);
+        if (cx >= 0 && cy >= 0 && L->n > 0) {
+            lt_uconv ux, uy;
+            long k, stride = L->n / XY_LOGPTS + 1;
+            lt_uconv_make(&ux, L->units != NULL ? L->units[cx] : "");
+            lt_uconv_make(&uy, L->units != NULL ? L->units[cy] : "");
+            for (k = 0; k < L->n && n < XY_LOGPTS; k += stride) {
+                st->xy_px[n] = lt_uconv_to_disp(&ux, LT_LOG_AT(L, k, cx));
+                st->xy_py[n] = lt_uconv_to_disp(&uy, LT_LOG_AT(L, k, cy));
+                st->xy_pa[n] = -1.0;           /* log point: fixed look */
+                n++;
+            }
+        }
+    }
+    if (st->xy_src != 1) {
+        int cnt = lt_xyring_count(&st->xy_ring);
+        for (i = 0; i < cnt && n < cap; i++) {
+            double t, a;
+            lt_xyring_get(&st->xy_ring, i, &st->xy_px[n], &st->xy_py[n], &t);
+            a = lt_xy_age_alpha(now - t, xy_fade_v[st->xy_fade]);
+            if (a <= 0.0) { continue; }
+            st->xy_pa[n] = a;
+            n++;
+        }
+    }
+    for (i = 0; i < n; i++) {
+        if (st->xy_px[i] < st->px0 || st->xy_px[i] > st->px1) { continue; }
+        if (st->xy_py[i] < lo) { lo = st->xy_py[i]; }
+        if (st->xy_py[i] > hi) { hi = st->xy_py[i]; }
+    }
+    if (lo > hi) { lo = 0.0; hi = 1.0; }
+    if (hi - lo < 1e-9) { lo -= 0.5; hi += 0.5; }
+    else { double pad = (hi - lo) * 0.08; lo -= pad; hi += pad; }
+    st->xy_lo = lo; st->xy_hi = hi;
+    st->xy_n = n;
+}
+
+/* controls row shown while the overlay is on */
+static void xy_controls(lt_app *app, crv_tab *st)
+{
+    lt_ui *ui = app->ui;
+    const lt_theme *th = lt_ui_theme(ui);
+    int w[7], sel = xy_chan_find(app, st->xy_y), n = xy_chan_count(app);
+    char b[96];
+    w[0] = 64; w[1] = 220; w[2] = 120; w[3] = 110; w[4] = 70; w[5] = -1;
+    lt_ui_layout_row(ui, 6, w, 0);
+    lt_ui_label_ex(ui, "  X-Y: Y", th->text2, LT_UI_ALIGN_LEFT);
+    if (lt_ui_combo_cb(ui, "xy_y", &sel, n, xy_chan_get, app) && sel >= 0) {
+        lt_strlcpy(st->xy_y, xy_chan_get(app, sel), sizeof(st->xy_y));
+        lt_xyring_clear(&st->xy_ring);
+    }
+    lt_ui_combo(ui, "xy_src", &st->xy_src, xy_srcs, 3);
+    lt_ui_combo(ui, "xy_fade", &st->xy_fade, xy_fades, 4);
+    if (lt_ui_button(ui, "Clear")) { lt_xyring_clear(&st->xy_ring); }
+    if (st->c->x_channel == NULL) { lt_snprintf(b, sizeof(b), "This curve has no X channel"); }
+    else if (st->xy_src != 0 && lt_logx_shared_log(app) == NULL) {
+        lt_snprintf(b, sizeof(b), "No log loaded (open one in the Datalog Viewer)");
+    } else {
+        lt_snprintf(b, sizeof(b), "%d points of %s vs %s (right axis)", st->xy_n, st->c->x_channel, st->xy_y);
+    }
+    lt_ui_label_ex(ui, b, th->muted, LT_UI_ALIGN_LEFT);
+}
+
+static void xy_plot(lt_gfx *g, const plot_ctx *p, int x0, int x1, int y0, int y1)
+{
+    crv_tab *st = p->st;
+    lt_font *fm = lt_font_get(LT_FONT_MONO);
+    double f10 = lt_gfx_fpx(g, 10.0), rad = p->cell ? 1.0 : 2.2 * (double)p->pct / 100.0, step, v;
+    int i;
+    char b[32];
+    lt_color live = p->xy, logc = p->xy_log;
+    LT_UNUSED(x0);
+    for (i = 0; i < st->xy_n; i++) {
+        double sx, sy, a = st->xy_pa[i];
+        lt_color c;
+        if (st->xy_px[i] < st->px0 || st->xy_px[i] > st->px1) { continue; }
+        sx = sx_of(p, st->xy_px[i]);
+        sy = (double)y0 - (st->xy_py[i] - st->xy_lo) / (st->xy_hi - st->xy_lo) * (double)(y0 - y1);
+        if (a < 0.0) { c = (logc & 0x00FFFFFFUL) | 0x70000000UL; }
+        else { c = (live & 0x00FFFFFFUL) | ((lt_color)(40.0 + a * 200.0) << 24); }
+        lt_gfx_fill_circle(g, sx, sy, a < 0.0 ? rad * 0.8 : rad, c);
+    }
+    /* right axis */
+    step = lt_graph_nice_step(st->xy_hi - st->xy_lo, 4);
+    for (v = ceil(st->xy_lo / step) * step; v <= st->xy_hi; v += step) {
+        double yy = (double)y0 - (v - st->xy_lo) / (st->xy_hi - st->xy_lo) * (double)(y0 - y1);
+        lt_fmt_double(b, sizeof(b), v, step >= 1.0 ? 0 : (step >= 0.1 ? 1 : 2));
+        lt_gfx_text_bl(g, fm, f10, (double)x1 + (double)lt_gfx_px(g, 6), (int)yy + lt_gfx_px(g, 4), b, live);
+    }
 }
 
 static void chip(lt_gfx *g, double cx, double ytop, const char *s, lt_color fg)
@@ -199,6 +380,7 @@ static void draw_plot(lt_gfx *g, lt_rect r, void *user)
         lt_gfx_text_bl(g, fm, f10, xx - (fm != NULL ? lt_gfx_text_measure(fm, f10, b) / 2.0 : 0.0), y0 + lt_gfx_px(g, 16), b, p->axis);
     }
     lt_gfx_rect(g, lt_rect_make(x0, y1, x1 - x0 + 1, y0 - y1 + 1), LT_RGBA(255, 255, 255, 45));
+    if (p->xy_on) { xy_plot(g, p, x0, x1, y0, y1); }
     /* axis captions */
     if (st->c->col_x != NULL) {
         char xl[96];
@@ -445,7 +627,7 @@ static void crv_keys(lt_app *app, lt_app_tab *tab, crv_tab *st)
 static const char *const crv_range_names[3] = { "Auto", "Fit data", "Full limits" };
 
 enum { CB_UNDO, CB_REDO, CB_INTERP, CB_SMOOTH, CB_SCALE, CB_COPY, CB_PASTE, CB_RANGE, CB_MOVEX,
-       CB_BURN, CB_N };
+       CB_XY, CB_BURN, CB_N };
 
 static void crv_toolbar_items(lt_app *app, crv_tab *st, lt_vk_item *it, int cell)
 {
@@ -467,6 +649,8 @@ static void crv_toolbar_items(lt_app *app, crv_tab *st, lt_vk_item *it, int cell
     CB(CB_RANGE, LT_ICON_ARROW_UP_DOWN, "Range", rtip);
     CB(CB_MOVEX, LT_ICON_MOVE_HORIZONTAL, "MoveX", "Dragging a point also moves it horizontally");
     it[n - 1].on = st->move_x;
+    CB(CB_XY, LT_ICON_CIRCLE_DOT, "X-Y", "X-Y log plot: recorded points of the X channel against a chosen channel");
+    it[n - 1].on = st->xy_on;
     it[n].kind = LT_VK_SEP; n++;
     CB(CB_BURN, LT_ICON_FLAME, "Burn", "Write the changes to ECU flash");
     it[n - 1].accent = 1;
@@ -479,7 +663,7 @@ static void crv_toolbar_items(lt_app *app, crv_tab *st, lt_vk_item *it, int cell
 static int crv_toolbar_cmd(int hit)
 {
     static const int cmds[16] = { CB_UNDO, CB_REDO, -1, CB_INTERP, CB_SMOOTH, CB_SCALE, CB_COPY,
-                                  CB_PASTE, -1, CB_RANGE, CB_MOVEX, -1, CB_BURN, -1, -1, -1 };
+                                  CB_PASTE, -1, CB_RANGE, CB_MOVEX, CB_XY, -1, CB_BURN, -1, -1 };
     return hit >= 0 && hit < 16 ? cmds[hit] : -1;
 }
 
@@ -495,6 +679,10 @@ static void crv_command(lt_app *app, lt_app_tab *tab, crv_tab *st, int cmd)
     case CB_PASTE: crv_paste(app, tab, st); break;
     case CB_RANGE: st->range_mode = (st->range_mode + 1) % 3; break;
     case CB_MOVEX: st->move_x = !st->move_x; break;
+    case CB_XY:
+        st->xy_on = !st->xy_on;
+        if (st->xy_on && st->xy_y[0] == '\0') { xy_default(app, st); }
+        break;
     case CB_BURN: lt_app_burn(app); tab->dirty = 0; break;
     default: break;
     }
@@ -562,7 +750,12 @@ static void crv_draw(lt_app *app, lt_app_tab *tab, lt_rect rr)
         tab->data = st;
         st->drag = -1;
         st->scale_val = 1.05;
+        st->xy_fade = 1;
         crv_load(app, tab, st);
+        {
+            char *e = lt_plat_getenv("LT_SHOT_CURVEXY");   /* screenshot harness: overlay on */
+            if (e != NULL) { st->xy_on = 1; st->xy_src = 2; lt_free(e); }
+        }
     }
     st->frame++;
     if (!st->loaded) {
@@ -576,6 +769,9 @@ static void crv_draw(lt_app *app, lt_app_tab *tab, lt_rect rr)
     if (!st->loaded) { return; }
     crv_live(app, st);
     crv_ranges(st);
+    if (st->xy_y[0] == '\0' && st->c->x_channel != NULL) { xy_default(app, st); }
+    xy_sample(app, st);
+    if (st->xy_on) { xy_collect(app, st); }
     crv_keys(app, tab, st);
     /* header + toolbar */
     {
@@ -606,8 +802,11 @@ static void crv_draw(lt_app *app, lt_app_tab *tab, lt_rect rr)
         if (hit >= 0) { crv_command(app, tab, st, crv_toolbar_cmd(hit)); }
     }
     w1 = -1;
-    lt_ui_layout_row(ui, 1, &w1, lt_ui_cell_mode(ui) ? 0 : 22);
-    lt_ui_label_ex(ui, "  Drag a point vertically (MoveX also moves it sideways); edit values in the list", th->muted, LT_UI_ALIGN_LEFT);
+    if (st->xy_on) { xy_controls(app, st); }
+    else {
+        lt_ui_layout_row(ui, 1, &w1, lt_ui_cell_mode(ui) ? 0 : 22);
+        lt_ui_label_ex(ui, "  Drag a point vertically (MoveX also moves it sideways); edit values in the list", th->muted, LT_UI_ALIGN_LEFT);
+    }
     w2[0] = -3; w2[1] = -2;
     lt_ui_layout_row(ui, 2, w2, -1);
     pr = lt_ui_layout_next(ui);
@@ -620,6 +819,7 @@ static void crv_draw(lt_app *app, lt_app_tab *tab, lt_rect rr)
     if (!th->dark) { pc.grid = LT_RGBA(0, 0, 0, 28); }
     pc.pt = th->accent; pc.sel = th->warning; pc.live = th->cursor_live; pc.axis = th->text2;
     pc.bg = th->table_bg; pc.cell = lt_ui_cell_mode(ui); pc.pct = lt_ui_scale_pct(ui);
+    pc.xy_on = st->xy_on; pc.xy = 0xFFFFB74DUL; pc.xy_log = 0xFFB39DDBUL;
     pc.hot = st->drag;
     if (st->drag < 0) {
         double best = 100.0;
@@ -725,6 +925,8 @@ static void crv_close(lt_app *app, lt_app_tab *tab)
     if (st == NULL) { return; }
     lt_tblview_free(&st->v);
     lt_free(st->ox); lt_free(st->oz); lt_free(st->selr);
+    lt_xyring_free(&st->xy_ring);
+    lt_free(st->xy_px); lt_free(st->xy_py); lt_free(st->xy_pa);
     lt_free(st);
     tab->data = NULL;
 }

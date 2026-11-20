@@ -8,6 +8,7 @@
 
 #include "app_ext.h"
 #include "../datalog/dl_ana.h"
+#include "../datalog/dl_view.h"
 
 #define LT_LOGX_RULES 4
 
@@ -29,6 +30,19 @@ typedef struct lt_logx {
     lt_math_set math;             /* project math channels */
     char math_path[512];
     int math_loaded;
+    int rec_fmt;                  /* recording file format: 0 MLG, 1 MSL */
+    /* live math channels (virtual realtime channels) */
+    lt_app *app;
+    lt_math_live live;
+    int math_gen, virt_gen;       /* math set generation / generation published as virtual */
+    unsigned long live_stamp;     /* app->frames_ok at the last evaluation */
+    double live_ms;
+    int virt_rec_gen;             /* virtual channel generation the recorder was built with */
+    /* the loaded datalog: opened in the Datalog Viewer, also used by the curve X-Y overlay */
+    lt_log shared; int have_shared; char shared_path[512];
+    int shared_math;              /* math channels appended to it */
+    int shared_gen;               /* bumped on every load */
+    int shot_checked;             /* LT_SHOT_LOG handled */
 } lt_logx;
 
 lt_logx *lt_logx_get(lt_app *app);
@@ -41,6 +55,15 @@ lt_math_set *lt_logx_math(lt_app *app);
 int      lt_logx_math_save(lt_app *app);
 /* warn (toast) when a table edit changes a value too much; returns 1 when it warned */
 int      lt_logx_check_change(lt_app *app, double old_v, double new_v);
+/* live value of a math channel (evaluated against the latest realtime frame); LT_FALSE when the
+ * name is not a math channel or it cannot be evaluated */
+lt_bool  lt_logx_live_math(lt_app *app, const char *name, double *out);
+/* the loaded datalog (NULL when none): what the Datalog Viewer shows and the curve overlay uses */
+lt_log  *lt_logx_shared_log(lt_app *app);
+/* read a log file into it (math channels appended); 0, or negative with err filled */
+int      lt_logx_load_log(lt_app *app, const char *path, char *err, size_t errlen);
+/* graph setup file (project graph_setup.json, else the config dir), malloc'd */
+char    *lt_logx_graph_path(lt_app *app);
 
 void lt_feat_logging_register(lt_app_ext *reg);
 void lt_feat_math_register(lt_app_ext *reg);

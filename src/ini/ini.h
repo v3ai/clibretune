@@ -657,6 +657,11 @@ int        lt_ini_rt_update(lt_ini_rt *rt, const lt_u8 *frame, size_t len);
 /* Set/override one channel directly (demo mode, replay of logged values). */
 void       lt_ini_rt_set(lt_ini_rt *rt, size_t channel_index, double v);
 lt_bool    lt_ini_rt_get(const lt_ini_rt *rt, const char *name, double *out);
+/* Virtual channels: lt_ini_rt_get asks fn for names that are not INI output channels (the app
+ * installs its live math channels here, so gauges, the status bar, dashboards and the recorder
+ * resolve them like real channels). Computed INI channels do not see them. fn NULL = none. */
+typedef lt_bool (*lt_ini_rt_virtual_fn)(void *ud, const char *name, double *out);
+void       lt_ini_rt_set_virtual(lt_ini_rt *rt, lt_ini_rt_virtual_fn fn, void *ud);
 double     lt_ini_rt_value(const lt_ini_rt *rt, size_t channel_index);   /* 0 if never set */
 lt_bool    lt_ini_rt_valid(const lt_ini_rt *rt, size_t channel_index);   /* decoded in last update */
 size_t     lt_ini_rt_count(const lt_ini_rt *rt);

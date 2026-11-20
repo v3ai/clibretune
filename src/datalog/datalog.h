@@ -35,6 +35,8 @@ typedef struct lt_log {
     double *v;           /* n * n_ch values, row-major: v[i*n_ch + c] */
     lt_log_marker *markers; long n_markers;
     long    cap;         /* allocated sample capacity (builders only) */
+    char   *header;      /* free-text header lines ('\n' separated, no quotes): the quoted title
+                            lines of an MSL/CSV file; NULL when none. Owned (lt_log_free). */
 } lt_log;
 #define LT_LOG_AT(log, i, c) ((log)->v[(size_t)(i) * (size_t)(log)->n_ch + (size_t)(c)])
 
@@ -48,9 +50,13 @@ double lt_log_duration(const lt_log *l);
 /* ADDITIVE: append a marker (text truncated to 50 chars). */
 void lt_log_add_marker(lt_log *l, double t, const char *text);
 
-typedef enum lt_log_format { LT_FMT_NONE = 0, LT_FMT_CSV, LT_FMT_MLG } lt_log_format;
-lt_log_format lt_log_format_from_ext(const char *path);   /* .csv / .mlg, case-insensitive */
-const char   *lt_log_format_ext(lt_log_format f);          /* "csv","mlg" */
+typedef enum lt_log_format { LT_FMT_NONE = 0, LT_FMT_CSV, LT_FMT_MLG, LT_FMT_MSL } lt_log_format;
+lt_log_format lt_log_format_from_ext(const char *path);   /* .csv / .mlg / .msl, case-insensitive */
+const char   *lt_log_format_ext(lt_log_format f);          /* "csv","mlg","msl" */
+/* file dialog filter listing every log format we read ("Datalogs|*.mlg;*.msl;*.csv|...") */
+const char   *lt_log_filter_all(void);
+/* ADDITIVE: set l->header (copied, may be NULL) */
+void lt_log_set_header(lt_log *l, const char *header);
 /* Dispatch by extension only (content is never sniffed). Errors: LT_EINVAL for
  * other extensions ("not a log format LibreTune reads"), LT_EDATA with a
  * message for corrupt files. */
@@ -67,6 +73,31 @@ int lt_csv_write(const char *path, const lt_log *log);
  * separated, optional UTF-8 BOM, quoted header cells, "Time (ms)" / units "ms" -> /1000,
  * and a units line right after the header. */
 int lt_csv_parse(const char *text, size_t len, lt_log *out);
+/* The reader also accepts the MegaLogViewer/TunerStudio extras (used by .msl): quoted title
+ * lines before the header (kept in log->header) and "MARK nnn - text" lines between data rows
+ * (a marker at the time of the preceding row). */
+
+/* ---- MSL (MegaLogViewer / TunerStudio ASCII log) ----
+ * Layout written:   "title line"            (log->header lines, else "LibreTune datalog" +
+ *                   "Capture Date: ...")    the capture date)
+ *                   Time<TAB>ch1<TAB>...     channel names
+ *                   s<TAB>unit1<TAB>...      units line
+ *                   0.000<TAB>v1<TAB>...     data rows (time %.3f, values compact)
+ *                   MARK 000 - text          after the last row at or before the marker time
+ * Reading is lt_csv_parse (tab separated, quoted titles, units line, MARK lines). */
+int lt_msl_parse(const char *text, size_t len, lt_log *out);
+int lt_msl_read(const char *path, lt_log *out);
+int lt_msl_write(const char *path, const lt_log *log);
+/* in-memory form of lt_msl_write (appends to b) */
+void lt_msl_format(lt_buf *b, const lt_log *log);
+/* Streaming MSL writer (recorder). title may be NULL (default title lines). */
+typedef struct lt_msl_writer lt_msl_writer;
+lt_msl_writer *lt_msl_open(const char *path, const char *const *names, const char *const *units,
+                           int n_ch, const char *title);
+int  lt_msl_put(lt_msl_writer *w, double t_sec, const double *values);
+int  lt_msl_put_marker(lt_msl_writer *w, const char *text);
+int  lt_msl_flush(lt_msl_writer *w);
+int  lt_msl_close(lt_msl_writer *w);
 
 /* ====================================================================== */
 /* MLG v2 (spec 4), big endian                                             */
@@ -114,6 +145,10 @@ typedef struct lt_recorder lt_recorder;
 lt_recorder *lt_rec_new(const char *const *names, const char *const *units, int n_ch);
 void   lt_rec_free(lt_recorder *r);                     /* stops and closes any open file */
 void   lt_rec_set_sample_rate(lt_recorder *r, double hz);   /* clamp [1, 200], default 10 */
+/* ADDITIVE: file format of the next lt_rec_start / lt_rec_clear file: LT_FMT_MLG (default) or
+ * LT_FMT_MSL; a .mlg/.msl/.csv extension of the path passed to lt_rec_start is replaced to match. */
+void   lt_rec_set_format(lt_recorder *r, lt_log_format fmt);
+lt_log_format lt_rec_format(const lt_recorder *r);
 /* Begin writing an MLG file immediately (every accepted record is appended).
  * The caller picks the path (typically <project>/datalogs/YYYY-MM-DD_HH.MM.SS.mlg,
  * see lt_rec_default_path). */
