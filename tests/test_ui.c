@@ -507,6 +507,27 @@ static void scene_number(lt_ui *ui)
     R[1] = lt_ui_last_rect(ui);
 }
 
+LT_TEST(test_number_field_keeps_out_of_range_value)
+{
+    /* a value stored outside the INI range (an ECU that was never set up) is shown, not
+     * rewritten: drawing the field must not report a change, or merely opening a dialog
+     * would edit the tune */
+    reset_state();
+    s_val = -3.0;
+    s_res = 0;
+    h_open(400, 300, 0);
+    H.scene = scene_number;
+    frames(3);
+    LT_CHECK_NEAR(s_val, -3.0, 1e-9);
+    LT_CHECK(!(s_res & LT_UI_CHANGED));
+    /* editing it still clamps */
+    click_rect(R[0]);
+    key(LT_KEY_UP);
+    LT_CHECK(s_val >= 0.0 && s_val <= 10.0);
+    LT_CHECK(s_res & LT_UI_CHANGED);
+    h_close();
+}
+
 LT_TEST(test_number_field)
 {
     reset_state();
@@ -2132,6 +2153,7 @@ int main(void)
     LT_RUN(test_check_radio_toggle);
     LT_RUN(test_text_editing);
     LT_RUN(test_number_field);
+    LT_RUN(test_number_field_keeps_out_of_range_value);
     LT_RUN(test_slider);
     LT_RUN(test_combo);
     LT_RUN(test_listbox);

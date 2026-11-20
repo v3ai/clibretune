@@ -546,7 +546,8 @@ int lt_ui_number(lt_ui *ui, const char *label, double *v, double mn, double mx, 
         ui_text_in(ui, lt_rect_make(r.x + t->pad_x, r.y, r.w - 2 * t->pad_x, r.h), txt, fg, 2);
         ui_set_last(ui, id, r);
     }
-    if (has_range) { *v = LT_CLAMP(*v, mn, mx); }
+    /* every input path above clamps what the user enters; a stored value outside the range is
+     * shown as it is, not rewritten just because the field was drawn */
     if (*v != old) { res |= LT_UI_CHANGED; }
     return res;
 }
