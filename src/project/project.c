@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <limits.h>
 #include "proj_priv.h"
 #include "../plat/plat.h"
 
@@ -43,6 +44,14 @@ static int need_num(const lt_json *o, const char *key, double *dst, const char *
     }
     *dst = v->num;
     return LT_OK;
+}
+
+/* JSON number -> unsigned, saturating (an out-of-range conversion is undefined behaviour) */
+static unsigned json_uint(double d)
+{
+    if (!(d > 0.0)) return 0;
+    if (d >= (double)UINT_MAX) return UINT_MAX;
+    return (unsigned)d;
 }
 
 static int need_bool(const lt_json *o, const char *key, lt_bool *dst, const char *path)
@@ -105,13 +114,13 @@ int lt_proj_config_read(lt_proj_config *c, const char *path)
             rc = LT_EDATA;
         }
     }
-    if (rc == LT_OK) rc = need_num(conn, "baud_rate", &d, path), c->conn.baud_rate = (unsigned)d;
-    if (rc == LT_OK) rc = need_num(conn, "timeout_ms", &d, path), c->conn.timeout_ms = (unsigned)d;
+    if (rc == LT_OK) rc = need_num(conn, "baud_rate", &d, path), c->conn.baud_rate = json_uint(d);
+    if (rc == LT_OK) rc = need_num(conn, "timeout_ms", &d, path), c->conn.timeout_ms = json_uint(d);
     if (rc == LT_OK) rc = need_bool(set, "auto_load_tune", &c->settings.auto_load_tune, path);
     if (rc == LT_OK) rc = need_bool(set, "auto_save_tune", &c->settings.auto_save_tune, path);
     if (rc == LT_OK) rc = need_bool(set, "auto_connect", &c->settings.auto_connect, path);
     if (rc == LT_OK) {
-        c->settings.max_restore_points = (unsigned)lt_json_get_num(set, "max_restore_points", 20);
+        c->settings.max_restore_points = json_uint(lt_json_get_num(set, "max_restore_points", 20));
         v = lt_json_get(j, "dashboard");
         if (v != NULL && v->type == LT_JSON_STR) c->dashboard = lt_strdup(v->str);
     }
@@ -300,7 +309,7 @@ int lt_project_load_tune(lt_project *p)
         lt_free(f);
         return LT_OK;
     }
-    t = lt_tune_load(f);
+    t = lt_tune_load(f);               /* refuses a cut-off file */
     lt_free(f);
     if (t == NULL) {
         if (lt_err_get()[0] == '\0') lt_err_set("cannot load CurrentTune.msq");
@@ -346,13 +355,14 @@ int lt_project_save_tune(lt_project *p)
     int rc;
     if (p->tune == NULL) return LT_OK;
     f = lt_path_join(p->path, "CurrentTune.msq");
-    rc = lt_tune_save(p->tune, f);
+    rc = lt_tune_save(p->tune, f);     /* atomic: the previous file survives a failure */
     lt_free(f);
     if (rc != 0) return LT_EIO;
     if (p->tune->pc_variables.len >= 1) {
         char *pc = lt_proj_join3(p->path, "projectCfg", "pcVariableValues.msq");
-        (void)lt_tune_save_pc_variables(p->tune, pc, p->cfg.signature);
+        rc = lt_tune_save_pc_variables(p->tune, pc, p->cfg.signature);
         lt_free(pc);
+        if (rc != 0) return LT_EIO;      /* still dirty: the next save retries */
     }
     p->dirty = LT_FALSE;
     return LT_OK;
@@ -547,6 +557,10 @@ int lt_project_import_ts(const char *ts_dir, const char *target_parent, lt_proje
         }
     }
     v = lt_props_get(&pr, "ecuConfigFile");
+    /* a plain file name inside projectCfg/: a path in an imported project must not make us
+     * read (and copy into the new project) a file from elsewhere */
+    if (v != NULL) v = lt_path_base(v);
+    if (v != NULL && (strcmp(v, ".") == 0 || strcmp(v, "..") == 0)) v = NULL;
     ini_path = lt_proj_join3(ts_dir, "projectCfg", v && v[0] ? v : "mainController.ini");
     ini_raw = lt_file_read(ini_path, &n);
     if (ini_raw == NULL) {

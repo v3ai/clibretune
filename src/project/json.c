@@ -5,6 +5,7 @@
 #include <string.h>
 #include <math.h>
 #include "json.h"
+#include "../plat/plat.h"
 
 #define JSON_MAX_DEPTH 200
 
@@ -608,7 +609,7 @@ lt_json *lt_json_load(const char *path, char *err, size_t errsz)
 int lt_json_save(const lt_json *j, const char *path, int pretty)
 {
     char *s = lt_json_to_string(j, pretty);
-    int rc = lt_file_write(path, s, strlen(s));
+    int rc = lt_plat_write_atomic(path, s, strlen(s));
     lt_free(s);
     return rc == 0 ? LT_OK : LT_EIO;
 }

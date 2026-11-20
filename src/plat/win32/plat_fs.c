@@ -49,6 +49,68 @@ int lt_plat_rename(const char *from, const char *to)
     return -1;
 }
 
+static void win_err(const char *what, const char *path, DWORD e)
+{
+    lt_err_set("%s '%s' failed (%lu)", what, path, (unsigned long)e);
+}
+
+int lt_plat_write_atomic(const char *path, const void *data, size_t len)
+{
+    static unsigned long seq = 0;
+    size_t tl = strlen(path) + 48;
+    char *tmp = (char *)lt_malloc(tl);
+    const unsigned char *p = (const unsigned char *)data;
+    HANDLE h = INVALID_HANDLE_VALUE;
+    DWORD e = 0, attr;
+    int tries;
+
+    for (tries = 0; tries < 100; tries++) {
+        lt_snprintf(tmp, tl, "%s.%lu.%lu.tmp", path, (unsigned long)GetCurrentProcessId(), ++seq);
+        h = CreateFileA(tmp, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (h != INVALID_HANDLE_VALUE) break;
+        e = GetLastError();
+        if (e != ERROR_FILE_EXISTS && e != ERROR_ALREADY_EXISTS) break;
+    }
+    if (h == INVALID_HANDLE_VALUE) {
+        win_err("create temporary file for", path, e);
+        lt_free(tmp);
+        return -1;
+    }
+    e = 0;
+    while (len > 0) {
+        size_t want = len > 65536u ? 65536u : len, ok = lt_plat_fault_write_allow(want);
+        DWORD w = 0;
+        if (ok == 0) { e = ERROR_DISK_FULL; break; }
+        if (!WriteFile(h, p, (DWORD)ok, &w, NULL) || w == 0) { e = GetLastError(); break; }
+        p += w;
+        len -= (size_t)w;
+    }
+    if (len == 0 && !FlushFileBuffers(h)) e = GetLastError();
+    if (!CloseHandle(h) && len == 0 && e == 0) e = GetLastError();
+    if (len != 0 || e != 0) {
+        DeleteFileA(tmp);
+        win_err("write", path, e);
+        lt_free(tmp);
+        return -1;
+    }
+    attr = GetFileAttributesA(path);
+    if (attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_READONLY)) {
+        DeleteFileA(tmp);
+        win_err("replace read-only", path, ERROR_ACCESS_DENIED);
+        lt_free(tmp);
+        return -1;
+    }
+    if (!MoveFileExA(tmp, path, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        e = GetLastError();
+        DeleteFileA(tmp);
+        win_err("replace", path, e);
+        lt_free(tmp);
+        return -1;
+    }
+    lt_free(tmp);
+    return 0;
+}
+
 int lt_plat_list_dir(const char *path, char ***names)
 {
     WIN32_FIND_DATAA fd;

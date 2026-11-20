@@ -86,6 +86,11 @@ void   lt_ecusim_set_clock(lt_ecusim *s, double (*now_ms)(void *ud), void *ud); 
 void   lt_ecusim_tick_engine(lt_ecusim *s, unsigned dt_ms);           /* manual tick; disables auto tick */
 void   lt_ecusim_set_mode(lt_ecusim *s, lt_sim_mode m);
 void   lt_ecusim_set_link_dropped(lt_ecusim *s, lt_bool dropped);     /* simulate unplugged cable */
+/* Fault injection (tests): the nth burn command from now is carried out (only the first half
+ * of the page reaches flash when torn) and then the link drops before the reply; likewise
+ * the nth RAM write command. 0 = off. */
+void   lt_ecusim_fault_burn(lt_ecusim *s, int nth, lt_bool torn);
+void   lt_ecusim_fault_write(lt_ecusim *s, int nth);
 void   lt_ecusim_advance_secl(lt_ecusim *s, unsigned d);
 void   lt_ecusim_reboot(lt_ecusim *s);                                /* RAM <- flash (unburned writes lost) */
 /* direct access for tests / GUI "ECU" inspector (RAM image of a page) */

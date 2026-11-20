@@ -4,6 +4,7 @@
 #include <string.h>
 #include "hotkeys.h"
 #include "../gui/gui.h"
+#include "../plat/plat.h"
 
 #define HK_C LT_MOD_CTRL
 #define HK_S LT_MOD_SHIFT
@@ -246,6 +247,6 @@ int lt_hk_save(const lt_hk_set *s, const char *dir)
                     lt_hk_format(s->ov[i].key, s->ov[i].mods, one, sizeof(one)));
         lt_strlcat(buf, line, sizeof(buf));
     }
-    rc = lt_file_write(path, buf, strlen(buf));
+    rc = lt_plat_write_atomic(path, buf, strlen(buf));
     return rc;
 }

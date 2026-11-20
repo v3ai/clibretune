@@ -192,28 +192,9 @@ int lt_proj_copy_file(const char *from, const char *to)
 
 int lt_proj_write_atomic(const char *path, const void *data, size_t len)
 {
-    char *tmp = (char *)lt_malloc(strlen(path) + 5);
-    int rc;
-    strcpy(tmp, path);
-    strcat(tmp, ".tmp");
-    if (lt_file_write(tmp, data, len) != 0) {
-        lt_free(tmp);
-        return LT_EIO;
-    }
-    rc = lt_plat_rename(tmp, path);
-    if (rc != 0) {
-        /* some platforms refuse to replace an existing file */
-        lt_plat_remove(path);
-        rc = lt_plat_rename(tmp, path);
-    }
-    if (rc != 0) {
-        lt_plat_remove(tmp);
-        lt_free(tmp);
-        lt_err_set("cannot replace '%s'", path);
-        return LT_EIO;
-    }
-    lt_free(tmp);
-    return LT_OK;
+    /* the old version removed the destination when the first rename failed, so a second
+     * failure lost the file; lt_plat_write_atomic never touches it on failure */
+    return lt_plat_write_atomic(path, data, len) == 0 ? LT_OK : LT_EIO;
 }
 
 int lt_proj_rmtree(const char *path)

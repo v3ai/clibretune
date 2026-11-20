@@ -48,6 +48,8 @@ struct lt_ecusim {
     lt_simlog trig;            /* trigger logger state */
     lt_buf con_out;            /* pending console reply text */
     double wbo_t0;             /* demo of the miata-ecus wideband flasher (wbo_uart_*), 0 = idle */
+    int fault_burn, fault_write;   /* fault injection: commands left before the link drops */
+    lt_bool fault_torn;            /* ... and that burn stores only half the page */
 };
 
 static double now_ms(const lt_ecusim *s)
@@ -498,6 +500,9 @@ static void respond(lt_ecusim *s, const lt_u8 *cmd, size_t n, lt_bool env, lt_bu
                 wrote = mem_write(s, pg, off, cmd + 7, cnt) == 0;
             }
         }
+        if (s->fault_write > 0 && --s->fault_write == 0) {
+            s->dropped = LT_TRUE;          /* written, but the link is gone before the ack */
+        }
         if (env) {
             lt_buf_putc(out, wrote ? LT_RC_OK : LT_RC_OUT_OF_RANGE);
         }
@@ -509,7 +514,12 @@ static void respond(lt_ecusim *s, const lt_u8 *cmd, size_t n, lt_bool env, lt_bu
 
         pg = n >= 3 ? resolve_page(s, rd16(s, cmd + 1)) : -1;
         if (pg >= 0) {
-            memcpy(s->pages[pg].flash, s->pages[pg].ram, s->pages[pg].size);
+            size_t len = s->pages[pg].size;
+            if (s->fault_burn > 0 && --s->fault_burn == 0) {
+                if (s->fault_torn) len /= 2;   /* power/link lost while the flash was written */
+                s->dropped = LT_TRUE;
+            }
+            memcpy(s->pages[pg].flash, s->pages[pg].ram, len);
             ok = 1;
         }
         if (env) {
@@ -796,6 +806,17 @@ void lt_ecusim_set_mode(lt_ecusim *s, lt_sim_mode m)
 void lt_ecusim_set_link_dropped(lt_ecusim *s, lt_bool dropped)
 {
     s->dropped = dropped ? LT_TRUE : LT_FALSE;
+}
+
+void lt_ecusim_fault_burn(lt_ecusim *s, int nth, lt_bool torn)
+{
+    s->fault_burn = nth > 0 ? nth : 0;
+    s->fault_torn = torn ? LT_TRUE : LT_FALSE;
+}
+
+void lt_ecusim_fault_write(lt_ecusim *s, int nth)
+{
+    s->fault_write = nth > 0 ? nth : 0;
 }
 
 void lt_ecusim_advance_secl(lt_ecusim *s, unsigned d)

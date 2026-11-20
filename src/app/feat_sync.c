@@ -257,7 +257,7 @@ static int switch_ini(lt_app *app, const char *ini_path)
         lt_strlcpy(dir, app->project.path, sizeof(dir));
         txt = lt_file_read(ini_path, &len);
         dst = lt_project_ini_path(&app->project);
-        if (txt == NULL || dst == NULL || lt_file_write(dst, txt, len) < 0) {
+        if (txt == NULL || dst == NULL || lt_plat_write_atomic(dst, txt, len) < 0) {
             lt_free(txt); lt_free(dst);
             lt_app_toast(app, 3, "Cannot switch the project definition: %s", lt_err_get());
             return -1;

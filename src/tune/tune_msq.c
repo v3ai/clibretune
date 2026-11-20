@@ -5,6 +5,7 @@
 #include <string.h>
 #include <time.h>
 #include "tune_priv.h"
+#include "../plat/plat.h"
 
 /* ---------------------------------------------------------------------- */
 /* lifecycle                                                               */
@@ -664,12 +665,27 @@ lt_tune *lt_tune_parse_msq(const char *data, size_t len)
     return t;
 }
 
+/* the file ends with the closing root tag. The XML reader is lenient (it keeps what it parsed
+ * of a cut-off document), so without this a truncated tune - an interrupted copy, a crash of an
+ * older version mid-save - would load with constants silently missing. */
+static lt_bool msq_complete(const char *d, size_t n)
+{
+    while (n > 0 && (d[n - 1] == ' ' || d[n - 1] == '\t' || d[n - 1] == '\r' ||
+                     d[n - 1] == '\n' || d[n - 1] == '\0')) n--;
+    return n >= 6 && lt_strnicmp(d + n - 6, "</msq>", 6) == 0 ? LT_TRUE : LT_FALSE;
+}
+
 lt_tune *lt_tune_load(const char *path)
 {
     size_t len = 0;
     char *data = lt_file_read(path, &len);
     lt_tune *t;
     if (!data) return NULL;
+    if (!msq_complete(data, len)) {
+        lt_free(data);
+        lt_err_set("%s is incomplete: the file ends before </msq> (cut off?)", lt_path_base(path));
+        return NULL;
+    }
     t = lt_tune_parse_msq(data, len);
     lt_free(data);
     return t;
@@ -885,7 +901,7 @@ int lt_tune_save(const lt_tune *t, const char *path)
     }
     lt_buf_init(&b);
     lt_tune_to_msq(t, &b);
-    rc = lt_file_write(path, b.data, b.len);
+    rc = lt_plat_write_atomic(path, b.data, b.len);   /* never leaves a truncated tune */
     lt_buf_free(&b);
     return rc;
 }
@@ -926,7 +942,7 @@ int lt_tune_save_pc_variables(const lt_tune *t, const char *path, const char *si
     }
     lt_buf_puts(&b, "</msq>\n");
     lt_free(ps);
-    rc = lt_file_write(path, b.data, b.len);
+    rc = lt_plat_write_atomic(path, b.data, b.len);
     lt_buf_free(&b);
     return rc;
 }

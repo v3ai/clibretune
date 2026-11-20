@@ -35,6 +35,10 @@ OS; no universal "fat" binary.
 - Error convention: functions returning success use `int` 0 = ok, negative = error; set a
   message with `lt_err_set(fmt, ...)`, read it with `lt_err_get()`.
 - Style: 4-space indent, braces on the same line, <= 100 columns.
+- Files the user must not lose (tunes, pc variables, restore points, project.json, settings,
+  dashboards) are written with `lt_plat_write_atomic` (temp file + fsync + rename), never
+  `lt_file_write`, so a crash or a full disk leaves the previous file intact.
+  `lt_plat_fault_write_limit` simulates a full disk in tests (tests/test_tune_safety.c).
 
 ## Platform code (UNIVERSAL_C.md section 11)
 Only per-platform files may include OS headers; they are chosen by the **build system**
@@ -126,6 +130,10 @@ tools/check_universal.sh --quick         # gcc+clang c89/c2x, native tests only
 tools/check_universal.sh --only src/ini --no-tests     # just your slice
 python3 tools/audit_names.py --only src/ini            # reserved names, banned calls, limits
 ```
+Parsers of untrusted files also have libFuzzer harnesses (`tools/fuzz/run.sh NAME SECONDS`,
+clang only, not part of the build) and a real-world INI check (`tools/fetch_ini_corpus.sh`, then
+`tools/ini_corpus_check.sh`: parse timing plus every menu target in the app under ASan+UBSan).
+
 All of it must pass before a change is done. The compile flags are
 `-Wall -Wextra -pedantic-errors -Werror -Wconversion -Wsign-conversion -Wshadow -Wformat=2
 -Wcast-align -Wstrict-prototypes -Wmissing-prototypes`.

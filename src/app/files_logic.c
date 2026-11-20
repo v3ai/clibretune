@@ -66,6 +66,8 @@ int lt_ts_preview_read(const char *ts_dir, lt_ts_preview *out)
     v = lt_props_get(&pr, "projectName");
     lt_strlcpy(out->name, v != NULL && v[0] != '\0' ? v : lt_path_base(ts_dir), sizeof(out->name));
     v = lt_props_get(&pr, "ecuConfigFile");
+    if (v != NULL) { v = lt_path_base(v); }   /* only a file inside projectCfg/ (as the import) */
+    if (v != NULL && (strcmp(v, ".") == 0 || strcmp(v, "..") == 0)) { v = NULL; }
     lt_strlcpy(out->ini_file, v != NULL ? v : "", sizeof(out->ini_file));
     v = lt_props_get(&pr, "commPort");
     lt_strlcpy(out->port, v != NULL ? v : "", sizeof(out->port));

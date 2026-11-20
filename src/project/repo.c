@@ -338,7 +338,7 @@ int lt_ini_repo_import(lt_ini_repo *r, const char *src_path, char **id_out)
     strcpy(file, id);
     strcat(file, ".ini");
     f = lt_path_join(r->dir, file);
-    rc = lt_file_write(f, text, tl) == 0 ? LT_OK : LT_EIO;
+    rc = lt_plat_write_atomic(f, text, tl) == 0 ? LT_OK : LT_EIO;
     lt_free(f);
     lt_free(text);
     if (rc != LT_OK) {

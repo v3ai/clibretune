@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "dash_priv.h"
+#include "../plat/plat.h"
 
 /* ================================================================== */
 /* property tables                                                      */
@@ -486,7 +487,7 @@ int lt_dash_save(const lt_dash_file *d, const char *path)
     int rc;
     lt_buf_init(&b);
     lt_dash_write(d, &b);
-    rc = lt_file_write(path, b.data, b.len);
+    rc = lt_plat_write_atomic(path, b.data, b.len);
     lt_buf_free(&b);
     return rc;
 }

@@ -126,6 +126,21 @@ int lt_plat_copy_file(const char *from, const char *to)
     return rc;
 }
 
+static long fault_write_budget = -1L;
+
+void lt_plat_fault_write_limit(long bytes)
+{
+    fault_write_budget = bytes < 0 ? -1L : bytes;
+}
+
+size_t lt_plat_fault_write_allow(size_t want)
+{
+    if (fault_write_budget < 0) return want;
+    if ((unsigned long)fault_write_budget < (unsigned long)want) want = (size_t)fault_write_budget;
+    fault_write_budget -= (long)want;
+    return want;
+}
+
 static int cmp_names(const void *a, const void *b)
 {
     int r = strcmp(*(char *const *)a, *(char *const *)b);
