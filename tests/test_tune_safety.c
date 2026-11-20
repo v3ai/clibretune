@@ -414,6 +414,54 @@ LT_TEST(app_burn_interrupted)
     lt_app_free(app);
 }
 
+/* A cut-off CurrentTune.msq (crash of an older version, copied half-way, ...) is not loaded as
+ * if it were whole: the project opens with defaults, the file is kept aside, the user is told,
+ * and a later save cannot overwrite it. */
+LT_TEST(app_open_truncated_tune)
+{
+    char buf[512], name[64], *dir, *cur, *kept, *orig, *back;
+    size_t n = 0, m = 0;
+    lt_app *app = lt_app_new();
+    int nd;
+    LT_CHECK(lt_app_find_demo_ini(buf, sizeof(buf)) != NULL);
+    LT_CHECK(lt_plat_setenv("LIBRETUNE_PROJECTS", DIR "/appproj") == 0);
+    LT_CHECK(lt_plat_mkdirs(DIR "/appproj") == 0);
+    lt_snprintf(name, sizeof(name), "trunc%lu", (unsigned long)lt_plat_now_ms());
+    LT_CHECK(lt_app_new_project(app, name, buf) == 0);
+    LT_CHECK(lt_app_save_tune(app) == 0);
+    dir = lt_strdup(app->project.path);
+    cur = lt_path_join(dir, "CurrentTune.msq");
+    kept = lt_path_join(dir, "CurrentTune.unreadable.msq");
+    orig = slurp(cur, &n);
+    LT_CHECK(orig != NULL && n > 100);
+    lt_app_close_project(app);
+    if (orig == NULL) { lt_free(dir); lt_free(cur); lt_free(kept); lt_app_free(app); return; }
+    LT_CHECK(lt_file_write(cur, orig, n / 2) == 0);
+    {   /* the project layer refuses it */
+        lt_project p;
+        LT_CHECK(lt_project_open(dir, &p) == 0);
+        LT_CHECK(p.tune == NULL);
+        LT_CHECK(lt_project_load_tune(&p) == LT_EDATA);
+        lt_project_close(&p);
+    }
+    nd = n_dialogs_of(app, "error_details");
+    LT_CHECK(lt_app_open_project(app, dir) == 0);
+    LT_CHECK(app->project.tune != NULL);
+    LT_CHECK(n_dialogs_of(app, "error_details") == nd + 1);
+    LT_CHECK(!lt_file_exists(cur));
+    LT_CHECK(same_file(kept, orig, n / 2));
+    LT_CHECK(lt_app_save_tune(app) == 0);              /* a new tune; the old one stays aside */
+    LT_CHECK(same_file(kept, orig, n / 2));
+    back = slurp(cur, &m);
+    LT_CHECK(back != NULL && m > 100);
+    lt_free(back);
+    lt_free(orig);
+    lt_free(kept);
+    lt_free(cur);
+    lt_free(dir);
+    lt_app_free(app);
+}
+
 int main(void)
 {
     LT_RUN(tune_save_disk_full);
@@ -422,5 +470,6 @@ int main(void)
     LT_RUN(link_drop_mid_write);
     LT_RUN(link_drop_mid_burn);
     LT_RUN(app_burn_interrupted);
+    LT_RUN(app_open_truncated_tune);
     LT_TEST_MAIN_END
 }

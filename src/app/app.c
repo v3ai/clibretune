@@ -825,6 +825,42 @@ int lt_app_open_ini(lt_app *app, const char *ini_path)
     return 0;
 }
 
+/* CurrentTune.msq exists but cannot be read (corrupt or cut off): the project opens with the
+ * INI defaults, so move the file aside first - otherwise the next save would replace the
+ * user's tune with defaults - and say so. */
+static void keep_unreadable_tune(lt_app *app)
+{
+    char *cur = lt_path_join(app->project.path, "CurrentTune.msq");
+    char name[64], why[256], msg[1024];
+    char *dst = NULL;
+    int k;
+    if (!lt_file_exists(cur) || lt_project_load_tune(&app->project) == 0) {
+        lt_free(cur);
+        return;
+    }
+    lt_strlcpy(why, lt_err_get(), sizeof(why));
+    for (k = 1; k < 1000; k++) {
+        if (k == 1) { lt_strlcpy(name, "CurrentTune.unreadable.msq", sizeof(name)); }
+        else { lt_snprintf(name, sizeof(name), "CurrentTune.unreadable-%d.msq", k); }
+        lt_free(dst);
+        dst = lt_path_join(app->project.path, name);
+        if (!lt_file_exists(dst)) { break; }
+    }
+    if (lt_plat_rename(cur, dst) == 0) {
+        lt_snprintf(msg, sizeof(msg), "The project tune could not be read (%s). It was kept as %s "
+                    "and the project opened with the default values of the INI. Load a restore "
+                    "point or a saved tune before burning.", why, name);
+    } else {
+        lt_snprintf(msg, sizeof(msg), "The project tune could not be read (%s) and could not be "
+                    "moved aside. The project opened with the default values of the INI: do not "
+                    "save before you have copied %s somewhere safe.", why, cur);
+    }
+    lt_app_toast(app, 3, "Project tune unreadable: opened with defaults");
+    lt_feat_error_show(app, "Tune Not Loaded", msg, "");
+    lt_free(dst);
+    lt_free(cur);
+}
+
 int lt_app_open_project(lt_app *app, const char *dir)
 {
     lt_project p;
@@ -854,7 +890,10 @@ int lt_app_open_project(lt_app *app, const char *dir)
     ip = lt_project_ini_path(&app->project);
     lt_strlcpy(app->ini_path, ip, sizeof(app->ini_path));
     lt_free(ip);
-    if (app->project.tune == NULL) { app->project.tune = lt_tune_from_defaults(ini); }
+    if (app->project.tune == NULL) {
+        if (app->project.cfg.settings.auto_load_tune) { keep_unreadable_tune(app); }
+        if (app->project.tune == NULL) { app->project.tune = lt_tune_from_defaults(ini); }
+    }
     session_begin(app, ini, app->project.tune);
     lt_app_recent_add(app, app->project.path);
     lt_feat_connset_apply(app);

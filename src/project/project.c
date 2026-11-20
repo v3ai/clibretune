@@ -309,7 +309,7 @@ int lt_project_load_tune(lt_project *p)
         lt_free(f);
         return LT_OK;
     }
-    t = lt_tune_load(f);
+    t = lt_tune_load(f);               /* refuses a cut-off file */
     lt_free(f);
     if (t == NULL) {
         if (lt_err_get()[0] == '\0') lt_err_set("cannot load CurrentTune.msq");
