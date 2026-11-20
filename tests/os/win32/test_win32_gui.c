@@ -30,7 +30,7 @@ static int w32t_next(lt_backend *b, lt_event *ev, int want)
 LT_TEST(test_win32_window)
 {
     lt_backend *b = lt_backend_win32_create();
-    lt_canvas c;
+    lt_canvas c, d;
     lt_event ev;
     HWND hw;
     HDC dc;
@@ -92,6 +92,36 @@ LT_TEST(test_win32_window)
         LT_CHECK(w32t_next(b, &ev, LT_EV_KEY_DOWN) && ev.key == LT_KEY_LEFT);
         LT_CHECK(w32t_next(b, &ev, LT_EV_TEXT) && strcmp(ev.text, "\xC3\xA9") == 0);
         LT_CHECK(w32t_next(b, &ev, LT_EV_QUIT));
+    }
+
+    /* zero copy: the canvas memory is a DIB section, presented with BitBlt */
+    LT_CHECK(b->canvas_pixels != NULL && b->present_rects != NULL);
+    if (b->canvas_pixels != NULL && b->present_rects != NULL) {
+        lt_u32 *zc = b->canvas_pixels(b, w, h);
+        LT_CHECK(zc != NULL);
+        if (zc != NULL) {
+            lt_rect rs[2];
+            int i;
+            d.px = zc; d.w = w; d.h = h; d.pitch = w;      /* d outlives the window */
+            for (i = 0; i < w * h; i++) {
+                zc[i] = 0x00996633UL;
+            }
+            rs[0] = lt_rect_make(0, 0, w, h / 2);
+            rs[1] = lt_rect_make(0, h / 2, w, h - h / 2);
+            b->present_rects(b, &d, rs, 2);
+            LT_CHECK(b->canvas_pixels(b, w, h) == zc);     /* same size: same memory */
+            if (hw != NULL) {
+                dc = GetDC(hw);
+                px = (dc != NULL) ? GetPixel(dc, 5, h - 5) : CLR_INVALID;
+                if (px != CLR_INVALID) {
+                    LT_CHECK(GetRValue(px) == 0x99 && GetGValue(px) == 0x66 &&
+                             GetBValue(px) == 0x33);
+                }
+                if (dc != NULL) {
+                    ReleaseDC(hw, dc);
+                }
+            }
+        }
     }
 
     b->set_title(b, "renamed");
