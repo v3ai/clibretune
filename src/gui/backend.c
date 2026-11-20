@@ -134,3 +134,10 @@ int lt_backend_set_fullscreen(lt_backend *b, int on)
     b->set_fullscreen(b, on);
     return 1;
 }
+
+int lt_backend_beep(lt_backend *b)
+{
+    if (b == NULL || b->beep == NULL) { return 0; }
+    b->beep(b);
+    return 1;
+}

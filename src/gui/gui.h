@@ -339,6 +339,8 @@ struct lt_backend {
     int  (*get_geometry)(lt_backend *b, int *x, int *y, int *maximized);
     /* switch the window to/from full screen (kiosk dashboard); NULL = unsupported */
     void (*set_fullscreen)(lt_backend *b, int on);
+    /* audible alert (X11 Bell, MessageBeep, NSBeep, terminal BEL, WebAudio); NULL = silent */
+    void (*beep)(lt_backend *b);
     void *impl;
 };
 
@@ -352,6 +354,9 @@ void   lt_backend_set_initial_geometry(lt_backend *b, int x, int y, int flags);
 int    lt_backend_get_geometry(lt_backend *b, int *x, int *y, int *maximized);
 /* returns 1 when the backend supports full screen (and applied it), else 0 */
 int    lt_backend_set_fullscreen(lt_backend *b, int on);
+/* sound the backend's alert; returns 1 when a beep was requested, 0 when the backend (or a
+ * NULL / offscreen backend) has no sound */
+int    lt_backend_beep(lt_backend *b);
 /* "Xft.dpi: N" from an X resource-manager string; 0.0 if absent (exposed for tests) */
 double lt_x11_parse_xft_dpi(const char *resources);
 /* XSETTINGS blob -> Xft/DPI (dpi) and Gdk/WindowScalingFactor; 0 ok, -1 malformed */

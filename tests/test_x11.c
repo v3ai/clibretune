@@ -95,6 +95,8 @@ int main(void) {
     lt_canvas_init(&c, 320, 200);
     memset(c.px, 0x7f, sizeof(lt_u32) * 320 * 200);
     b->present(b, &c, NULL, lt_rect_make(0, 0, 320, 200));
+    CHECK(b->beep != NULL);
+    if (b->beep != NULL) b->beep(b);                /* core protocol Bell request */
     CHECK(next_ev(b, &ev) && ev.type == LT_EV_EXPOSE);
     CHECK(next_ev(b, &ev) && ev.type == LT_EV_KEY_DOWN && ev.key == 'a');
     CHECK(next_ev(b, &ev) && ev.type == LT_EV_TEXT && strcmp(ev.text, "a") == 0);
@@ -118,6 +120,7 @@ int main(void) {
         CHECK(strstr(log, "op=8 ") != NULL);
         CHECK(strstr(log, "op=20 ") != NULL);
         CHECK(strstr(log, "op=40 ") != NULL);
+        CHECK(strstr(log, "op=104 len=1") != NULL);
         lt_free(log);
     }
     free(logname);

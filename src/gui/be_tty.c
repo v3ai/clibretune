@@ -1145,6 +1145,17 @@ static void tty_free_bufs(tty *t)
     t->have_prev = 0;
 }
 
+/* BEL: the terminal rings (or flashes, per its settings) */
+static void tty_beep(lt_backend *b)
+{
+    tty *t = (tty *)b->impl;
+    static const char bel[1] = { 7 };
+    if (t == NULL || !t->opened) {
+        return;
+    }
+    lt_term_write(bel, 1);
+}
+
 static void tty_set_title(lt_backend *b, const char *title)
 {
     tty *t = (tty *)b->impl;
@@ -1336,6 +1347,7 @@ lt_backend *lt_backend_tty_create(void)
     b->set_title = tty_set_title;
     b->set_clipboard = NULL;
     b->get_clipboard = NULL;
+    b->beep = tty_beep;
     b->impl = t;
     t->cols = 80;
     t->rows = 24;

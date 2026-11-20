@@ -76,6 +76,8 @@ extern const char *method_getTypeEncoding(lc_method m);
 extern lc_imp class_getMethodImplementation(lc_id cls, lc_sel name);
 extern lc_id object_getClass(lc_id obj);
 extern void objc_msgSend(void);
+/* AppKit: plays the system alert sound */
+extern void NSBeep(void);
 
 /* Foundation / AppKit globals */
 extern lc_id NSDefaultRunLoopMode;
@@ -906,6 +908,12 @@ static void lc_set_fullscreen(lt_backend *b, int on)
     }
 }
 
+static void lc_beep(lt_backend *b)
+{
+    LT_UNUSED(b);
+    NSBeep();
+}
+
 static void lc_close(lt_backend *b)
 {
     lc_state *s = (lc_state *)b->impl;
@@ -1111,6 +1119,7 @@ lt_backend *lt_backend_cocoa_create(void)
     b->set_initial_geometry = lc_set_initial_geometry;
     b->get_geometry = lc_get_geometry;
     b->set_fullscreen = lc_set_fullscreen;
+    b->beep = lc_beep;
     b->impl = s;
     return b;
 }
