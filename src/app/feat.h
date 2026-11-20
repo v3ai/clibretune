@@ -135,4 +135,9 @@ int  lt_feat_actions_start(lt_app *app, const char *name, const char *desc);
 int  lt_feat_actions_stop(lt_app *app, size_t *count);
 int  lt_feat_actions_play_file(lt_app *app, const char *path, size_t *applied);
 
+/* Tools > Calculators (feat_calc.c): expression, linear calibration, units, injectors; eval = the
+ * Expression tab on the open app (0 ok, -1 error with the message in out) */
+void lt_feat_calc_register(lt_app_ext *reg);
+int  lt_feat_calc_eval(lt_app *app, const char *expr, char *out, size_t cap);
+
 #endif
