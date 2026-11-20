@@ -820,6 +820,10 @@ void lt_app_controller_command(lt_app *app, const char *name, const char *label,
             lt_app_toast(app, 3, "Command failed: %s", lt_err_get());
         } else {
             lt_app_toast(app, 1, "%s sent to ECU", s->pend_label);
+            if (lt_dlg_contains_ci(name, "dfu")) {
+                lt_app_disconnect(app);
+                (void)lt_app_dialog_push(app, "firmware", "dfu", "Firmware Update");
+            }
         }
         return;
     }
@@ -839,7 +843,7 @@ static void cmd_overlay(lt_app *app)
         lt_ui_layout_row(ui, 1, &w1, 0);
         lt_ui_label_wrap(ui, s->pend_desc[0] != '\0' ? s->pend_desc
                          : (is_dfu ? "This will reset the ECU into DFU (firmware update) mode. The serial "
-                                     "connection will drop and you will need an external tool to flash firmware."
+                                     "connection will drop; flash it with Tools > Firmware Update."
                                    : "This sends a raw command directly to the ECU, bypassing normal memory "
                                      "synchronization."), th->text);
         if (!is_dfu) {
@@ -873,6 +877,10 @@ static void cmd_overlay(lt_app *app)
                 } else {
                     lt_app_toast(app, 1, is_dfu ? "%s sent - the ECU should reboot into DFU mode"
                                                 : "%s sent to ECU", s->pend_label);
+                    if (is_dfu) {           /* continue in the flasher, waiting for the bootloader */
+                        lt_app_disconnect(app);
+                        (void)lt_app_dialog_push(app, "firmware", "dfu", "Firmware Update");
+                    }
                 }
                 open = 0;
             }
@@ -918,8 +926,8 @@ static void console_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
     if (dfu != NULL) {
         if (lt_ui_button_ex(ui, "Enter DFU", online ? 0 : LT_UI_BTN_DISABLED) && online) {
             lt_app_controller_command(app, dfu->name, "Enter DFU Mode",
-                "Reset the ECU into DFU (firmware update) mode. The connection will drop - use your "
-                "board's flash tool to update firmware.");
+                "Reset the ECU into DFU (firmware update) mode. The connection will drop - then flash "
+                "it with Tools > Firmware Update.");
         }
     } else { lt_ui_label(ui, ""); }
     if (lt_ui_button_ex(ui, "Clear History", s->n > 0 ? 0 : LT_UI_BTN_DISABLED) && s->n > 0) {
@@ -1025,8 +1033,8 @@ static void act_dfu(lt_app *app)
     const lt_ini_cmd *c = find_dfu_command(app);
     if (c != NULL) {
         lt_app_controller_command(app, c->name, "Enter DFU Mode",
-            "Reset the ECU into DFU (firmware update) mode. The connection will drop - use your "
-            "board's flash tool to update firmware.");
+            "Reset the ECU into DFU (firmware update) mode. The connection will drop - then flash "
+            "it with Tools > Firmware Update.");
     }
 }
 

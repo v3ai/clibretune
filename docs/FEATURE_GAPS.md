@@ -100,6 +100,12 @@ Orig = path under `ref/LibreTune/crates/`. `app/` = `libretune-app/src/component
   release, recovery, progress. Original shells out to `dfu-util` / OpenBLT tools.
 - Orig: `app/dialogs/FirmwareUpdateDialog.tsx` (669 lines), `cmd/firmware_update.rs`.
 - Ours: needs a process-spawn call in `plat.h` (none today; `lt_plat_open_url` only). See section 14.
+- Status update: DONE natively, without external tools: `src/fw/` parses .bin/.hex/.srec/.dfu images and
+  flashes them with stepped ST DfuSe and OpenBLT (XCP on USB bulk) engines over `plat/usb.h`; Tools >
+  Firmware Update (`src/app/feat_firmware.c`) has board presets (miata-ecus, rusEFI family, generic STM32),
+  reboot into the bootloader via `cmd_dfu` / `cmd_openblt`, verify, settings-sector guard, reconnect, udev /
+  WinUSB hints and the miata-ecus on-board wideband flasher. Simulated bootloaders (`src/fw/fw_sim.c`)
+  drive tests/test_fw_dfuse.c and the demo mode.
 
 ---------------------------------------------------------------------------------------------------
 

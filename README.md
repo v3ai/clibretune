@@ -49,6 +49,28 @@ Linux (x86-64, ARM64), Windows and macOS (universal) are attached to each releas
   Wrong size? `LT_SCALE_DEBUG=1 ./libretune` prints every source and the decision; `--version` and
   Help > About show the build.
 
+## Firmware update
+
+Tools > Firmware Update flashes STM32 ECUs over USB with no external tool:
+
+- **USB DFU** (the STM32 ROM bootloader, `0483:df11`): ST DfuSe protocol, erasing only the flash sectors
+  the image covers, then write, read-back verify and start. First flash: hold BOOT, tap RESET, release BOOT.
+- **OpenBLT over USB** (`1d50:60ac`): later updates without buttons on boards with the OpenBLT bootloader;
+  the bootloader part of a merged image is skipped.
+- Images: `.bin` (at 0x08000000), Intel `.hex`, `.srec`/`.s19` and ST `.dfu` (suffix CRC checked). The
+  summary shows the address range and sanity checks (vector tables, rusEFI's OpenBLT app CRC header).
+- Board presets: **miata-ecus** (rusEFI on an STM32F407 with OpenBLT; "Get firmware" opens the repository's
+  Firmware workflow, whose artifacts hold `rusefi_miata-ecu.bin/.dfu/.hex`), **rusEFI / FOME / epicEFI**, and
+  **generic STM32**. The rusEFI presets keep the ECU settings in flash sectors 10-11 (0x080C0000) unless you
+  untick *Keep ECU settings*.
+- When the ECU is connected, *Reboot ECU into DFU* / *Reboot into OpenBLT* sends the INI's `cmd_dfu` /
+  `cmd_openblt` and waits for the bootloader; after a successful update the app offers to reconnect.
+- miata-ecus: *Flash on-board wideband* starts the board's wideband flasher (`cmd_miata_wbo_uart_flash`, or
+  the console command `wbo_uart_flash`) and follows `wbo_uart_status` until it reports done or failed.
+- Linux needs access to the USB device: the screen shows a udev rule to copy when permission is missing.
+  Windows needs the WinUSB driver on the bootloader device (Zadig, or STM32CubeProgrammer's driver).
+- With `--demo` (or `LT_FW_SIM=1`) simulated bootloaders run the whole flow without hardware.
+
 ## Keyboard shortcuts
 
 Ctrl+N new project, Ctrl+O load tune, Ctrl+S save, Ctrl+Shift+S save as, Ctrl+B burn,
@@ -68,9 +90,14 @@ Ctrl+R/D fill, Ctrl+Z/Y undo/redo, `f` follow, `g` go to live cell. AutoTune: Sp
 - Project INI symbols (`ecuSettings`, e.g. CELSIUS / LAMBDA) are not applied when parsing the INI.
 - Data log graph is one overlaid chart (no stacked panes or saved graph setups); math channels are
   evaluated for logs only, not live on gauges. `.msl` logs must be renamed to `.csv` to open.
-- Not available by design (zero dependencies, no TLS): firmware flashing (only "Enter DFU Mode"),
-  in-app updates, in-app HTTPS INI download (assisted browser flow instead), cloud AI providers
-  (local OpenAI-compatible endpoints only), WASM plugins, `.ltlog` logs, pop-out windows.
+- Firmware update: USB DFU and OpenBLT over USB only (no serial/CAN bootloaders, no seed/key unlock
+  for OpenBLT, no option-byte or read-protection changes); it needs this build's USB backend for the OS
+  (where none exists, the screen says so - use dfu-util or STM32CubeProgrammer). The settings guard of the
+  rusEFI presets assumes the STM32F4 layout (sectors 10-11). Images are downloaded in the browser
+  (GitHub artifacts are zips: unpack the `.bin`/`.dfu`/`.hex` first).
+- Not available by design (zero dependencies, no TLS): in-app updates, in-app HTTPS INI download
+  (assisted browser flow instead), cloud AI providers (local OpenAI-compatible endpoints only),
+  WASM plugins, `.ltlog` logs, pop-out windows.
 - The demo AFR target table is all zeros (fill it before trying AutoTune in demo mode).
 
 ## License and credits
