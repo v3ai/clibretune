@@ -25,7 +25,7 @@ static const char *const mp_0_0[] = {
     "## Key Features",
     "",
     "### Modern Interface",
-    "LibreTune provides a clean, intuitive interface with dark theme support, keyboard navigation, and multi-monitor support.",
+    "LibreTune provides a clean, intuitive interface with dark theme support and keyboard navigation.",
     "",
     "### Professional Table Editing",
     "Edit 2D and 3D tables with professional tools:",
@@ -175,20 +175,8 @@ static const char *const mp_1_0[] = {
     "",
     "## Updating",
     "",
-    "LibreTune checks for a newer release once after startup, without blocking",
-    "anything: if one exists you get a short notice, and **Help \342\206\222 About LibreTune**",
-    "has an **Install and restart** button (and a manual **Check for updates**).",
-    "Nothing is downloaded or installed until you press it.",
-    "",
-    "Updates are cryptographically signed. The public key is built into the app,",
-    "and an update whose signature does not verify is refused before it is",
-    "installed. This is separate from macOS notarization and Windows publisher",
-    "signing, which the project does not have yet, so a first install may still",
-    "require **Open Anyway** (macOS) or **More info \342\206\222 Run anyway** (Windows).",
-    "",
-    "Official builds, nightlies included, carry the release public key. A build",
-    "you made yourself without it can still *see* a newer release, but the download",
-    "is refused at the signature check and nothing is installed.",
+    "LibreTune does not download or install updates by itself. **Help \342\206\222 Check for Updates** shows the version and build you are running and opens the releases page (https://github.com/v3ai/clibretune/releases) in your web browser. Download a newer build from there and install it the same way as the",
+    "first one.",
     "",
     "## Building from Source",
     "",
@@ -200,7 +188,7 @@ static const char *const mp_1_0[] = {
     "",
 };
 static const lt_man_part mpp_1[] = {
-    { mp_1_0, 124 },
+    { mp_1_0, 112 },
 };
 
 static const char *const mp_2_0[] = {
@@ -1071,10 +1059,7 @@ static const char *const mp_4_0[] = {
     "",
     "### Networking",
     "",
-    "**Check for Updates:**",
-    "- On startup (default)",
-    "- Manually",
-    "- Never (disable checking)",
+    "**Updates:** there is no automatic update check; **Help \342\206\222 Check for Updates** shows your version and opens the releases page.",
     "",
     "**Download Offline Docs:**",
     "- Enable to keep manual available offline",
@@ -1146,7 +1131,7 @@ static const char *const mp_4_0[] = {
     "",
 };
 static const lt_man_part mpp_4[] = {
-    { mp_4_0, 579 },
+    { mp_4_0, 576 },
 };
 
 static const char *const mp_5_0[] = {
@@ -2891,13 +2876,7 @@ static const char *const mp_15_0[] = {
     "",
     "## Multi-Monitor",
     "",
-    "Pop out dashboards to separate monitors:",
-    "1. Click the pop-out icon (->) in the tab bar",
-    "2. Dashboard opens in new window",
-    "3. Drag to desired monitor",
-    "4. Click dock icon (<-) to return",
-    "",
-    "> **Note**: The main Dashboard tab is protected and cannot be popped out or accidentally closed. To reopen it if missing, go to **View \342\206\222 Dashboard**.",
+    "Dashboards are tabs of the main window; there are no separate pop-out windows. For a second monitor, move the LibreTune window there and use **Full screen (F11)** on the dashboard.",
     "",
     "## Performance & Smoothing",
     "",
@@ -2947,7 +2926,7 @@ static const char *const mp_15_0[] = {
     "",
 };
 static const lt_man_part mpp_15[] = {
-    { mp_15_0, 123 },
+    { mp_15_0, 117 },
 };
 
 static const char *const mp_16_0[] = {
@@ -5458,77 +5437,6 @@ static const lt_man_part mpp_28[] = {
 };
 
 static const char *const mp_29_0[] = {
-    "# Pop-out Windows (Multi-Monitor Support)",
-    "",
-    "LibreTune lets you pop any tab out into its own standalone window, making it easy to spread your workspace across multiple monitors.",
-    "",
-    "## Overview",
-    "",
-    "When tuning, you often want to see your dashboard on one screen while editing tables on another. Pop-out windows give you this flexibility \342\200\224 any tab can become its own independent window that stays synchronized with the main application.",
-    "",
-    "## Popping Out a Tab",
-    "",
-    "1. Open the tab you want to pop out (e.g., a table editor, data log, dashboard)",
-    "2. Click the **External Link** button (->) in the tab bar",
-    "3. The tab moves to a new standalone window",
-    "",
-    "The original tab is removed from the main window and appears in the new window with full functionality.",
-    "",
-    "## Docking a Window Back",
-    "",
-    "To return a popped-out tab to the main window:",
-    "",
-    "1. Click the **Dock Back** button in the pop-out window's toolbar",
-    "2. The window closes and the tab reappears in the main window's tab bar",
-    "",
-    "## What Stays in Sync",
-    "",
-    "Pop-out windows maintain **bidirectional synchronization** with the main application:",
-    "",
-    "| Data | Sync Behavior |",
-    "|------|---------------|",
-    "| **Realtime ECU data** | Gauges and live values update in all windows simultaneously |",
-    "| **Table edits** | Changes made in a popped-out table editor are reflected everywhere |",
-    "| **Connection status** | All windows show the same connected/disconnected state |",
-    "",
-    "## Protected Tabs",
-    "",
-    "The **Dashboard** tab is protected and cannot be popped out or accidentally closed. If you ever lose the Dashboard tab, recover it via **View \342\206\222 Dashboard**.",
-    "",
-    "## Tips",
-    "",
-    "- **Arrange freely**: Each pop-out window can be resized and positioned independently on any monitor",
-    "- **Window state**: Window positions and sizes are remembered between sessions via the window state plugin",
-    "- **Multiple pop-outs**: You can have several tabs popped out at once \342\200\224 for example, a dashboard on monitor 2 and a data log on monitor 3",
-    "- **Close = dock**: Closing a pop-out window (x) docks the tab back to the main window rather than discarding it",
-    "",
-    "## Use Cases",
-    "",
-    "### Dual-Monitor Tuning Setup",
-    "- **Monitor 1**: Main LibreTune window with table editor and sidebar",
-    "- **Monitor 2**: Dashboard with live gauges popped out",
-    "",
-    "### Triple-Monitor Racing Setup",
-    "- **Monitor 1**: Table editor",
-    "- **Monitor 2**: Dashboard with large RPM and AFR gauges",
-    "- **Monitor 3**: Data log playback or AutoTune view",
-    "",
-    "### Laptop + External Monitor",
-    "- **Laptop screen**: Sidebar navigation and dialogs",
-    "- **External monitor**: Full-screen table editor or dashboard",
-    "",
-    "## See Also",
-    "",
-    "- [Dashboards](./dashboards.md) \342\200\224 Customize what appears on your dashboard",
-    "- [Table Editing](./table-editing.md) \342\200\224 Full table editor documentation",
-    "- [Data Logging](./datalog.md) \342\200\224 Log playback and analysis",
-    "",
-};
-static const lt_man_part mpp_29[] = {
-    { mp_29_0, 65 },
-};
-
-static const char *const mp_30_0[] = {
     "# ECU Console",
     "",
     "The ECU Console provides a direct text-based command interface for communicating with rusEFI, FOME, and epicEFI engine control units.",
@@ -5611,11 +5519,11 @@ static const char *const mp_30_0[] = {
     "- [Troubleshooting](../reference/troubleshooting.md) \342\200\224 Resolving connection issues",
     "",
 };
-static const lt_man_part mpp_30[] = {
-    { mp_30_0, 81 },
+static const lt_man_part mpp_29[] = {
+    { mp_29_0, 81 },
 };
 
-static const char *const mp_31_0[] = {
+static const char *const mp_30_0[] = {
     "# Tune Migration & INI Version Tracking",
     "",
     "LibreTune automatically tracks which ECU definition (INI file) was used when a tune was saved, and detects when the INI version has changed. This helps you safely migrate tunes between firmware versions.",
@@ -5702,11 +5610,11 @@ static const char *const mp_31_0[] = {
     "- [Troubleshooting](../reference/troubleshooting.md) \342\200\224 Resolving signature mismatches",
     "",
 };
-static const lt_man_part mpp_31[] = {
-    { mp_31_0, 85 },
+static const lt_man_part mpp_30[] = {
+    { mp_30_0, 85 },
 };
 
-static const char *const mp_32_0[] = {
+static const char *const mp_31_0[] = {
     "# Action Scripting",
     "",
     "LibreTune includes an **Action Scripting** system that allows you to record, save, and replay tuning actions. This document covers the action types, scripting API, and common workflows.",
@@ -6008,11 +5916,11 @@ static const char *const mp_32_0[] = {
     "- [Contributing](../contributing.md) - How to extend action types",
     "",
 };
-static const lt_man_part mpp_32[] = {
-    { mp_32_0, 300 },
+static const lt_man_part mpp_31[] = {
+    { mp_31_0, 300 },
 };
 
-static const char *const mp_33_0[] = {
+static const char *const mp_32_0[] = {
     "# Managing Tunes",
     "",
     "Save, load, and organize your tune files.",
@@ -6118,11 +6026,11 @@ static const char *const mp_33_0[] = {
     "3. Applied to current tune",
     "",
 };
-static const lt_man_part mpp_33[] = {
-    { mp_33_0, 104 },
+static const lt_man_part mpp_32[] = {
+    { mp_32_0, 104 },
 };
 
-static const char *const mp_34_0[] = {
+static const char *const mp_33_0[] = {
     "# Version Control",
     "",
     "Track tune history with Git-based versioning.",
@@ -6254,11 +6162,11 @@ static const char *const mp_34_0[] = {
     "- Reference issues or goals",
     "",
 };
-static const lt_man_part mpp_34[] = {
-    { mp_34_0, 130 },
+static const lt_man_part mpp_33[] = {
+    { mp_33_0, 130 },
 };
 
-static const char *const mp_35_0[] = {
+static const char *const mp_34_0[] = {
     "# Change Annotations",
     "",
     "Change annotations let you attach a short note to a tune commit. This makes it easier to understand *why* a change was made when reviewing history.",
@@ -6279,11 +6187,11 @@ static const char *const mp_35_0[] = {
     "- Record why a rollback was needed.",
     "",
 };
-static const lt_man_part mpp_35[] = {
-    { mp_35_0, 19 },
+static const lt_man_part mpp_34[] = {
+    { mp_34_0, 19 },
 };
 
-static const char *const mp_36_0[] = {
+static const char *const mp_35_0[] = {
     "# Restore Points",
     "",
     "Quick backups for tune safety.",
@@ -6377,11 +6285,11 @@ static const char *const mp_36_0[] = {
     "You can manually copy these files for external backup.",
     "",
 };
-static const lt_man_part mpp_36[] = {
-    { mp_36_0, 92 },
+static const lt_man_part mpp_35[] = {
+    { mp_35_0, 92 },
 };
 
-static const char *const mp_37_0[] = {
+static const char *const mp_36_0[] = {
     "# Importing Projects",
     "",
     "Bring in projects from TunerStudio and other sources.",
@@ -6472,11 +6380,11 @@ static const char *const mp_37_0[] = {
     "2. Create restore points in LibreTune going forward",
     "",
 };
-static const lt_man_part mpp_37[] = {
-    { mp_37_0, 89 },
+static const lt_man_part mpp_36[] = {
+    { mp_36_0, 89 },
 };
 
-static const char *const mp_38_0[] = {
+static const char *const mp_37_0[] = {
     "# Supported ECUs",
     "",
     "ECUs compatible with LibreTune.",
@@ -6618,11 +6526,11 @@ static const char *const mp_38_0[] = {
     "- Use a trigger converter/adapter board",
     "",
 };
-static const lt_man_part mpp_38[] = {
-    { mp_38_0, 140 },
+static const lt_man_part mpp_37[] = {
+    { mp_37_0, 140 },
 };
 
-static const char *const mp_39_0[] = {
+static const char *const mp_38_0[] = {
     "# INI File Format",
     "",
     "Understanding ECU definition files.",
@@ -6805,11 +6713,11 @@ static const char *const mp_39_0[] = {
     "- MegaSquirt INI format guide",
     "",
 };
-static const lt_man_part mpp_39[] = {
-    { mp_39_0, 181 },
+static const lt_man_part mpp_38[] = {
+    { mp_38_0, 181 },
 };
 
-static const char *const mp_40_0[] = {
+static const char *const mp_39_0[] = {
     "# Global Keyboard Shortcuts",
     "",
     "Complete reference for LibreTune keyboard shortcuts.",
@@ -6920,11 +6828,11 @@ static const char *const mp_40_0[] = {
     "| Shift+Tab | Previous field |",
     "",
 };
-static const lt_man_part mpp_40[] = {
-    { mp_40_0, 109 },
+static const lt_man_part mpp_39[] = {
+    { mp_39_0, 109 },
 };
 
-static const char *const mp_41_0[] = {
+static const char *const mp_40_0[] = {
     "# Troubleshooting",
     "",
     "Common problems and solutions.",
@@ -7260,11 +7168,11 @@ static const char *const mp_41_0[] = {
     "**Build ID format**: `YYYY.MM.DD+g<short-sha>` (nightly build date plus git commit hash).",
     "",
 };
-static const lt_man_part mpp_41[] = {
-    { mp_41_0, 334 },
+static const lt_man_part mpp_40[] = {
+    { mp_40_0, 334 },
 };
 
-static const char *const mp_42_0[] = {
+static const char *const mp_41_0[] = {
     "# Frequently Asked Questions",
     "",
     "## General",
@@ -7469,8 +7377,8 @@ static const char *const mp_42_0[] = {
     "- Consider switching to an ECU with your pattern supported",
     "",
 };
-static const lt_man_part mpp_42[] = {
-    { mp_42_0, 203 },
+static const lt_man_part mpp_41[] = {
+    { mp_41_0, 203 },
 };
 
 const lt_man_page lt_man_pages[] = {
@@ -7503,19 +7411,18 @@ const lt_man_page lt_man_pages[] = {
     { "features/performance-calculator", "Performance Calculator", "Core Features", 0, mpp_26, (int)(sizeof(mpp_26) / sizeof(mpp_26[0])) },
     { "features/diagnostic-loggers", "Diagnostic Loggers", "Core Features", 0, mpp_27, (int)(sizeof(mpp_27) / sizeof(mpp_27[0])) },
     { "features/tools", "Tools", "Core Features", 0, mpp_28, (int)(sizeof(mpp_28) / sizeof(mpp_28[0])) },
-    { "features/popout-windows", "Pop-out Windows", "Core Features", 0, mpp_29, (int)(sizeof(mpp_29) / sizeof(mpp_29[0])) },
-    { "features/ecu-console", "ECU Console", "Core Features", 0, mpp_30, (int)(sizeof(mpp_30) / sizeof(mpp_30[0])) },
-    { "features/tune-migration", "Tune Migration", "Core Features", 0, mpp_31, (int)(sizeof(mpp_31) / sizeof(mpp_31[0])) },
-    { "reference/action-scripting", "Action Scripting", "Core Features", 0, mpp_32, (int)(sizeof(mpp_32) / sizeof(mpp_32[0])) },
-    { "projects/tunes", "Managing Tunes", "Project Management", 0, mpp_33, (int)(sizeof(mpp_33) / sizeof(mpp_33[0])) },
-    { "projects/version-control", "Version Control", "Project Management", 0, mpp_34, (int)(sizeof(mpp_34) / sizeof(mpp_34[0])) },
-    { "projects/change-annotations", "Change Annotations", "Project Management", 0, mpp_35, (int)(sizeof(mpp_35) / sizeof(mpp_35[0])) },
-    { "projects/restore-points", "Restore Points", "Project Management", 0, mpp_36, (int)(sizeof(mpp_36) / sizeof(mpp_36[0])) },
-    { "projects/importing", "Importing Projects", "Project Management", 0, mpp_37, (int)(sizeof(mpp_37) / sizeof(mpp_37[0])) },
-    { "reference/supported-ecus", "Supported ECUs", "Reference", 0, mpp_38, (int)(sizeof(mpp_38) / sizeof(mpp_38[0])) },
-    { "reference/ini-format", "INI File Format", "Reference", 0, mpp_39, (int)(sizeof(mpp_39) / sizeof(mpp_39[0])) },
-    { "reference/shortcuts", "Keyboard Shortcuts", "Reference", 0, mpp_40, (int)(sizeof(mpp_40) / sizeof(mpp_40[0])) },
-    { "reference/troubleshooting", "Troubleshooting", "Reference", 0, mpp_41, (int)(sizeof(mpp_41) / sizeof(mpp_41[0])) },
-    { "faq", "Frequently Asked Questions", "FAQ", 0, mpp_42, (int)(sizeof(mpp_42) / sizeof(mpp_42[0])) },
+    { "features/ecu-console", "ECU Console", "Core Features", 0, mpp_29, (int)(sizeof(mpp_29) / sizeof(mpp_29[0])) },
+    { "features/tune-migration", "Tune Migration", "Core Features", 0, mpp_30, (int)(sizeof(mpp_30) / sizeof(mpp_30[0])) },
+    { "reference/action-scripting", "Action Scripting", "Core Features", 0, mpp_31, (int)(sizeof(mpp_31) / sizeof(mpp_31[0])) },
+    { "projects/tunes", "Managing Tunes", "Project Management", 0, mpp_32, (int)(sizeof(mpp_32) / sizeof(mpp_32[0])) },
+    { "projects/version-control", "Version Control", "Project Management", 0, mpp_33, (int)(sizeof(mpp_33) / sizeof(mpp_33[0])) },
+    { "projects/change-annotations", "Change Annotations", "Project Management", 0, mpp_34, (int)(sizeof(mpp_34) / sizeof(mpp_34[0])) },
+    { "projects/restore-points", "Restore Points", "Project Management", 0, mpp_35, (int)(sizeof(mpp_35) / sizeof(mpp_35[0])) },
+    { "projects/importing", "Importing Projects", "Project Management", 0, mpp_36, (int)(sizeof(mpp_36) / sizeof(mpp_36[0])) },
+    { "reference/supported-ecus", "Supported ECUs", "Reference", 0, mpp_37, (int)(sizeof(mpp_37) / sizeof(mpp_37[0])) },
+    { "reference/ini-format", "INI File Format", "Reference", 0, mpp_38, (int)(sizeof(mpp_38) / sizeof(mpp_38[0])) },
+    { "reference/shortcuts", "Keyboard Shortcuts", "Reference", 0, mpp_39, (int)(sizeof(mpp_39) / sizeof(mpp_39[0])) },
+    { "reference/troubleshooting", "Troubleshooting", "Reference", 0, mpp_40, (int)(sizeof(mpp_40) / sizeof(mpp_40[0])) },
+    { "faq", "Frequently Asked Questions", "FAQ", 0, mpp_41, (int)(sizeof(mpp_41) / sizeof(mpp_41[0])) },
 };
-const int lt_man_count = 43;
+const int lt_man_count = 42;

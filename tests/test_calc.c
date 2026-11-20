@@ -1,4 +1,5 @@
-/* test_calc.c - Tools > Calculators math, the table trail fade timing and the backend beep hook.
+/* test_calc.c - Tools > Calculators math, the table trail fade timing, the backend beep hook,
+ * Help > Check for Updates and the embedded manual not promising features this port lacks.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 #include <string.h>
@@ -7,6 +8,7 @@
 #include "../src/app/feat.h"
 #include "../src/app/calc_logic.h"
 #include "../src/app/trail.h"
+#include "../src/app/manual.h"
 #include "../src/gui/gui.h"
 
 LT_TEST(calc_linear)
@@ -136,6 +138,30 @@ LT_TEST(beep_hook)
     LT_CHECK_INT(g_beeps, 1);
 }
 
+LT_TEST(updates_dialog_and_manual)
+{
+    char buf[512];
+    lt_app *app = lt_app_new();
+    int p, i, bad = 0, found = 0;
+    LT_CHECK(lt_app_find_demo_ini(buf, sizeof(buf)) != NULL);
+    LT_CHECK(lt_app_start_demo(app, buf) == 0);
+    LT_CHECK(lt_app_dialog_push(app, "updates", "", "Check for Updates") != NULL);
+    lt_app_screenshot(app, "build/lt_test_updates.ppm", 900, 640, 2);
+    lt_app_free(app);
+    /* the manual: no self-updater, no pop-out windows, and it points at Help > Check for Updates */
+    LT_CHECK(lt_man_find("features/popout-windows") < 0);
+    for (p = 0; p < lt_man_count; p++) {
+        for (i = 0; i < lt_man_line_count(p); i++) {
+            const char *l = lt_man_line(p, i);
+            if (strstr(l, "Install and restart") != NULL || strstr(l, "pop-out icon") != NULL ||
+                strstr(l, "Pop out dashboards") != NULL) { bad++; }
+            if (strstr(l, "Check for Updates") != NULL && strstr(l, "releases") != NULL) { found++; }
+        }
+    }
+    LT_CHECK_INT(bad, 0);
+    LT_CHECK(found > 0);
+}
+
 int main(void)
 {
     LT_RUN(calc_linear);
@@ -144,5 +170,6 @@ int main(void)
     LT_RUN(calc_expression_on_demo);
     LT_RUN(trail_fade_timing);
     LT_RUN(beep_hook);
+    LT_RUN(updates_dialog_and_manual);
     LT_TEST_MAIN_END
 }
