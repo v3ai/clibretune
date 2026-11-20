@@ -341,6 +341,18 @@ struct lt_backend {
     void (*set_fullscreen)(lt_backend *b, int on);
     /* audible alert (X11 Bell, MessageBeep, NSBeep, terminal BEL, WebAudio); NULL = silent */
     void (*beep)(lt_backend *b);
+    /* Present every changed rectangle of one frame in a single call (disjoint rectangles, the
+     * output of lt_diff_rects): X11 sends them in one write, Win32 uses one DC, Cocoa one display
+     * pass. NULL = present() once per rectangle; call through lt_backend_present_rects. */
+    void (*present_rects)(lt_backend *b, lt_canvas *canvas, const lt_rect *rects, int n);
+    /* Zero-copy canvas: pixel memory for a w x h canvas (pitch == w) that the backend can show
+     * without copying it (X11: the MIT-SHM segment the server reads; Win32: a DIB section).
+     * Call it before drawing every frame: it returns only once the window system no longer
+     * reads the buffer, so the frame may be drawn into it. The memory stays valid until the next
+     * call or close() and keeps its contents between calls with the same size; a different
+     * pointer than last time means the contents are gone (redraw and present everything).
+     * NULL = not available now (the app keeps its own canvas). Through lt_backend_canvas_pixels. */
+    lt_u32 *(*canvas_pixels)(lt_backend *b, int w, int h);
     void *impl;
 };
 
@@ -357,6 +369,11 @@ int    lt_backend_set_fullscreen(lt_backend *b, int on);
 /* sound the backend's alert; returns 1 when a beep was requested, 0 when the backend (or a
  * NULL / offscreen backend) has no sound */
 int    lt_backend_beep(lt_backend *b);
+/* present rects[0..n) of one frame: present_rects when the backend has it, else present() per
+ * rectangle (rect_present backends) or once with their bounding box (the others) */
+void   lt_backend_present_rects(lt_backend *b, lt_canvas *canvas, const lt_rect *rects, int n);
+/* backend-owned canvas memory (see canvas_pixels) or NULL when unsupported */
+lt_u32 *lt_backend_canvas_pixels(lt_backend *b, int w, int h);
 /* "Xft.dpi: N" from an X resource-manager string; 0.0 if absent (exposed for tests) */
 double lt_x11_parse_xft_dpi(const char *resources);
 /* XSETTINGS blob -> Xft/DPI (dpi) and Gdk/WindowScalingFactor; 0 ok, -1 malformed */
