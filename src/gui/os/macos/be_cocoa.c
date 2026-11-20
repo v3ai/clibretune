@@ -3,9 +3,12 @@
  *
  * Structure
  *   - A window (NSWindow) holds one custom NSView subclass "LTCocoaView",
- *     created at run time with objc_allocateClassPair/class_addMethod. Its
- *     drawRect: copies the app canvas to the screen through a CGBitmapContext
- *     image; its key/mouse/scroll overrides translate NSEvents into lt_event
+ *     created at run time with objc_allocateClassPair/class_addMethod. present
+ *     invalidates only the dirty rectangles (setNeedsDisplayInRect:, one
+ *     displayIfNeeded per frame); drawRect: copies just the rectangles AppKit
+ *     asks for (getRectsBeingDrawn:count:) through a CGBitmapContext over that
+ *     part of the canvas, so a small update never copies the whole canvas;
+ *     its key/mouse/scroll overrides translate NSEvents into lt_event
  *     records pushed on a ring queue.
  *   - One delegate class "LTCocoaDelegate" serves as NSApplication delegate
  *     (Cmd-Q becomes a QUIT event instead of exiting) and NSWindow delegate
@@ -141,6 +144,8 @@ typedef void (*lc_f_void_b)(lc_id, lc_sel, signed char);
 typedef void (*lc_f_void_long)(lc_id, lc_sel, long);
 typedef void (*lc_f_void_size)(lc_id, lc_sel, lc_cgsize);
 typedef void (*lc_f_void_point)(lc_id, lc_sel, lc_cgpoint);
+typedef void (*lc_f_void_rect)(lc_id, lc_sel, lc_cgrect);
+typedef void (*lc_f_void_rects)(lc_id, lc_sel, const lc_cgrect **, long *);
 typedef signed char (*lc_f_b0)(lc_id, lc_sel);
 typedef signed char (*lc_f_b_id_id)(lc_id, lc_sel, lc_id, lc_id);
 typedef unsigned long (*lc_f_ul0)(lc_id, lc_sel);
@@ -545,17 +550,70 @@ static signed char lc_yes_id(lc_id self, lc_sel cmd, lc_id arg)
 }
 
 /* ---- drawing ----------------------------------------------------------- */
+/* view rectangle (points, y up, origin bottom-left) -> canvas rectangle (y down) */
+static lt_rect lc_view_to_canvas(lc_cgrect r, double view_h)
+{
+    double x0 = r.origin.x, x1 = r.origin.x + r.size.w;
+    double y0 = view_h - (r.origin.y + r.size.h), y1 = view_h - r.origin.y;
+    int ix0, iy0, ix1, iy1;
+    if (x0 < 0.0) { x0 = 0.0; }
+    if (y0 < 0.0) { y0 = 0.0; }
+    if (x1 > 65535.0) { x1 = 65535.0; }
+    if (y1 > 65535.0) { y1 = 65535.0; }
+    if (x1 <= x0 || y1 <= y0) {
+        return lt_rect_make(0, 0, 0, 0);
+    }
+    ix0 = (int)x0;                          /* floor (non-negative) */
+    iy0 = (int)y0;
+    ix1 = (int)x1;                          /* ceil */
+    if ((double)ix1 < x1) { ix1++; }
+    iy1 = (int)y1;
+    if ((double)iy1 < y1) { iy1++; }
+    return lt_rect_make(ix0, iy0, ix1 - ix0, iy1 - iy0);
+}
+
+/* canvas rectangle -> view rectangle */
+static lc_cgrect lc_canvas_to_view(lt_rect r, double view_h)
+{
+    lc_cgrect v;
+    v.origin.x = (double)r.x;
+    v.origin.y = view_h - (double)(r.y + r.h);
+    v.size.w = (double)r.w;
+    v.size.h = (double)r.h;
+    return v;
+}
+
+/* copy canvas rectangle r (inside the canvas) to the same place in the view */
+static void lc_draw_part(lc_state *s, lc_cgctx cg, const lt_canvas *c, lt_rect r, double view_h)
+{
+    lc_cgctx bmp;
+    lc_cgimg img;
+    /* a bitmap context over just this part of the canvas (row stride = canvas pitch): the
+     * image made from it copies r, not the whole canvas */
+    bmp = CGBitmapContextCreate(c->px + (size_t)r.y * (size_t)c->pitch + (size_t)r.x,
+                                (size_t)r.w, (size_t)r.h, 8, (size_t)c->pitch * 4U, s->cs,
+                                (lt_u32)CO_BITMAP_INFO);
+    if (bmp == NULL) {
+        return;
+    }
+    img = CGBitmapContextCreateImage(bmp);
+    if (img != NULL) {
+        CGContextDrawImage(cg, lc_canvas_to_view(r, view_h), img);
+        CGImageRelease(img);
+    }
+    CGContextRelease(bmp);
+}
+
 static void lc_on_draw_rect(lc_id self, lc_sel cmd, lc_cgrect dirty)
 {
     lc_state *s = g_cocoa;
     lc_id gctx;
     lc_cgctx cg;
-    lc_cgctx bmp;
-    lc_cgimg img;
-    lc_cgrect bounds, dst;
+    lc_cgrect bounds;
+    const lc_cgrect *rects = NULL;
+    long nrects = 0, i;
     lt_canvas *c;
     (void)cmd;
-    (void)dirty;
     if (s == NULL) {
         return;
     }
@@ -568,9 +626,13 @@ static void lc_on_draw_rect(lc_id self, lc_sel cmd, lc_cgrect dirty)
         return;
     }
     bounds = lc_get_rect(self, "bounds");
-    CGContextSetRGBFillColor(cg, 0.0, 0.0, 0.0, 1.0);
-    CGContextFillRect(cg, bounds);
     c = s->canvas;
+    if (c == NULL || c->px == NULL || c->w <= 0 || c->h <= 0 ||
+        (double)c->w < bounds.size.w || (double)c->h < bounds.size.h) {
+        /* black where the canvas does not reach (AppKit clips this to the dirty region) */
+        CGContextSetRGBFillColor(cg, 0.0, 0.0, 0.0, 1.0);
+        CGContextFillRect(cg, dirty);
+    }
     if (c == NULL || c->px == NULL || c->w <= 0 || c->h <= 0) {
         return;
     }
@@ -580,23 +642,20 @@ static void lc_on_draw_rect(lc_id self, lc_sel cmd, lc_cgrect dirty)
             return;
         }
     }
-    bmp = CGBitmapContextCreate(c->px, (size_t)c->w, (size_t)c->h, 8,
-                                (size_t)c->pitch * 4U, s->cs, (lt_u32)CO_BITMAP_INFO);
-    if (bmp == NULL) {
-        return;
+    CGContextSetInterpolationQuality(cg, CO_INTERP_NONE);
+    /* the exact rectangles that need drawing (dirty is only their bounding box) */
+    CO_SEND(lc_f_void_rects)(self, lc_sel_of("getRectsBeingDrawn:count:"), &rects, &nrects);
+    if (rects == NULL || nrects <= 0) {
+        rects = &dirty;
+        nrects = 1;
     }
-    img = CGBitmapContextCreateImage(bmp);
-    if (img != NULL) {
-        /* top-left anchored (the view is not flipped: y grows upward) */
-        dst.origin.x = 0.0;
-        dst.origin.y = bounds.size.h - (double)c->h;
-        dst.size.w = (double)c->w;
-        dst.size.h = (double)c->h;
-        CGContextSetInterpolationQuality(cg, CO_INTERP_NONE);
-        CGContextDrawImage(cg, dst, img);
-        CGImageRelease(img);
+    for (i = 0; i < nrects; i++) {
+        lt_rect r = lt_rect_intersect(lc_view_to_canvas(rects[i], bounds.size.h),
+                                      lt_rect_make(0, 0, c->w, c->h));
+        if (r.w > 0 && r.h > 0) {
+            lc_draw_part(s, cg, c, r, bounds.size.h);
+        }
     }
-    CGContextRelease(bmp);
 }
 
 /* ---- delegate (NSApplication + NSWindow) ------------------------------- */
@@ -1004,22 +1063,37 @@ static int lc_poll(lt_backend *b, lt_event *ev, int timeout_ms)
     return 1;
 }
 
-static void lc_present(lt_backend *b, lt_canvas *canvas, lt_cells *cells, lt_rect dirty)
+/* invalidate the canvas rectangles (view coordinates), then draw them in one display pass */
+static void lc_present_rects(lt_backend *b, lt_canvas *canvas, const lt_rect *rects, int n)
 {
     lc_state *s = (lc_state *)b->impl;
     lc_id pool;
-    (void)cells;
-    if (!s->opened || canvas == NULL) {
+    lc_cgrect bounds;
+    lc_f_void_rect inval = CO_SEND(lc_f_void_rect);
+    int i, any = 0;
+    if (!s->opened || canvas == NULL || rects == NULL) {
         return;
     }
     s->canvas = canvas;
-    if (dirty.w <= 0 || dirty.h <= 0) {
-        return;
-    }
     pool = lc_pool_new();
-    lc_send_void_b(s->view, "setNeedsDisplay:", 1);
-    lc_send_void0(s->view, "displayIfNeeded");
+    bounds = lc_get_rect(s->view, "bounds");
+    for (i = 0; i < n; i++) {
+        if (rects[i].w > 0 && rects[i].h > 0) {
+            inval(s->view, lc_sel_of("setNeedsDisplayInRect:"),
+                  lc_canvas_to_view(rects[i], bounds.size.h));
+            any = 1;
+        }
+    }
+    if (any) {
+        lc_send_void0(s->view, "displayIfNeeded");
+    }
     lc_pool_drain(pool);
+}
+
+static void lc_present(lt_backend *b, lt_canvas *canvas, lt_cells *cells, lt_rect dirty)
+{
+    (void)cells;
+    lc_present_rects(b, canvas, &dirty, 1);
 }
 
 static void lc_size(lt_backend *b, int *pw, int *ph)
@@ -1120,6 +1194,7 @@ lt_backend *lt_backend_cocoa_create(void)
     b->get_geometry = lc_get_geometry;
     b->set_fullscreen = lc_set_fullscreen;
     b->beep = lc_beep;
+    b->present_rects = lc_present_rects;
     b->impl = s;
     return b;
 }
