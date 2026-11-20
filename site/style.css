@@ -82,8 +82,7 @@ h3 { font-size: 1.12rem; font-weight: 600; line-height: 1.35; margin: 0 0 8px; }
   text-decoration: none; color: var(--ink-text);
   display: inline-flex; align-items: baseline;
 }
-.brand b { color: var(--red); font-weight: 600; margin-right: 0.04em; }
-.brand:hover b { color: var(--red-hi); }
+
 .top nav { display: flex; gap: 28px; font-size: 0.9rem; }
 .top nav a { color: var(--ink-muted); text-decoration: none; transition: color 0.15s; }
 .top nav a:hover { color: #fff; }
