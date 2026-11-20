@@ -6,10 +6,11 @@
 #include "fw.h"
 
 const char lt_fw_udev_rule[] =
-    "# /etc/udev/rules.d/50-libretune-flash.rules\n"
-    "# STM32 ROM bootloader (DFU) and OpenBLT\n"
+    "# /etc/udev/rules.d/" LT_FW_UDEV_FILE "\n"
+    "# LibreTune firmware update: STM32 ROM bootloader (DFU), OpenBLT, Teensy HalfKay\n"
     "SUBSYSTEM==\"usb\", ATTRS{idVendor}==\"0483\", ATTRS{idProduct}==\"df11\", MODE=\"0660\", TAG+=\"uaccess\"\n"
-    "SUBSYSTEM==\"usb\", ATTRS{idVendor}==\"1d50\", ATTRS{idProduct}==\"60ac\", MODE=\"0660\", TAG+=\"uaccess\"\n";
+    "SUBSYSTEM==\"usb\", ATTRS{idVendor}==\"1d50\", ATTRS{idProduct}==\"60ac\", MODE=\"0660\", TAG+=\"uaccess\"\n"
+    "SUBSYSTEM==\"usb\", ATTRS{idVendor}==\"16c0\", ATTRS{idProduct}==\"0478\", MODE=\"0660\", TAG+=\"uaccess\"\n";
 
 struct lt_fw_usb { lt_usb_dev *dev; };
 
@@ -86,6 +87,9 @@ int lt_fw_scan(lt_fw_found *out, int cap)
         } else if (u->vid == LT_FW_OPENBLT_VID && u->pid == LT_FW_OPENBLT_PID) {
             f->method = LT_FW_OPENBLT;
             name = "OpenBLT";
+        } else if (u->vid == LT_FW_TEENSY_VID && u->pid == LT_FW_TEENSY_PID) {
+            f->method = LT_FW_HALFKAY;
+            name = "Teensy HalfKay";
         } else {
             continue;
         }

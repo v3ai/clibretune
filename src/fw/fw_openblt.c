@@ -1,7 +1,13 @@
-/* fw_openblt.c - OpenBLT bootloader host, XCP 1.0 over USB bulk (1D50:60AC).
- *
- * Interface 0, bulk OUT 0x01 / IN 0x81; every packet is one length byte followed by the XCP
- * command or response (responses start with 0xFF = positive or 0xFE = error + code).
+/* fw_openblt.c - OpenBLT bootloader host, XCP 1.0 over three transports:
+ *   USB   (1D50:60AC) interface 0, bulk OUT 0x01 / IN 0x81; every packet is one length byte
+ *         followed by the XCP command or response;
+ *   UART  "XCP on RS232": the same length byte + packet framing (no checksum byte, the
+ *         OpenBLT default) over a serial port;
+ *   CAN   one XCP packet per CAN frame (DLC = packet length, at most 8 bytes) through an
+ *         SLCAN / Lawicel ASCII adapter on a serial port ("Sn" bit rate, "O" open,
+ *         "tIIILDD..<CR>" frames, 29-bit ids as "T"); default ids 0x667 host -> target and
+ *         0x7E1 target -> host.
+ * Responses start with 0xFF = positive or 0xFE = error + code.
  * Sequence: CONNECT, GET_STATUS (programming must not need a seed/key unlock), PROGRAM_START;
  * per segment SET_MTA + PROGRAM_CLEAR (erase); per segment SET_MTA + PROGRAM_MAX / PROGRAM
  * chunks; PROGRAM with length 0 ends programming; optional read back with SET_MTA + UPLOAD;
@@ -29,11 +35,18 @@
 #define XCP_EP_OUT 0x01
 #define XCP_EP_IN  0x81
 #define POLL_MS 40
+#define SER_POLL_MS 10
 #define CONNECT_TRIES 25
 
 typedef struct xws { lt_u32 addr, len; const lt_u8 *data; } xws;
 
 typedef struct xcp {
+    int tp;                         /* transport: LT_FW_OPENBLT, _UART or _CAN */
+    int sub;                        /* SLCAN adapter setup step */
+    lt_u32 can_tx, can_rx;
+    int can_kbps;
+    char line[48];                  /* SLCAN: the line being received */
+    int line_len;
     xws *ws;
     int n_ws, wi;
     lt_u32 off;
@@ -86,15 +99,140 @@ static void put32(const xcp *x, lt_u8 *p, lt_u32 v)
     else { lt_store_u32le(p, v); }
 }
 
+/* ------------------------------------------------------------------ transports */
+/* drop whatever the serial port still holds (late answers, adapter acks) */
+static void drain(lt_fw_job *j)
+{
+    lt_u8 b[64];
+    int k;
+    for (k = 0; k < 32; k++) {
+        if (j->io->read(j->io->ctx, b, (int)sizeof(b), 0) <= 0) { break; }
+    }
+}
+
+static int slcan_cmd(lt_fw_job *j, const char *t)
+{
+    return j->io->write(j->io->ctx, (const lt_u8 *)t, (int)strlen(t));
+}
+
+/* 1 when the adapter answered BELL (refused the last command), 0 otherwise */
+static int slcan_bell(lt_fw_job *j)
+{
+    lt_u8 b[64];
+    int k, r, i;
+    for (k = 0; k < 32; k++) {
+        r = j->io->read(j->io->ctx, b, (int)sizeof(b), 0);
+        if (r <= 0) { break; }
+        for (i = 0; i < r; i++) {
+            if (b[i] == 7) { return 1; }
+        }
+    }
+    return 0;
+}
+
+static int tp_send(lt_fw_job *j, const lt_u8 *pkt, int len)
+{
+    xcp *x = (xcp *)j->m;
+    lt_u8 out[300];
+    if (x->tp == LT_FW_OPENBLT_CAN) {
+        static const char hx[17] = "0123456789ABCDEF";
+        lt_u32 id = x->can_tx & ~LT_FW_CAN_EXT;
+        int k = 0, i, digits = (x->can_tx & LT_FW_CAN_EXT) != 0 ? 8 : 3;
+        if (len > 8) { return LT_USB_EINVAL; }
+        out[k++] = (lt_u8)(digits == 8 ? 'T' : 't');
+        for (i = digits - 1; i >= 0; i--) { out[k++] = (lt_u8)hx[(id >> (4 * i)) & 15u]; }
+        out[k++] = (lt_u8)('0' + len);
+        for (i = 0; i < len; i++) {
+            out[k++] = (lt_u8)hx[pkt[i] >> 4];
+            out[k++] = (lt_u8)hx[pkt[i] & 15];
+        }
+        out[k++] = '\r';
+        drain(j);
+        x->line_len = 0;
+        return j->io->write(j->io->ctx, out, k);
+    }
+    out[0] = (lt_u8)len;
+    memcpy(out + 1, pkt, (size_t)len);
+    if (x->tp == LT_FW_OPENBLT_UART) {
+        drain(j);
+        return j->io->write(j->io->ctx, out, len + 1);
+    }
+    return j->io->bulk(j->io->ctx, XCP_EP_OUT, out, len + 1, 1000);
+}
+
+static int hexval(int c)
+{
+    if (c >= '0' && c <= '9') { return c - '0'; }
+    if (c >= 'A' && c <= 'F') { return c - 'A' + 10; }
+    if (c >= 'a' && c <= 'f') { return c - 'a' + 10; }
+    return -1;
+}
+
+/* an SLCAN line: 1 and the packet (length byte first) in x->rx when it is a frame on can_rx */
+static int slcan_parse(xcp *x)
+{
+    const char *l = x->line;
+    int n = x->line_len, idn, i, dlc;
+    lt_u32 id = 0;
+    if (n < 1 || (l[0] != 't' && l[0] != 'T')) { return 0; }      /* acks (z, Z), empty lines */
+    idn = l[0] == 't' ? 3 : 8;
+    if (n < idn + 2) { return 0; }
+    for (i = 1; i <= idn; i++) {
+        int v = hexval(l[i]);
+        if (v < 0) { return 0; }
+        id = (id << 4) | (lt_u32)v;
+    }
+    if (l[0] == 'T') { id |= LT_FW_CAN_EXT; }
+    dlc = l[idn + 1] - '0';
+    /* a timestamp (Z1) may follow the data */
+    if (id != x->can_rx || dlc < 1 || dlc > 8 || n < idn + 2 + 2 * dlc) { return 0; }
+    for (i = 0; i < dlc; i++) {
+        int hi = hexval(l[idn + 2 + 2 * i]), lo = hexval(l[idn + 3 + 2 * i]);
+        if (hi < 0 || lo < 0) { return 0; }
+        x->rx[1 + i] = (lt_u8)(hi * 16 + lo);
+    }
+    x->rx[0] = (lt_u8)dlc;
+    x->rx_len = dlc + 1;
+    return 1;
+}
+
+/* collect answer bytes: 1 = a whole packet sits in x->rx (length byte first), 0 = not yet,
+ * LT_USB_E* on errors (LT_USB_EPIPE: the SLCAN adapter answered BELL) */
+static int tp_poll(lt_fw_job *j)
+{
+    xcp *x = (xcp *)j->m;
+    lt_u8 b[64];
+    int r, i;
+    if (x->tp == LT_FW_OPENBLT) { r = j->io->bulk(j->io->ctx, XCP_EP_IN, b, 64, POLL_MS); }
+    else { r = j->io->read(j->io->ctx, b, 64, SER_POLL_MS); }
+    if (r == LT_USB_ETIMEOUT || r == 0) { return 0; }
+    if (r < 0) { return r; }
+    if (x->tp == LT_FW_OPENBLT_CAN) {
+        for (i = 0; i < r; i++) {
+            if (b[i] == 7) { return LT_USB_EPIPE; }
+            if (b[i] == '\r') {
+                if (slcan_parse(x)) { return 1; }
+                x->line_len = 0;
+            } else if (x->line_len < (int)sizeof(x->line) - 1) {
+                x->line[x->line_len++] = (char)b[i];
+            } else {
+                x->line_len = 0;                                /* garbage: start over */
+            }
+        }
+        return 0;
+    }
+    if (x->rx_len + r > (int)sizeof(x->rx)) { return LT_USB_EINVAL; }
+    memcpy(x->rx + x->rx_len, b, (size_t)r);
+    x->rx_len += r;
+    return x->rx_len >= 1 && x->rx_len >= x->rx[0] + 1 ? 1 : 0;
+}
+
+/* ------------------------------------------------------------------ commands */
 /* send one command packet (pkt[0..len)) and start waiting for its response */
 static void send_cmd(lt_fw_job *j, const lt_u8 *pkt, int len, lt_u32 n, int timeout_ms)
 {
     xcp *x = (xcp *)j->m;
-    lt_u8 out[300];
-    int r;
-    out[0] = (lt_u8)len;
-    memcpy(out + 1, pkt, (size_t)len);
-    r = j->io->bulk(j->io->ctx, XCP_EP_OUT, out, len + 1, 1000);
+    int r = tp_send(j, pkt, len);
     if (r < 0) {
         if (pkt[0] == CMD_PROGRAM_RESET && r == LT_USB_ENODEV) {
             lt_fwj_phase(j, LT_FW_PH_DONE, 0, "Done: OpenBLT started the new firmware.");
@@ -141,6 +279,10 @@ static void handle(lt_fw_job *j, const lt_u8 *p, int len)
         x->motorola = (p[2] & 1) != 0;
         x->cto = p[3];
         x->dto = x->motorola ? (p[4] << 8) | p[5] : (p[5] << 8) | p[4];
+        if (x->tp == LT_FW_OPENBLT_CAN) {                       /* one CAN frame per packet */
+            if (x->cto > 8) { x->cto = 8; }
+            if (x->dto > 8) { x->dto = 8; }
+        }
         if (x->cto < 8 || x->dto < 8) { lt_fwj_fail(j, "OpenBLT reports unusable packet sizes (CTO %d, DTO %d)", x->cto, x->dto); return; }
         if (x->dto > 255) { x->dto = 255; }
         x->pgm_cto = x->cto;
@@ -158,6 +300,7 @@ static void handle(lt_fw_job *j, const lt_u8 *p, int len)
         break;
     case CMD_PROGRAM_START:
         if (len >= 4 && p[3] >= 8) { x->pgm_cto = p[3]; }
+        if (x->tp == LT_FW_OPENBLT_CAN && x->pgm_cto > 8) { x->pgm_cto = 8; }
         lt_fwj_phase(j, LT_FW_PH_ERASE, j->w_total[LT_FW_PH_ERASE], "Erasing the application area");
         x->wi = 0;
         x->mta_ok = 0;
@@ -202,16 +345,22 @@ static void on_timeout(lt_fw_job *j)
         lt_fwj_phase(j, LT_FW_PH_DONE, 0, "Done: OpenBLT started the new firmware.");
         return;
     }
-    lt_fwj_fail(j, x->cmd == CMD_CONNECT ? "OpenBLT does not answer (is the ECU in its bootloader?)"
-                                         : "no answer to %s", cmd_name(x->cmd));
+    if (x->cmd != CMD_CONNECT) { lt_fwj_fail(j, "no answer to %s", cmd_name(x->cmd)); }
+    else if (x->tp == LT_FW_OPENBLT_UART) {
+        lt_fwj_fail(j, "OpenBLT does not answer (is the ECU in its bootloader, the port and the baud rate right?)");
+    } else if (x->tp == LT_FW_OPENBLT_CAN) {
+        lt_fwj_fail(j, "OpenBLT does not answer on CAN id 0x%03lX (is the ECU in its bootloader? check the ids, "
+                    "the bit rate and the bus termination)", (unsigned long)(x->can_rx & ~LT_FW_CAN_EXT));
+    } else {
+        lt_fwj_fail(j, "OpenBLT does not answer (is the ECU in its bootloader?)");
+    }
 }
 
 static void recv_step(lt_fw_job *j)
 {
     xcp *x = (xcp *)j->m;
-    lt_u8 b[64];
-    int r = j->io->bulk(j->io->ctx, XCP_EP_IN, b, 64, POLL_MS);
-    if (r == LT_USB_ETIMEOUT || r == 0) {
+    int r = tp_poll(j);
+    if (r == 0) {
         if (j->now >= x->deadline) { on_timeout(j); }
         return;
     }
@@ -220,16 +369,65 @@ static void recv_step(lt_fw_job *j)
             lt_fwj_phase(j, LT_FW_PH_DONE, 0, "Done: OpenBLT started the new firmware.");
             return;
         }
+        if (r == LT_USB_EINVAL) { lt_fwj_fail(j, "oversized response to %s", cmd_name(x->cmd)); return; }
+        if (r == LT_USB_EPIPE && x->tp == LT_FW_OPENBLT_CAN) {
+            lt_fwj_fail(j, "the CAN adapter refused to send %s (BELL): is the CAN channel open and the bus "
+                        "connected?", cmd_name(x->cmd));
+            return;
+        }
         lt_fwj_fail(j, "waiting for %s: %s", cmd_name(x->cmd), lt_fwj_usb_err(j, r));
         return;
     }
-    if (x->rx_len + r > (int)sizeof(x->rx)) { lt_fwj_fail(j, "oversized response to %s", cmd_name(x->cmd)); return; }
-    memcpy(x->rx + x->rx_len, b, (size_t)r);
-    x->rx_len += r;
-    if (x->rx_len >= 1 && x->rx_len >= x->rx[0] + 1) {
-        x->waiting = 0;
-        handle(j, x->rx + 1, x->rx[0]);
+    x->waiting = 0;
+    handle(j, x->rx + 1, x->rx[0]);
+}
+
+/* connect step 0: claim the USB interface, empty the UART, or set up the SLCAN adapter */
+static void tp_open(lt_fw_job *j)
+{
+    xcp *x = (xcp *)j->m;
+    char t[16];
+    int r, code;
+    if (x->tp == LT_FW_OPENBLT) {
+        r = j->io->claim(j->io->ctx, 0, -1);
+        if (r < 0) { lt_fwj_fail(j, "cannot claim the OpenBLT interface: %s", lt_fwj_usb_err(j, r)); return; }
+        x->cstep = 1;
+        return;
     }
+    if (x->tp == LT_FW_OPENBLT_UART) {
+        drain(j);
+        x->cstep = 1;
+        return;
+    }
+    code = lt_fw_slcan_speed(x->can_kbps);
+    switch (x->sub) {
+    case 0:                                     /* flush the adapter's line buffer, close the channel */
+        r = slcan_cmd(j, "\r\r\rC\r");
+        break;
+    case 1:
+        drain(j);
+        lt_snprintf(t, sizeof(t), "S%d\r", code);
+        r = slcan_cmd(j, t);
+        break;
+    case 2:
+        if (slcan_bell(j)) {
+            lt_fwj_fail(j, "the CAN adapter refused the bit rate %d kbit/s (S%d): is it an SLCAN adapter?",
+                        x->can_kbps, code);
+            return;
+        }
+        r = slcan_cmd(j, "O\r");
+        break;
+    default:
+        if (slcan_bell(j)) { lt_fwj_fail(j, "the CAN adapter refused to open the CAN channel (O)"); return; }
+        lt_fwj_log(j, 0, "CAN adapter open at %d kbit/s; XCP on ids 0x%03lX (to the ECU) / 0x%03lX (from it)",
+                   x->can_kbps, (unsigned long)(x->can_tx & ~LT_FW_CAN_EXT),
+                   (unsigned long)(x->can_rx & ~LT_FW_CAN_EXT));
+        x->cstep = 1;
+        return;
+    }
+    if (r < 0) { lt_fwj_fail(j, "writing to the CAN adapter failed: %s", lt_fwj_usb_err(j, r)); return; }
+    x->sub++;
+    j->next_ms = j->now + 30.0;                 /* let the adapter answer */
 }
 
 static void after_write(lt_fw_job *j)
@@ -260,12 +458,7 @@ static void xcp_step(lt_fw_job *j)
     }
     switch (j->phase) {
     case LT_FW_PH_CONNECT:
-        if (x->cstep == 0) {
-            int r = j->io->claim(j->io->ctx, 0, -1);
-            if (r < 0) { lt_fwj_fail(j, "cannot claim the OpenBLT interface: %s", lt_fwj_usb_err(j, r)); return; }
-            x->cstep = 1;
-            return;
-        }
+        if (x->cstep == 0) { tp_open(j); return; }
         if (x->cstep == 1) { p[0] = CMD_CONNECT; p[1] = 0; send_cmd(j, p, 2, 0, 200); return; }
         if (x->cstep == 2) { p[0] = CMD_GET_STATUS; send_cmd(j, p, 1, 0, 1000); return; }
         p[0] = CMD_PROGRAM_START;
@@ -352,6 +545,19 @@ int lt_fwj_xcp_init(lt_fw_job *j)
     j->m = x;
     j->m_step = xcp_step;
     j->m_free = xcp_free;
+    x->tp = j->method;
+    x->can_tx = j->o.can_tx != 0 ? j->o.can_tx : LT_FW_CAN_TX_ID;
+    x->can_rx = j->o.can_rx != 0 ? j->o.can_rx : LT_FW_CAN_RX_ID;
+    x->can_kbps = j->o.can_kbps > 0 ? j->o.can_kbps : 500;
+    if (x->tp == LT_FW_OPENBLT ? j->io->bulk == NULL || j->io->claim == NULL
+                               : j->io->write == NULL || j->io->read == NULL) {
+        lt_fwj_fail(j, "this connection cannot carry %s", lt_fw_method_name(x->tp));
+        return -1;
+    }
+    if (x->tp == LT_FW_OPENBLT_CAN && lt_fw_slcan_speed(x->can_kbps) < 0) {
+        lt_fwj_fail(j, "SLCAN adapters cannot run CAN at %d kbit/s", x->can_kbps);
+        return -1;
+    }
     x->ws = (xws *)lt_calloc(img->n_segs, sizeof(xws));
     if (x->ws == NULL) { lt_fwj_fail(j, "out of memory"); return -1; }
     for (i = 0; i < img->n_segs; i++) {

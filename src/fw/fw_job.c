@@ -58,12 +58,39 @@ const lt_fw_range *lt_fwj_protected(const lt_fw_job *j, lt_u32 addr, lt_u32 len)
     return NULL;
 }
 
+int lt_fwj_blocks(lt_fw_job *j, lt_u32 bsize, lt_u32 **out)
+{
+    const lt_fw_image *img = j->img;
+    char err[200];
+    lt_u32 *b;
+    size_t i, cap = 0;
+    int n = 0;
+    *out = NULL;
+    if (lt_fw_image_fits(img, j->o.dev_base, j->o.dev_size, err, sizeof(err)) != 0) {
+        lt_fwj_fail(j, "%s", err);
+        return -1;
+    }
+    for (i = 0; i < img->n_segs; i++) { cap += (size_t)(img->segs[i].len / bsize) + 2u; }
+    b = (lt_u32 *)lt_calloc(cap, sizeof(lt_u32));
+    if (b == NULL) { lt_fwj_fail(j, "out of memory"); return -1; }
+    for (i = 0; i < img->n_segs; i++) {
+        lt_u32 first = (img->segs[i].addr - j->o.dev_base) / bsize * bsize;
+        lt_u32 last = (img->segs[i].addr - j->o.dev_base + (img->segs[i].len - 1u)) / bsize * bsize, a;
+        for (a = first;; a += bsize) {
+            if (n == 0 || b[n - 1] < a) { b[n++] = a; }
+            if (a >= last) { break; }
+        }
+    }
+    *out = b;
+    return n;
+}
+
 lt_fw_job *lt_fw_job_new(int method, const lt_fw_io *io, const lt_fw_image *img, const lt_fw_opts *o,
                          lt_fw_log_fn log, void *user)
 {
     lt_fw_job *j;
     if (io == NULL || img == NULL || o == NULL || img->n_segs == 0) { return NULL; }
-    if (method != LT_FW_DFUSE && method != LT_FW_OPENBLT) { return NULL; }
+    if (method < 0 || method >= LT_FW_METHOD_COUNT) { return NULL; }
     j = (lt_fw_job *)lt_calloc(1, sizeof(*j));
     if (j == NULL) { return NULL; }
     j->method = method;
@@ -74,8 +101,12 @@ lt_fw_job *lt_fw_job_new(int method, const lt_fw_io *io, const lt_fw_image *img,
     j->user = user;
     lt_fwj_phase(j, LT_FW_PH_CONNECT, 0, NULL);
     lt_strlcpy(j->msg, "Connecting to the bootloader", sizeof(j->msg));
-    if (method == LT_FW_DFUSE) { (void)lt_fwj_dfuse_init(j); }
-    else { (void)lt_fwj_xcp_init(j); }
+    switch (method) {
+    case LT_FW_DFUSE: (void)lt_fwj_dfuse_init(j); break;
+    case LT_FW_STK500: (void)lt_fwj_stk500_init(j); break;
+    case LT_FW_HALFKAY: (void)lt_fwj_halfkay_init(j); break;
+    default: (void)lt_fwj_xcp_init(j); break;
+    }
     return j;
 }
 

@@ -370,7 +370,8 @@ LT_TEST(presets)
     LT_CHECK_INT(lt_fw_preset_for_signature("rusEFI master.2025.01.01.miata-ecu.123"), LT_FW_PRESET_MIATA);
     LT_CHECK_INT(lt_fw_preset_for_signature("rusEFI 2025062409.2025.06.26.epicECU.2089451084"), LT_FW_PRESET_RUSEFI);
     LT_CHECK_INT(lt_fw_preset_for_signature("FOME 2024.uaefi"), LT_FW_PRESET_RUSEFI);
-    LT_CHECK_INT(lt_fw_preset_for_signature("speeduino 202501"), LT_FW_PRESET_GENERIC);
+    LT_CHECK_INT(lt_fw_preset_for_signature("speeduino 202501"), LT_FW_PRESET_SPEEDUINO_MEGA);
+    LT_CHECK_INT(lt_fw_preset_for_signature("MS2Extra"), LT_FW_PRESET_GENERIC);
     LT_CHECK_INT(lt_fw_preset_for_signature(NULL), LT_FW_PRESET_GENERIC);
     LT_CHECK(lt_fw_preset_get(LT_FW_PRESET_MIATA)->url != NULL);
     LT_CHECK(lt_fw_preset_get(LT_FW_PRESET_GENERIC)->n_protect == 0);
