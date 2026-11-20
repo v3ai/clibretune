@@ -322,7 +322,10 @@ static void table_page(lt_app *app)
     if (color_field(ui, "Custom cursor colour", "curcol", p->cursor_color, 0xFF8000UL)) { ch = 1; }
     if (color_field(ui, "Custom trail colour", "trlcol", p->trail_color, 0x3080FFUL)) { ch = 1; }
     lt_ui_layout_row(ui, 1, &w1, 0);
-    lt_ui_label_ex(ui, "Trail fade (seconds, 0 = never)", lt_ui_theme(ui)->text2, LT_UI_ALIGN_LEFT);
+    if (lt_ui_checkbox(ui, "Show the live-cell trail in table editors", &p->trail_on)) { ch = 1; }
+    lt_ui_layout_row(ui, 1, &w1, 0);
+    lt_ui_label_ex(ui, "Trail fade (seconds, 0 = never): cells fade out this long after the live position left them",
+                   lt_ui_theme(ui)->text2, LT_UI_ALIGN_LEFT);
     lt_ui_layout_row(ui, 1, &w1, 0);
     fade = p->trail_fade_sec;
     if (lt_ui_number(ui, "fade", &fade, 0, 600, 1, 0) & LT_UI_CHANGED) { p->trail_fade_sec = (int)(fade + 0.5); ch = 1; }

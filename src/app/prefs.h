@@ -35,6 +35,7 @@ typedef struct lt_prefs {
     char cursor_color[8];            /* "#rrggbb" or "" = theme */
     char trail_color[8];
     int  trail_fade_sec;             /* 0 = never */
+    int  trail_on;                   /* show the live-cell trail (default 1) */
     char heat_scheme[LT_PREFS_HEAT_CTX][16];   /* scheme name, or "custom" */
     lt_u32 heat_stops[LT_PREFS_HEAT_CTX][LT_PREFS_HEAT_STOPS];   /* 0xRRGGBB */
     int  heat_n[LT_PREFS_HEAT_CTX];  /* number of custom stops */

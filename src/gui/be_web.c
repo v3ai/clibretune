@@ -16,6 +16,9 @@
  *   u32 seq, u16 w, u16 h, u16 ntiles, u16 titlelen, title bytes (UTF-8),
  *   then ntiles x { u16 x, u16 y, u16 w, u16 h, u32 enclen, enclen bytes }.
  *   (Header extension: the title rides in every frame header.)
+ *   Optional trailer after the tiles: u32 bell, the number of beeps requested so far; it is
+ *   only present once a beep happened (the client plays a short WebAudio tone whenever the
+ *   count grows).
  *   enclen is the length of the RLE data that follows (the decoded size is
  *   always w*h*4 bytes).
  * Tile pixels are bytes R,G,B,255 (so the browser can use them as ImageData),
@@ -93,7 +96,11 @@ static const char *const web_page_chunks[] = {
     "if(tl){document.title=new TextDecoder().decode(u.subarray(o,o+tl));o+=tl;}\n",
     "if(cv.width!=w||cv.height!=h){cv.width=w;cv.height=h;}\n",
     "for(i=0;i<n;i++){x=u16(d,o);y=u16(d,o+2);tw=u16(d,o+4);th=u16(d,o+6);el=d.getUint32(o+8,true);o+=12;\n",
-    "im=cx.createImageData(tw,th);rle(u,o,o+el,im.data);cx.putImageData(im,x,y);o+=el;}}\n",
+    "im=cx.createImageData(tw,th);rle(u,o,o+el,im.data);cx.putImageData(im,x,y);o+=el;}\n",
+    "if(o+4<=u.length){i=d.getUint32(o,true);if(bl>=0&&i!=bl)beep();bl=i;}else if(bl<0)bl=0;}\n",
+    "var bl=-1;function beep(){try{var A=window.AudioContext||window.webkitAudioContext;if(!A)return;\n",
+    "var c=beep.c||(beep.c=new A()),os=c.createOscillator(),g=c.createGain();os.frequency.value=880;g.gain.value=0.15;\n",
+    "os.connect(g);g.connect(c.destination);os.start();os.stop(c.currentTime+0.15);}catch(e){}}\n",
     "function poll(){fetch('/frame?since='+seq,{cache:'no-store'}).then(function(r){\n",
     "if(r.status==200)return r.arrayBuffer().then(function(b){frame(b);poll();});\n",
     "if(r.status==204){poll();return;}throw 0;}).catch(function(){setTimeout(poll,500);});}\n",
@@ -122,6 +129,7 @@ typedef struct web {
     int cw, ch, ntx, nty;
     lt_u32 *tseq;          /* per-tile seq of last change */
     lt_u32 seq, size_seq;
+    lt_u32 bell;           /* beeps requested so far (frame trailer) */
     lt_event q[WEB_EVQ];
     int qh, qn;
     web_conn *conns[WEB_MAX_CONN];
@@ -370,6 +378,7 @@ static void build_frame(web *w, lt_buf *out, lt_u32 since)
         enclen = (lt_u32)(out->len - start);
         lt_wr_le((lt_u8 *)out->data + at, 4, enclen);
     }
+    if (w->bell != 0) put_u32(out, w->bell);
 }
 
 /* ---- HTTP ---- */
@@ -773,6 +782,19 @@ static void web_set_title(lt_backend *b, const char *title)
     }
 }
 
+/* a new frame carries the grown bell count; the browser plays the tone */
+static void web_beep(lt_backend *b)
+{
+    web *w = W(b);
+    if (w == NULL) return;
+    w->bell = (w->bell + 1) & LT_U32_MASK;
+    if (w->bell == 0) w->bell = 1;
+    if (w->seq > 0) {
+        w->seq = (w->seq + 1) & LT_U32_MASK;
+        wake_parked(w);
+    }
+}
+
 lt_backend *lt_backend_web_create(int port)
 {
     lt_backend *b = (lt_backend *)lt_calloc(1, sizeof(*b));
@@ -791,6 +813,7 @@ lt_backend *lt_backend_web_create(int port)
     b->set_title = web_set_title;
     b->set_clipboard = NULL;
     b->get_clipboard = NULL;
+    b->beep = web_beep;
     b->impl = w;
     return b;
 }

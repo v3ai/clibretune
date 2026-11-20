@@ -140,5 +140,32 @@ void lt_feat_wue_register(lt_app_ext *reg);
 void lt_feat_trim_register(lt_app_ext *reg);
 /* Tools > Firmware Update (USB DFU / OpenBLT flashing, miata-ecus wideband) */
 void lt_feat_firmware_register(lt_app_ext *reg);
+/* Tools > Calculators (feat_calc.c): expression, linear calibration, units, injectors; eval = the
+ * Expression tab on the open app (0 ok, -1 error with the message in out) */
+void lt_feat_calc_register(lt_app_ext *reg);
+int  lt_feat_calc_eval(lt_app *app, const char *expr, char *out, size_t cap);
+
+/* File > Save / Load Partial Tune (.msqpart, feat_msqpart.c). save: the named constants of the
+ * open tune; apply_file: only the values in the file (the previous ones become the Undo copy);
+ * undo: restore them; open_load: the Load dialog with the preview of path (confirmation) */
+void lt_feat_msqpart_register(lt_app_ext *reg);
+int  lt_feat_msqpart_save(lt_app *app, const char *path, const char *const *names, size_t n);
+int  lt_feat_msqpart_apply_file(lt_app *app, const char *path, size_t *applied, size_t *skipped);
+int  lt_feat_msqpart_undo(lt_app *app);
+int  lt_feat_msqpart_can_undo(lt_app *app);
+void lt_feat_msqpart_open_load(lt_app *app, const char *path);
+
+/* Tools > Action Triggers (feat_triggers.c): rules over the live channels that run an action.
+ * rules: the loaded set (project or configuration folder); eval: check every rule at now_ms and
+ * run the actions of those that fire (returns how many); fire: run the action of rule i now
+ * (0 / -1); last: the latest firing log line; save: write the rules (0 ok) */
+struct lt_trig_set;
+void   lt_feat_triggers_register(lt_app_ext *reg);
+void   lt_feat_triggers_open(lt_app *app);
+struct lt_trig_set *lt_feat_triggers_rules(lt_app *app);
+size_t lt_feat_triggers_eval(lt_app *app, double now_ms);
+int    lt_feat_triggers_fire(lt_app *app, size_t i);
+const char *lt_feat_triggers_last(lt_app *app);
+int    lt_feat_triggers_save(lt_app *app);
 
 #endif

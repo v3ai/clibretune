@@ -16,5 +16,7 @@ lt_tune_entry *lt_tune_entry_new(void);
 void           lt_tune_entry_free(lt_tune_entry *e);
 void           lt_tune_invalidate(lt_tune *t);
 char          *lt_tune_now_rfc3339(void);
+/* units / digits / rows / cols attributes of a numeric constant from the INI (no-op when set) */
+void           lt_tune_fill_attrs(lt_tune_entry *e, const lt_ini_const *c);
 
 #endif

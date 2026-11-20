@@ -136,7 +136,7 @@ static double tidy(const lt_ini_const *c, double d)
     return d;
 }
 
-static void fill_attrs(lt_tune_entry *e, const lt_ini_const *c)
+void lt_tune_fill_attrs(lt_tune_entry *e, const lt_ini_const *c)
 {
     char b[32];
     if (e->has_attrs || c->type == LT_DT_BITS || c->type == LT_DT_STRING) return;
@@ -221,7 +221,7 @@ int lt_tune_capture_from_pages(lt_tune *t, const lt_ini *ini)
         lt_tune_set_constant(t, c->name, &v, c->page);
         lt_tune_value_clear(&v);
         e = (lt_tune_entry *)lt_map_get(&t->constants, c->name);
-        fill_attrs(e, c);
+        lt_tune_fill_attrs(e, c);
         n++;
     }
     lt_tune_stamp_ini(t, ini, t->ini_metadata ? t->ini_metadata->hash : NULL);
@@ -518,4 +518,20 @@ void lt_varenv_init(lt_varenv *v, const lt_ini *ini, const lt_pagesrc *pages, lt
     v->consts.is_online = cb_online_c;
     v->consts.get_dir = cb_dir;
     v->consts.time_now = cb_time_c;
+}
+
+/* ---------------------------------------------------------------------- */
+/* one constant at a time (partial tunes)                                  */
+/* ---------------------------------------------------------------------- */
+int lt_tune_write_const(const lt_ini *ini, const lt_ini_const *c, lt_pagesrc *ps, const lt_tune_value *v)
+{
+    if (ini == NULL || c == NULL || ps == NULL || v == NULL || c->is_pc_var) return LT_EINVAL;
+    return apply_one(ini, c, ps, v) == 0 ? 0 : LT_EDATA;
+}
+
+lt_bool lt_tune_read_const(const lt_ini *ini, const lt_ini_const *c, const lt_pagesrc *ps, lt_tune_value *out)
+{
+    lt_tune_value_init(out);
+    if (ini == NULL || c == NULL || ps == NULL || c->is_pc_var) return LT_FALSE;
+    return decode_const(ini, c, ps, out);
 }

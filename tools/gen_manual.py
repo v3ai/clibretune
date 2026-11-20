@@ -5,7 +5,8 @@ stock LibreTune manual (ref/LibreTune/docs/src, ordered by SUMMARY.md).
 Usage: tools/gen_manual.py [docs_src_dir] > src/app/manual_data.c
 
 The developer-oriented parts (technical/, changelog, contributing, migration notes, MCP /
-AI assistant) are left out.  Every page is a list of lines (a Markdown source line longer than
+AI assistant) are left out, and so is what this port does not have: pop-out dashboard windows
+and the self-updater (REWRITES below replace those passages with what LibreTune here does).  Every page is a list of lines (a Markdown source line longer than
 ~300 characters is wrapped at a space: paragraphs are re-flowed by the viewer anyway), kept in
 parts of at most PART lines so no single object passes 32767 bytes, and no literal passes 509
 characters.  Characters the embedded fonts do not have are replaced by ASCII.
@@ -15,7 +16,7 @@ import re
 import sys
 
 SKIP_PREFIX = ("technical/", "features/mcp-server", "features/ai-assistant", "changelog",
-               "contributing", "reference/java-to-wasm")
+               "contributing", "reference/java-to-wasm", "features/popout-windows")
 PART = 600
 WRAP = 300
 REPL = {
@@ -45,6 +46,41 @@ VENDOR_SUBS = [
     (_V2 + r",\s*", ""),
 ]
 VENDOR_RE = re.compile(_V1 + "|" + _V2, re.I)
+
+
+# Passages of the stock manual describing features this port does not have, per page:
+# (page id, regex, replacement).  Every pattern must match (a changed upstream page fails the
+# generator instead of silently keeping the old promise); FORBIDDEN_RE is checked on the result.
+RELEASES = "https://github.com/v3ai/clibretune/releases"
+REWRITES = [
+    ("getting-started/installation", r"## Updating\n.*?(?=## Building from Source)",
+     "## Updating\n\n"
+     "LibreTune does not download or install updates by itself. **Help \u2192 Check for Updates**"
+     " shows the version and build you are running and opens the releases page (" + RELEASES +
+     ") in your web browser. Download a newer build from there and install it the same way as"
+     " the first one.\n\n"),
+    ("getting-started/settings", r"\*\*Check for Updates:\*\*\n(- [^\n]*\n)+\n",
+     "**Updates:** there is no automatic update check; **Help \u2192 Check for Updates** shows"
+     " your version and opens the releases page.\n\n"),
+    ("features/dashboards/using", r"## Multi-Monitor\n.*?(?=## Performance)",
+     "## Multi-Monitor\n\n"
+     "Dashboards are tabs of the main window; there are no separate pop-out windows. For a"
+     " second monitor, move the LibreTune window there and use **Full screen (F11)** on the"
+     " dashboard.\n\n"),
+    ("introduction", r",\s*keyboard navigation,\s*and multi-monitor support\.",
+     " and keyboard navigation."),
+]
+FORBIDDEN_RE = re.compile(r"Install and restart|pop-out icon|Pop out dashboards|popped out|"
+                          r"multi-monitor support|cryptographically signed", re.I)
+
+
+def rewrite(pid, text):
+    for page, pat, rep in REWRITES:
+        if page != pid:
+            continue
+        text, n = re.subn(pat, lambda m: rep, text, flags=re.S)
+        assert n > 0, "rewrite did not match in " + pid + ": " + pat
+    return text
 
 
 def devendor(text):
@@ -146,8 +182,10 @@ def main():
         if pid in seen:
             continue
         seen.add(pid)
-        text = devendor(open(os.path.join(base, pid + ".md"), encoding="utf-8").read())
+        text = open(os.path.join(base, pid + ".md"), encoding="utf-8").read().replace("\r", "")
+        text = rewrite(pid, devendor(text))
         assert not VENDOR_RE.search(text), "vendor name left in " + pid
+        assert not FORBIDDEN_RE.search(text), "unsupported feature promised in " + pid
         lines = []
         for ln in text.replace("\r", "").split("\n"):
             lines.extend(wrap(clean(ln.rstrip())))

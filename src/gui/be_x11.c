@@ -1010,6 +1010,18 @@ static void x_set_fullscreen(lt_backend *be, int on) {
     x->fullscreen = on ? 1 : 0;
 }
 
+/* Bell (opcode 104): one-word request, the data byte is the volume in percent of the base
+ * volume (-100..100); 0 = the user's configured bell volume */
+static void x_beep(lt_backend *be) {
+    x11 *x = (x11 *)be->impl;
+    lt_buf b;
+    if (!x || x->dead) return;
+    lt_buf_init(&b);
+    req_begin(&b, 104, 0);
+    (void)req_end(x, &b);
+    lt_buf_free(&b);
+}
+
 static int x_open(lt_backend *be, const char *title, int w, int h) {
     x11 *x = (x11 *)be->impl;
     lt_buf b;
@@ -1259,6 +1271,7 @@ lt_backend *lt_backend_x11_create(void) {
     be->set_initial_geometry = x_set_initial_geometry;
     be->get_geometry = x_get_geometry;
     be->set_fullscreen = x_set_fullscreen;
+    be->beep = x_beep;
     be->impl = x;
     return be;
 }

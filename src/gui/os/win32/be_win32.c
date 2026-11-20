@@ -730,6 +730,13 @@ static int wb_screen_size(lt_backend *b, int *pw, int *ph)
     return 1;
 }
 
+/* system default sound (falls back to the speaker when no sound scheme is set) */
+static void wb_beep(lt_backend *b)
+{
+    LT_UNUSED(b);
+    (void)MessageBeep(MB_OK);
+}
+
 /* Full screen: borderless popup covering the monitor the window is on; restores style + placement */
 static void wb_set_fullscreen(lt_backend *b, int on)
 {
@@ -831,6 +838,7 @@ lt_backend *lt_backend_win32_create(void)
     b->set_initial_geometry = wb_set_initial_geometry;
     b->get_geometry = wb_get_geometry;
     b->set_fullscreen = wb_set_fullscreen;
+    b->beep = wb_beep;
     b->impl = w;
     return b;
 }

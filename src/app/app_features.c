@@ -41,4 +41,7 @@ void lt_app_features_register(lt_app_ext *reg)
     lt_feat_wue_register(reg);
     lt_feat_trim_register(reg);
     lt_feat_firmware_register(reg);
+    lt_feat_calc_register(reg);
+    lt_feat_msqpart_register(reg);
+    lt_feat_triggers_register(reg);
 }

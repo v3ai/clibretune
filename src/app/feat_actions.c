@@ -404,7 +404,7 @@ static void draw_manager(lt_app *app, act_state *s)
 {
     lt_ui *ui = app->ui;
     const lt_theme *t = lt_ui_theme(ui);
-    int w1 = -1, w[5], cell = lt_ui_cell_mode(ui), have;
+    int w1 = -1, w[6], cell = lt_ui_cell_mode(ui), have;
     lt_action_set *set = NULL;
     char b[300];
     static const char *const speeds[4] = { "0.5x", "1x", "2x", "5x" };
@@ -525,8 +525,8 @@ static void draw_manager(lt_app *app, act_state *s)
     if (lt_ui_button_ex(ui, "Play", have && app->ini != NULL ? LT_UI_BTN_PRIMARY : LT_UI_BTN_DISABLED) && have && app->ini != NULL) {
         s->confirm_play = 1;
     }
-    w[0] = 150; w[1] = 150; w[2] = 150; w[3] = -1; w[4] = 110;
-    lt_ui_layout_row(ui, 5, w, 0);
+    w[0] = 150; w[1] = 150; w[2] = 150; w[3] = 170; w[4] = -1; w[5] = 110;
+    lt_ui_layout_row(ui, 6, w, 0);
     if (lt_ui_button(ui, "Import .ltaction...")) {
         lt_app_file_dialog(app, FD_ACT_IMPORT, LT_UI_FILE_OPEN, NULL, "", ACT_FILTERS);
     }
@@ -536,6 +536,7 @@ static void draw_manager(lt_app *app, act_state *s)
         lt_app_file_dialog(app, FD_ACT_EXPORT, LT_UI_FILE_SAVE, NULL, nm, ACT_FILTERS);
     }
     if (lt_ui_button_ex(ui, "Delete set", have ? LT_UI_BTN_DANGER : LT_UI_BTN_DISABLED) && have) { s->confirm_del = 1; }
+    if (lt_ui_button(ui, "Action Triggers...")) { lt_feat_triggers_open(app); }   /* play sets on conditions */
     lt_ui_label(ui, "");
     if (lt_ui_button_ex(ui, "Close", LT_UI_BTN_DEFAULT)) { s->close_req = 1; }
 }
