@@ -521,6 +521,127 @@ lt_bool lt_sim_seed_ve_table(const lt_ini *ini, lt_pagesrc *dst)
     return ok;
 }
 
+/* lower-case substring test for axis naming heuristics */
+static lt_bool has_ci(const char *s, const char *needle)
+{
+    size_t n, i, k;
+    if (s == NULL) {
+        return LT_FALSE;
+    }
+    n = strlen(needle);
+    for (i = 0; s[i] != '\0'; i++) {
+        for (k = 0; k < n; k++) {
+            int a = (unsigned char)s[i + k], b = (unsigned char)needle[k];
+            if (a >= 'A' && a <= 'Z') {
+                a += 'a' - 'A';
+            }
+            if (a != b) {
+                break;
+            }
+        }
+        if (k == n) {
+            return LT_TRUE;
+        }
+    }
+    return LT_FALSE;
+}
+
+/* A sensible demo range for an axis, from its units, constant name and live channel. */
+static void axis_range(const lt_ini_const *c, const char *channel, double *lo, double *hi)
+{
+    const char *u = c->units != NULL ? c->units : "";
+    if (has_ci(u, "rpm") || has_ci(c->name, "rpm") || has_ci(channel, "rpm")) {
+        *lo = 500.0; *hi = 7000.0;
+    } else if (has_ci(u, "f") && (has_ci(u, "deg") || strcmp(u, "F") == 0)) {
+        *lo = -40.0; *hi = 250.0;
+    } else if (strcmp(u, "C") == 0 || has_ci(u, "deg c") || has_ci(u, "degc") ||
+               has_ci(c->name, "clt") || has_ci(c->name, "iat") || has_ci(c->name, "temp") ||
+               has_ci(channel, "coolant") || has_ci(channel, "intake")) {
+        *lo = -40.0; *hi = 110.0;
+    } else if (has_ci(u, "kpa") || has_ci(c->name, "map") || has_ci(c->name, "load")) {
+        *lo = 20.0; *hi = 200.0;
+    } else if (has_ci(u, "%") || has_ci(c->name, "tps") || has_ci(c->name, "pedal") ||
+               has_ci(channel, "tps") || has_ci(channel, "throttle")) {
+        *lo = 0.0; *hi = 100.0;
+    } else if (strcmp(u, "V") == 0 || has_ci(u, "volt") || has_ci(c->name, "batt") ||
+               has_ci(c->name, "vbat")) {
+        *lo = 8.0; *hi = 16.0;
+    } else if (has_ci(u, "lambda") || has_ci(c->name, "lambda")) {
+        *lo = 0.7; *hi = 1.3;
+    } else if (has_ci(u, "afr") || has_ci(c->name, "afr")) {
+        *lo = 10.0; *hi = 18.0;
+    } else {
+        *lo = 0.0; *hi = 100.0;
+    }
+    if (c->range_resolved && c->max > c->min) {
+        if (*lo < c->min) { *lo = c->min; }
+        if (*hi > c->max) { *hi = c->max; }
+        if (*hi <= *lo) { *lo = c->min; *hi = c->max; }
+    }
+}
+
+/* Fill one axis constant with an ascending spread if it is degenerate (all values equal,
+ * as on a blank demo page image), so curves and tables are usable in demo mode. */
+static lt_bool seed_axis(const lt_ini *ini, lt_pagesrc *dst, const char *name, const char *channel)
+{
+    const lt_ini_const *c;
+    size_t n, i;
+    double *v, lo = 0.0, hi = 0.0;
+    lt_bool flat = LT_TRUE, ok = LT_FALSE;
+
+    if (name == NULL || (c = lt_ini_find_const(ini, name)) == NULL || c->type == LT_DT_BITS) {
+        return LT_FALSE;
+    }
+    n = lt_shape_count(&c->shape);
+    if (n < 2 || n > 4096) {
+        return LT_FALSE;
+    }
+    v = (double *)lt_malloc(n * sizeof(double));
+    if (lt_ini_const_get_array(ini, c, dst, v, n) < 0) {
+        lt_free(v);
+        return LT_FALSE;
+    }
+    for (i = 1; i < n; i++) {
+        if (v[i] != v[0]) {
+            flat = LT_FALSE;
+            break;
+        }
+    }
+    if (flat) {
+        axis_range(c, channel, &lo, &hi);
+        spread(n, lo, hi, v);
+        ok = lt_ini_const_set_array(ini, c, dst, v, n) >= 0;
+    }
+    lt_free(v);
+    return ok;
+}
+
+lt_bool lt_sim_seed_axes(const lt_ini *ini, lt_pagesrc *dst)
+{
+    size_t i;
+    lt_bool any = LT_FALSE;
+
+    if (!ini || !dst) {
+        return LT_FALSE;
+    }
+    for (i = 0; i < ini->n_curves; i++) {
+        const lt_ini_curve *cv = ini->curves[i];
+        if (seed_axis(ini, dst, cv->x_const, cv->x_channel)) {
+            any = LT_TRUE;
+        }
+    }
+    for (i = 0; i < ini->n_tables; i++) {
+        const lt_ini_table *t = ini->tables[i];
+        if (seed_axis(ini, dst, t->x_const, t->x_channel)) {
+            any = LT_TRUE;
+        }
+        if (seed_axis(ini, dst, t->y_const, t->y_channel)) {
+            any = LT_TRUE;
+        }
+    }
+    return any;
+}
+
 lt_bool lt_sim_seed_afr_target(const lt_ini *ini, lt_pagesrc *dst)
 {
     const lt_ini_table *t;
@@ -705,10 +826,11 @@ static lt_bool scalar_by_name(const char *n, const lt_sim_snapshot *s, double *o
         *out = s->advance_deg;
     } else if (!strcmp(n, "afrTarget")) {
         *out = s->afr_target;
-    } else if (!strcmp(n, "afr") || !strcmp(n, "afrGasolineScale")) {
-        /* INTEGRATION FIX: demo.ini names its AFR channel afrGasolineScale */
+    } else if (!strcmp(n, "afr") || !strcmp(n, "afrGasolineScale") || !strcmp(n, "AFRValue") ||
+               !strcmp(n, "AFRValue2") || !strcmp(n, "afr1") || !strcmp(n, "AFR")) {
+        /* rusEFI names its wideband AFR AFRValue (gauges) and afrGasolineScale */
         *out = s->afr;
-    } else if (!strcmp(n, "lambdaValue")) {
+    } else if (!strcmp(n, "lambdaValue") || !strcmp(n, "lambdaValue2") || !strcmp(n, "lambda")) {
         *out = s->afr / 14.7;
     } else if (!strcmp(n, "targetLambda") || !strcmp(n, "lambdaTarget")) {
         *out = s->afr_target / 14.7;

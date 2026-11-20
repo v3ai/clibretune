@@ -58,6 +58,8 @@ double lt_sim_true_ve(double rpm, double load);             /* 40 + 25*load/100 
 lt_bool lt_sim_seed_ve_table(const lt_ini *ini, lt_pagesrc *dst);
 /* Seed the AFR / lambda target table with stoichiometry and the warmup curve with a plain decay. */
 lt_bool lt_sim_seed_afr_target(const lt_ini *ini, lt_pagesrc *dst);
+/* demo: give flat (blank) table and curve axes an ascending spread by unit/name */
+lt_bool lt_sim_seed_axes(const lt_ini *ini, lt_pagesrc *dst);
 
 /* och codec (spec 6.2): write snapshot values into a realtime block by channel names. */
 size_t lt_sim_block_size(const lt_ini *ini);

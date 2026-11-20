@@ -3,6 +3,11 @@
 LibreTune is open-source ECU tuning software (INI-driven, rusEFI / Speeduino / MegaSquirt
 style): table, curve and INI dialog editing, AutoTune, dashboards, data logging and
 playback, restore points, projects and a built-in ECU simulator for demo mode.
+It also covers the TunerStudio MS/Ultra extras: WUE Analyze and per-cylinder Trim Table Analyze,
+the port editor, calculators, partial tunes (`.msqpart`), expression-triggered actions with sound alerts,
+MSL logs with stacked graph pages, scatter plots and histograms, X-Y log plots on curves, live math
+channels, and a USB firmware flasher (ST DFU and OpenBLT) with a preset for the
+[miata-ecus](https://github.com/v3ai/miata-ecus) board.
 This is a from-scratch rewrite in Universal C (see [docs/UNIVERSAL_C.md](docs/UNIVERSAL_C.md)) with no third-party dependencies.
 
 ## Build
@@ -82,14 +87,9 @@ Ctrl+R/D fill, Ctrl+Z/Y undo/redo, `f` follow, `g` go to live cell. AutoTune: Sp
 
 ## Known limitations
 
-- INI dialogs: a `panel =` that names a curve, table, indicator panel or readout panel is not drawn
-  (many rusEFI/FOME settings screens lose their embedded curve or status lights); an embedded `table =`
-  is a button that opens the table, and dialog gauges are not drawn.
-- INI help topics (Help-type menu items, `topicHelp`) only show a toast; the port editor (`std_port_edit`)
-  is a placeholder and there is no whole-tune pin-conflict check before burning.
-- Project INI symbols (`ecuSettings`, e.g. CELSIUS / LAMBDA) are not applied when parsing the INI.
-- Data log graph is one overlaid chart (no stacked panes or saved graph setups); math channels are
-  evaluated for logs only, not live on gauges. `.msl` logs must be renamed to `.csv` to open.
+- The full table and curve editor tabs have no `topicHelp` button (embedded editors in dialogs do).
+- Raw USB access (firmware update) is implemented for Linux, Windows (WinUSB driver required, e.g. via
+  Zadig) and macOS, but has only been exercised against simulated bootloaders so far; BSD has none.
 - Firmware update: USB DFU and OpenBLT over USB only (no serial/CAN bootloaders, no seed/key unlock
   for OpenBLT, no option-byte or read-protection changes); it needs this build's USB backend for the OS
   (where none exists, the screen says so - use dfu-util or STM32CubeProgrammer). The settings guard of the
@@ -98,7 +98,6 @@ Ctrl+R/D fill, Ctrl+Z/Y undo/redo, `f` follow, `g` go to live cell. AutoTune: Sp
 - Not available by design (zero dependencies, no TLS): in-app updates, in-app HTTPS INI download
   (assisted browser flow instead), cloud AI providers (local OpenAI-compatible endpoints only),
   WASM plugins, `.ltlog` logs, pop-out windows.
-- The demo AFR target table is all zeros (fill it before trying AutoTune in demo mode).
 
 ## License and credits
 
