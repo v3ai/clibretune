@@ -74,7 +74,11 @@ int main(int argc, char **argv)
         int w = 1280, h = 800, frames = 8;
         char *e = lt_plat_getenv("LT_SHOT_SIZE");
         char *th, *op;
-        lt_plat_clock_virtual(1);   /* same render on fast and slow machines */
+        {   /* same render on fast and slow machines; LT_PERF=1 measures real time instead */
+            char *pe = lt_plat_getenv("LT_PERF");
+            if (pe == NULL || pe[0] == '\0' || pe[0] == '0') { lt_plat_clock_virtual(1); }
+            lt_free(pe);
+        }
         if (lt_app_shot_is_tty()) { w = 120; h = 40; }
         if (e != NULL) { sscanf(e, "%dx%d", &w, &h); lt_free(e); }
         e = lt_plat_getenv("LT_SHOT_FRAMES");
