@@ -65,12 +65,14 @@ int lt_ag_cfg_load(lt_ag_cfg *c, const char *dir)
     return 0;
 }
 
-/* write a file that only the owner can read: create it empty, restrict it, then fill it */
+/* write a file that only the owner can read: make sure it exists and is restricted, then
+ * replace it atomically (the replacement takes the restricted mode before any data is
+ * written, and a failed write leaves the old file whole) */
 static int write_private(const char *path, const char *text, size_t len)
 {
-    if (lt_file_write(path, "", 0) != 0) { return -1; }
+    if (!lt_file_exists(path) && lt_file_write(path, "", 0) != 0) { return -1; }
     (void)lt_plat_chmod_private(path);
-    return lt_file_write(path, text, len);
+    return lt_plat_write_atomic(path, text, len);
 }
 
 int lt_ag_cfg_save(const lt_ag_cfg *c, const char *dir)
