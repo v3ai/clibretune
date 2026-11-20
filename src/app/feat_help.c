@@ -1,18 +1,83 @@
 /* feat_help.c - Help menu (Keyboard Shortcuts, Check for Updates, About), F1, and the shortcuts
  * list as a Settings page.  Worked example of dialog kinds, menu items, shortcuts and settings pages.
+ * About lists the licences of everything built in, including the CC BY-NC base tunes.
  * Check for Updates does not download anything: it shows the running version and build and opens
  * the releases page in the browser, where new versions are published.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 #include "feat.h"
+#include "../tune/basetune.h"
+
+static void credit(lt_ui *ui, const char *title, const char *text)
+{
+    const lt_theme *t = lt_ui_theme(ui);
+    int w1 = -1;
+    lt_ui_layout_row(ui, 1, &w1, 0);
+    lt_ui_text_style(ui, (int)LT_FONT_SANS_SEMIBOLD, LT_UI_FS_BASE);
+    lt_ui_label_ex(ui, title, t->text, LT_UI_ALIGN_LEFT);
+    lt_ui_text_style_reset(ui);
+    lt_ui_layout_row(ui, 1, &w1, 0);
+    lt_ui_label_wrap(ui, text, t->text2);
+}
+
+/* licences of everything built into the program */
+static void about_credits(lt_ui *ui)
+{
+    const char *prov[16];
+    char buf[700], who[300];
+    size_t i, n;
+    credit(ui, "LibreTune", "Free software under the GNU General Public License, version 2 or later (LICENSE). "
+           "Based on the original LibreTune project, https://github.com/RallyPat/LibreTune.");
+    credit(ui, "Fonts", "IBM Plex Sans and IBM Plex Mono, Copyright 2017 IBM Corp., SIL Open Font License 1.1 "
+           "(assets/fonts/OFL.txt). The 8x16 terminal font is derived from GNU Unifont (GPL-2.0-or-later "
+           "with the font embedding exception); the legacy vector font uses Hershey fonts data.");
+    credit(ui, "Icons", "Lucide icons, ISC License (assets/icons/LICENSE).");
+    if (lt_basetune_count() == 0) { return; }
+    n = lt_basetune_providers(prov, LT_COUNTOF(prov));
+    who[0] = '\0';
+    for (i = 0; i < n && i < LT_COUNTOF(prov); i++) {
+        if (!lt_basetune_named(prov[i])) { continue; }
+        if (who[0] != '\0') { lt_strlcat(who, ", ", sizeof(who)); }
+        lt_strlcat(who, prov[i], sizeof(who));
+    }
+    lt_strlcat(who, " and others", sizeof(who));
+    lt_snprintf(buf, sizeof(buf), "The built-in base tunes are from the Speeduino Tunes repository, %s "
+                "(commit %.10s), by the " LT_BASETUNE_AUTHORS "; tune authors: %s. They are NOT under the GPL: "
+                "they are licensed under " LT_BASETUNE_LICENSE " (Creative Commons Attribution-NonCommercial "
+                "4.0 International, " LT_BASETUNE_LICENSE_URL "), embedded unmodified, provided as is without "
+                "warranty. Non-commercial: LibreTune is never sold, and no bundle containing these tunes may be "
+                "sold.", lt_basetune_source, lt_basetune_commit, who);
+    credit(ui, "Speeduino base tunes", buf);
+}
 
 static void about_draw(lt_app *app, lt_app_dialog *d)
 {
+    lt_ui *ui = app->ui;
+    const lt_theme *t = lt_ui_theme(ui);
     char msg[320];
-    lt_snprintf(msg, sizeof(msg), "LibreTune " LT_APP_VERSION " - open source ECU tuning software.\n"
-                "In Universal C. GPL-2.0-or-later.\nBuild: %s (" __DATE__ ")\nUI scale: %d%%",
-                lt_app_build_id(), app->scale_pct);
-    lt_ui_msgbox(app->ui, "about", "About LibreTune", msg, "OK", &d->open);
+    int w[2], w1 = -1;
+    if (lt_ui_modal_begin(ui, "About LibreTune", 680, 560, &d->open)) {
+        lt_ui_layout_row(ui, 1, &w1, 0);
+        lt_ui_text_style(ui, (int)LT_FONT_SANS_SEMIBOLD, LT_UI_FS_LG);
+        lt_ui_label_ex(ui, "LibreTune " LT_APP_VERSION, t->text, LT_UI_ALIGN_LEFT);
+        lt_ui_text_style_reset(ui);
+        lt_ui_layout_row(ui, 1, &w1, 0);
+        lt_snprintf(msg, sizeof(msg), "Open source ECU tuning software, in Universal C.  Build: %s (" __DATE__
+                    ")  UI scale: %d%%", lt_app_build_id(), app->scale_pct);
+        lt_ui_label_ex(ui, msg, t->text2, LT_UI_ALIGN_LEFT);
+        lt_ui_layout_row(ui, 1, &w1, 0);
+        lt_ui_separator(ui);
+        lt_ui_layout_row(ui, 1, &w1, lt_ui_cell_mode(ui) ? -20 : -40);
+        if (lt_ui_scroll_begin(ui, "aboutlic")) {
+            about_credits(ui);
+            lt_ui_scroll_end(ui);
+        }
+        w[0] = -1; w[1] = 96;
+        lt_ui_layout_row(ui, 2, w, 0);
+        lt_ui_label_ex(ui, "Licences and credits", t->muted, LT_UI_ALIGN_LEFT);
+        if (lt_ui_button_ex(ui, "OK", LT_UI_BTN_DEFAULT)) { d->open = 0; }
+        lt_ui_modal_end(ui);
+    }
 }
 
 static void keys_draw(lt_app *app, lt_app_dialog *d)

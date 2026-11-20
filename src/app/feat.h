@@ -67,6 +67,12 @@ int  lt_feat_csv_export(lt_app *app, const char *path, size_t *count);
 int  lt_feat_csv_import(lt_app *app, const char *path, size_t *imported);
 /* switch the open project to another INI (tune re-resolved, project reopened); tests and scripts */
 int  lt_feat_migrate_apply(lt_app *app, const char *new_ini);
+/* migration report dialog for rep (a tune file against an INI, lt_migration_compare_tune); the report
+ * is taken over (rep is left empty). intro: one paragraph above the report. on_continue (may be NULL)
+ * runs from the dialog when the user presses "Continue with Tune" (Cancel runs nothing); it must only
+ * queue work (a tick hook does it), not replace the session. */
+void lt_feat_migrate_show(lt_app *app, const char *title, const char *intro, lt_migration_report *rep,
+                          lt_ext_action_fn on_continue);
 /* Difference Report "Ignore": project tune is kept, also on disconnect; tests and scripts */
 void lt_feat_sync_ignore(lt_app *app);
 
@@ -170,5 +176,16 @@ int    lt_feat_triggers_save(lt_app *app);
 /* INI extras: help topics, pin conflict report + burn gate, power cycle notice, project INI
  * settings, port editor (feat_iniext.c; API in iniext.h) */
 void lt_feat_iniext_register(lt_app_ext *reg);
+
+/* Base Tune library browser (feat_basetune.c, tunes in tune/basetune.h). open: mode "new" (new
+ * project), "load" (into the open definition), "" (load when a Speeduino INI is open, else new).
+ * load: base tune b into the open definition/project, values converted to it (0 / -1);
+ * new_project: create project `name` (NULL/"" = the tune's name) for ini_path, load b, save it */
+struct lt_basetune;
+void lt_feat_basetune_register(lt_app_ext *reg);
+void lt_feat_basetune_open(lt_app *app, const char *mode);
+int  lt_feat_basetune_load(lt_app *app, const struct lt_basetune *b);
+int  lt_feat_basetune_new_project(lt_app *app, const struct lt_basetune *b, const char *ini_path,
+                                  const char *name);
 
 #endif
