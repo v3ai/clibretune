@@ -211,7 +211,19 @@ int main(void) {
         size_t n = 0;
         char *fb;
         strcpy(fbname, mock); strcat(fbname, ".fb");
-        fb = lt_file_read(fbname, &n);
+        {   /* the mock writes the framebuffer when the connection closes: wait for all of it */
+            int tries;
+            const size_t want = strlen("320 200\n") + 320U * 200U * 4U;
+            fb = NULL;
+            for (tries = 0; tries < 250; tries++) {
+                fb = lt_file_read(fbname, &n);
+                if (fb != NULL && n >= want) break;
+                lt_free(fb);
+                fb = NULL;
+                lt_plat_sleep_ms(20);
+            }
+            if (fb == NULL) fb = lt_file_read(fbname, &n);
+        }
         CHECK(fb != NULL && expect != NULL);
         if (fb != NULL && expect != NULL) {
             const char *hdr = "320 200\n";

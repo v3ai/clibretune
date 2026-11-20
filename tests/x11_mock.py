@@ -34,8 +34,28 @@ srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
 srv.bind(path)
 srv.listen(1)
 log = open(path + ".log", "w")
+
+
+class Conn:
+    """The client may close its end while requests it sent are still unread here (it does not
+    wait for replies at exit). Like a real server, ignore failed sends and keep reading, so every
+    request the client sent still gets logged."""
+    def __init__(self, sock):
+        self.sock = sock
+
+    def sendall(self, data):
+        try:
+            self.sock.sendall(data)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
+    def __getattr__(self, name):
+        return getattr(self.sock, name)
+
+
 conn, _ = srv.accept()
 conn.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1 << 20)
+conn = Conn(conn)
 
 libc = ctypes.CDLL(None, use_errno=True)
 libc.shmat.restype = ctypes.c_void_p
@@ -89,9 +109,10 @@ class Fb:
         if not BENCH:      # the pad byte is undefined on the wire: compare B, G, R only
             for i in range(3, len(self.data), 4):
                 self.data[i] = 0
-        with open(fname, "wb") as f:
+        with open(fname + ".tmp", "wb") as f:      # rename: readers never see a partial file
             f.write(b"%d %d\n" % (self.w, self.h))
             f.write(self.data)
+        os.replace(fname + ".tmp", fname)
 
 
 try:
