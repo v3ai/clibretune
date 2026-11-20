@@ -7,6 +7,7 @@
 #include <string.h>
 #include "../src/lt.h"
 #include "../src/gui/gui.h"
+#include "../src/plat/plat.h"
 
 static int fails = 0;
 #define CHECK(c) do { if (!(c)) { printf("FAIL line %d: %s\n", __LINE__, #c); fails++; } } while (0)
@@ -108,7 +109,18 @@ int main(void) {
     lt_canvas_free(&c);
     logname = (char *)malloc(strlen(mock) + 8);
     strcpy(logname, mock); strcat(logname, ".log");
-    log = lt_file_read(logname, NULL);
+    {   /* the mock logs asynchronously: wait until it has seen the DestroyWindow of close() */
+        int tries;
+        log = NULL;
+        for (tries = 0; tries < 100; tries++) {
+            log = lt_file_read(logname, NULL);
+            if (log != NULL && strstr(log, "op=4 ") != NULL) break;
+            lt_free(log);
+            log = NULL;
+            lt_plat_sleep_ms(20);
+        }
+        if (log == NULL) log = lt_file_read(logname, NULL);
+    }
     CHECK(log != NULL);
     if (log) {
         CHECK(strstr(log, "op=1 ") != NULL);
