@@ -135,4 +135,8 @@ int  lt_feat_actions_start(lt_app *app, const char *name, const char *desc);
 int  lt_feat_actions_stop(lt_app *app, size_t *count);
 int  lt_feat_actions_play_file(lt_app *app, const char *path, size_t *applied);
 
+/* AutoTune analyzers: WUE Analyze (warm-up curve) and Trim Table Analyze (per-cylinder trims) */
+void lt_feat_wue_register(lt_app_ext *reg);
+void lt_feat_trim_register(lt_app_ext *reg);
+
 #endif
