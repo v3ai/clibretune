@@ -81,7 +81,7 @@ static void app_toolbar(lt_app *app)
                           online ? lt_hk_tip(app, "Disconnect", "conn.disconnect") :
                               lt_hk_tip(app, "Connect to ECU", "conn.connect"),
                           has ? (online ? LT_UI_BTN_SELECTED : 0) : LT_UI_BTN_DISABLED) && has) {
-        if (online) { lt_app_disconnect(app); } else { lt_app_connect_dialog(app); }
+        if (online) { lt_feat_guard_disconnect(app); } else { lt_app_connect_dialog(app); }
     }
     if (lt_ui_icon_button(ui, LT_UI_LUCIDE(LT_ICON_LAYOUT_DASHBOARD), lt_hk_tip(app, "Dashboard", "view.dashboard"), has ? 0 : LT_UI_BTN_DISABLED) && has) {
         lt_app_dashboard_tab_open(app);
@@ -351,14 +351,14 @@ static void menu_file(lt_app *app)
     if (lt_ui_menu_item(ui, lt_tr("Demo mode (simulated ECU)"), NULL, 0)) { lt_app_start_demo(app, NULL); }
     if (has) {
         if (lt_ui_menu_item(ui, lt_tr("&Close Project"), NULL, 0)) {
-            if (app->modified) { app->close_proj_open = 1; } else { lt_app_close_project(app); }
+            lt_feat_guard_close_project(app);
         }
     }
     lt_ui_menu_separator(ui);
     if (has) {
         if (lt_ui_menu_item(ui, lt_tr("Connect ECU..."), lt_hk_text(app, "conn.connect"), 0)) { lt_app_connect_dialog(app); }
         if (lt_ui_menu_item(ui, lt_tr("Disconnect"), lt_hk_text(app, "conn.disconnect"), online ? 0 : LT_UI_MENU_DISABLED)) {
-            lt_app_disconnect(app);
+            lt_feat_guard_disconnect(app);
         }
         lt_ui_menu_separator(ui);
         if (lt_ui_menu_item(ui, lt_tr("&Load Tune..."), lt_hk_text(app, "file.load_tune"), 0)) {
@@ -792,7 +792,7 @@ static void statusbar(lt_app *app)
 {
     lt_ui *ui = app->ui;
     const lt_theme *t = lt_ui_theme(ui);
-    int w[7];
+    int w[8];
     char conn[200], mid[200], proj[200], rate[48];
     const char *units = app->settings.metric ? "Metric" : "Imperial";
     const char *logt;
@@ -831,12 +831,13 @@ static void statusbar(lt_app *app)
     lt_ui_statusbar_begin(ui);
     w[0] = LT_MIN(lt_ui_text_width(ui, conn) + lt_ui_px(ui, 24), lt_ui_surface(ui).w / 2);
     w[1] = -1;
-    w[2] = proj[0] ? lt_ui_text_width(ui, proj) + lt_ui_px(ui, 16) : 1;
-    w[3] = rate[0] ? lt_ui_text_width(ui, rate) + lt_ui_px(ui, 16) : 1;
-    w[4] = lt_ui_text_width(ui, units) + lt_ui_px(ui, 16);
-    w[5] = lt_ui_px(ui, 20) + lt_ui_text_width(ui, logt) + lt_ui_px(ui, 8);
-    w[6] = lt_ui_text_width(ui, "v" LT_APP_VERSION) + lt_ui_px(ui, 8);
-    lt_ui_layout_row_px(ui, 7, w, 0);
+    w[2] = LT_MAX(1, lt_feat_guard_statusbar_width(app));     /* "3 unburned changes [Burn]" */
+    w[3] = proj[0] ? lt_ui_text_width(ui, proj) + lt_ui_px(ui, 16) : 1;
+    w[4] = rate[0] ? lt_ui_text_width(ui, rate) + lt_ui_px(ui, 16) : 1;
+    w[5] = lt_ui_text_width(ui, units) + lt_ui_px(ui, 16);
+    w[6] = lt_ui_px(ui, 20) + lt_ui_text_width(ui, logt) + lt_ui_px(ui, 8);
+    w[7] = lt_ui_text_width(ui, "v" LT_APP_VERSION) + lt_ui_px(ui, 8);
+    lt_ui_layout_row_px(ui, 8, w, 0);
     lt_ui_layout_indent(ui, 0);
     r = lt_ui_layout_next(ui);
     lt_ui_draw_circle_fill(ui, r.x + (double)lt_ui_px(ui, 6), r.y + r.h / 2.0, 3.5 * (double)lt_ui_scale_pct(ui) / 100.0, cc);
@@ -846,6 +847,8 @@ static void statusbar(lt_app *app)
     lt_ui_tooltip(ui, "Connection metrics");
     r = lt_ui_layout_next(ui);
     lt_ui_draw_text_in(ui, r, mid, t->muted, 1);
+    r = lt_ui_layout_next(ui);
+    lt_feat_guard_statusbar(app, r);
     r = lt_ui_layout_next(ui);
     lt_ui_draw_text_in(ui, r, proj, app->modified ? t->warning : t->text2, 2);
     r = lt_ui_layout_next(ui);
@@ -864,179 +867,9 @@ static void statusbar(lt_app *app)
 
 /* ------------------------------------------------------------------ */
 /* welcome                                                             */
-static void welcome_cell(lt_app *app, lt_rect area)
-{
-    lt_ui *ui = app->ui;
-    const lt_theme *t = lt_ui_theme(ui);
-    int cell = lt_ui_cell_mode(ui);
-    int cw = LT_MIN(area.w - 32, 640), i, w1 = -1, w2[2], rh = lt_ui_row_height(ui);
-    lt_rect r;
-    char buf[640];
-    r = lt_rect_make(area.x + (area.w - cw) / 2, area.y + (cell ? lt_ui_px(ui, 16) : lt_ui_px(ui, 40)), cw, area.h - lt_ui_px(ui, 40));
-    lt_ui_draw_fill(ui, area, t->bg_app);
-    if (cell) {
-        lt_ui_draw_text_in(ui, lt_rect_make(r.x, r.y, r.w, lt_ui_px(ui, 16)), "LibreTune", t->primary, 1);
-        lt_ui_draw_text_in(ui, lt_rect_make(r.x, r.y + lt_ui_px(ui, 16), r.w, lt_ui_px(ui, 16)),
-                           "Open-source ECU tuning software", t->text2, 1);
-        r.y += 48;
-    } else {
-        lt_ui_draw_vtext(ui, r.x + r.w / 2.0, r.y + 28, "LibreTune", 44.0, 0.0, 1, 1, 3.0, t->primary);
-        lt_ui_draw_text_in(ui, lt_rect_make(r.x, r.y + lt_ui_px(ui, 64), r.w, lt_ui_px(ui, 24)),
-                           "Open-source ECU tuning software", t->text2, 1);
-        r.y += 110;
-    }
-    r.h = area.y + area.h - r.y;
-    lt_ui_region_begin(ui, r, 0);
-    w2[0] = -1; w2[1] = -1;
-    lt_ui_layout_row(ui, 2, w2, rh * 2);
-    if (lt_ui_button_ex(ui, lt_tr("Demo mode (simulated ECU)"), LT_UI_BTN_PRIMARY)) { lt_app_start_demo(app, NULL); }
-    if (lt_ui_button(ui, lt_tr("New Project..."))) { lt_app_new_project_dialog(app); }
-    lt_ui_layout_row(ui, 2, w2, 0);
-    if (lt_ui_button(ui, lt_tr("Open Project..."))) {
-        lt_app_file_dialog(app, LT_APP_FD_OPEN_PROJECT, LT_UI_FILE_OPEN, NULL, "project.json",
-                           "Project|project.json|All files|*");
-    }
-    if (lt_ui_button(ui, lt_tr("Import TunerStudio Project..."))) {
-        lt_app_file_dialog(app, LT_APP_FD_IMPORT_TS, LT_UI_FILE_OPEN, NULL, "", "All files|*");
-    }
-    lt_ui_layout_space(ui, 12);
-    lt_ui_layout_row(ui, 1, &w1, 0);
-    lt_ui_heading(ui, lt_tr("Recent Projects"));
-    if (app->settings.n_recent == 0) {
-        lt_ui_label_ex(ui, lt_tr("No recent projects yet."), t->muted, LT_UI_ALIGN_LEFT);
-    }
-    for (i = 0; i < app->settings.n_recent; i++) {
-        int w3[2];
-        w3[0] = -1; w3[1] = 8 * 11;
-        lt_ui_layout_row(ui, 2, w3, 0);
-        lt_ui_push_id_int(ui, i);
-        lt_snprintf(buf, sizeof(buf), "%s   %s", lt_path_base(app->settings.recent[i]),
-                    app->settings.recent[i]);
-        if (lt_ui_button_ex(ui, buf, LT_UI_BTN_FLAT)) { lt_app_open_project(app, app->settings.recent[i]); }
-        if (lt_ui_button_ex(ui, app->confirm_delete == i ? "Confirm" : "Remove",
-                            app->confirm_delete == i ? LT_UI_BTN_DANGER : LT_UI_BTN_FLAT)) {
-            if (app->confirm_delete == i) {
-                int k;
-                for (k = i; k < app->settings.n_recent - 1; k++) {
-                    lt_strlcpy(app->settings.recent[k], app->settings.recent[k + 1],
-                               sizeof(app->settings.recent[0]));
-                }
-                app->settings.n_recent--;
-                app->confirm_delete = -1;
-                lt_app_settings_save(app);
-                lt_ui_pop_id(ui);
-                break;
-            }
-            app->confirm_delete = i;
-        }
-        lt_ui_pop_id(ui);
-    }
-    lt_ui_region_end(ui);
-}
-
 static void welcome(lt_app *app, lt_rect area)
 {
-    lt_ui *ui = app->ui;
-    const lt_theme *t = lt_ui_theme(ui);
-    int i, cw, y, bw1, bw2, bh, gap, cardw, cardh;
-    lt_rect r;
-    int w1 = -1, w2[2];
-    char buf[640];
-    if (lt_ui_cell_mode(ui)) { welcome_cell(app, area); return; }
-    lt_ui_draw_fill(ui, area, t->bg_app);
-    /* the stock welcome view is centred about 40% down from the top */
-    y = area.y + LT_MAX(lt_ui_px(ui, 24), (area.h - lt_ui_px(ui, 560)) / 3);
-    lt_ui_draw_text_in_f(ui, lt_rect_make(area.x, y, area.w, lt_ui_px(ui, 48)), "LibreTune", t->text, 1,
-                         (int)LT_FONT_SANS_SEMIBOLD, 36);
-    lt_ui_draw_text_in_f(ui, lt_rect_make(area.x, y + lt_ui_px(ui, 46), area.w, lt_ui_px(ui, 24)),
-                         "Open-source ECU tuning software", t->muted, 1, (int)LT_FONT_SANS, LT_UI_FS_LG);
-    y += lt_ui_px(ui, 100);
-    bw1 = lt_ui_px(ui, 154); bw2 = lt_ui_px(ui, 164); bh = lt_ui_px(ui, 56); gap = lt_ui_px(ui, 16);
-    cw = bw1 + gap + bw2;
-    r = lt_rect_make(area.x + (area.w - cw) / 2, y, cw, bh);
-    lt_ui_region_begin(ui, r, 0);
-    w2[0] = bw1; w2[1] = bw2;
-    lt_ui_layout_row_px(ui, 2, w2, bh);
-    lt_ui_layout_gap_px(ui, gap, 0);
-    lt_ui_text_style(ui, (int)LT_FONT_SANS_MEDIUM, LT_UI_FS_XL);
-    if (lt_ui_button_ex(ui, lt_tr("New Project"), LT_UI_BTN_PRIMARY)) { lt_app_new_project_dialog(app); }
-    if (lt_ui_button(ui, lt_tr("Open Project"))) {
-        lt_app_file_dialog(app, LT_APP_FD_OPEN_PROJECT, LT_UI_FILE_OPEN, NULL, "project.json",
-                           "Project|project.json|All files|*");
-    }
-    lt_ui_text_style_reset(ui);
-    lt_ui_region_end(ui);
-    y += bh + lt_ui_px(ui, 12);
-    /* secondary actions */
-    r = lt_rect_make(area.x + (area.w - cw) / 2, y, cw, lt_ui_px(ui, 26));
-    lt_ui_region_begin(ui, r, 0);
-    lt_ui_layout_row_px(ui, 2, w2, lt_ui_px(ui, 26));
-    lt_ui_layout_gap_px(ui, gap, 0);
-    if (lt_ui_button_ex(ui, lt_tr("Demo mode"), LT_UI_BTN_FLAT)) { lt_app_start_demo(app, NULL); }
-    if (lt_ui_button_ex(ui, lt_tr("Import TunerStudio"), LT_UI_BTN_FLAT)) {
-        lt_app_file_dialog(app, LT_APP_FD_IMPORT_TS, LT_UI_FILE_OPEN, NULL, "", "All files|*");
-    }
-    lt_ui_region_end(ui);
-    y += lt_ui_px(ui, 26) + lt_ui_px(ui, 36);
-    /* recent projects */
-    cardw = LT_MIN(lt_ui_px(ui, 500), area.w - lt_ui_px(ui, 32));
-    cardh = lt_ui_px(ui, 72);
-    if (app->settings.n_recent > 0) {
-        lt_ui_draw_text_in_f(ui, lt_rect_make(area.x, y, area.w, lt_ui_px(ui, 20)), "Recent Projects", t->text2, 1,
-                             (int)LT_FONT_SANS_SEMIBOLD, LT_UI_FS_MD);
-        y += lt_ui_px(ui, 32);
-    }
-    for (i = 0; i < app->settings.n_recent; i++) {
-        lt_rect card = lt_rect_make(area.x + (area.w - cardw) / 2, y, cardw, cardh);
-        lt_rect del = lt_rect_make(card.x + card.w - lt_ui_px(ui, 28) - lt_ui_px(ui, 8), card.y + (card.h - lt_ui_px(ui, 24)) / 2, lt_ui_px(ui, 28), lt_ui_px(ui, 24));
-        lt_rect body = lt_rect_make(card.x, card.y, card.w - lt_ui_px(ui, 40), card.h);
-        int hov;
-        if (card.y + card.h > area.y + area.h) { break; }
-        lt_ui_push_id_int(ui, i);
-        {
-            lt_point mp = lt_ui_mouse(ui);
-            lt_bool hv = lt_rect_contains(card, mp.x, mp.y) && !lt_ui_popup_open(ui);
-            lt_ui_draw_shadow(ui, card, t->radius_lg, lt_ui_px(ui, 4), 40);
-            lt_ui_draw_box(ui, card, hv ? t->hover : t->elevated, hv ? t->border_strong : t->border, t->radius_lg);
-        }
-        lt_ui_region_begin(ui, body, 0);
-        lt_ui_layout_row_px(ui, 1, &w1, body.h);
-        lt_ui_layout_gap(ui, 0, 0);
-        hov = lt_ui_button_ex(ui, "##card", LT_UI_BTN_FLAT);
-        {
-            lt_rect cr = lt_ui_last_rect(ui);
-            lt_ui_draw_text_in_f(ui, lt_rect_make(cr.x + lt_ui_px(ui, 16), cr.y + lt_ui_px(ui, 12), cr.w - lt_ui_px(ui, 24), lt_ui_px(ui, 20)),
-                                 lt_path_base(app->settings.recent[i]), t->text, 0, (int)LT_FONT_SANS_SEMIBOLD, LT_UI_FS_LG);
-            lt_snprintf(buf, sizeof(buf), "%s", app->settings.recent[i]);
-            lt_ui_draw_text_in_f(ui, lt_rect_make(cr.x + lt_ui_px(ui, 16), cr.y + lt_ui_px(ui, 36), cr.w - lt_ui_px(ui, 24), lt_ui_px(ui, 18)), buf, t->muted, 0,
-                                 (int)LT_FONT_SANS, LT_UI_FS_BASE);
-        }
-        lt_ui_region_end(ui);
-        if (hov) { lt_app_open_project(app, app->settings.recent[i]); lt_ui_pop_id(ui); break; }
-        lt_ui_region_begin(ui, del, 0);
-        lt_ui_layout_row_px(ui, 1, &w1, del.h);
-        lt_ui_layout_gap(ui, 0, 0);
-        if (lt_ui_icon_button(ui, LT_UI_LUCIDE(LT_ICON_TRASH_2), app->confirm_delete == i ? "Click again to remove" : "Remove from list",
-                              app->confirm_delete == i ? LT_UI_BTN_DANGER : 0)) {
-            if (app->confirm_delete == i) {
-                int k;
-                for (k = i; k < app->settings.n_recent - 1; k++) {
-                    lt_strlcpy(app->settings.recent[k], app->settings.recent[k + 1],
-                               sizeof(app->settings.recent[0]));
-                }
-                app->settings.n_recent--;
-                app->confirm_delete = -1;
-                lt_app_settings_save(app);
-                lt_ui_region_end(ui);
-                lt_ui_pop_id(ui);
-                break;
-            }
-            app->confirm_delete = i;
-        }
-        lt_ui_region_end(ui);
-        lt_ui_pop_id(ui);
-        y += cardh + lt_ui_px(ui, 8);
-    }
+    lt_feat_start_draw(app, area);            /* feat_start.c */
 }
 
 /* ------------------------------------------------------------------ */
@@ -1084,12 +917,7 @@ static void tab_area(lt_app *app, lt_rect main_r)
 /* quit, shortcuts, dialogs                                            */
 void lt_app_request_quit(lt_app *app)
 {
-    (void)lt_feat_prefs_auto_burn(app);          /* "burn on close" setting */
-    if (app->ini != NULL && (app->modified || (app->mem != NULL && lt_ecu_mem_has_pending_burn(app->mem)))) {
-        app->quit_open = 1;
-    } else {
-        app->quit = 1;
-    }
+    lt_feat_guard_quit(app);          /* asks first when unburned or unsaved changes would be lost */
 }
 
 static void shortcuts(lt_app *app)
@@ -1110,7 +938,7 @@ static void shortcuts(lt_app *app)
     }
     if (lt_hk_pressed(app, "file.burn") && lt_app_can_burn(app)) { app->burn_open = 1; }
     if (lt_hk_pressed(app, "conn.connect")) { lt_app_connect_dialog(app); }
-    if (lt_hk_pressed(app, "conn.disconnect")) { lt_app_disconnect(app); }
+    if (lt_hk_pressed(app, "conn.disconnect")) { lt_feat_guard_disconnect(app); }
     if (lt_hk_pressed(app, "view.dashboard")) { lt_app_dashboard_tab_open(app); }
     if (lt_hk_pressed(app, "tools.log")) { lt_app_log_toggle(app); }
     if (lt_hk_pressed(app, "app.settings")) { lt_app_settings_dialog(app); }
@@ -1207,13 +1035,7 @@ void lt_app_frame(lt_app *app)
     statusbar(app);
     cr = lt_ui_client_rect(ui);
     if (app->ini == NULL) {
-        if (!lt_ui_cell_mode(ui) && app->settings.sidebar_on) {
-            sidebar_split(app, cr, &side, &main_r);
-            sidebar(app, side);
-        } else {
-            main_r = cr;
-        }
-        welcome(app, main_r);
+        welcome(app, cr);                     /* the start screen needs the whole width */
     } else {
         if (app->settings.sidebar_on) {
             sidebar_split(app, cr, &side, &main_r);

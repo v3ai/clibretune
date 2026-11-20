@@ -21,6 +21,7 @@
 #include <termios.h>
 #include <sys/types.h>
 #include <sys/ioctl.h>
+#include <sys/file.h>
 #include <sys/time.h>
 #include <sys/select.h>
 #include <sys/socket.h>
@@ -149,19 +150,53 @@ static int apply_baud(int fd, long baud)
     return 0;
 }
 
+static int g_serial_err = LT_SERIAL_EOK;
+
+int lt_serial_last_error(void)
+{
+    return g_serial_err;
+}
+
+static int serial_err_of(int e)
+{
+    switch (e) {
+    case EACCES:
+    case EPERM:  return LT_SERIAL_EPERM;
+    case EBUSY:  return LT_SERIAL_EBUSY;
+    case ENOENT:
+    case ENODEV:
+    case ENXIO:  return LT_SERIAL_EGONE;
+    default:     return LT_SERIAL_EOTHER;
+    }
+}
+
 lt_stream *lt_serial_open(const char *port, long baud)
 {
     int fd;
     struct termios tio;
     speed_t sp;
+    g_serial_err = LT_SERIAL_EOTHER;
     if (baud_const(baud, &sp) != 0) {
         lt_err_set("unsupported baud rate %ld", baud);
         return NULL;
     }
     fd = open(port, O_RDWR | O_NOCTTY | O_NONBLOCK);
     if (fd < 0) {
+        g_serial_err = serial_err_of(errno);
         lt_err_set("cannot open %s: %s", port, strerror(errno));
         return NULL;
+    }
+    /* another program that locked the port (flock, as pyserial and many terminal programs
+     * do) is using it: say so instead of talking over it. The probe lock is released at once. */
+    if (flock(fd, LOCK_EX | LOCK_NB) != 0) {
+        if (errno == EWOULDBLOCK) {
+            g_serial_err = LT_SERIAL_EBUSY;
+            lt_err_set("%s is in use by another program", port);
+            close(fd);
+            return NULL;
+        }
+    } else {
+        (void)flock(fd, LOCK_UN);
     }
     if (tcgetattr(fd, &tio) != 0) {
         lt_err_set("%s is not a serial port: %s", port, strerror(errno));
@@ -188,6 +223,7 @@ lt_stream *lt_serial_open(const char *port, long baud)
     }
     set_nonblock(fd, 0);
     tcflush(fd, TCIOFLUSH);
+    g_serial_err = LT_SERIAL_EOK;
     return new_stream(fd, 0);
 }
 

@@ -19,6 +19,8 @@ int lt_plat_names_add(char ***arr, int n, int *cap, const char *name);
  * full"); consumes them from the budget. Returns want when no limit is set. */
 size_t lt_plat_fault_write_allow(size_t want);
 double lt_plat_os_now_ms(void);
+/* lt_serial_list_info from the port names alone (OSes without a cheap USB lookup) */
+int lt_plat_serial_info_by_name(lt_serial_info **out);
 void   lt_plat_os_sleep_ms(int ms);
 
 LT_END_DECLS

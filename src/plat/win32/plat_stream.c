@@ -84,11 +84,30 @@ static int apply_dcb(HANDLE h, long baud)
     return SetCommState(h, &dcb) ? 0 : -1;
 }
 
+static int g_serial_err = LT_SERIAL_EOK;
+
+int lt_serial_last_error(void)
+{
+    return g_serial_err;
+}
+
+int lt_serial_access_ok(void)
+{
+    return 1;
+}
+
+int lt_serial_perm_fix(char *cmd, size_t cap)
+{
+    if (cap > 0) cmd[0] = '\0';
+    return 0;
+}
+
 lt_stream *lt_serial_open(const char *port, long baud)
 {
     char name[64];
     HANDLE h;
     lt_stream *s;
+    g_serial_err = LT_SERIAL_EOTHER;
     if (!baud_ok(baud)) {
         lt_err_set("unsupported baud rate %ld", baud);
         return NULL;
@@ -97,7 +116,11 @@ lt_stream *lt_serial_open(const char *port, long baud)
     else lt_snprintf(name, sizeof name, "\\\\.\\%s", port);
     h = CreateFileA(name, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
     if (h == INVALID_HANDLE_VALUE) {
-        lt_err_set("cannot open %s (%lu)", port, (unsigned long)GetLastError());
+        DWORD e = GetLastError();
+        /* COM ports are exclusive: "access denied" means another program has it open */
+        if (e == ERROR_ACCESS_DENIED || e == ERROR_SHARING_VIOLATION) g_serial_err = LT_SERIAL_EBUSY;
+        else if (e == ERROR_FILE_NOT_FOUND || e == ERROR_PATH_NOT_FOUND) g_serial_err = LT_SERIAL_EGONE;
+        lt_err_set("cannot open %s (%lu)", port, (unsigned long)e);
         return NULL;
     }
     if (apply_dcb(h, baud) != 0) {
@@ -108,6 +131,7 @@ lt_stream *lt_serial_open(const char *port, long baud)
     SetupComm(h, 4096, 4096);
     set_timeouts(h, 0);
     PurgeComm(h, PURGE_RXCLEAR | PURGE_TXCLEAR);
+    g_serial_err = LT_SERIAL_EOK;
     s = (lt_stream *)lt_calloc(1, sizeof *s);
     s->h = h;
     s->sock = INVALID_SOCKET;

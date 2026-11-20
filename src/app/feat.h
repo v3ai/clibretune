@@ -6,6 +6,7 @@
 #define LT_FEAT_H
 
 #include "app_ext.h"
+#include "ports_logic.h"
 
 /* runs every feature registration (app_features.c) */
 void lt_app_features_register(lt_app_ext *reg);
@@ -187,5 +188,43 @@ void lt_feat_basetune_open(lt_app *app, const char *mode);
 int  lt_feat_basetune_load(lt_app *app, const struct lt_basetune *b);
 int  lt_feat_basetune_new_project(lt_app *app, const struct lt_basetune *b, const char *ini_path,
                                   const char *name);
+
+/* ECUs this computer has talked to and the serial ports right now (feat_devices.c, logic in
+ * ports_logic.h). mem: devices.conf (port, baud, signature, project per USB serial number).
+ * ports: ranked USB ports, cached for a second (never opens a port); generation changes when
+ * the list does. info: identity of a port name now (0 = not listed). detected: the likeliest
+ * ECU plugged in (1) and the existing project it was last used with (or ""). connect: the
+ * start screen's "Connect to my ECU": open that project and connect, else the Connect wizard. */
+void lt_feat_devices_register(lt_app_ext *reg);
+const lt_ecuport_mem *lt_feat_devices_mem(lt_app *app);
+int  lt_feat_devices_ports(lt_app *app, const lt_ecuport **out, int *n_hidden);
+unsigned long lt_feat_devices_generation(lt_app *app);
+int  lt_feat_devices_info(lt_app *app, const char *port, lt_serial_info *out);
+int  lt_feat_devices_detected(lt_app *app, lt_ecuport *port, char *project, size_t pcap);
+void lt_feat_devices_connect(lt_app *app);
+
+/* the start screen shown while no project is open (feat_start.c) */
+void lt_feat_start_register(lt_app_ext *reg);
+void lt_feat_start_draw(lt_app *app, lt_rect area);
+
+/* Never lose work (feat_guard.c): unburned / unsaved state in the status bar, the questions
+ * before quit / close project / disconnect, autosave of the working tune and the offer to
+ * restore it after a crash. unburned: named settings in ECU RAM that differ from what was last
+ * burned (or read at connect); -1 when not connected. quit/close/disconnect: do it now, or ask
+ * first when changes would be lost. autosave_now: write the recovery file (0 ok, 1 nothing to
+ * do); recovery_path: where it is for the open project (malloc'd, NULL without a project). */
+void lt_feat_guard_register(lt_app_ext *reg);
+int  lt_feat_guard_unburned(lt_app *app);
+void lt_feat_guard_quit(lt_app *app);
+void lt_feat_guard_close_project(lt_app *app);
+void lt_feat_guard_disconnect(lt_app *app);
+void lt_feat_guard_statusbar(lt_app *app, lt_rect r);
+int  lt_feat_guard_statusbar_width(lt_app *app);
+int  lt_feat_autosave_now(lt_app *app);
+char *lt_feat_autosave_path(lt_app *app);
+void lt_feat_autosave_discard(lt_app *app);
+
+/* Engine Setup checklist tab (feat_setup.c, logic in setup_logic.h) */
+void lt_feat_setup_register(lt_app_ext *reg);
 
 #endif

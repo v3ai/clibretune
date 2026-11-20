@@ -8,6 +8,7 @@
 #include <string.h>
 #include "feat.h"
 #include "sync_logic.h"
+#include "ports_logic.h"
 
 #define CH 8
 #define CV 16
@@ -422,14 +423,11 @@ static void sig_close(lt_app *app, lt_app_dialog *d)
 
 /* ------------------------------------------------------------------ */
 /* Connect ECU wizard                                                  */
-static const long wiz_bauds[] = { 115200L, 921600L, 460800L, 230400L, 57600L, 9600L };
-#define N_WBAUD 6
-
 typedef struct wiz_state {
     int step;                        /* 0 scan, 1 choose, 2 failed */
-    char **ports; int n_ports;
-    int scan_i, armed;
-    char port[128], sig[128], note[200], name[64], err[200];
+    lt_ecuport *ports; int n_ports, n_hidden;   /* USB ports first (ports_logic.h) */
+    lt_ecuport_scan *scan;           /* stepped from the UI loop, never blocks */
+    char port[128], sig[128], note[480], why[96], name[64], err[200];
     long baud;
     lt_ini_repo repo; int repo_ok;
     lt_sync_ini_match m[MAX_MATCH]; int n_m, sel;
@@ -452,32 +450,29 @@ static const char *wiz_item(void *ud, int i)
     return buf;
 }
 
+static void wiz_scan_start(lt_app *app, wiz_state *w)
+{
+    lt_free(w->ports);
+    lt_ecuport_scan_free(w->scan);
+    w->n_ports = lt_ecuport_list(0, lt_feat_devices_mem(app), &w->ports, &w->n_hidden);
+    w->scan = lt_ecuport_scan_new(w->ports, w->n_ports);
+    w->step = 0;
+}
+
 static void wiz_scan_step(wiz_state *w)
 {
-    int pi = w->scan_i / N_WBAUD, bi = w->scan_i % N_WBAUD;
-    lt_disc_cfg cfg;
-    lt_disc_result *res = NULL;
-    size_t n = 0, k;
-    const char *port;
-    if (pi >= w->n_ports) { w->step = 2; lt_strlcpy(w->note, "No ECU found on any port.", sizeof(w->note)); return; }
-    port = w->ports[pi];
-    lt_disc_cfg_default(&cfg);
-    cfg.bauds = &wiz_bauds[bi];
-    cfg.n_bauds = 1;
-    if (lt_disc_run(&cfg, &port, 1, &res, &n) == 0 && res != NULL) {
-        for (k = 0; k < n; k++) {
-            if (res[k].kind == LT_DISC_SIGNATURE) {
-                lt_strlcpy(w->port, res[k].port, sizeof(w->port));
-                lt_strlcpy(w->sig, res[k].signature, sizeof(w->sig));
-                w->baud = res[k].baud;
-                w->step = 1;
-                wiz_match(w);
-                break;
-            }
-        }
+    int r = lt_ecuport_scan_step(w->scan, lt_plat_now_ms());
+    if (r == LT_ECUSCAN_FOUND) {
+        const lt_ecuport_hit *h = lt_ecuport_scan_hit(w->scan);
+        lt_strlcpy(w->port, h->port, sizeof(w->port));
+        lt_strlcpy(w->sig, h->signature, sizeof(w->sig));
+        w->baud = h->baud;
+        w->step = 1;
+        wiz_match(w);
+    } else if (r == LT_ECUSCAN_DONE) {
+        lt_ecuport_scan_report(w->scan, w->n_hidden, w->why, sizeof(w->why), w->note, sizeof(w->note));
+        w->step = 2;
     }
-    lt_free(res);
-    if (w->step == 0) { w->scan_i++; }
 }
 
 static void wiz_draw(lt_app *app, lt_app_dialog *d)
@@ -490,13 +485,10 @@ static void wiz_draw(lt_app *app, lt_app_dialog *d)
     if (w == NULL) {
         w = (wiz_state *)lt_calloc(1, sizeof(*w));
         d->data = w;
-        w->n_ports = lt_serial_list(&w->ports);
-        if (w->n_ports < 0) { w->n_ports = 0; w->ports = NULL; }
         lt_strlcpy(w->name, "My ECU", sizeof(w->name));
-        if (w->n_ports == 0) { w->step = 2; lt_strlcpy(w->note, "No serial ports found.", sizeof(w->note)); }
+        wiz_scan_start(app, w);
     }
-    if (w->step == 0 && w->armed) { wiz_scan_step(w); }
-    w->armed = (w->step == 0);
+    if (w->step == 0) { wiz_scan_step(w); }
     if (w->step == 0) { lt_ui_request_redraw(ui); }
     picked = lt_app_file_result(app, FD_WIZ_INI);
     if (picked != NULL) {
@@ -511,23 +503,18 @@ static void wiz_draw(lt_app *app, lt_app_dialog *d)
     if (lt_ui_modal_begin(ui, "Connect ECU", CH * 76, CV * 22, &open)) {
         lt_ui_layout_row(ui, 1, &w1, 0);
         if (w->step == 0) {
-            char b[160];
-            int pi = w->scan_i / N_WBAUD, bi = w->scan_i % N_WBAUD;
+            char b[240];
             lt_ui_heading(ui, "Step 1 of 2: Find your ECU");
-            lt_snprintf(b, sizeof(b), "Probing %s at %ld baud", pi < w->n_ports ? w->ports[pi] : "-",
-                        wiz_bauds[bi]);
-            lt_ui_progress(ui, w->n_ports > 0 ? (double)w->scan_i / (double)(w->n_ports * N_WBAUD) : -1.0, b);
-            if (lt_ui_button(ui, "Cancel scan")) { w->step = 2; lt_strlcpy(w->note, "Scan cancelled.", sizeof(w->note)); }
+            lt_ecuport_scan_status(w->scan, b, sizeof(b));
+            lt_ui_progress(ui, lt_ecuport_scan_progress(w->scan), b);
+            if (lt_ui_button(ui, "Cancel scan")) { lt_ecuport_scan_cancel(w->scan); wiz_scan_step(w); }
         } else if (w->step == 2) {
-            lt_ui_heading(ui, "No ECU detected");
+            lt_ui_heading(ui, w->why[0] != '\0' ? w->why : "No ECU detected");
             lt_ui_label_wrap(ui, w->note, t->text2);
-            lt_ui_label_wrap(ui, "Check the cable and power, then scan again. You can also connect "
-                                 "manually from the connection dialog.", t->muted);
+            lt_ui_label_wrap(ui, "You can also connect manually from the connection dialog.", t->muted);
             w2[0] = -1; w2[1] = -1;
             lt_ui_layout_row(ui, 2, w2, 0);
-            if (lt_ui_button(ui, "Scan again") && w->n_ports > 0) {
-                w->step = 0; w->scan_i = 0; w->armed = 0;
-            }
+            if (lt_ui_button(ui, "Scan again")) { wiz_scan_start(app, w); }
             if (lt_ui_button(ui, "Manual connection...")) { (void)lt_app_connect_dialog(app); open = 0; }
         } else {
             int ok;
@@ -597,7 +584,8 @@ static void wiz_close(lt_app *app, lt_app_dialog *d)
     wiz_state *w = (wiz_state *)d->data;
     LT_UNUSED(app);
     if (w != NULL) {
-        if (w->ports != NULL) { lt_plat_free_list(w->ports, w->n_ports); }
+        lt_ecuport_scan_free(w->scan);
+        lt_free(w->ports);
         if (w->repo_ok) { lt_ini_repo_close(&w->repo); }
         lt_free(w);
     }

@@ -557,6 +557,108 @@ int lt_usb_config_descriptor(lt_usb_dev *d, lt_u8 *buf, int cap)
     return (int)got;
 }
 
+/* ---- serial port identity (plat.h lt_serial_list_info) ------------------ */
+/* {4D36E978-E325-11CE-BFC1-08002BE10318}: the "Ports (COM & LPT)" setup class */
+static const GUID lt_guid_class_ports = {
+    0x4D36E978UL, 0xE325, 0x11CE, { 0xBF, 0xC1, 0x08, 0x00, 0x2B, 0xE1, 0x03, 0x18 }
+};
+
+static int serial_add(lt_serial_info **a, int n, int *cap, const char *name)
+{
+    int i;
+    for (i = 0; i < n; i++) {
+        if (lt_stricmp((*a)[i].name, name) == 0) return n;
+    }
+    if (n >= *cap) {
+        int nc = *cap > 0 ? *cap * 2 : 8;
+        *a = (lt_serial_info *)lt_realloc(*a, (size_t)nc * sizeof(lt_serial_info));
+        *cap = nc;
+    }
+    memset(&(*a)[n], 0, sizeof(lt_serial_info));
+    lt_strlcpy((*a)[n].name, name, sizeof((*a)[n].name));
+    return n + 1;
+}
+
+/* serial number from an instance id: "USB\VID_x&PID_y\SERIAL" (no '&': Windows did not
+ * make it up) or FTDI's "FTDIBUS\VID_x+PID_y+SERIALA\0000" */
+static void inst_serial(const char *inst, char *out, size_t cap)
+{
+    const char *last = strrchr(inst, '\\');
+    out[0] = '\0';
+    if (lt_strnicmp(inst, "FTDIBUS\\", 8) == 0) {
+        const char *p = strchr(inst + 8, '+');
+        const char *q = p != NULL ? strchr(p + 1, '+') : NULL;
+        const char *e = q != NULL ? strchr(q + 1, '\\') : NULL;
+        if (e != NULL && (size_t)(e - q) > 1 && (size_t)(e - q - 1) < cap) {
+            memcpy(out, q + 1, (size_t)(e - q - 1));
+            out[e - q - 1] = '\0';
+        }
+        return;
+    }
+    if (last != NULL && strchr(last + 1, '&') == NULL) lt_strlcpy(out, last + 1, cap);
+}
+
+int lt_serial_list_info(lt_serial_info **out)
+{
+    HDEVINFO set;
+    DWORD i;
+    char **names = NULL;
+    lt_serial_info *a = NULL;
+    int n = 0, cap = 0, nn, k;
+
+    *out = NULL;
+    set = SetupDiGetClassDevsA(&lt_guid_class_ports, NULL, NULL, DIGCF_PRESENT);
+    if (set != INVALID_HANDLE_VALUE) {
+        for (i = 0; i < 256; i++) {
+            SP_DEVINFO_DATA dev;
+            HKEY key;
+            char port[64], inst[256];
+            DWORD type = 0, len = (DWORD)(sizeof port - 1);
+            lt_serial_info *it;
+            memset(&dev, 0, sizeof dev);
+            dev.cbSize = sizeof dev;
+            if (!SetupDiEnumDeviceInfo(set, i, &dev)) break;
+            key = SetupDiOpenDevRegKey(set, &dev, DICS_FLAG_GLOBAL, 0, DIREG_DEV, KEY_READ);
+            if (key == (HKEY)INVALID_HANDLE_VALUE) continue;
+            memset(port, 0, sizeof port);
+            if (RegQueryValueExA(key, "PortName", NULL, &type, (LPBYTE)port, &len) != ERROR_SUCCESS ||
+                type != REG_SZ || lt_strnicmp(port, "COM", 3) != 0) {
+                RegCloseKey(key);
+                continue;
+            }
+            RegCloseKey(key);
+            port[sizeof port - 1] = '\0';
+            n = serial_add(&a, n, &cap, port);
+            it = &a[n - 1];
+            if (!SetupDiGetDeviceInstanceIdA(set, &dev, inst, (DWORD)sizeof inst, NULL)) inst[0] = '\0';
+            inst[sizeof inst - 1] = '\0';
+            if (find_hex4(inst, "VID_", &it->vid) == 0 && find_hex4(inst, "PID_", &it->pid) == 0) {
+                it->usb = 1;
+                inst_serial(inst, it->serial, sizeof it->serial);
+            } else {
+                it->vid = 0;
+                it->pid = 0;
+                it->usb = lt_strnicmp(inst, "USB", 3) == 0 ? 1 : 0;
+            }
+            bus_product(set, &dev, it->product, sizeof it->product);
+            if (it->product[0] == '\0') reg_prop(set, &dev, SPDRP_DEVICEDESC, it->product, sizeof it->product);
+            reg_prop(set, &dev, SPDRP_MFG, it->manufacturer, sizeof it->manufacturer);
+            reg_prop(set, &dev, SPDRP_SERVICE, it->driver, sizeof it->driver);
+        }
+        SetupDiDestroyDeviceInfoList(set);
+    }
+    /* ports SetupAPI did not report (virtual ports, odd drivers) by name only */
+    nn = lt_serial_list(&names);
+    for (k = 0; k < nn; k++) n = serial_add(&a, n, &cap, names[k]);
+    if (nn > 0) lt_plat_free_list(names, nn);
+    if (n == 0) {
+        lt_free(a);
+        a = NULL;
+    }
+    *out = a;
+    return n;
+}
+
 int lt_usb_string(lt_usb_dev *d, int index, char *buf, size_t cap)
 {
     lt_u8 tmp[255];

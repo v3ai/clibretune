@@ -216,3 +216,25 @@ char *lt_plat_config_override(void)
     if (d != NULL) lt_plat_mkdirs(d);
     return d;
 }
+
+/* lt_serial_list_info where the OS has no cheap USB identity (macOS, BSD): the names of
+ * lt_serial_list, marked USB when the name says so (cu.usbmodem*, cu.usbserial*, cuaU*). */
+int lt_plat_serial_info_by_name(lt_serial_info **out)
+{
+    char **names = NULL;
+    lt_serial_info *a;
+    int n = lt_serial_list(&names), i;
+    *out = NULL;
+    if (n <= 0) return n < 0 ? n : 0;
+    a = (lt_serial_info *)lt_calloc((size_t)n, sizeof(lt_serial_info));
+    for (i = 0; i < n; i++) {
+        const char *base = lt_path_base(names[i]);
+        lt_strlcpy(a[i].name, names[i], sizeof a[i].name);
+        a[i].usb = (strstr(base, "usb") != NULL || lt_str_starts(base, "cuaU") ||
+                    lt_str_starts(base, "ttyU")) ? 1 : 0;
+        if (strstr(base, "usbmodem") != NULL) lt_strlcpy(a[i].driver, "cdc", sizeof a[i].driver);
+    }
+    lt_plat_free_list(names, n);
+    *out = a;
+    return n;
+}

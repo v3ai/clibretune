@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <time.h>
 #include <unistd.h>
+#include <grp.h>
 
 lt_os lt_plat_os(void)
 {
@@ -60,4 +61,39 @@ int lt_serial_list(char ***names)
 {
     static const char *const prefixes[] = { "cuaU", "ttyU", "cuau", "ttyu" };
     return lt_posix_serial_scan(prefixes, LT_COUNTOF(prefixes), NULL, 0, names);
+}
+
+int lt_serial_list_info(lt_serial_info **out)
+{
+    return lt_plat_serial_info_by_name(out);
+}
+
+
+/* the process is root or a member of the named group (primary or supplementary) */
+static int in_group(const char *name)
+{
+    struct group gr, *g = NULL;
+    char buf[4096];
+    gid_t list[256];
+    int n, i;
+    if (geteuid() == 0) return 1;
+    if (getgrnam_r(name, &gr, buf, sizeof buf, &g) != 0 || g == NULL) return 0;
+    if (getegid() == g->gr_gid) return 1;
+    n = getgroups((int)(sizeof list / sizeof list[0]), list);
+    for (i = 0; i < n; i++) {
+        if (list[i] == g->gr_gid) return 1;
+    }
+    return 0;
+}
+
+int lt_serial_access_ok(void)
+{
+    return in_group("dialer");
+}
+
+int lt_serial_perm_fix(char *cmd, size_t cap)
+{
+    /* the BSDs give the callout devices (cuaU*) to the dialer group */
+    lt_snprintf(cmd, cap, "sudo pw groupmod dialer -m $USER");
+    return 1;
 }

@@ -91,6 +91,37 @@ int  lt_serial_set_baud(lt_stream *s, long baud);
 int  lt_serial_set_lines(lt_stream *s, int dtr, int rts);
 /* list candidate serial ports; returns count, names malloc'd (free_list) */
 int  lt_serial_list(char ***names);
+/* A serial port with what the OS tells cheaply about the device behind it. */
+typedef struct lt_serial_info {
+    char name[128];            /* what lt_serial_open takes: "/dev/ttyACM0", "COM3" */
+    int  usb;                  /* 1 = a USB device (vid/pid valid when nonzero) */
+    lt_u16 vid, pid;
+    char manufacturer[64];     /* USB strings where the OS has them, else "" */
+    char product[64];
+    char serial[64];           /* USB serial number, "" when the device has none */
+    char driver[32];           /* driver / service name where known ("usbser", "FTDIBUS"), else "" */
+} lt_serial_info;
+/* The ports of lt_serial_list plus the USB identity of each where the OS gives it without
+ * opening the port: Linux reads sysfs (/sys/bus/usb/devices, or $LT_USB_SYSFS_ROOT for tests;
+ * USB ttys found there are listed even when /dev was not scanned), Windows asks SetupAPI,
+ * macOS/BSD go by the device name (cu.usbmodem*, cuaU*: usb = 1, ids 0). Returns the count
+ * and a malloc'd array (lt_free; NULL when 0), or < 0. */
+int  lt_serial_list_info(lt_serial_info **out);
+/* Why the last lt_serial_open on this thread failed (LT_SERIAL_E*; LT_SERIAL_EOK after a
+ * successful open). */
+#define LT_SERIAL_EOK    0
+#define LT_SERIAL_EOTHER 1     /* anything else (bad baud, not a tty, ...) */
+#define LT_SERIAL_EPERM  2     /* no permission (Linux: dialout/uucp group) */
+#define LT_SERIAL_EBUSY  3     /* in use by another program */
+#define LT_SERIAL_EGONE  4     /* no such device (unplugged) */
+int  lt_serial_last_error(void);
+/* The shell command that gives the current user access to serial ports, e.g.
+ * "sudo usermod -aG dialout $USER" (Linux: uucp where the system has no dialout group).
+ * Returns 1 and fills cmd, or 0 where no such step exists (Windows, macOS). */
+int  lt_serial_perm_fix(char *cmd, size_t cap);
+/* 0 when the user is known to lack the group that serial ports belong to (Linux: dialout or
+ * uucp; BSD: dialer), 1 otherwise. Only for hints: the open itself is what counts. */
+int  lt_serial_access_ok(void);
 /* tcp client connect with timeout */
 lt_stream *lt_tcp_connect(const char *host, int port, int timeout_ms);
 /* Read up to n bytes waiting at most timeout_ms (0 = nonblocking).

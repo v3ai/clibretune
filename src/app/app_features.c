@@ -46,4 +46,8 @@ void lt_app_features_register(lt_app_ext *reg)
     lt_feat_triggers_register(reg);
     lt_feat_iniext_register(reg);
     lt_feat_basetune_register(reg);
+    lt_feat_devices_register(reg);
+    lt_feat_start_register(reg);
+    lt_feat_guard_register(reg);
+    lt_feat_setup_register(reg);
 }

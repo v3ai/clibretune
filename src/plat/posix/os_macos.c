@@ -59,3 +59,19 @@ int lt_serial_list(char ***names)
     static const char *const prefixes[] = { "cu.usb", "tty.usb" };
     return lt_posix_serial_scan(prefixes, LT_COUNTOF(prefixes), NULL, 0, names);
 }
+
+int lt_serial_list_info(lt_serial_info **out)
+{
+    return lt_plat_serial_info_by_name(out);
+}
+
+int lt_serial_access_ok(void)
+{
+    return 1;
+}
+
+int lt_serial_perm_fix(char *cmd, size_t cap)
+{
+    if (cap > 0) cmd[0] = '\0';
+    return 0;
+}
