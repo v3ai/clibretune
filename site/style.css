@@ -22,7 +22,7 @@
 }
 
 *, *::before, *::after { box-sizing: border-box; }
-html { scroll-behavior: smooth; scroll-padding-top: 64px; -webkit-text-size-adjust: 100%; }
+html { scroll-behavior: smooth; scroll-padding-top: 72px; -webkit-text-size-adjust: 100%; }
 body {
   margin: 0;
   background: var(--paper);
@@ -76,8 +76,14 @@ h3 { font-size: 1.12rem; font-weight: 600; line-height: 1.35; margin: 0 0 8px; }
   border-bottom: 1px solid var(--ink-line);
   color: var(--ink-text);
 }
-.top-in { display: flex; align-items: center; justify-content: space-between; height: 56px; gap: 24px; }
-.brand { font: 600 1.05rem var(--sans); letter-spacing: -0.01em; text-decoration: none; color: var(--ink-text); }
+.top-in { display: flex; align-items: center; justify-content: space-between; height: 64px; gap: 24px; }
+.brand {
+  font: 600 1.5rem/1 var(--cond); letter-spacing: -0.03em;
+  text-decoration: none; color: var(--ink-text);
+  display: inline-flex; align-items: baseline;
+}
+.brand b { color: var(--red); font-weight: 600; margin-right: 0.04em; }
+.brand:hover b { color: var(--red-hi); }
 .top nav { display: flex; gap: 28px; font-size: 0.9rem; }
 .top nav a { color: var(--ink-muted); text-decoration: none; transition: color 0.15s; }
 .top nav a:hover { color: #fff; }
@@ -258,6 +264,7 @@ pre {
   .wrap { padding: 0 16px; }
   .top nav a:not([href="#download"]):not([href*="github"]) { display: none; }
   .top nav { gap: 20px; }
+  .brand { font-size: 1.32rem; }
   .hero { padding-top: 56px; }
   .hero-grid { margin-bottom: 48px; }
   .paper, .ink { padding: 88px 0; }
