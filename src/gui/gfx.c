@@ -811,8 +811,8 @@ static lt_u32 shadow_px(lt_u32 d, int a)
 void lt_gfx_shadow(lt_gfx *g, lt_rect r, int radius, int spread, int alpha)
 {
     shadow_ring *rg;
-    lt_u8 lut[256];
-    int n = spread, i, k, y, ylo, yhi, cx0, cx1, lut_m = -1, rad, a;
+    lt_u8 *luts;
+    int n = spread, i, k, y, ylo, yhi, cx0, cx1, rad, a;
     double *dys;
     int *lo, *hi;
     lt_canvas *c = g->canvas;
@@ -849,12 +849,23 @@ void lt_gfx_shadow(lt_gfx *g, lt_rect r, int radius, int spread, int alpha)
         s->rr = (double)s->rad;
         if (s->q.w <= 0 || s->q.h <= 0) { s->q.w = s->q.h = 0; }
     }
+    /* luts + 256 * m: the first m rings' combined effect on a fully covered channel value */
+    luts = (lt_u8 *)lt_malloc(((size_t)n + 1) * 256U);
+    for (i = 0; i < 256; i++) { luts[i] = (lt_u8)i; }
+    for (k = 0; k < n; k++) {
+        const lt_u8 *pv = luts + (size_t)k * 256U;
+        lt_u8 *nx = luts + (size_t)(k + 1) * 256U;
+        for (i = 0; i < 256; i++) {
+            nx[i] = (lt_u8)(rg[k].a >= 255 ? 0 : DIV255((int)pv[i] * (255 - rg[k].a)));
+        }
+    }
     cx0 = LT_MAX(g->clip.x, 0); cx1 = LT_MIN(g->clip.x + g->clip.w, c->w);
     ylo = LT_MAX(LT_MAX(g->clip.y, 0), rg[0].q.y);
     yhi = LT_MIN(LT_MIN(g->clip.y + g->clip.h, c->h), rg[0].q.y + rg[0].q.h);
     for (y = ylo; y < yhi && cx0 < cx1; y++) {
         int m = 0, ilo = -0x7FFFFFFF, ihi = 0x7FFFFFFF, ux0 = 0x7FFFFFFF, ux1 = -0x7FFFFFFF, x;
         lt_u32 *p = c->px + (size_t)y * (size_t)c->pitch;
+        const lt_u8 *lut;
         /* rings covering this row: a prefix of the drawing order */
         for (k = 0; k < n; k++) {
             const shadow_ring *s = &rg[k];
@@ -875,17 +886,7 @@ void lt_gfx_shadow(lt_gfx *g, lt_rect r, int radius, int spread, int alpha)
             m++;
         }
         if (m == 0) { continue; }
-        if (m != lut_m) {
-            int v;
-            for (v = 0; v < 256; v++) {
-                int t = v;
-                for (k = 0; k < m; k++) {
-                    t = rg[k].a >= 255 ? 0 : DIV255(t * (255 - rg[k].a));
-                }
-                lut[v] = (lt_u8)t;
-            }
-            lut_m = m;
-        }
+        lut = luts + (size_t)m * 256U;
         if (ux0 < cx0) { ux0 = cx0; }
         if (ux1 > cx1) { ux1 = cx1; }
         if (ihi < ilo) { ihi = ilo; }
@@ -908,7 +909,7 @@ void lt_gfx_shadow(lt_gfx *g, lt_rect r, int radius, int spread, int alpha)
             p[x] = d;
         }
     }
-    lt_free(lo); lt_free(dys); lt_free(rg);
+    lt_free(luts); lt_free(lo); lt_free(dys); lt_free(rg);
     mark_clipped(g, r.x - n + g->ox, r.y - n + n / 2 + g->oy, r.w + 2 * n, r.h + 2 * n);
 }
 

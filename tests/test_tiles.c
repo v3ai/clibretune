@@ -183,6 +183,45 @@ LT_TEST(test_tiles_identical_and_incremental)
     lt_canvas_free(&ref);
 }
 
+/* calls appended on top of an unchanged frame (a dialog opening) are drawn over the pixels
+ * already there; removing them again re-renders the tiles from scratch */
+LT_TEST(test_tiles_appended_overlay)
+{
+    lt_canvas ref, cur;
+    lt_gfx g, gr;
+    lt_tiles *t = lt_tiles_new();
+    lt_rect out[16];
+    int k, ndirty, ntiles, vx, vy;
+    lt_canvas_init(&ref, CW, CH);
+    lt_canvas_init(&cur, CW, CH);
+    lt_gfx_init_canvas(&g, &cur);
+    lt_gfx_init_canvas(&gr, &ref);
+    for (k = 0; k < 6; k++) {
+        int overlay = k == 1 || k == 2 || k == 4, moved = k == 4 ? 2 : 0;
+        lt_tiles_begin(t, &g);
+        scene(&g, moved, NULL);
+        if (overlay) {
+            lt_gfx_fill_rect(&g, lt_rect_make(0, 0, CW, CH), LT_RGBA(0, 0, 0, 100));
+            lt_gfx_shadow(&g, lt_rect_make(90 + k, 50, 140, 90), 8, 12, 120);
+            lt_gfx_fill_round_rect(&g, lt_rect_make(90 + k, 50, 140, 90), 8, LT_RGB(240, 240, 240));
+        }
+        (void)lt_tiles_end(t, &g, out, 16);
+        scene(&gr, moved, NULL);
+        if (overlay) {
+            lt_gfx_fill_rect(&gr, lt_rect_make(0, 0, CW, CH), LT_RGBA(0, 0, 0, 100));
+            lt_gfx_shadow(&gr, lt_rect_make(90 + k, 50, 140, 90), 8, 12, 120);
+            lt_gfx_fill_round_rect(&gr, lt_rect_make(90 + k, 50, 140, 90), 8, LT_RGB(240, 240, 240));
+        }
+        LT_CHECK(canvas_cmp(&ref, &cur) < 0);
+        LT_CHECK(lt_tiles_verify(t, &g, &vx, &vy) == 0);
+        lt_tiles_stats(t, NULL, &ntiles, &ndirty, NULL);
+        if (k == 1) { LT_CHECK(ndirty == ntiles); }
+    }
+    lt_tiles_free(t);
+    lt_canvas_free(&cur);
+    lt_canvas_free(&ref);
+}
+
 /* a source drawn into or freed after it was recorded still shows what it held at record time,
  * like a direct blit would */
 LT_TEST(test_tiles_source_copy_on_change)
@@ -332,6 +371,7 @@ LT_TEST(test_blend_exact)
 int main(void)
 {
     LT_RUN(test_tiles_identical_and_incremental);
+    LT_RUN(test_tiles_appended_overlay);
     LT_RUN(test_tiles_source_copy_on_change);
     LT_RUN(test_shadow_matches_rings);
     LT_RUN(test_blend_exact);

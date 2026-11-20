@@ -50,6 +50,8 @@ struct lt_tiles {
     int recorded;               /* rec holds a frame (begin was called in pixel mode) */
     int cw, ch, tx, ty;         /* canvas size and tile grid of the stored hashes */
     lt_u32 *h1, *h2, *p1, *p2;  /* tile hashes: this frame, previous frame */
+    long *cut;                  /* per tile: last call of this frame's prefix that equals the
+                                 * whole previous frame (pixels already there), or -1 */
     int valid;                  /* p1/p2 describe what the canvas shows */
     long *rowstart, *rowidx;    /* per tile row: indices of the calls touching it */
     long caprowidx;
@@ -308,7 +310,9 @@ lt_tiles *lt_tiles_new(void)
 static void tiles_free_grid(lt_tiles *t)
 {
     lt_free(t->h1); lt_free(t->h2); lt_free(t->p1); lt_free(t->p2); lt_free(t->rowstart);
+    lt_free(t->cut);
     t->h1 = t->h2 = t->p1 = t->p2 = NULL;
+    t->cut = NULL;
     t->rowstart = NULL;
     t->valid = 0;
     t->cw = t->ch = t->tx = t->ty = 0;
@@ -355,6 +359,7 @@ static void tiles_grid(lt_tiles *t, int cw, int ch)
     t->h2 = (lt_u32 *)lt_malloc(n * sizeof(lt_u32));
     t->p1 = (lt_u32 *)lt_calloc(n, sizeof(lt_u32));
     t->p2 = (lt_u32 *)lt_calloc(n, sizeof(lt_u32));
+    t->cut = (long *)lt_malloc(n * sizeof(long));
     t->rowstart = (long *)lt_malloc(((size_t)t->ty + 1) * sizeof(long));
     t->valid = 0;
 }
@@ -371,14 +376,21 @@ static int covers(const lt_dcmd *k, lt_rect r)
            k->bb.y + k->bb.h >= r.y + r.h;
 }
 
-static void render_run(lt_tiles *t, lt_gfx *g, lt_rect r, const long *idx, long n)
+/* rasterize the calls idx[0..n) clipped to r. cut >= 0: r already shows calls up to index cut
+ * (the previous frame was a prefix of this one), only the later ones are drawn on top */
+static void render_run(lt_tiles *t, lt_gfx *g, lt_rect r, const long *idx, long n, long cut)
 {
     const lt_dcmd *cmd = t->rec.cmd;
-    long i, start = -1;
-    for (i = n - 1; i >= 0; i--) {
+    long i, start = -1, first = 0;
+    if (cut >= 0) {
+        while (first < n && idx[first] <= cut) { first++; }
+    }
+    for (i = n - 1; i >= first; i--) {
         if (covers(&cmd[idx[i]], r)) { start = i; break; }
     }
-    if (start < 0) {
+    if (start < 0 && cut >= 0) {
+        start = first;
+    } else if (start < 0) {
         int y;
         for (y = r.y; y < r.y + r.h; y++) {
             memset(g->canvas->px + (size_t)y * (size_t)g->canvas->pitch + (size_t)r.x, 0,
@@ -437,7 +449,9 @@ int lt_tiles_end(lt_tiles *t, lt_gfx *g, lt_rect *out, int max_out)
     }
     tiles_grid(t, r->cw, r->ch);
     all = !t->valid;
-    for (i = 0; i < (long)t->tx * (long)t->ty; i++) { t->h1[i] = 0x2545F491U; t->h2[i] = 0x9E3779B9U; }
+    for (i = 0; i < (long)t->tx * (long)t->ty; i++) {
+        t->h1[i] = 0x2545F491U; t->h2[i] = 0x9E3779B9U; t->cut[i] = -1;
+    }
     for (ty = 0; ty <= t->ty; ty++) { t->rowstart[ty] = 0; }
     /* hash the calls into the tiles they touch; count the calls per tile row */
     for (i = 0; i < r->ncmd; i++) {
@@ -445,12 +459,17 @@ int lt_tiles_end(lt_tiles *t, lt_gfx *g, lt_rect *out, int max_out)
         int x0 = k->bb.x / TILE_W, x1 = (k->bb.x + k->bb.w - 1) / TILE_W;
         int y0 = k->bb.y / TILE_H, y1 = (k->bb.y + k->bb.h - 1) / TILE_H;
         for (ty = y0; ty <= y1; ty++) {
-            lt_u32 *a = t->h1 + (size_t)ty * (size_t)t->tx, *b = t->h2 + (size_t)ty * (size_t)t->tx;
+            size_t row = (size_t)ty * (size_t)t->tx;
+            lt_u32 *a = t->h1 + row, *b = t->h2 + row;
+            const lt_u32 *pa = t->p1 + row, *pb = t->p2 + row;
             for (tx = x0; tx <= x1; tx++) {
                 lt_u32 v = a[tx] ^ k->h1;
                 a[tx] = (rotl(v, 7) * 0x2C1B3C6DU + 0x297A2D39U) & LT_U32_MASK;
                 b[tx] = ((b[tx] + k->h2) * 0x85EBCA6BU) & LT_U32_MASK;
                 b[tx] ^= b[tx] >> 13;
+                /* the calls so far are exactly what the tile shows (a menu, tooltip or dialog
+                 * opening on top of an unchanged screen only adds calls) */
+                if (a[tx] == pa[tx] && b[tx] == pb[tx]) { t->cut[row + (size_t)tx] = i; }
             }
             t->rowstart[ty + 1]++;
             total++;
@@ -472,24 +491,29 @@ int lt_tiles_end(lt_tiles *t, lt_gfx *g, lt_rect *out, int max_out)
     prev_clip = g->clip;
     for (ty = 0; ty < t->ty; ty++) {
         int run0 = -1;
+        long run_cut = -1;
         for (tx = 0; tx <= t->tx; tx++) {
             int changed = 0;
+            long c = -1;
             if (tx < t->tx) {
                 size_t k = (size_t)ty * (size_t)t->tx + (size_t)tx;
                 changed = all || t->h1[k] != t->p1[k] || t->h2[k] != t->p2[k];
+                c = all ? -1 : t->cut[k];
                 if (changed) { ndirty++; }
             }
-            if (changed && run0 < 0) { run0 = tx; }
-            if (!changed && run0 >= 0) {
+            /* a run ends at an unchanged tile or where the reusable prefix differs */
+            if (run0 >= 0 && (!changed || c != run_cut)) {
                 lt_rect rr;
                 rr.x = run0 * TILE_W; rr.y = ty * TILE_H;
                 rr.w = LT_MIN(tx * TILE_W, r->cw) - rr.x;
                 rr.h = LT_MIN((ty + 1) * TILE_H, r->ch) - rr.y;
-                render_run(t, g, rr, t->rowidx + t->rowstart[ty], t->rowstart[ty + 1] - t->rowstart[ty]);
+                render_run(t, g, rr, t->rowidx + t->rowstart[ty], t->rowstart[ty + 1] - t->rowstart[ty],
+                           run_cut);
                 pixels += (double)rr.w * (double)rr.h;
                 if (max_out > 0) { add_out(out, &n_out, max_out, rr); }
                 run0 = -1;
             }
+            if (changed && run0 < 0) { run0 = tx; run_cut = c; }
         }
     }
     g->clip = prev_clip;
