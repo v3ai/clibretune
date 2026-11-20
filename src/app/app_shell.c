@@ -1384,27 +1384,58 @@ static double present_frame(lt_app *app)
     return px;
 }
 
-/* LT_PERF=1: per-second frame statistics on stderr (draw ms avg/max, present ms, bytes handed to
- * the backend per second); in screenshot mode one summary line at the end. */
+/* LT_PERF=1: per-second frame statistics on stderr (frame = draw + present: avg, 95th
+ * percentile and max; draw and present averages; bytes handed to the backend per second); in
+ * screenshot mode one summary line at the end. LT_PERF_SKIP=N leaves the first N frames out
+ * (warm-up: caches, layout). */
 typedef struct perf_stats {
-    int on, init;
+    int on, init, skip;
     double t0, draw_sum, draw_max, pres_sum;
     double bytes;
     long frames;
+    double *ft;                 /* frame times of this period (for the percentile) */
+    long ft_cap;
 } perf_stats;
 static perf_stats g_perf;
+
+static int perf_cmp(const void *a, const void *b)
+{
+    double x = *(const double *)a, y = *(const double *)b;
+    return x < y ? -1 : (x > y ? 1 : 0);
+}
 
 static void perf_report(perf_stats *p, double now)
 {
     if (p->frames > 0) {
-        double span = now - p->t0;
+        double span = now - p->t0, sum = 0.0, p95, mx;
+        long i, k;
         if (span < 1.0) { span = 1.0; }
-        fprintf(stderr, "perf: %ld frames, draw avg %.2f ms max %.2f ms, present avg %.2f ms, "
-                "%.2f MB/s presented\n", p->frames, p->draw_sum / (double)p->frames, p->draw_max,
+        qsort(p->ft, (size_t)p->frames, sizeof(double), perf_cmp);
+        for (i = 0; i < p->frames; i++) { sum += p->ft[i]; }
+        k = (p->frames * 95 + 99) / 100 - 1;
+        if (k < 0) { k = 0; }
+        p95 = p->ft[k];
+        mx = p->ft[p->frames - 1];
+        fprintf(stderr, "perf: %ld frames, frame avg %.3f p95 %.3f max %.3f ms, draw avg %.3f ms "
+                "max %.3f ms, present avg %.3f ms, %.2f MB/s presented\n", p->frames,
+                sum / (double)p->frames, p95, mx, p->draw_sum / (double)p->frames, p->draw_max,
                 p->pres_sum / (double)p->frames, p->bytes / (span / 1000.0) / 1048576.0);
     }
     p->t0 = now; p->draw_sum = 0.0; p->draw_max = 0.0; p->pres_sum = 0.0;
     p->bytes = 0.0; p->frames = 0;
+}
+
+static void perf_add(perf_stats *p, double draw, double pres, double pixels)
+{
+    if (p->skip > 0) { p->skip--; return; }
+    if (p->frames >= p->ft_cap) {
+        p->ft_cap = p->ft_cap < 256 ? 256 : p->ft_cap * 2;
+        p->ft = (double *)lt_realloc(p->ft, (size_t)p->ft_cap * sizeof(double));
+    }
+    p->ft[p->frames] = draw + pres;
+    p->draw_sum += draw; p->pres_sum += pres; p->bytes += pixels * 4.0;
+    if (draw > p->draw_max) { p->draw_max = draw; }
+    p->frames++;
 }
 
 static void run_frame(lt_app *app)
@@ -1415,6 +1446,9 @@ static void run_frame(lt_app *app)
         char *e = lt_plat_getenv("LT_PERF");
         p->init = 1;
         p->on = (e != NULL && e[0] != '\0' && e[0] != '0') ? 1 : 0;
+        lt_free(e);
+        e = lt_plat_getenv("LT_PERF_SKIP");
+        p->skip = e != NULL ? atoi(e) : 0;
         lt_free(e);
         p->t0 = lt_plat_now_ms();
     }
@@ -1433,9 +1467,7 @@ static void run_frame(lt_app *app)
     lt_gfx_reset_dirty(&app->gfx);
     t2 = lt_plat_now_ms();
     if (p->on) {
-        p->draw_sum += t1 - t0; p->pres_sum += t2 - t1; p->bytes += pixels * 4.0;
-        if (t1 - t0 > p->draw_max) { p->draw_max = t1 - t0; }
-        p->frames++;
+        perf_add(p, t1 - t0, t2 - t1, pixels);
         if (!app->headless && t2 - p->t0 >= 1000.0) { perf_report(p, t2); }
     }
 }
@@ -1527,13 +1559,56 @@ static void write_ppm(const lt_canvas *c, const char *path)
     fclose(f);
 }
 
+/* LT_SHOT_SCRIPT (pixel screenshots, benchmarks): after the LT_SHOT_FRAMES frames, one frame per
+ * token, in pixel coordinates: m:X/Y mouse move, d:X/Y left button down, u:X/Y up, w:X/Y/N wheel,
+ * anything else is an LT_SHOT_KEYS key or text token (ctrl+tab, esc, text:12, ...). With LT_PERF
+ * the statistics restart before the script, so they cover the scripted frames only; the token
+ * "reset" (no frame) restarts them again, after setup steps. */
+static void shot_script(lt_app *app, const char *script, int sleep_ms)
+{
+    const char *p = script;
+    char tok[96];
+    lt_event evs[24];
+    if (g_perf.on) { perf_report(&g_perf, lt_plat_now_ms()); fflush(stderr); }
+    while (*p != '\0') {
+        size_t len = 0;
+        int n = 0, k, a = 0, b = 0, c = 0;
+        while (*p == ',' || *p == ' ') { p++; }
+        while (*p != '\0' && *p != ' ' && *p != ',' && len + 1 < sizeof(tok)) { tok[len++] = *p++; }
+        tok[len] = '\0';
+        if (len == 0) { break; }
+        if (strcmp(tok, "reset") == 0) {
+            if (g_perf.on) { perf_report(&g_perf, lt_plat_now_ms()); fflush(stderr); }
+            continue;
+        }
+        memset(evs, 0, sizeof(evs));
+        if (len > 2 && tok[1] == ':' && strchr("mduw", tok[0]) != NULL) {
+            sscanf(tok + 2, "%d/%d/%d", &a, &b, &c);
+            evs[0].x = a; evs[0].y = b; evs[0].button = LT_MB_LEFT; evs[0].wheel = c;
+            evs[0].type = tok[0] == 'm' ? LT_EV_MOUSE_MOVE : (tok[0] == 'd' ? LT_EV_MOUSE_DOWN :
+                          (tok[0] == 'u' ? LT_EV_MOUSE_UP : LT_EV_WHEEL));
+            n = 1;
+        } else {
+            n = lt_app_shot_parse(tok, evs, (int)LT_COUNTOF(evs));
+        }
+        lt_app_service(app);
+        for (k = 0; k < n; k++) { lt_ui_input(app->ui, &evs[k]); }
+        run_frame(app);
+        if (sleep_ms > 0) { lt_plat_sleep_ms(sleep_ms); }
+    }
+}
+
 int lt_app_screenshot(lt_app *app, const char *ppm_path, int w, int h, int frames)
 {
     int i;
     char *click = lt_plat_getenv("LT_SHOT_CLICK");
-    int cx = -1, cy = -1, button = LT_MB_LEFT;
+    int cx = -1, cy = -1, button = LT_MB_LEFT, sleep_ms = 60;
     lt_event ev;
     lt_bool tty = lt_app_shot_is_tty();
+    {
+        char *sl = lt_plat_getenv("LT_SHOT_SLEEP");     /* ms between frames (default 60) */
+        if (sl != NULL) { sleep_ms = atoi(sl); lt_free(sl); }
+    }
     app->cell_mode = tty ? 1 : 0;
     app->headless = 1;
     {
@@ -1564,7 +1639,7 @@ int lt_app_screenshot(lt_app *app, const char *ppm_path, int w, int h, int frame
             ev.type = LT_EV_MOUSE_UP; lt_ui_input(app->ui, &ev);
         }
         run_frame(app);
-        lt_plat_sleep_ms(60);
+        if (sleep_ms > 0) { lt_plat_sleep_ms(sleep_ms); }
     }
     if (tty) {
         char *keys = lt_plat_getenv("LT_SHOT_KEYS");
@@ -1592,6 +1667,10 @@ int lt_app_screenshot(lt_app *app, const char *ppm_path, int w, int h, int frame
             }
         }
         return lt_app_shot_write(&app->cells);
+    }
+    {
+        char *sc = lt_plat_getenv("LT_SHOT_SCRIPT");
+        if (sc != NULL) { shot_script(app, sc, sleep_ms); lt_free(sc); }
     }
     if (g_perf.on) { perf_report(&g_perf, lt_plat_now_ms()); }
     write_ppm(&app->canvas, ppm_path);
