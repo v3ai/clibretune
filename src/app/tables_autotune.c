@@ -6,6 +6,8 @@
 #include "tables_priv.h"
 #include "view_kit.h"
 #include "feat_log.h"
+#include "feat.h"
+#include "at_ui.h"
 #include "../autotune/at_extra.h"
 
 #define AT_FD_REPLAY (LT_APP_FD_USER0 + 20)
@@ -17,6 +19,7 @@ typedef struct at_slot {
     lt_at_state *at;
     const lt_ini_table *t;
     lt_tblview ve, tgt;
+    double *tgt_z, *dly_z;         /* target and lambda-delay tables on the VE axes (or NULL) */
     int have_tgt, loaded, zdig, tsel;
     lt_at_rec *recs; size_t nrecs, cap;
     unsigned char *sel; size_t sel_cap;
@@ -50,6 +53,11 @@ typedef struct at_tab {
     int frame;
     lt_anomaly an[32]; size_t n_an;
     lt_predicted_cell pc[96]; size_t n_pc;
+    /* reference table overrides: 0 = the INI's VeAnalyze target / the delay setting */
+    int tgt_pick, dly_pick;
+    const char *tgt_opts[28]; size_t n_tgt;
+    const char *dly_opts[18]; size_t n_dly;
+    char tgt_lbl0[96];
 } at_tab;
 
 static at_tab *g_at = NULL;
@@ -60,6 +68,8 @@ static void slot_free_views(at_slot *sl)
     lt_tblview_free(&sl->tgt);
     lt_free(sl->recs); sl->recs = NULL; sl->nrecs = sl->cap = 0;
     lt_free(sl->sel); sl->sel = NULL; sl->sel_cap = 0;
+    lt_free(sl->tgt_z); sl->tgt_z = NULL;
+    lt_free(sl->dly_z); sl->dly_z = NULL;
     sl->have_tgt = 0;
 }
 
@@ -74,12 +84,116 @@ static void at_swap(at_tab *st)
     st->on_sec = !st->on_sec;
 }
 
+/* reference tables of the shown slot: VE, target and delay (both resampled onto the VE axes) */
+static void at_refs(const at_tab *st, lt_at_reftables *ref)
+{
+    memset(ref, 0, sizeof(*ref));
+    ref->nx = st->s.ve.cols;
+    ref->ny = st->s.ve.rows;
+    ref->ve = st->s.ve.z;
+    ref->target_afr = st->s.tgt_z;
+    ref->lambda_delay = st->s.dly_z;
+}
+
 static void at_set_refs(lt_app *app, at_tab *st)
 {
     lt_at_reftables ref;
     (void)app;
-    lt_at_reftables_from_views(&st->s.ve, st->s.have_tgt ? &st->s.tgt : NULL, &ref);
+    at_refs(st, &ref);
     lt_at_set_reference_tables(st->s.at, &ref);
+}
+
+/* name of the target table in use: the override, else the INI's VeAnalyze target */
+static const char *at_target_name(const lt_app *app, const at_tab *st)
+{
+    if (st->tgt_pick > 0 && (size_t)st->tgt_pick < st->n_tgt) { return st->tgt_opts[st->tgt_pick]; }
+    return app->ini->ve_analyze.target_table;
+}
+
+/* a table's values on the VE axes (copied when the shapes match, else bilinear); NULL on error */
+static double *at_on_ve_axes(lt_app *app, const at_slot *sl, const char *name)
+{
+    lt_pagesrc src = lt_app_pages(app);
+    const lt_ini_table *t = name != NULL ? lt_ini_find_table(app->ini, name) : NULL;
+    lt_tblview v;
+    double *out = NULL;
+    size_t n = sl->ve.rows * sl->ve.cols;
+    if (t == NULL || n == 0) { return NULL; }
+    lt_tblview_init(&v);
+    if (lt_tblview_load_table(&v, app->ini, t, &src) == 0 && v.rows > 0 && v.cols > 0 && v.y != NULL) {
+        out = (double *)lt_calloc(n + 1, sizeof(double));
+        if (v.rows == sl->ve.rows && v.cols == sl->ve.cols) {
+            memcpy(out, v.z, n * sizeof(double));
+        } else if (lt_tbl_rebin(v.x, v.cols, v.y, v.rows, v.z, sl->ve.x, sl->ve.cols, sl->ve.y, sl->ve.rows,
+                                LT_TRUE, out) < 0) {
+            lt_free(out);
+            out = NULL;
+        }
+    }
+    lt_tblview_free(&v);
+    return out;
+}
+
+static int has_word(const char *s, const char *w)
+{
+    size_t i, n, m = strlen(w);
+    if (s == NULL) { return 0; }
+    n = strlen(s);
+    for (i = 0; i + m <= n; i++) { if (lt_strnicmp(s + i, w, m) == 0) { return 1; } }
+    return 0;
+}
+
+/* candidate target and delay tables for the overrides */
+static void at_override_lists(lt_app *app, at_tab *st)
+{
+    const lt_ini *ini = app->ini;
+    size_t i, j;
+    st->n_tgt = 0;
+    lt_snprintf(st->tgt_lbl0, sizeof(st->tgt_lbl0), "INI default (%s)",
+                ini->ve_analyze.target_table != NULL ? ini->ve_analyze.target_table : "none: flat target");
+    st->tgt_opts[st->n_tgt++] = st->tgt_lbl0;
+    for (i = 0; i < ini->ve_analyze.n_lambda_target_tables && st->n_tgt < LT_COUNTOF(st->tgt_opts); i++) {
+        const lt_ini_table *t = lt_ini_find_table(ini, ini->ve_analyze.lambda_target_tables[i]);
+        if (t != NULL && t->y_const != NULL) { st->tgt_opts[st->n_tgt++] = t->name; }
+    }
+    for (i = 0; i < ini->n_tables && st->n_tgt < LT_COUNTOF(st->tgt_opts); i++) {
+        const lt_ini_table *t = ini->tables[i];
+        int dup = 0;
+        if (t->role != LT_ROLE_AFR_TARGET || t->y_const == NULL) { continue; }
+        for (j = 1; j < st->n_tgt; j++) { if (strcmp(st->tgt_opts[j], t->name) == 0) { dup = 1; } }
+        if (!dup) { st->tgt_opts[st->n_tgt++] = t->name; }
+    }
+    st->n_dly = 0;
+    st->dly_opts[st->n_dly++] = "Delay setting / RPM curve";
+    st->dly_opts[st->n_dly++] = "Flow-scaled from the VE table";
+    for (i = 0; i < ini->n_tables && st->n_dly < LT_COUNTOF(st->dly_opts); i++) {
+        const lt_ini_table *t = ini->tables[i];
+        if (t->y_const == NULL) { continue; }
+        if (has_word(t->name, "delay") || has_word(t->title, "delay") || has_word(t->name, "lag") ||
+            has_word(t->title, "transport")) {
+            st->dly_opts[st->n_dly++] = t->name;
+        }
+    }
+    if (st->tgt_pick >= (int)st->n_tgt) { st->tgt_pick = 0; }
+    if (st->dly_pick >= (int)st->n_dly) { st->dly_pick = 0; }
+}
+
+/* (re)build the target and delay arrays of the shown slot from the override choices */
+static void at_build_refs(lt_app *app, at_tab *st)
+{
+    lt_free(st->s.tgt_z); st->s.tgt_z = NULL;
+    lt_free(st->s.dly_z); st->s.dly_z = NULL;
+    if (st->s.ve.rows == 0 || st->s.ve.cols == 0) { return; }
+    st->s.tgt_z = at_on_ve_axes(app, &st->s, at_target_name(app, st));
+    if (st->dly_pick == 1) {
+        size_t n = st->s.ve.rows * st->s.ve.cols;
+        st->s.dly_z = (double *)lt_calloc(n + 1, sizeof(double));
+        lt_at_flow_scaled_delay_table(st->s.ve.z, st->s.ve.x, st->s.ve.cols, st->s.ve.y, st->s.ve.rows,
+                                      st->set.lambda_delay_ms > 0.0 ? st->set.lambda_delay_ms : 200.0,
+                                      st->set.lambda_delay_floor_ms, st->s.dly_z);
+    } else if (st->dly_pick >= 2 && (size_t)st->dly_pick < st->n_dly) {
+        st->s.dly_z = at_on_ve_axes(app, &st->s, st->dly_opts[st->dly_pick]);
+    }
 }
 
 static void at_load(lt_app *app, at_tab *st)
@@ -100,8 +214,9 @@ static void at_load(lt_app *app, at_tab *st)
         return;
     }
     st->s.zdig = lt_tabs_const_digits(app->ini, st->s.t->z_const);
-    tt = app->ini->ve_analyze.target_table != NULL ? lt_ini_find_table(app->ini, app->ini->ve_analyze.target_table) : NULL;
+    tt = at_target_name(app, st) != NULL ? lt_ini_find_table(app->ini, at_target_name(app, st)) : NULL;
     if (tt != NULL && lt_tblview_load_table(&st->s.tgt, app->ini, tt, &src) == 0) { st->s.have_tgt = 1; }
+    at_build_refs(app, st);
     n = st->s.ve.rows * st->s.ve.cols;
     st->s.cap = n;
     st->s.recs = (lt_at_rec *)lt_calloc(n + 1, sizeof(lt_at_rec));
@@ -131,9 +246,13 @@ static void at_defaults(lt_app *app, at_tab *st)
     lt_at_channels_from_ini(app->ini, &st->ch);
     st->custom[0] = '\0';
     st->hw_sel = (int)st->set.hit_weighting;
+    st->tgt_pick = 0;
+    st->dly_pick = 0;
+    at_override_lists(app, st);
     {
         double fl = 0.0, an = 0.0;
         if (lt_tabs_delay_model_load(app, &fl, &an) == 0) {
+            st->dly_pick = 1;
             st->set.lambda_delay_flow_scaled = LT_TRUE;
             st->set.lambda_delay_floor_ms = fl;
             st->set.lambda_delay_ms = an;
@@ -194,7 +313,7 @@ static void at_start(lt_app *app, at_tab *st)
     at_load(app, st);
     if (!st->s.loaded) { lt_app_toast(app, 3, "%s", st->msg); return; }
     memset(&in, 0, sizeof(in));
-    in.target_table = app->ini->ve_analyze.target_table;
+    in.target_table = at_target_name(app, st);
     if (st->s.have_tgt) { in.target_values = st->s.tgt.z; in.t_rows = st->s.tgt.rows; in.t_cols = st->s.tgt.cols; }
     in.ve_rows = st->s.ve.rows; in.ve_cols = st->s.ve.cols; in.ve_values = st->s.ve.z;
     in.celsius = LT_TRUE;
@@ -331,7 +450,7 @@ static void at_replay(lt_app *app, at_tab *st, const char *path)
     cfg.settings = st->set;
     cfg.authority = st->auth;
     cfg.filters = st->f;     /* shallow copy: strings stay owned by the tab */
-    lt_at_reftables_from_views(&st->s.ve, st->s.have_tgt ? &st->s.tgt : NULL, &ref);
+    at_refs(st, &ref);
     memset(&rep, 0, sizeof(rep));
     rc = lt_replay(&log, &st->ch, st->s.ve.x, st->s.ve.cols, st->s.ve.y, st->s.ve.rows, &ref, &cfg, &rep);
     if (rc < 0) {
@@ -438,13 +557,14 @@ static void at_grid(lt_app *app, at_tab *st)
                     int t256;
                     if (a > 1.0) { a = 1.0; }
                     t256 = (int)(a * 170.0) + 70;
+                    /* change and coverage views use their own heat-map contexts (Settings) */
                     if (st->hm_mode == LT_ATX_MAP_VALUE) {
-                        bg = lt_color_mix(bg, d >= 0.0 ? th->change_richer : th->change_leaner, t256);
+                        bg = lt_color_mix(bg, lt_at_ui_change(app, d, 0.1), t256);
                     } else if (st->hm_mode == LT_ATX_MAP_CHANGE) {
-                        bg = lt_color_mix(th->surface, d >= 0.0 ? th->change_richer : th->change_leaner,
-                                          (int)(lt_atx_map_fraction(st->hm_mode, rc, mh, mw, mc) * 230.0) + 25);
+                        double fr = lt_atx_map_fraction(st->hm_mode, rc, mh, mw, mc);
+                        bg = lt_at_ui_change(app, d >= 0.0 ? fr : -fr, 1.0);
                     } else {
-                        bg = lt_tabs_heat(app, th, 0.0, 1.0, lt_atx_map_fraction(st->hm_mode, rc, mh, mw, mc));
+                        bg = lt_at_ui_heat(app, LT_HEAT_COVERAGE, lt_atx_map_fraction(st->hm_mode, rc, mh, mw, mc));
                     }
                     fg = lt_tabs_heat_text(bg);
                     lt_tabs_fmt(b, sizeof(b), rc->recommended_value, st->s.zdig);
@@ -454,7 +574,7 @@ static void at_grid(lt_app *app, at_tab *st)
                     lt_tabs_fmt(b, sizeof(b), st->pc[pi].predicted, st->s.zdig);
                 } else {
                     if (st->hm_mode != LT_ATX_MAP_VALUE) {
-                        bg = st->hm_mode == LT_ATX_MAP_CHANGE ? th->surface : lt_tabs_heat(app, th, 0.0, 1.0, 0.0);
+                        bg = st->hm_mode == LT_ATX_MAP_CHANGE ? th->surface : lt_at_ui_heat(app, LT_HEAT_COVERAGE, 0.0);
                         fg = lt_tabs_heat_text(bg);
                     }
                     lt_tabs_fmt(b, sizeof(b), cur, st->s.zdig);
@@ -508,6 +628,122 @@ static void numrow(lt_ui *ui, const char *label, const char *id, double *v, doub
     lt_ui_layout_row(ui, 2, w, 0);
     lt_ui_label(ui, label);
     if (lt_ui_number(ui, id, v, lo, hi, step, digits) & LT_UI_CHANGED) { *changed = 1; }
+}
+
+/* ---- the INI's declared VeAnalyze filters behind the editable ones ---- */
+enum { AT_IF_MINRPM = 0, AT_IF_MAXRPM, AT_IF_MINCLT, AT_IF_TPSRATE };
+
+/* a usable declared filter: a channel without blanks (a missing comma in the INI line glues the
+ * channel and the operator together and loses the value) */
+static int at_filter_ok(const lt_ini_filter *f)
+{
+    return f->channel != NULL && f->channel[0] != '\0' && strchr(f->channel, ' ') == NULL &&
+           strchr(f->channel, '\t') == NULL;
+}
+
+static const lt_ini_filter *at_ini_filter(const lt_app *app, const at_tab *st, int kind)
+{
+    static const char *const names[4] = { "minRPMFilter", "maxRPMFilter", "minCltFilter", "deltaTps" };
+    const lt_ini_analyze *a = &app->ini->ve_analyze;
+    size_t i;
+    for (i = 0; i < a->n_filters; i++) {
+        if (a->filters[i].name != NULL && strcmp(a->filters[i].name, names[kind]) == 0) {
+            return at_filter_ok(&a->filters[i]) ? &a->filters[i] : NULL;
+        }
+    }
+    for (i = 0; i < a->n_filters; i++) {
+        const lt_ini_filter *f = &a->filters[i];
+        const char *c = f->channel;
+        if (!at_filter_ok(f)) { continue; }
+        if (((kind == AT_IF_MINRPM && f->op == LT_FOP_LT) || (kind == AT_IF_MAXRPM && f->op == LT_FOP_GT)) &&
+            (strcmp(c, st->ch.rpm) == 0 || has_word(c, "rpm"))) {
+            return f;
+        }
+        if (kind == AT_IF_MINCLT && f->op == LT_FOP_LT &&
+            (strcmp(c, st->ch.clt) == 0 || has_word(c, "clt") || has_word(c, "coolant"))) {
+            return f;
+        }
+        if (kind == AT_IF_TPSRATE && f->op == LT_FOP_GT &&
+            (strcmp(c, st->ch.tps_rate) == 0 || has_word(c, "tpsdot") || has_word(c, "deltatps"))) {
+            return f;
+        }
+    }
+    return NULL;
+}
+
+/* "differs from the INI value" note with a reset button under a filter row */
+static void at_ini_diff(lt_app *app, at_tab *st, int kind, double *v, int digits, int *changed)
+{
+    lt_ui *ui = app->ui;
+    const lt_ini_filter *f = at_ini_filter(app, st, kind);
+    char b[96];
+    int w[2];
+    if (f == NULL || fabs(f->dflt - *v) < 1e-9) { return; }
+    w[0] = -1; w[1] = lt_ui_cell_mode(ui) ? 120 : 110;
+    lt_ui_layout_row(ui, 2, w, 0);
+    lt_snprintf(b, sizeof(b), "Differs from INI value %.*f", digits, f->dflt);
+    lt_ui_label_ex(ui, b, lt_ui_theme(ui)->warning, LT_UI_ALIGN_RIGHT);
+    lt_ui_push_id_int(ui, 700 + kind);
+    if (lt_ui_button_ex(ui, "Use INI value", LT_UI_BTN_FLAT)) { *v = f->dflt; *changed = 1; }
+    lt_ui_pop_id(ui);
+}
+
+/* target table and lambda-delay source overrides */
+static void at_refs_group(lt_app *app, at_tab *st)
+{
+    lt_ui *ui = app->ui;
+    const lt_theme *th = lt_ui_theme(ui);
+    int w1 = -1, w2[2], sel, changed = 0;
+    char b[200];
+    if (!lt_ui_group_begin(ui, "Reference tables", 0)) { return; }
+    w2[0] = 130; w2[1] = -1;
+    lt_ui_layout_row(ui, 2, w2, 0);
+    lt_ui_label(ui, "Target table");
+    sel = st->tgt_pick;
+    if (lt_ui_combo(ui, "tgtovr", &sel, st->tgt_opts, (int)st->n_tgt) && sel != st->tgt_pick) {
+        st->tgt_pick = sel;
+        changed = 1;
+    }
+    if (st->tgt_pick > 0) {
+        int wd[2];
+        wd[0] = -1; wd[1] = lt_ui_cell_mode(ui) ? 120 : 110;
+        lt_ui_layout_row(ui, 2, wd, 0);
+        lt_snprintf(b, sizeof(b), "Differs from INI (%s)", app->ini->ve_analyze.target_table != NULL ?
+                    app->ini->ve_analyze.target_table : "flat target");
+        lt_ui_label_ex(ui, b, th->warning, LT_UI_ALIGN_RIGHT);
+        if (lt_ui_button_ex(ui, "Use INI value", LT_UI_BTN_FLAT)) { st->tgt_pick = 0; changed = 1; }
+    }
+    lt_ui_layout_row(ui, 2, w2, 0);
+    lt_ui_label(ui, "Lambda delay");
+    sel = st->dly_pick;
+    if (lt_ui_combo(ui, "dlyovr", &sel, st->dly_opts, (int)st->n_dly) && sel != st->dly_pick) {
+        st->dly_pick = sel;
+        changed = 1;
+    }
+    lt_ui_layout_row(ui, 1, &w1, 0);
+    if (st->dly_pick == 1) {
+        lt_snprintf(b, sizeof(b), "Per-cell delay scaled by airflow from %.0f ms at idle (floor %.0f ms).",
+                    st->set.lambda_delay_ms > 0.0 ? st->set.lambda_delay_ms : 200.0, st->set.lambda_delay_floor_ms);
+        lt_ui_label_wrap(ui, b, th->text2);
+    } else if (st->dly_pick == 0 && st->n_dly <= 2) {
+        lt_ui_label_wrap(ui, "This definition has no lambda delay table; the delay setting or the RPM curve is used.", th->muted);
+    }
+    if (st->s.loaded && st->s.tgt_z == NULL && at_target_name(app, st) != NULL) {
+        lt_ui_label_wrap(ui, "The target table could not be read: a flat target is used.", th->error);
+    }
+    lt_ui_group_end(ui);
+    if (changed && st->s.loaded) {
+        lt_tblview_free(&st->s.tgt);
+        lt_tblview_init(&st->s.tgt);
+        st->s.have_tgt = 0;
+        {
+            lt_pagesrc src = lt_app_pages(app);
+            const lt_ini_table *tt = at_target_name(app, st) != NULL ? lt_ini_find_table(app->ini, at_target_name(app, st)) : NULL;
+            if (tt != NULL && lt_tblview_load_table(&st->s.tgt, app->ini, tt, &src) == 0) { st->s.have_tgt = 1; }
+        }
+        at_build_refs(app, st);
+        at_set_refs(app, st);
+    }
 }
 
 static void at_health_card(lt_app *app, at_tab *st);
@@ -578,12 +814,17 @@ static void at_panel(lt_app *app, at_tab *st)
         numrow(ui, "Delay ms (0=auto)", "dl", &st->set.lambda_delay_ms, 0.0, 1000.0, 5.0, 0, &ch);
         lt_ui_group_end(ui);
     }
+    if (lt_ui_cell_mode(ui) || st->ptab == 1) { at_refs_group(app, st); }
     if ((lt_ui_cell_mode(ui) || st->ptab == 1) && lt_ui_group_begin(ui, "Filters", 0)) {
         int ex = st->f.exclude_accel_enrich ? 1 : 0;
         numrow(ui, "Min RPM", "fmin", &st->f.min_rpm, 0.0, 20000.0, 100.0, 0, &ch);
+        at_ini_diff(app, st, AT_IF_MINRPM, &st->f.min_rpm, 0, &ch);
         numrow(ui, "Max RPM", "fmax", &st->f.max_rpm, 0.0, 20000.0, 100.0, 0, &ch);
+        at_ini_diff(app, st, AT_IF_MAXRPM, &st->f.max_rpm, 0, &ch);
         numrow(ui, "Min coolant", "fclt", &st->f.min_clt, -50.0, 300.0, 1.0, 0, &ch);
+        at_ini_diff(app, st, AT_IF_MINCLT, &st->f.min_clt, 0, &ch);
         numrow(ui, "Max TPS rate", "ftps", &st->f.max_tps_rate, 0.0, 1000.0, 5.0, 0, &ch);
+        at_ini_diff(app, st, AT_IF_TPSRATE, &st->f.max_tps_rate, 0, &ch);
         lt_ui_layout_row(ui, 1, &w1, 0);
         if (lt_ui_checkbox(ui, "Exclude accel enrichment", &ex)) { st->f.exclude_accel_enrich = ex ? LT_TRUE : LT_FALSE; }
         w2[0] = 130; w2[1] = -1;
@@ -1025,25 +1266,96 @@ static int at_heat_strip(lt_app *app, at_tab *st)
     return hit >= 0 ? ids[hit] : -1;
 }
 
-static void at_legend(lt_ui *ui, const lt_theme *th)
+/* ---- shared helpers of the AutoTune family (at_ui.h) ---- */
+lt_color lt_at_ui_heat(const lt_app *app, int ctx, double t)
 {
-    int w1 = -1, i;
+    lt_color c;
+    if (t < 0.0) { t = 0.0; }
+    if (t > 1.0) { t = 1.0; }
+    if (ctx < 0 || ctx >= LT_PREFS_HEAT_CTX) { ctx = LT_HEAT_VALUE; }
+    if (lt_feat_prefs_heat(app, ctx, t, &c)) { return c; }
+    if (ctx == LT_HEAT_VALUE && strcmp(app->settings.prefs.heat_scheme[0], "custom") != 0) {
+        return lt_heat_color(lt_prefs_scheme_index(app->settings.heatmap), t);
+    }
+    return lt_heat_color(lt_prefs_scheme_index(app->settings.prefs.heat_scheme[ctx]), t);
+}
+
+lt_color lt_at_ui_change(const lt_app *app, double d, double full)
+{
+    double f = full > 0.0 ? d / full : 0.0;
+    if (f > 1.0) { f = 1.0; }
+    if (f < -1.0) { f = -1.0; }
+    /* richer (more fuel) runs to the low end of the scheme, leaner to the high end */
+    return lt_at_ui_heat(app, LT_HEAT_CHANGE, 0.5 - 0.5 * f);
+}
+
+void lt_at_ui_change_legend(lt_app *app, lt_rect r)
+{
+    lt_ui *ui = app->ui;
+    const lt_theme *th = lt_ui_theme(ui);
+    int bw = lt_ui_px(ui, 140), bx = r.x + (r.w - bw) / 2, i;
+    lt_vk_text(ui, lt_rect_make(bx - lt_ui_px(ui, 60), r.y, lt_ui_px(ui, 54), r.h), (int)LT_FONT_SANS, 10.0, "Richer", th->muted, 2);
+    for (i = 0; i < bw; i++) {
+        double t = (double)i / (double)(bw - 1);
+        lt_ui_draw_fill(ui, lt_rect_make(bx + i, r.y + r.h / 2 - lt_ui_px(ui, 4), 1, lt_ui_px(ui, 8)),
+                        lt_at_ui_heat(app, LT_HEAT_CHANGE, t));
+    }
+    lt_vk_text(ui, lt_rect_make(bx + bw + lt_ui_px(ui, 6), r.y, lt_ui_px(ui, 60), r.h), (int)LT_FONT_SANS, 10.0, "Leaner", th->muted, 0);
+}
+
+static int at_live(const at_tab *st)
+{
+    return st != NULL && st->s.loaded && st->s.nrecs > 0 && st->s.ve.y != NULL;
+}
+
+lt_bool lt_at_ui_ve_factor(lt_app *app, double rpm, double load, double *factor)
+{
+    int ri;
+    LT_UNUSED(app);
+    *factor = 1.0;
+    if (!at_live(g_at)) { return LT_FALSE; }
+    ri = rec_index(g_at, lt_tbl_nearest(g_at->s.ve.y, g_at->s.ve.rows, load),
+                   lt_tbl_nearest(g_at->s.ve.x, g_at->s.ve.cols, rpm));
+    if (ri >= 0 && g_at->s.recs[ri].beginning_value > 0.1) {
+        *factor = g_at->s.recs[ri].recommended_value / g_at->s.recs[ri].beginning_value;
+    }
+    return LT_TRUE;
+}
+
+lt_bool lt_at_ui_ve_factor_table(lt_app *app, double **x, size_t *nx, double **y, size_t *ny,
+                                 double **z)
+{
+    size_t i, n;
+    LT_UNUSED(app);
+    if (!at_live(g_at)) { return LT_FALSE; }
+    *nx = g_at->s.ve.cols;
+    *ny = g_at->s.ve.rows;
+    n = *nx * *ny;
+    *x = (double *)lt_malloc((*nx + 1) * sizeof(double));
+    *y = (double *)lt_malloc((*ny + 1) * sizeof(double));
+    *z = (double *)lt_malloc((n + 1) * sizeof(double));
+    memcpy(*x, g_at->s.ve.x, *nx * sizeof(double));
+    memcpy(*y, g_at->s.ve.y, *ny * sizeof(double));
+    for (i = 0; i < n; i++) { (*z)[i] = 1.0; }
+    for (i = 0; i < g_at->s.nrecs; i++) {
+        const lt_at_rec *r = &g_at->s.recs[i];
+        size_t k = (size_t)r->cell_y * *nx + r->cell_x;
+        if (k < n && r->beginning_value > 0.1) { (*z)[k] = r->recommended_value / r->beginning_value; }
+    }
+    return LT_TRUE;
+}
+
+static void at_legend(lt_app *app)
+{
+    lt_ui *ui = app->ui;
+    const lt_theme *th = lt_ui_theme(ui);
+    int w1 = -1;
     lt_rect r;
     lt_ui_layout_row(ui, 1, &w1, 26);
     r = lt_ui_layout_next(ui);
     lt_ui_draw_fill(ui, r, th->bg_toolbar);
     lt_ui_draw_hline(ui, r.x, r.x + r.w - 1, r.y, th->border_subtle);
-    {
-        int bw = 140, bx = r.x + (r.w - bw) / 2;
-        lt_vk_text(ui, lt_rect_make(bx - lt_ui_px(ui, 60), r.y, lt_ui_px(ui, 54), r.h), (int)LT_FONT_SANS, 10.0, "Richer", th->muted, 2);
-        for (i = 0; i < bw; i++) {
-            double t = (double)i / (double)(bw - 1);
-            lt_color c = t < 0.5 ? lt_color_mix(th->change_richer, th->surface, (int)(t * 512.0))
-                                 : lt_color_mix(th->surface, th->change_leaner, (int)((t - 0.5) * 512.0));
-            lt_ui_draw_fill(ui, lt_rect_make(bx + i, r.y + lt_ui_px(ui, 9), 1, lt_ui_px(ui, 8)), c);
-        }
-        lt_vk_text(ui, lt_rect_make(bx + bw + lt_ui_px(ui, 6), r.y, lt_ui_px(ui, 60), r.h), (int)LT_FONT_SANS, 10.0, "Leaner", th->muted, 0);
-    }
+    lt_at_ui_change_legend(app, r);
 }
 
 static void at_cmd(lt_app *app, at_tab *st, int cmd)
@@ -1153,7 +1465,7 @@ static void at_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
     lt_ui_layout_row(ui, 2, wm, lt_ui_cell_mode(ui) ? -1 : -27);
     at_grid(app, st);
     at_panel(app, st);
-    if (!lt_ui_cell_mode(ui)) { at_legend(ui, th); }
+    if (!lt_ui_cell_mode(ui)) { at_legend(app); }
     at_pending_draw(app, st);
     tab->dirty = st->running ? 1 : 0;
 }
