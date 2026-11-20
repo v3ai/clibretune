@@ -84,7 +84,7 @@ src/datalog/  MLG/CSV read/write, recorder, playback
 src/autotune/ VE analyze
 src/script/   Lua 5.x subset interpreter (console, ECU script editor)
 src/sim/      demo ECU simulator
-src/fw/       firmware images, DfuSe / OpenBLT flashing engines, simulated bootloaders
+src/fw/       firmware images; DfuSe, OpenBLT (USB/UART/CAN), STK500v2, HalfKay engines; simulators
 src/basemap/  base map generator
 src/tableops/ table operations, lookups, unit conversion
 src/project/  projects, properties, restore points

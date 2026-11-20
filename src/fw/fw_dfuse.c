@@ -656,7 +656,12 @@ static void dfuse_free(lt_fw_job *j)
 
 int lt_fwj_dfuse_init(lt_fw_job *j)
 {
-    dfs *d = (dfs *)lt_calloc(1, sizeof(dfs));
+    dfs *d;
+    if (j->io->control == NULL || j->io->get_config == NULL) {
+        lt_fwj_fail(j, "this connection cannot carry USB DFU");
+        return -1;
+    }
+    d = (dfs *)lt_calloc(1, sizeof(dfs));
     if (d == NULL) { lt_fwj_fail(j, "out of memory"); return -1; }
     j->m = d;
     j->m_step = dfuse_step;

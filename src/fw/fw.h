@@ -2,11 +2,15 @@
  *
  *   images   raw .bin (at a base address), Intel HEX, Motorola S-record and ST DfuSe .dfu
  *            files parsed into sorted, non-overlapping address/data segments
- *   engines  ST DfuSe 1.1a (STM32 ROM bootloader, 0483:df11) and OpenBLT "XCP on USB bulk"
- *            (1D50:60AC). Both are stepped state machines: lt_fw_step() does at most one USB
- *            transaction (a few during setup) and returns, so the UI loop stays responsive.
+ *   engines  ST DfuSe 1.1a (STM32 ROM bootloader, 0483:df11); OpenBLT XCP over USB bulk
+ *            (1D50:60AC), over a UART and over CAN through an SLCAN (Lawicel) adapter;
+ *            STK500v2 (the Arduino Mega 2560 "wiring" bootloader, Speeduino) over serial;
+ *            PJRC HalfKay (Teensy 3.5 / 3.6 / 4.1, 16C0:0478) over USB HID SET_REPORT.
+ *            All are stepped state machines: lt_fw_step() does at most one transaction (a
+ *            few during setup) and returns, so the UI loop stays responsive.
  *   transport  a struct of function pointers (lt_fw_io): fw_usb.c maps it onto plat/usb.h,
- *            fw_sim.c onto simulated devices (tests and the demo).
+ *            fw_serial.c onto a plat.h serial port, fw_sim*.c onto simulated devices (tests
+ *            and the demo).
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 #ifndef LT_FW_H
@@ -86,6 +90,9 @@ typedef struct lt_fw_facts {
     char warn[4][160];
 } lt_fw_facts;
 void lt_fw_image_facts(const lt_fw_image *img, lt_fw_facts *f);
+/* STK500 / HalfKay: 0 when every image byte lies in [base, base + size), else -1 with a
+ * one-line reason (Teensy 3 image on a Teensy 4 and the reverse, AVR boot section, ...) */
+int  lt_fw_image_fits(const lt_fw_image *img, lt_u32 base, lt_u32 size, char *err, size_t errcap);
 /* one-line summary "Intel HEX, 2 segments, 712.5 KB, 0x08000000-0x080AE1FF" */
 void lt_fw_image_summary(const lt_fw_image *img, char *out, size_t cap);
 
@@ -97,12 +104,17 @@ typedef struct lt_fw_preset {
     lt_u32 app_base;            /* OpenBLT: application start (image bytes below = bootloader), 0 none */
     const lt_fw_range *protect; /* kept while "keep ECU settings" is on */
     int n_protect;
-    int dfu, openblt, wideband; /* what the screen offers */
+    int methods;                /* bit (1 << LT_FW_*) per flashing method the screen offers */
+    int wideband;               /* miata-ecus on-board wideband flasher */
+    lt_u32 dev_base, dev_size;  /* STK500 / HalfKay: image address of device byte 0, usable flash */
     const char *url;            /* where to get images, or NULL */
 } lt_fw_preset;
-enum { LT_FW_PRESET_MIATA = 0, LT_FW_PRESET_RUSEFI, LT_FW_PRESET_GENERIC, LT_FW_PRESET_COUNT };
+enum { LT_FW_PRESET_MIATA = 0, LT_FW_PRESET_RUSEFI, LT_FW_PRESET_GENERIC, LT_FW_PRESET_SPEEDUINO_MEGA,
+       LT_FW_PRESET_TEENSY35, LT_FW_PRESET_TEENSY36, LT_FW_PRESET_TEENSY41, LT_FW_PRESET_OPENBLT,
+       LT_FW_PRESET_COUNT };
 const lt_fw_preset *lt_fw_preset_get(int idx);
-/* preset matching an ECU signature (miata-ecu -> MIATA, rusEFI/FOME/epicEFI -> RUSEFI, else GENERIC) */
+/* preset matching an ECU signature (miata-ecu -> MIATA, rusEFI/FOME/epicEFI -> RUSEFI,
+ * speeduino -> SPEEDUINO_MEGA, else GENERIC) */
 int lt_fw_preset_for_signature(const char *sig);
 
 /* ------------------------------------------------------------------ transport */
@@ -115,6 +127,13 @@ typedef struct lt_fw_io {
     int (*get_config)(void *ctx, lt_u8 *buf, int cap);
     int (*get_string)(void *ctx, int index, char *buf, size_t cap);
     int (*claim)(void *ctx, int iface, int alt);   /* claim; alt >= 0 also selects it */
+    /* byte streams (serial bootloaders); NULL on USB transports.
+     * write: all len bytes or LT_USB_E*; read: up to cap bytes waiting at most timeout_ms
+     * (0 = nothing arrived); set_lines: DTR / RTS (1 asserted), 0 or LT_USB_E* when the port
+     * has no modem lines */
+    int (*write)(void *ctx, const lt_u8 *data, int len);
+    int (*read)(void *ctx, lt_u8 *buf, int cap, int timeout_ms);
+    int (*set_lines)(void *ctx, int dtr, int rts);
 } lt_fw_io;
 
 /* ------------------------------------------------------------------ DfuSe helpers */
@@ -144,9 +163,30 @@ int lt_fw_dfuse_plan(const lt_fw_region *rg, int n_rg, const lt_fw_image *img,
 /* ------------------------------------------------------------------ OpenBLT */
 #define LT_FW_OPENBLT_VID 0x1D50u
 #define LT_FW_OPENBLT_PID 0x60ACu
+#define LT_FW_CAN_TX_ID ((lt_u32)0x667u)   /* OpenBLT default: host -> target */
+#define LT_FW_CAN_RX_ID ((lt_u32)0x7E1u)   /* target -> host */
+#define LT_FW_CAN_EXT ((lt_u32)0x80000000UL) /* id flag: 29-bit identifier */
+/* SLCAN "Sn" code of a CAN bit rate in kbit/s (10..1000), -1 when there is none */
+int lt_fw_slcan_speed(int kbps);
+
+/* ------------------------------------------------------------------ Teensy HalfKay */
+#define LT_FW_TEENSY_VID 0x16C0u
+#define LT_FW_TEENSY_PID 0x0478u
+#define LT_FW_TEENSY4_FLASH ((lt_u32)0x60000000UL)   /* FlexSPI address of Teensy 4.x .hex files */
+
+/* ------------------------------------------------------------------ AVR (STK500v2) */
+#define LT_FW_AVR_PAGE 256u                           /* ATmega2560 flash page */
+#define LT_FW_MEGA2560_APP ((lt_u32)0x3E000UL)        /* below the 8 KB boot section */
 
 /* ------------------------------------------------------------------ flashing jobs */
-enum { LT_FW_DFUSE = 0, LT_FW_OPENBLT = 1 };
+enum { LT_FW_DFUSE = 0, LT_FW_OPENBLT = 1, LT_FW_STK500 = 2, LT_FW_HALFKAY = 3, LT_FW_OPENBLT_UART = 4,
+       LT_FW_OPENBLT_CAN = 5, LT_FW_METHOD_COUNT = 6 };
+/* "USB DFU (ST bootloader)", "OpenBLT over CAN (SLCAN adapter)", ... */
+const char *lt_fw_method_name(int method);
+/* 1 for the methods that talk over a serial port (STK500, OpenBLT UART / CAN) */
+int lt_fw_method_serial(int method);
+/* 1 when the method can read the flash back (HalfKay cannot) */
+int lt_fw_method_verifies(int method);
 enum { LT_FW_PH_IDLE = 0, LT_FW_PH_CONNECT, LT_FW_PH_ERASE, LT_FW_PH_WRITE, LT_FW_PH_VERIFY,
        LT_FW_PH_LEAVE, LT_FW_PH_DONE, LT_FW_PH_FAILED, LT_FW_PH_CANCELLED };
 
@@ -158,6 +198,9 @@ typedef struct lt_fw_opts {
     lt_u32 app_base;            /* OpenBLT: skip image bytes below this (bootloader), 0 = none */
     const lt_fw_range *protect;
     int n_protect;
+    lt_u32 dev_base, dev_size;  /* STK500 / HalfKay: image address of device byte 0, usable flash */
+    lt_u32 can_tx, can_rx;      /* OpenBLT CAN ids (0 = defaults 0x667 / 0x7E1; | LT_FW_CAN_EXT) */
+    int can_kbps;               /* OpenBLT CAN bit rate (0 = 500) */
 } lt_fw_opts;
 
 typedef struct lt_fw_progress {
@@ -187,14 +230,14 @@ const char *lt_fw_phase_name(int phase);
 
 /* ------------------------------------------------------------------ USB adapter (fw_usb.c) */
 typedef struct lt_fw_found {
-    int method;                 /* LT_FW_DFUSE / LT_FW_OPENBLT */
+    int method;                 /* LT_FW_DFUSE / LT_FW_OPENBLT / LT_FW_HALFKAY */
     int sim;                    /* 1 = simulated device (demo) */
     lt_u16 vid, pid;
     char path[256];
     char label[128];            /* "STM32 BOOTLOADER 0483:df11" */
 } lt_fw_found;
-/* Bootloader devices attached (DfuSe and OpenBLT); count or LT_USB_E* (ENOTSUP: no USB in
- * this build). */
+/* Bootloader devices attached (DfuSe, OpenBLT, Teensy HalfKay); count or LT_USB_E* (ENOTSUP:
+ * no USB in this build). */
 int lt_fw_scan(lt_fw_found *out, int cap);
 typedef struct lt_fw_usb lt_fw_usb;
 /* open a device and fill io; NULL with a reason in err */
@@ -203,9 +246,20 @@ void lt_fw_usb_close(lt_fw_usb *u);
 /* what to tell the user about a USB error code (udev rule, WinUSB/Zadig, ...) */
 const char *lt_fw_usb_hint(int code, int os_windows);
 extern const char lt_fw_udev_rule[];
+#define LT_FW_UDEV_FILE "50-libretune.rules"
+
+/* ------------------------------------------------------------------ serial adapter (fw_serial.c) */
+typedef struct lt_fw_serial lt_fw_serial;
+/* open a serial port (8N1) and fill io with write/read/set_lines; NULL with a reason in err */
+lt_fw_serial *lt_fw_serial_open(const char *port, long baud, lt_fw_io *io, char *err, size_t errcap);
+void lt_fw_serial_close(lt_fw_serial *p);
+/* what to tell the user when a serial port does not open (permissions, busy) or NULL */
+const char *lt_fw_serial_hint(const char *err, int os_windows);
 
 /* ------------------------------------------------------------------ simulated devices (fw_sim.c) */
-enum { LT_FW_SIM_DFUSE = 0, LT_FW_SIM_OPENBLT = 1 };
+/* kinds match the LT_FW_* method numbers */
+enum { LT_FW_SIM_DFUSE = 0, LT_FW_SIM_OPENBLT = 1, LT_FW_SIM_STK500 = 2, LT_FW_SIM_HALFKAY = 3,
+       LT_FW_SIM_OPENBLT_UART = 4, LT_FW_SIM_OPENBLT_CAN = 5 };
 typedef struct lt_fw_sim_opts {
     int kind;
     lt_u32 erase_ms_16k;        /* DfuSe poll timeout per 16 KB of sector erased */
@@ -216,20 +270,35 @@ typedef struct lt_fw_sim_opts {
     int pgm_protected;          /* OpenBLT: programming needs seed/key */
     int connect_ignore;         /* OpenBLT: first N CONNECTs get no answer */
     int busy_ms;                /* OpenBLT: response delay of PROGRAM_CLEAR */
-    int max_cto;                /* OpenBLT: 0 = 64 */
+    int max_cto;                /* OpenBLT: 0 = 64 (CAN: always 8) */
+    int no_lines;               /* serial: the port has no DTR/RTS (the user resets the board) */
+    int noise;                  /* serial: junk bytes before the first answer */
+    int bad_sig;                /* STK500: an ATmega1280 instead of a 2560 */
+    int teensy4;                /* HalfKay: Teensy 4.1 (8 MB), else Teensy 3.6 (1 MB) */
+    lt_u32 erase_ms;            /* HalfKay: the first block (chip erase) needs a timeout this long */
+    int can_kbps;               /* SLCAN: bus bit rate of the target (0 = 500) */
+    lt_u32 can_tx, can_rx;      /* SLCAN: ids the target listens to / answers with (0 = defaults) */
 } lt_fw_sim_opts;
 typedef struct lt_fw_sim lt_fw_sim;
 typedef double (*lt_fw_clock_fn)(void *user);
 lt_fw_sim *lt_fw_sim_new(const lt_fw_sim_opts *o, lt_fw_clock_fn clock, void *clock_user);
 void lt_fw_sim_free(lt_fw_sim *s);
 void lt_fw_sim_io(lt_fw_sim *s, lt_fw_io *io);
-/* simulated flash (1 MB at 0x08000000, STM32F407 sectors) */
+/* simulated flash: 1 MB at 0x08000000 with STM32F407 sectors (DfuSe, OpenBLT), 256 KB at 0 with
+ * the boot section at 0x3E000 (STK500), 1 MB / 8 MB at 0 (HalfKay, device addresses) */
 lt_u8 *lt_fw_sim_flash(lt_fw_sim *s, lt_u32 *base, lt_u32 *size);
 /* counters for tests: early GETSTATUS polls (bwPollTimeout not honoured), erased sectors,
  * device left the bootloader */
 int lt_fw_sim_early_polls(const lt_fw_sim *s);
 int lt_fw_sim_erases(const lt_fw_sim *s);
 int lt_fw_sim_left(const lt_fw_sim *s);
+/* STK500 pages / HalfKay blocks written, reset pulses seen */
+int lt_fw_sim_writes(const lt_fw_sim *s);
+int lt_fw_sim_resets(const lt_fw_sim *s);
+/* deterministic demo/test images: an AVR application (Intel HEX layout at 0, kb kilobytes) and a
+ * Teensy image (at 0, or 0x60000000 with teensy4) */
+void lt_fw_sim_avr_image(lt_fw_image *img, lt_u32 kb);
+void lt_fw_sim_teensy_image(lt_fw_image *img, int teensy4, lt_u32 kb);
 /* deterministic demo/test image in the rusEFI layout: OpenBLT-like loader at 0x08000000
  * (when with_loader) and an app with a valid CRC header at 0x08008000 of app_kb kilobytes */
 void lt_fw_sim_demo_image(lt_fw_image *img, int with_loader, lt_u32 app_kb);

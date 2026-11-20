@@ -6,8 +6,9 @@ playback, restore points, projects and a built-in ECU simulator for demo mode.
 It also covers the TunerStudio MS/Ultra extras: WUE Analyze and per-cylinder Trim Table Analyze,
 the port editor, calculators, partial tunes (`.msqpart`), expression-triggered actions with sound alerts,
 MSL logs with stacked graph pages, scatter plots and histograms, X-Y log plots on curves, live math
-channels, and a USB firmware flasher (ST DFU and OpenBLT) with a preset for the
-[miata-ecus](https://github.com/v3ai/miata-ecus) board.
+channels, and a firmware flasher (ST DFU, OpenBLT over USB / UART / CAN, the Arduino Mega STK500v2
+bootloader and Teensy HalfKay) with presets for the [miata-ecus](https://github.com/v3ai/miata-ecus) board
+and Speeduino.
 This is a from-scratch rewrite in Universal C (see [docs/UNIVERSAL_C.md](docs/UNIVERSAL_C.md)) with no third-party dependencies.
 
 ## Build
@@ -56,25 +57,50 @@ Linux (x86-64, ARM64), Windows and macOS (universal) are attached to each releas
 
 ## Firmware update
 
-Tools > Firmware Update flashes STM32 ECUs over USB with no external tool:
+Tools > Firmware Update flashes ECUs with no external tool:
 
 - **USB DFU** (the STM32 ROM bootloader, `0483:df11`): ST DfuSe protocol, erasing only the flash sectors
   the image covers, then write, read-back verify and start. First flash: hold BOOT, tap RESET, release BOOT.
 - **OpenBLT over USB** (`1d50:60ac`): later updates without buttons on boards with the OpenBLT bootloader;
   the bootloader part of a merged image is skipped.
+- **OpenBLT over a UART** ("XCP on RS232": a length byte, then the packet, no checksum byte - OpenBLT's
+  default) on any serial port, baud rate selectable (57600 default), and **OpenBLT over CAN** through an
+  SLCAN / Lawicel ASCII adapter (CANable with slcan firmware, USBtin, ...): bit rate 125-1000 kbit/s and
+  the CAN ids are configurable (defaults 0x667 to the ECU, 0x7E1 from it; 29-bit ids too). Both reuse the
+  USB engine's XCP logic (connect, erase, program, read-back verify, reset).
+- **Speeduino on an Arduino Mega 2560**: the STK500v2 ("wiring") bootloader over the board's USB serial port
+  at 115200 baud, like `avrdude -c wiring`: DTR/RTS reset pulse, signature check (ATmega2560, 1E 98 01),
+  256-byte page writes, read-back verify, start. Intel HEX images; the 8 KB bootloader at 0x3E000 is never
+  written (an image that reaches it is refused). If the ECU connection uses the same port it is closed first.
+  Ports without DTR/RTS: press the reset button after Start.
+- **Speeduino on Teensy 3.5 / 3.6 / 4.1**: PJRC's HalfKay bootloader (`16c0:0478`) with HID SET_REPORT
+  control transfers, block layout and timeouts as in PJRC's `teensy_loader_cli` (1024-byte blocks behind a
+  64-byte header holding the 3-byte address; Teensy 4.x `.hex` files at 0x60000000 are rebased; the first
+  block erases the chip; address 0xFFFFFF reboots). HalfKay cannot read back, so there is no verify. Linux
+  detaches the HID driver itself. **Windows: not supported** - HalfKay is a HID device and this flasher only
+  talks to WinUSB devices; use PJRC's Teensy Loader there (replacing the HID driver with Zadig would work
+  in principle but is not recommended). The window may not respond for the few seconds the first block's
+  erase takes.
 - Images: `.bin` (at 0x08000000), Intel `.hex`, `.srec`/`.s19` and ST `.dfu` (suffix CRC checked). The
   summary shows the address range and sanity checks (vector tables, rusEFI's OpenBLT app CRC header).
 - Board presets: **miata-ecus** (rusEFI on an STM32F407 with OpenBLT; "Get firmware" opens the repository's
   Firmware workflow, whose artifacts hold `rusefi_miata-ecu.bin/.dfu/.hex`), **rusEFI / FOME / epicEFI**, and
-  **generic STM32**. The rusEFI presets keep the ECU settings in flash sectors 10-11 (0x080C0000) unless you
-  untick *Keep ECU settings*.
+  **generic STM32**, **Speeduino (Arduino Mega 2560)**, **Speeduino (Teensy 3.5 / 3.6 / 4.1)** and **OpenBLT
+  board (USB, UART or CAN)**. The rusEFI presets keep the ECU settings in flash sectors 10-11 (0x080C0000)
+  unless you untick *Keep ECU settings*. A Speeduino ECU signature selects the Mega preset.
 - When the ECU is connected, *Reboot ECU into DFU* / *Reboot into OpenBLT* sends the INI's `cmd_dfu` /
   `cmd_openblt` and waits for the bootloader; after a successful update the app offers to reconnect.
 - miata-ecus: *Flash on-board wideband* starts the board's wideband flasher (`cmd_miata_wbo_uart_flash`, or
   the console command `wbo_uart_flash`) and follows `wbo_uart_status` until it reports done or failed.
-- Linux needs access to the USB device: the screen shows a udev rule to copy when permission is missing.
-  Windows needs the WinUSB driver on the bootloader device (Zadig, or STM32CubeProgrammer's driver).
-- With `--demo` (or `LT_FW_SIM=1`) simulated bootloaders run the whole flow without hardware.
+- Linux needs access to the USB device: when permission is missing the screen shows the udev rule (all the
+  ids the flasher uses: 0483:df11, 1d50:60ac, 16c0:0478) with *Copy rule* and *Save udev rule...* (writes it
+  to a file you pick, default `~/50-libretune.rules`) and the two commands to install it
+  (`sudo cp ... /etc/udev/rules.d/` and `sudo udevadm control --reload-rules && sudo udevadm trigger`);
+  LibreTune never runs sudo itself. Serial ports need the `dialout` (or `uucp`) group; the screen says so
+  when a port does not open. Windows needs the WinUSB driver on the USB bootloader device (Zadig, or
+  STM32CubeProgrammer's driver).
+- With `--demo` (or `LT_FW_SIM=1`) simulated bootloaders (DfuSe, OpenBLT on USB / UART / CAN, STK500v2,
+  HalfKay) run the whole flow without hardware; the serial methods offer a "simulated port".
 
 ## Keyboard shortcuts
 
@@ -90,8 +116,12 @@ Ctrl+R/D fill, Ctrl+Z/Y undo/redo, `f` follow, `g` go to live cell. AutoTune: Sp
 - The full table and curve editor tabs have no `topicHelp` button (embedded editors in dialogs do).
 - Raw USB access (firmware update) is implemented for Linux, Windows (WinUSB driver required, e.g. via
   Zadig) and macOS, but has only been exercised against simulated bootloaders so far; BSD has none.
-- Firmware update: USB DFU and OpenBLT over USB only (no serial/CAN bootloaders, no seed/key unlock
-  for OpenBLT, no option-byte or read-protection changes); it needs this build's USB backend for the OS
+  The same holds for the serial flashers (STK500v2, OpenBLT UART / SLCAN CAN) and Teensy HalfKay: they are
+  written from the protocol descriptions (avrdude's wiring/stk500v2, OpenBLT's XCP transports, PJRC's
+  teensy_loader_cli) and verified only against simulators. Teensy flashing does not work on Windows (HID
+  driver), and on macOS it is untested (HID devices may stay owned by the HID manager).
+- Firmware update: no seed/key unlock for OpenBLT, no OpenBLT UART checksum byte, no option-byte or
+  read-protection changes, no AVR EEPROM or fuse writes; USB methods need this build's USB backend for the OS
   (where none exists, the screen says so - use dfu-util or STM32CubeProgrammer). The settings guard of the
   rusEFI presets assumes the STM32F4 layout (sectors 10-11). Images are downloaded in the browser
   (GitHub artifacts are zips: unpack the `.bin`/`.dfu`/`.hex` first).

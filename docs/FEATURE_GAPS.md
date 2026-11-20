@@ -106,6 +106,18 @@ Orig = path under `ref/LibreTune/crates/`. `app/` = `libretune-app/src/component
   reboot into the bootloader via `cmd_dfu` / `cmd_openblt`, verify, settings-sector guard, reconnect, udev /
   WinUSB hints and the miata-ecus on-board wideband flasher. Simulated bootloaders (`src/fw/fw_sim.c`)
   drive tests/test_fw_dfuse.c and the demo mode.
+- Status update (more bootloaders): Speeduino is covered too. `src/fw/fw_stk500.c` flashes an Arduino
+  Mega 2560 over its STK500v2 ("wiring") bootloader on a serial port (DTR/RTS reset through the new
+  `lt_serial_set_lines` in plat.h: TIOCMBIS/TIOCMBIC on POSIX, EscapeCommFunction on Windows; signature
+  check, 256-byte pages, verify); `src/fw/fw_halfkay.c` flashes Teensy 3.5 / 3.6 / 4.1 over PJRC's HalfKay
+  HID bootloader (Linux/macOS; not Windows, where HalfKay keeps its HID driver); `fw_openblt.c` now runs XCP
+  over USB, a UART and CAN through an SLCAN adapter (configurable ids / bit rate). `src/fw/fw_serial.c`
+  maps the transport onto plat.h serial ports. Presets: Speeduino (Mega 2560), Speeduino (Teensy 3.5 /
+  3.6 / 4.1), OpenBLT board. Simulators for all of them (`src/fw/fw_sim.c`, `src/fw/fw_sim_ser.c`) drive
+  tests/test_fw_loaders.c and the demo. The Linux permission hint can save the udev rule to a file and
+  shows the install commands. All of it is verified against the simulators only, not against hardware.
+  Still missing: seed/key unlock for OpenBLT, OpenBLT UART checksum mode, AVR EEPROM/fuses, Teensy on
+  Windows.
 
 ---------------------------------------------------------------------------------------------------
 

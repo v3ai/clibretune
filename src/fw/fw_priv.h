@@ -1,4 +1,5 @@
-/* fw_priv.h - shared job state of the flashing engines (fw_job.c, fw_dfuse.c, fw_openblt.c).
+/* fw_priv.h - shared job state of the flashing engines (fw_job.c, fw_dfuse.c, fw_openblt.c,
+ * fw_stk500.c, fw_halfkay.c).
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 #ifndef LT_FW_PRIV_H
@@ -35,7 +36,14 @@ int  lt_fwj_finished(const lt_fw_job *j);
 /* protected range (keep_settings) overlapping [addr, addr + len), else NULL */
 const lt_fw_range *lt_fwj_protected(const lt_fw_job *j, lt_u32 addr, lt_u32 len);
 
+/* STK500 / HalfKay: device addresses (image address - o.dev_base) of the bsize blocks the
+ * image touches, ascending, into a malloc'd *out; count, or -1 after lt_fwj_fail when the image
+ * leaves [dev_base, dev_base + dev_size) */
+int lt_fwj_blocks(lt_fw_job *j, lt_u32 bsize, lt_u32 **out);
+
 int lt_fwj_dfuse_init(lt_fw_job *j);    /* 0, or -1 after lt_fwj_fail */
-int lt_fwj_xcp_init(lt_fw_job *j);
+int lt_fwj_xcp_init(lt_fw_job *j);       /* OpenBLT over USB, UART and CAN */
+int lt_fwj_stk500_init(lt_fw_job *j);
+int lt_fwj_halfkay_init(lt_fw_job *j);
 
 #endif

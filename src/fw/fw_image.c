@@ -645,6 +645,38 @@ void lt_fw_image_facts(const lt_fw_image *img, lt_fw_facts *f)
     }
 }
 
+int lt_fw_image_fits(const lt_fw_image *img, lt_u32 base, lt_u32 size, char *err, size_t errcap)
+{
+    lt_u32 end;
+    set_err(err, errcap, "%s", "");
+    if (img->n_segs == 0) { set_err(err, errcap, "the image is empty"); return -1; }
+    if (size == 0) { return 0; }
+    if (img->lo < base) {
+        if (base == LT_FW_TEENSY4_FLASH) {
+            set_err(err, errcap, "The image starts at 0x%08lX; Teensy 4.x images start at 0x60000000. "
+                    "Is it built for a Teensy 3.x?", (unsigned long)img->lo);
+        } else {
+            set_err(err, errcap, "The image starts at 0x%08lX, below the device flash at 0x%08lX.",
+                    (unsigned long)img->lo, (unsigned long)base);
+        }
+        return -1;
+    }
+    end = base + (size - 1u);
+    if (img->last > end) {
+        if (base == 0 && img->lo >= LT_FW_TEENSY4_FLASH) {
+            set_err(err, errcap, "The image lies at 0x%08lX: that is a Teensy 4.x image.", (unsigned long)img->lo);
+        } else if (base == 0 && size == LT_FW_MEGA2560_APP && img->last < 0x40000UL) {
+            set_err(err, errcap, "The image reaches 0x%05lX, into the bootloader (0x3E000-0x3FFFF): use the "
+                    "firmware .hex without the bootloader.", (unsigned long)img->last);
+        } else {
+            set_err(err, errcap, "The image reaches 0x%08lX, past the end of the flash (%lu KB from 0x%08lX).",
+                    (unsigned long)img->last, (unsigned long)(size / 1024u), (unsigned long)base);
+        }
+        return -1;
+    }
+    return 0;
+}
+
 void lt_fw_image_summary(const lt_fw_image *img, char *out, size_t cap)
 {
     char sz[32];
@@ -661,13 +693,59 @@ static const lt_fw_range rusefi_f4_cfg[1] = {
     { LT_FW_RUSEFI_CFG, LT_FW_RUSEFI_CFG_LEN, "ECU settings (flash sectors 10-11)" }
 };
 
+#define M_DFU (1 << LT_FW_DFUSE)
+#define M_XCP (1 << LT_FW_OPENBLT)
+#define M_AVR (1 << LT_FW_STK500)
+#define M_HK (1 << LT_FW_HALFKAY)
+#define M_UART (1 << LT_FW_OPENBLT_UART)
+#define M_CAN (1 << LT_FW_OPENBLT_CAN)
+
 static const lt_fw_preset presets[LT_FW_PRESET_COUNT] = {
-    { "miata-ecus (rusEFI, STM32F407)", LT_FW_STM32_FLASH, LT_FW_RUSEFI_APP, rusefi_f4_cfg, 1, 1, 1, 1,
-      "https://github.com/v3ai/miata-ecus/actions/workflows/firmware.yaml" },
+    { "miata-ecus (rusEFI, STM32F407)", LT_FW_STM32_FLASH, LT_FW_RUSEFI_APP, rusefi_f4_cfg, 1, M_DFU | M_XCP, 1,
+      0, 0, "https://github.com/v3ai/miata-ecus/actions/workflows/firmware.yaml" },
     { "rusEFI / FOME / epicEFI (STM32F4/F7/H7 DFU)", LT_FW_STM32_FLASH, LT_FW_RUSEFI_APP, rusefi_f4_cfg, 1,
-      1, 1, 0, NULL },
-    { "Generic STM32 DFU (raw .bin)", LT_FW_STM32_FLASH, 0, NULL, 0, 1, 0, 0, NULL }
+      M_DFU | M_XCP, 0, 0, 0, NULL },
+    { "Generic STM32 DFU (raw .bin)", LT_FW_STM32_FLASH, 0, NULL, 0, M_DFU, 0, 0, 0, NULL },
+    { "Speeduino (Arduino Mega 2560)", 0, 0, NULL, 0, M_AVR, 0, 0, LT_FW_MEGA2560_APP, NULL },
+    { "Speeduino (Teensy 3.5)", 0, 0, NULL, 0, M_HK, 0, 0, (lt_u32)524288UL, NULL },
+    { "Speeduino (Teensy 3.6)", 0, 0, NULL, 0, M_HK, 0, 0, (lt_u32)1048576UL, NULL },
+    { "Speeduino (Teensy 4.1)", LT_FW_TEENSY4_FLASH, 0, NULL, 0, M_HK, 0, LT_FW_TEENSY4_FLASH,
+      (lt_u32)8126464UL, NULL },
+    { "OpenBLT board (USB, UART or CAN)", LT_FW_STM32_FLASH, 0, NULL, 0, M_XCP | M_UART | M_CAN, 0, 0, 0, NULL }
 };
+
+const char *lt_fw_method_name(int method)
+{
+    switch (method) {
+    case LT_FW_DFUSE: return "USB DFU (ST bootloader)";
+    case LT_FW_OPENBLT: return "OpenBLT over USB (no buttons)";
+    case LT_FW_STK500: return "Arduino bootloader (STK500v2, serial)";
+    case LT_FW_HALFKAY: return "Teensy HalfKay (USB)";
+    case LT_FW_OPENBLT_UART: return "OpenBLT over UART (serial)";
+    case LT_FW_OPENBLT_CAN: return "OpenBLT over CAN (SLCAN adapter)";
+    default: return "?";
+    }
+}
+
+int lt_fw_method_serial(int method)
+{
+    return method == LT_FW_STK500 || method == LT_FW_OPENBLT_UART || method == LT_FW_OPENBLT_CAN;
+}
+
+int lt_fw_method_verifies(int method)
+{
+    return method >= 0 && method < LT_FW_METHOD_COUNT && method != LT_FW_HALFKAY;
+}
+
+int lt_fw_slcan_speed(int kbps)
+{
+    static const int rates[9] = { 10, 20, 50, 100, 125, 250, 500, 800, 1000 };
+    int i;
+    for (i = 0; i < 9; i++) {
+        if (rates[i] == kbps) { return i; }
+    }
+    return -1;
+}
 
 const lt_fw_preset *lt_fw_preset_get(int idx)
 {
@@ -689,5 +767,6 @@ int lt_fw_preset_for_signature(const char *sig)
     if (sig == NULL) { return LT_FW_PRESET_GENERIC; }
     if (has_ci(sig, "miata-ecu") || has_ci(sig, "miata_ecu")) { return LT_FW_PRESET_MIATA; }
     if (has_ci(sig, "rusefi") || has_ci(sig, "fome") || has_ci(sig, "epicefi")) { return LT_FW_PRESET_RUSEFI; }
+    if (has_ci(sig, "speeduino")) { return LT_FW_PRESET_SPEEDUINO_MEGA; }
     return LT_FW_PRESET_GENERIC;
 }

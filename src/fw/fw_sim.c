@@ -4,12 +4,15 @@
  *           counted), flash semantics (programming needs erased bytes), injected stalls and
  *           error statuses, UPLOAD read back, leave (manifest) = the device goes away;
  *   OpenBLT an XCP slave on bulk endpoints 0x01/0x81 with the bootloader area protected,
- *           a delayed PROGRAM_CLEAR answer and optional seed/key protection.
- * Time comes from the caller's clock so tests can run on a virtual clock.
+ *           a delayed PROGRAM_CLEAR answer and optional seed/key protection (the same slave
+ *           also answers over a UART and over CAN, see fw_sim_ser.c);
+ *   HalfKay a Teensy 3.6 / 4.1 bootloader taking 1088-byte HID SET_REPORT blocks.
+ * The serial bootloaders (STK500v2, OpenBLT UART, OpenBLT behind an SLCAN adapter) live in
+ * fw_sim_ser.c. Time comes from the caller's clock so tests can run on a virtual clock.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 #include <string.h>
-#include "fw.h"
+#include "fw_sim_priv.h"
 
 #define SIM_BASE ((lt_u32)0x08000000UL)
 #define SIM_SIZE ((lt_u32)0x100000UL)
@@ -30,29 +33,8 @@
 #define E_ADDRESS 0x08
 #define E_STALLED 0x0F
 
-struct lt_fw_sim {
-    lt_fw_sim_opts o;
-    lt_fw_clock_fn clock;
-    void *cu;
-    lt_u8 *flash;
-    int alt, left;
-    /* DfuSe */
-    int state, status;
-    lt_u32 ptr, poll;
-    double busy_until;
-    lt_u8 pbuf[SIM_XFER];
-    int plen;
-    lt_u16 pblock;
-    int n_dnload, n_busyend, early, erases;
-    /* OpenBLT */
-    lt_u8 resp[300];
-    int resp_len, resp_pos;
-    double resp_at;
-    int connected, pgm;
-    lt_u32 mta;
-};
 
-static double now(const lt_fw_sim *s) { return s->clock != NULL ? s->clock(s->cu) : 0.0; }
+double lt_fwsim_now(const lt_fw_sim *s) { return s->clock != NULL ? s->clock(s->cu) : 0.0; }
 
 /* STM32F407: 4 x 16K, 1 x 64K, 7 x 128K */
 static int sector_of(lt_u32 addr, lt_u32 *start, lt_u32 *size)
@@ -71,9 +53,9 @@ static int sector_of(lt_u32 addr, lt_u32 *start, lt_u32 *size)
     return (int)(4u + off / *size);
 }
 
-static int in_flash(lt_u32 addr, lt_u32 n)
+int lt_fwsim_in_flash(const lt_fw_sim *s, lt_u32 addr, lt_u32 n)
 {
-    return addr >= SIM_BASE && addr - SIM_BASE <= SIM_SIZE && n <= SIM_SIZE - (addr - SIM_BASE);
+    return addr >= s->base && addr - s->base <= s->size && n <= s->size - (addr - s->base);
 }
 
 static void erase_sector(lt_fw_sim *s, lt_u32 addr)
@@ -85,14 +67,14 @@ static void erase_sector(lt_fw_sim *s, lt_u32 addr)
 }
 
 /* program n bytes: only erased bytes can be written (as on real flash) */
-static int program(lt_fw_sim *s, lt_u32 addr, const lt_u8 *d, lt_u32 n)
+int lt_fwsim_program(lt_fw_sim *s, lt_u32 addr, const lt_u8 *d, lt_u32 n)
 {
     lt_u32 i;
-    if (!in_flash(addr, n)) { return E_ADDRESS; }
+    if (!lt_fwsim_in_flash(s, addr, n)) { return E_ADDRESS; }
     for (i = 0; i < n; i++) {
-        if (s->flash[addr - SIM_BASE + i] != 0xFF && s->flash[addr - SIM_BASE + i] != d[i]) { return E_PROG; }
+        if (s->flash[addr - s->base + i] != 0xFF && s->flash[addr - s->base + i] != d[i]) { return E_PROG; }
     }
-    memcpy(s->flash + (addr - SIM_BASE), d, n);
+    memcpy(s->flash + (addr - s->base), d, n);
     return 0;
 }
 
@@ -147,6 +129,7 @@ static int sim_claim(void *ctx, int iface, int alt)
     if (s->left) { return LT_USB_ENODEV; }
     if (iface != 0) { return LT_USB_EINVAL; }
     if (alt >= 0) { s->alt = alt; }
+    s->claimed = 1;
     return 0;
 }
 
@@ -163,7 +146,7 @@ static int dfu_execute(lt_fw_sim *s)
     if (s->pblock == 0) {
         if (s->plen == 5 && s->pbuf[0] == 0x21) {
             lt_u32 a = lt_load_u32le(s->pbuf + 1);
-            if (!in_flash(a, 1)) { return E_TARGET; }
+            if (!lt_fwsim_in_flash(s, a, 1)) { return E_TARGET; }
             s->ptr = a;
             return 0;
         }
@@ -180,7 +163,7 @@ static int dfu_execute(lt_fw_sim *s)
         }
         return E_STALLED;
     }
-    return program(s, s->ptr + (lt_u32)(s->pblock - 2) * (lt_u32)s->plen, s->pbuf, (lt_u32)s->plen);
+    return lt_fwsim_program(s, s->ptr + (lt_u32)(s->pblock - 2) * (lt_u32)s->plen, s->pbuf, (lt_u32)s->plen);
 }
 
 static lt_u32 dfu_op_ms(const lt_fw_sim *s)
@@ -197,7 +180,7 @@ static lt_u32 dfu_op_ms(const lt_fw_sim *s)
 
 static int dfu_control(lt_fw_sim *s, lt_u8 rt, lt_u8 req, lt_u16 value, lt_u8 *data, lt_u16 len)
 {
-    double t = now(s);
+    double t = lt_fwsim_now(s);
     if (rt == 0x21 && req == 1) {                                  /* DNLOAD */
         s->n_dnload++;
         if (s->state != S_IDLE && s->state != S_DNLOAD_IDLE) { return dfu_stall(s); }
@@ -269,7 +252,7 @@ static int dfu_control(lt_fw_sim *s, lt_u8 rt, lt_u8 req, lt_u16 value, lt_u8 *d
         if (s->state != S_IDLE && s->state != S_UPLOAD_IDLE) { return dfu_stall(s); }
         if (value < 2 || len == 0 || len > SIM_XFER) { return dfu_stall(s); }
         a = s->ptr + (lt_u32)(value - 2) * (lt_u32)len;
-        if (!in_flash(a, len)) { return dfu_stall(s); }
+        if (!lt_fwsim_in_flash(s, a, len)) { return dfu_stall(s); }
         memcpy(data, s->flash + (a - SIM_BASE), len);
         s->state = S_UPLOAD_IDLE;
         return len;
@@ -284,7 +267,7 @@ static void xr(lt_fw_sim *s, const lt_u8 *p, int n, double delay)
     memcpy(s->resp + 1, p, (size_t)n);
     s->resp_len = n + 1;
     s->resp_pos = 0;
-    s->resp_at = now(s) + delay;
+    s->resp_at = lt_fwsim_now(s) + delay;
 }
 
 static void xr_err(lt_fw_sim *s, int code)
@@ -295,10 +278,11 @@ static void xr_err(lt_fw_sim *s, int code)
     xr(s, e, 2, 0.0);
 }
 
-static void xcp_cmd(lt_fw_sim *s, const lt_u8 *c, int n)
+void lt_fwsim_xcp(lt_fw_sim *s, const lt_u8 *c, int n)
 {
     lt_u8 r[300];
     int cto = s->o.max_cto > 0 ? s->o.max_cto : 63;
+    if (s->o.kind == LT_FW_SIM_OPENBLT_CAN) { cto = 8; }
     memset(r, 0, sizeof(r));
     r[0] = 0xFF;
     if (n < 1) { return; }
@@ -330,7 +314,7 @@ static void xcp_cmd(lt_fw_sim *s, const lt_u8 *c, int n)
         lt_u32 len, a, st = 0, sz = 0;
         if (n < 8 || !s->pgm) { xr_err(s, 0x29); return; }
         len = lt_load_u32le(c + 4);
-        if (s->mta < SIM_LOADER_END || len == 0 || !in_flash(s->mta, len)) { xr_err(s, 0x22); return; }
+        if (s->mta < SIM_LOADER_END || len == 0 || !lt_fwsim_in_flash(s, s->mta, len)) { xr_err(s, 0x22); return; }
         for (a = s->mta; a < s->mta + len; a = st + sz) {
             if (sector_of(a, &st, &sz) < 0) { break; }
             erase_sector(s, a);
@@ -347,7 +331,7 @@ static void xcp_cmd(lt_fw_sim *s, const lt_u8 *c, int n)
         if ((int)cnt > n - (c[0] == 0xC9 ? 1 : 2)) { xr_err(s, 0x21); return; }
         if (cnt > 0) {
             if (s->mta < SIM_LOADER_END) { xr_err(s, 0x22); return; }
-            if (program(s, s->mta, d, cnt) != 0) { xr_err(s, 0x31); return; }
+            if (lt_fwsim_program(s, s->mta, d, cnt) != 0) { xr_err(s, 0x31); return; }
             s->mta += cnt;
         }
         xr(s, r, 1, 0.0);
@@ -355,7 +339,7 @@ static void xcp_cmd(lt_fw_sim *s, const lt_u8 *c, int n)
     }
     case 0xF5: {
         lt_u32 cnt = n >= 2 ? c[1] : 0u;
-        if (cnt == 0 || cnt > (lt_u32)(cto - 1) || !in_flash(s->mta, cnt)) { xr_err(s, 0x22); return; }
+        if (cnt == 0 || cnt > (lt_u32)(cto - 1) || !lt_fwsim_in_flash(s, s->mta, cnt)) { xr_err(s, 0x22); return; }
         memcpy(r + 1, s->flash + (s->mta - SIM_BASE), cnt);
         s->mta += cnt;
         xr(s, r, (int)cnt + 1, 0.0);
@@ -383,12 +367,12 @@ static int sim_bulk(void *ctx, lt_u8 ep, lt_u8 *data, int len, int timeout_ms)
     if (ep == 0x01) {
         if (s->left) { return LT_USB_ENODEV; }
         if (len < 1 || data[0] + 1 > len) { return LT_USB_EINVAL; }
-        xcp_cmd(s, data + 1, data[0]);
+        lt_fwsim_xcp(s, data + 1, data[0]);
         return len;
     }
     if (ep == 0x81) {
         int n;
-        if (s->resp_len == 0 || now(s) < s->resp_at) { return s->left ? LT_USB_ENODEV : LT_USB_ETIMEOUT; }
+        if (s->resp_len == 0 || lt_fwsim_now(s) < s->resp_at) { return s->left ? LT_USB_ENODEV : LT_USB_ETIMEOUT; }
         n = s->resp_len - s->resp_pos;
         if (n > 64) { n = 64; }
         if (n > len) { n = len; }
@@ -400,14 +384,45 @@ static int sim_bulk(void *ctx, lt_u8 ep, lt_u8 *data, int len, int timeout_ms)
     return LT_USB_EINVAL;
 }
 
+static int halfkay_control(lt_fw_sim *s, lt_u8 rt, lt_u8 req, lt_u16 value, lt_u8 *data, lt_u16 len,
+                           int timeout_ms);
+
 static int sim_control(void *ctx, lt_u8 rt, lt_u8 req, lt_u16 value, lt_u16 index, lt_u8 *data,
                        lt_u16 len, int timeout_ms)
 {
     lt_fw_sim *s = (lt_fw_sim *)ctx;
-    LT_UNUSED(timeout_ms);
     if (s->left) { return LT_USB_ENODEV; }
+    if (s->o.kind == LT_FW_SIM_HALFKAY && index == 0) {
+        return halfkay_control(s, rt, req, value, data, len, timeout_ms);
+    }
     if (s->o.kind != LT_FW_SIM_DFUSE || index != 0) { return LT_USB_EPIPE; }
     return dfu_control(s, rt, req, value, data, len);
+}
+
+/* ------------------------------------------------------------------ HalfKay */
+/* a SET_REPORT block: 3-byte little-endian address, 61 zero bytes, 1024 data bytes; address
+ * 0xFFFFFF reboots into the firmware. The first block erases the whole flash, which takes
+ * erase_ms: a transfer with a shorter timeout fails (the host must wait long enough). */
+static int halfkay_control(lt_fw_sim *s, lt_u8 rt, lt_u8 req, lt_u16 value, lt_u8 *data, lt_u16 len,
+                           int timeout_ms)
+{
+    lt_u32 addr;
+    if (rt != 0x21 || req != 9 || value != 0x0200) { return LT_USB_EPIPE; }
+    if (!s->claimed) { return LT_USB_EBUSY; }                   /* usbhid still owns it */
+    if (len != 1024u + 64u) { return LT_USB_EPIPE; }
+    addr = (lt_u32)data[0] | ((lt_u32)data[1] << 8) | ((lt_u32)data[2] << 16);
+    if (addr == 0xFFFFFFUL) { s->left = 1; return len; }
+    if ((addr & 1023u) != 0 || !lt_fwsim_in_flash(s, addr, 1024u)) { return LT_USB_EPIPE; }
+    if (addr == 0 && !s->hk_erased) {
+        memset(s->flash, 0xFF, s->size);
+        s->hk_erased = 1;
+        s->erases++;
+        if (timeout_ms > 0 && (lt_u32)timeout_ms < s->o.erase_ms) { s->early++; return LT_USB_ETIMEOUT; }
+    }
+    if (!s->hk_erased) { return LT_USB_EPIPE; }
+    if (lt_fwsim_program(s, addr, data + 64, 1024u) != 0) { return LT_USB_EPIPE; }
+    s->writes++;
+    return len;
 }
 
 /* ------------------------------------------------------------------ setup */
@@ -426,18 +441,33 @@ lt_fw_sim *lt_fw_sim_new(const lt_fw_sim_opts *o, lt_fw_clock_fn clock, void *cl
     lt_fw_sim *s = (lt_fw_sim *)lt_calloc(1, sizeof(*s));
     lt_u32 i, x = 0x1234567UL;
     if (s == NULL) { return NULL; }
-    s->flash = (lt_u8 *)lt_malloc(SIM_SIZE);
-    if (s->flash == NULL) { lt_free(s); return NULL; }
     if (o != NULL) { s->o = *o; }
+    s->base = SIM_BASE;
+    s->size = SIM_SIZE;
+    if (s->o.kind == LT_FW_SIM_STK500) {
+        s->base = 0;
+        s->size = (lt_u32)0x40000UL;                            /* ATmega2560: 256 KB */
+    } else if (s->o.kind == LT_FW_SIM_HALFKAY) {
+        s->base = 0;
+        s->size = s->o.teensy4 ? (lt_u32)8126464UL : (lt_u32)1048576UL;
+    }
+    s->flash = (lt_u8 *)lt_malloc(s->size);
+    if (s->flash == NULL) { lt_free(s); return NULL; }
     if (s->o.erase_ms_16k == 0 && o == NULL) { s->o.erase_ms_16k = 30; }
     s->clock = clock;
     s->cu = clock_user;
     s->state = S_IDLE;
-    /* an old firmware everywhere, recognisable settings in sectors 10 and 11 */
-    for (i = 0; i < SIM_SIZE; i++) {
+    /* an old firmware everywhere, recognisable settings in sectors 10 and 11 (STM32) or a
+     * recognisable boot section (AVR) */
+    for (i = 0; i < s->size; i++) {
         s->flash[i] = (lt_u8)(xs_next(&x) & 0x7Fu);
     }
-    for (i = LT_FW_RUSEFI_CFG - SIM_BASE; i < SIM_SIZE; i++) { s->flash[i] = (lt_u8)(0x5A ^ (i & 0xFFu)); }
+    if (s->o.kind == LT_FW_SIM_STK500) {
+        for (i = LT_FW_MEGA2560_APP; i < s->size; i++) { s->flash[i] = (lt_u8)(0xA5 ^ (i & 0xFFu)); }
+    } else if (s->o.kind != LT_FW_SIM_HALFKAY) {
+        for (i = LT_FW_RUSEFI_CFG - SIM_BASE; i < SIM_SIZE; i++) { s->flash[i] = (lt_u8)(0x5A ^ (i & 0xFFu)); }
+    }
+    lt_fwsim_ser_init(s);
     return s;
 }
 
@@ -457,18 +487,28 @@ void lt_fw_sim_io(lt_fw_sim *s, lt_fw_io *io)
     io->get_config = sim_config;
     io->get_string = sim_string;
     io->claim = sim_claim;
+    if (lt_fw_method_serial(s->o.kind)) {
+        io->control = NULL;
+        io->bulk = NULL;
+        io->get_config = NULL;
+        io->get_string = NULL;
+        io->claim = NULL;
+        lt_fwsim_ser_io(s, io);
+    }
 }
 
 lt_u8 *lt_fw_sim_flash(lt_fw_sim *s, lt_u32 *base, lt_u32 *size)
 {
-    if (base != NULL) { *base = SIM_BASE; }
-    if (size != NULL) { *size = SIM_SIZE; }
+    if (base != NULL) { *base = s->base; }
+    if (size != NULL) { *size = s->size; }
     return s->flash;
 }
 
 int lt_fw_sim_early_polls(const lt_fw_sim *s) { return s->early; }
 int lt_fw_sim_erases(const lt_fw_sim *s) { return s->erases; }
 int lt_fw_sim_left(const lt_fw_sim *s) { return s->left; }
+int lt_fw_sim_writes(const lt_fw_sim *s) { return s->writes; }
+int lt_fw_sim_resets(const lt_fw_sim *s) { return s->resets; }
 
 void lt_fw_sim_demo_image(lt_fw_image *img, int with_loader, lt_u32 app_kb)
 {
@@ -496,5 +536,46 @@ void lt_fw_sim_demo_image(lt_fw_image *img, int with_loader, lt_u32 app_kb)
     (void)lt_fw_image_add(img, LT_FW_RUSEFI_APP, b, size, NULL, 0);
     lt_free(b);
     img->format = LT_FW_FMT_BIN;
+    (void)lt_fw_image_finish(img, NULL, 0);
+}
+
+void lt_fw_sim_avr_image(lt_fw_image *img, lt_u32 kb)
+{
+    lt_u8 *b;
+    lt_u32 i, x = 0xA7A7A7UL, size = kb * 1024u;
+    lt_fw_image_init(img);
+    if (size < 0x400u) { size = 0x400u; }
+    size -= 37u;                                /* the last page is partial */
+    b = (lt_u8 *)lt_malloc(size);
+    if (b == NULL) { return; }
+    for (i = 0; i < size; i++) { b[i] = (lt_u8)xs_next(&x); }
+    for (i = 0; i < 57u * 4u; i += 4u) {        /* ATmega2560 vector table: jmp instructions */
+        b[i] = 0x0C;
+        b[i + 1] = 0x94;
+        b[i + 2] = (lt_u8)((0x72u + i) & 0xFFu);
+        b[i + 3] = 0x01;
+    }
+    (void)lt_fw_image_add(img, 0, b, size, NULL, 0);
+    (void)lt_fw_image_add(img, size + 1000u, b + 64, 10, NULL, 0);   /* a separate small block */
+    lt_free(b);
+    img->format = LT_FW_FMT_IHEX;
+    (void)lt_fw_image_finish(img, NULL, 0);
+}
+
+void lt_fw_sim_teensy_image(lt_fw_image *img, int teensy4, lt_u32 kb)
+{
+    lt_u8 *b;
+    lt_u32 i, x = 0x7EE5EUL, size = kb * 1024u, base = teensy4 ? LT_FW_TEENSY4_FLASH : 0u;
+    lt_fw_image_init(img);
+    if (size < 0x4000u) { size = 0x4000u; }
+    b = (lt_u8 *)lt_malloc(size);
+    if (b == NULL) { return; }
+    for (i = 0; i < size; i++) { b[i] = (lt_u8)xs_next(&x); }
+    lt_store_u32le(b, teensy4 ? 0x42464346UL : 0x20030000UL);   /* "FCFB" / initial stack */
+    memset(b + 0x2000, 0xFF, 0x800);            /* a blank 1 KB block inside the image: skipped */
+    (void)lt_fw_image_add(img, base, b, size - 300u, NULL, 0);
+    (void)lt_fw_image_add(img, base + size + 0x1000u, b + 16, 40, NULL, 0);
+    lt_free(b);
+    img->format = LT_FW_FMT_IHEX;
     (void)lt_fw_image_finish(img, NULL, 0);
 }
