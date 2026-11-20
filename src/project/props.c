@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <math.h>
 #include "proj_priv.h"
+#include "../plat/plat.h"
 
 void lt_props_init(lt_props *p)
 {
@@ -343,7 +344,7 @@ char *lt_props_to_string(const lt_props *p)
 int lt_props_save(const lt_props *p, const char *path)
 {
     char *s = lt_props_to_string(p);
-    int rc = lt_file_write(path, s, strlen(s));
+    int rc = lt_plat_write_atomic(path, s, strlen(s));
     lt_free(s);
     return rc == 0 ? LT_OK : LT_EIO;
 }

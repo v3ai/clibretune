@@ -665,23 +665,49 @@ void lt_app_edited(lt_app *app)
     }
 }
 
+/* A write or burn stopped part way (error, timeout, link drop): say exactly what the ECU may
+ * now hold, with the protocol details. burned/total < 0 = the failure was in the RAM write. */
+static void burn_failed(lt_app *app, const char *what, int burned, int total)
+{
+    char msg[512], det[1024];
+    const lt_proto_err *pe = lt_proto_errinfo(app->proto);
+    if (burned < 0) {
+        lt_snprintf(msg, sizeof(msg), "%s: %s. The ECU RAM may hold only part of the changes; "
+                    "nothing was burned to flash. Check the connection and write again before "
+                    "burning. The tune file on disk was not changed.", what,
+                    pe->msg[0] != '\0' ? pe->msg : lt_err_get());
+    } else {
+        lt_snprintf(msg, sizeof(msg), "%s: %s. The ECU may hold a PARTIAL BURN: %d of %d page(s) "
+                    "were burned before the error. Reconnect and burn again before "
+                    "turning the ECU off. The tune file on disk was not changed.", what,
+                    pe->msg[0] != '\0' ? pe->msg : lt_err_get(), burned, total);
+    }
+    lt_feat_error_describe(pe, det, sizeof(det));
+    lt_app_toast(app, 3, "%s", burned < 0 ? "ECU write failed: the ECU RAM may hold a partial update"
+                                          : "Burn interrupted: the ECU may hold a partial burn");
+    lt_feat_error_show(app, burned < 0 ? "ECU Write Failed" : "Burn Interrupted", msg, det);
+}
+
 int lt_app_burn(lt_app *app)
 {
-    int rc;
+    int rc, before, after;
     char *rp = NULL;
     if (!lt_app_can_burn(app)) { return -1; }
     if (!lt_app_burn_gate(app)) { return -1; }     /* unacknowledged pin conflicts */
     if (lt_ecu_mem_has_dirty(app->mem) && lt_proto_write_dirty(app->proto, app->mem) < 0) {
-        lt_app_toast(app, 3, "ECU write failed: %s", lt_err_get());
+        burn_failed(app, "ECU write failed", -1, -1);
         return -1;
     }
     if (app->has_project && app->project.tune != NULL) {
         lt_tune_from_mem(app->tune, app->mem);
         if (lt_restore_create(&app->project, &rp) == 0) { lt_free(rp); }
     }
+    before = (int)lt_proto_dirty_pages(app->proto, NULL, 0);
     rc = lt_proto_burn(app->proto, -1, app->mem);
     if (rc < 0) {
-        lt_app_toast(app, 3, "Burn failed: %s", lt_err_get());
+        after = (int)lt_proto_dirty_pages(app->proto, NULL, 0);
+        /* no written page recorded: lt_proto_burn burns page 0 alone */
+        burn_failed(app, "Burn failed", before > after ? before - after : 0, before > 0 ? before : 1);
         return rc;
     }
     lt_app_toast(app, 1, "Burned to ECU flash");

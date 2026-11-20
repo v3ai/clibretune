@@ -1392,6 +1392,45 @@ int lt_proto_write_dirty(lt_proto *p, lt_ecu_mem *mem)
 }
 
 /* ---- burn ---- */
+/* After the burn settle time: look at what the ECU sent back. Burns are sent without waiting
+ * for a reply (spec 9: legacy firmware never answers), so this is the only evidence. A read
+ * error (cable pulled, port gone) or an explicit error status means the burn of `page` is NOT
+ * confirmed and the page may be partially written; silence is accepted. */
+static int burn_check(lt_proto *p, int page)
+{
+    lt_u8 tmp[256], got[64];
+    size_t ng = 0;
+    int r, guard;
+
+    for (guard = 0; guard < 64; guard++) {
+        r = p->io.read(p->io.ud, tmp, (int)sizeof(tmp), 0);
+        if (r < 0) {
+            return fail(p, LT_EIO, LT_PE_SERIAL, "connection lost while burning page %d: the "
+                        "burn is not confirmed and the page may be only partly written", page);
+        }
+        if (r == 0) {
+            break;
+        }
+        p->stats.rx_bytes += (unsigned long)r;
+        if (ng < sizeof(got)) {
+            size_t k = (size_t)r < sizeof(got) - ng ? (size_t)r : sizeof(got) - ng;
+            memcpy(got + ng, tmp, k);
+            ng += k;
+        }
+    }
+    if (p->modern && ng >= 7) {
+        const lt_u8 *pl;
+        size_t pn, used;
+        if (lt_env_decode(p->order, p->cfg.permissive_crc, got, ng, &pl, &pn, &used) == LT_OK &&
+            pn >= 1 && (pl[0] & 0x80u) != 0) {
+            p->err.a = pl[0];
+            return fail(p, LT_EPROTO, LT_PE_ECU_STATUS, "the ECU reported an error burning page "
+                        "%d: %s", page, lt_rc_message(pl[0]));
+        }
+    }
+    return LT_OK;
+}
+
 int lt_proto_burn(lt_proto *p, int page, lt_ecu_mem *mem)
 {
     lt_buf cmd;
@@ -1463,7 +1502,11 @@ int lt_proto_burn(lt_proto *p, int page, lt_ecu_mem *mem)
         delay = 2000;
     }
     sleep_ms(p, delay + LT_BURN_SETTLE_MS);
+    rc = burn_check(p, page);
     clear_rx(p);
+    if (rc) {
+        return rc;                      /* page stays in the dirty (unburned) set */
+    }
     if (p->last_written == page) {
         p->last_written = -1;
     }

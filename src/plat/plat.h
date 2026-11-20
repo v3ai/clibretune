@@ -45,6 +45,16 @@ int   lt_plat_rename(const char *from, const char *to);
 /* restrict a file to the current user (POSIX mode 0600; no-op where the OS has no such mode) */
 int   lt_plat_chmod_private(const char *path);
 int   lt_plat_copy_file(const char *from, const char *to);
+/* Replace the file at `path` with len bytes, atomically and durably: the data is written to a
+ * new temporary file in the same directory, flushed to the disk (fsync / FlushFileBuffers) and
+ * renamed over `path` (the directory entry is synced too where the OS allows). Readers and a
+ * crash or power loss at any point see either the complete old file or the complete new one,
+ * never a truncated mix; on failure the temporary file is removed and `path` is untouched.
+ * The existing file's permission bits are kept. 0 ok, -1 with lt_err. */
+int   lt_plat_write_atomic(const char *path, const void *data, size_t len);
+/* Fault injection for tests: lt_plat_write_atomic fails like a full disk once `bytes` more
+ * bytes have been written in total. Negative (the default) = no limit. */
+void  lt_plat_fault_write_limit(long bytes);
 /* list directory entries (excluding . and ..): returns count, *names is a
  * malloc'd array of malloc'd strings, sorted ascii; free with lt_plat_free_list */
 int   lt_plat_list_dir(const char *path, char ***names);

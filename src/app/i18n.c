@@ -3,6 +3,7 @@
  */
 #include <string.h>
 #include "i18n.h"
+#include "../plat/plat.h"
 
 static int cur_lang = 0;
 
@@ -107,5 +108,5 @@ int lt_i18n_save(const char *dir)
     if (dir == NULL) { return -1; }
     lt_snprintf(path, sizeof(path), "%s/language.conf", dir);
     lt_snprintf(line, sizeof(line), "language=%s\n", lt_i18n_code(cur_lang));
-    return lt_file_write(path, line, strlen(line));
+    return lt_plat_write_atomic(path, line, strlen(line));
 }

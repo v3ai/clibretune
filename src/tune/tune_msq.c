@@ -5,6 +5,7 @@
 #include <string.h>
 #include <time.h>
 #include "tune_priv.h"
+#include "../plat/plat.h"
 
 /* ---------------------------------------------------------------------- */
 /* lifecycle                                                               */
@@ -885,7 +886,7 @@ int lt_tune_save(const lt_tune *t, const char *path)
     }
     lt_buf_init(&b);
     lt_tune_to_msq(t, &b);
-    rc = lt_file_write(path, b.data, b.len);
+    rc = lt_plat_write_atomic(path, b.data, b.len);   /* never leaves a truncated tune */
     lt_buf_free(&b);
     return rc;
 }
@@ -926,7 +927,7 @@ int lt_tune_save_pc_variables(const lt_tune *t, const char *path, const char *si
     }
     lt_buf_puts(&b, "</msq>\n");
     lt_free(ps);
-    rc = lt_file_write(path, b.data, b.len);
+    rc = lt_plat_write_atomic(path, b.data, b.len);
     lt_buf_free(&b);
     return rc;
 }

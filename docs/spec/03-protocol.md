@@ -232,7 +232,7 @@ Tests: ack `[0x84]` -> ECU_STATUS_ERROR code 0x84 msg "Controller Reported a Out
 1. failed_pages non-empty -> PROTOCOL_ERROR "refusing to burn: page(s) {list} failed to write or verify; write the tune again or reconnect first".
 2. fmt = burn_commands[page], default "B%2i" (index missing); empty string -> return OK (not burnable), no state change. cmd = build_burn(fmt, page_id).
 3. Send WITHOUT waiting: modern -> send_packet_no_response; legacy -> send_raw_command_no_response.
-4. Sleep `max(page_activation_delay,2000) + 600` ms (page_activation_delay default 500; 2000 if no INI). Then clear_rx.
+4. Sleep `max(page_activation_delay,2000) + 600` ms (page_activation_delay default 500; 2000 if no INI). Then drain what arrived (LibreTune-C addition): a read error (link lost) -> SERIAL_ERROR "connection lost while burning page N", a modern reply whose status has the high bit set -> ECU_STATUS; in both cases the page stays in dirty_pages (burn not confirmed, may be partial). Silence is accepted. Then clear_rx.
 5. If last_written_page==page -> None; dirty_pages.remove(page).
 `send_burn_command()`: pages = dirty_pages ascending, or [0] if empty; burn each (stop at first error). `dirty_pages()` accessor. Test logic: dirty {2,3}, burn 3 leaves {2}; empty -> [0]; {7,2,15,3,0} burns 0,2,3,7,15. A failed write_page blocks send_burn_command and burn() ("refusing to burn"); write_memory to other page after failed page skips auto-burn instead of failing.
 

@@ -12,10 +12,10 @@
 #define DET_CAPACITY 1536
 
 typedef struct err_state {
-    char title[96], msg[256], det[DET_CAPACITY];
+    char title[96], msg[512], det[DET_CAPACITY];
 } err_state;
 
-typedef struct err_dlg { char title[96], msg[256], det[DET_CAPACITY]; int copied; double t_copy; } err_dlg;
+typedef struct err_dlg { char title[96], msg[512], det[DET_CAPACITY]; int copied; double t_copy; } err_dlg;
 
 static err_state *es(lt_app *app)
 {
