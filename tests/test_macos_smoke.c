@@ -71,6 +71,23 @@ LT_TEST(cocoa_smoke)
     LT_CHECK(got_expose);
     (void)quit;
 
+    /* partial updates: two disjoint rectangles in one display pass (setNeedsDisplayInRect:,
+     * drawRect: copies only those parts of the canvas) */
+    LT_CHECK(b->present_rects != NULL);
+    if (b->present_rects != NULL && c.w >= 64 && c.h >= 64) {
+        lt_rect rs[2];
+        for (y = 0; y < 32; y++) {
+            for (x = 0; x < 32; x++) {
+                c.px[y * c.pitch + x] = LT_RGB(0xFF, 0, 0);
+                c.px[(c.h - 1 - y) * c.pitch + (c.w - 1 - x)] = LT_RGB(0, 0, 0xFF);
+            }
+        }
+        rs[0] = lt_rect_make(0, 0, 32, 32);
+        rs[1] = lt_rect_make(c.w - 32, c.h - 32, 32, 32);
+        b->present_rects(b, &c, rs, 2);
+        (void)b->poll(b, &ev, 50);
+    }
+
     b->set_title(b, "LibreTune smoke test (renamed)");
     if (b->set_clipboard != NULL && b->get_clipboard != NULL) {
         b->set_clipboard(b, "libretune \xC3\xA9 clip");

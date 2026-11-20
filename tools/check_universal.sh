@@ -215,7 +215,7 @@ if [ "$RUN_TESTS" = 1 ]; then
                 if CC="$CCNATIVE" tests/run_x11_mock.sh > "$TMP/x11.out" 2>&1; then rc=0; else rc=1; fi
                 { echo "=== tests X11 mock server"; cat "$TMP/x11.out"; } >> "$LOG"
                 if [ "$rc" = 0 ]; then echo "PASS" >&2; else echo "FAIL" >&2; fi
-                printf '%s|%s|%s\n' "X11 mock server" "$rc" "desktop + bare (RandR) modes" >> "$TMP/tests.txt"
+                printf '%s|%s|%s\n' "X11 mock server" "$rc" "desktop, bare (RandR), MIT-SHM fallbacks" >> "$TMP/tests.txt"
             else skip_tests "X11 mock server" "python3 not installed"; fi ;;
     esac
     if [ "$QUICK" = 0 ]; then

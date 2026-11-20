@@ -9,9 +9,11 @@ S="$PWD/build/x11mock:0"
 PLAT_SRC="src/plat/plat_common.c src/plat/usb_common.c $(lt_platform_files | grep '^src/plat/')"
 ${CC:-gcc} -Wall -Wextra $PLAT_CPPFLAGS -Isrc -o build/test_x11 tests/test_x11.c \
     src/gui/be_x11.c src/lt_base.c $PLAT_SRC tests/x11_stubs.c -lm
-# two desktops: one that publishes its scale, and a bare one where only RandR knows the panel
+# desktop: publishes its scale, MIT-SHM works; bare: only RandR knows the panel, no MIT-SHM;
+# shmfail: MIT-SHM offered but ShmAttach refused (what a remote server does) -> PutImage;
+# shmforeign: the server maps another segment (container with its own IPC namespace) -> PutImage
 RC=0
-for MODE in desktop bare; do
+for MODE in desktop bare shmfail shmforeign; do
     rm -f "$S"
     LT_X11_MOCK_MODE=$MODE python3 tests/x11_mock.py "$S" &
     P=$!
