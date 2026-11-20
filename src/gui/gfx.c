@@ -68,6 +68,7 @@ void lt_canvas_init(lt_canvas *c, int w, int h)
     if (h < 1) { h = 1; }
     c->w = w; c->h = h; c->pitch = w;
     c->px = (lt_u32 *)lt_calloc((size_t)w * (size_t)h, sizeof(lt_u32));
+    c->gen = lt_gfx_next_gen();
 }
 
 void lt_canvas_resize(lt_canvas *c, int w, int h)
@@ -81,11 +82,19 @@ void lt_canvas_resize(lt_canvas *c, int w, int h)
 
 void lt_canvas_free(lt_canvas *c)
 {
+    lt_rec_canvas_changing(c);
     if (c->px != NULL) {
         lt_free(c->px);
     }
     c->px = NULL;
     c->w = c->h = c->pitch = 0;
+    c->gen = lt_gfx_next_gen();
+}
+
+void lt_canvas_touch(lt_canvas *c)
+{
+    lt_rec_canvas_changing(c);
+    c->gen = lt_gfx_next_gen();
 }
 
 void lt_cells_init(lt_cells *g, int cols, int rows)
@@ -133,6 +142,8 @@ void lt_gfx_init_canvas(lt_gfx *g, lt_canvas *c)
     g->clip = lt_rect_make(0, 0, c->w, c->h);
     g->dirty = lt_rect_make(0, 0, 0, 0);
     g->bitmap_text = 0;
+    g->ui_pct = 0;
+    g->rec = NULL;
 }
 
 int lt_gfx_px(const lt_gfx *g, int px)
@@ -159,6 +170,8 @@ void lt_gfx_init_cells(lt_gfx *g, lt_cells *cells)
     g->clip = lt_rect_make(0, 0, cells->cols * CELL_W, cells->rows * CELL_H);
     g->dirty = lt_rect_make(0, 0, 0, 0);
     g->bitmap_text = 0;
+    g->ui_pct = 0;
+    g->rec = NULL;
 }
 
 lt_bool lt_gfx_cell_mode(const lt_gfx *g)
@@ -223,6 +236,42 @@ static void mark_clipped(lt_gfx *g, int x, int y, int w, int h)
 {
     lt_rect r = lt_rect_intersect(lt_rect_make(x, y, w, h), g->clip);
     mark(g, r.x, r.y, r.w, r.h);
+}
+
+void lt_rect_union_into(lt_rect *acc, lt_rect r)
+{
+    int x1, y1;
+    if (r.w <= 0 || r.h <= 0) { return; }
+    if (acc->w <= 0 || acc->h <= 0) { *acc = r; return; }
+    x1 = LT_MAX(acc->x + acc->w, r.x + r.w);
+    y1 = LT_MAX(acc->y + acc->h, r.y + r.h);
+    acc->x = LT_MIN(acc->x, r.x);
+    acc->y = LT_MIN(acc->y, r.y);
+    acc->w = x1 - acc->x;
+    acc->h = y1 - acc->y;
+}
+
+/* about to write g->canvas: a recorded frame referring to it keeps a copy; new generation */
+static void prep(lt_gfx *g)
+{
+    if (g->canvas != NULL) {
+        lt_rec_canvas_changing(g->canvas);
+        g->canvas->gen = lt_gfx_next_gen();
+    }
+}
+
+static lt_rect *g_measure;
+
+void lt_gfx_measure_begin(lt_rect *acc) { g_measure = acc; }
+void lt_gfx_measure_end(void) { g_measure = NULL; }
+int lt_gfx_measuring(void) { return g_measure != NULL; }
+
+/* record a call with only a colour and an absolute box; NULL if it touches nothing */
+static lt_dcmd *rec_simple(lt_gfx *g, int op, lt_rect bb, lt_color c)
+{
+    lt_dcmd *k = lt_rec_cmd(g, op, bb);
+    if (k != NULL) { k->c = c; }
+    return k;
 }
 
 /* ------------------------------------------------------------------ */
@@ -321,6 +370,16 @@ void lt_gfx_blit_premul(lt_gfx *g, int x, int y, const lt_canvas *src)
     lt_rect r;
     int yy, xx;
     if (c == NULL || src == NULL || src->px == NULL) { return; }
+    if (g->rec != NULL) {
+        lt_dcmd *k = lt_rec_cmd(g, LT_OP_PREMUL, lt_rect_make(x + g->ox, y + g->oy, src->w, src->h));
+        if (k != NULL) {
+            k->i[0] = x; k->i[1] = y;
+            k->src = lt_rec_canvas(g, src);
+            lt_rec_done(g, k);
+        }
+        return;
+    }
+    prep(g);
     x += g->ox; y += g->oy;
     r = lt_rect_intersect(lt_rect_make(x, y, src->w, src->h), g->clip);
     r = lt_rect_intersect(r, lt_rect_make(0, 0, c->w, c->h));
@@ -432,6 +491,11 @@ static void cell_fill_shape(lt_gfx *g, double bx0, double by0, double bx1, doubl
 /* clear / rect                                                        */
 void lt_gfx_clear(lt_gfx *g, lt_color c)
 {
+    if (g->rec != NULL) {
+        lt_dcmd *k = rec_simple(g, LT_OP_CLEAR, g->clip, c);
+        if (k != NULL) { lt_rec_done(g, k); }
+        return;
+    }
     if (g->cells != NULL) {
         int i, n = g->cells->cols * g->cells->rows;
         for (i = 0; i < n; i++) {
@@ -444,6 +508,7 @@ void lt_gfx_clear(lt_gfx *g, lt_color c)
         return;
     }
     if (g->canvas == NULL) { return; }
+    prep(g);
     {
         lt_rect r = lt_rect_intersect(g->clip, lt_rect_make(0, 0, g->canvas->w, g->canvas->h));
         int y;
@@ -474,8 +539,18 @@ static void fill_rect_abs(lt_gfx *g, lt_rect r, lt_color c)
         }
         return;
     }
+    if (g->rec != NULL) {
+        lt_dcmd *k = rec_simple(g, LT_OP_FILL, r, c);
+        if (k != NULL) {
+            k->i[0] = r.x; k->i[1] = r.y; k->i[2] = r.w; k->i[3] = r.h;
+            k->ox = 0; k->oy = 0;
+            lt_rec_done(g, k);
+        }
+        return;
+    }
     r = lt_rect_intersect(r, g->clip);
     if (r.w <= 0 || r.h <= 0 || g->canvas == NULL) { return; }
+    prep(g);
     for (y = r.y; y < r.y + r.h; y++) {
         put_span(g, r.x, y, r.w, c, 255);
     }
@@ -601,6 +676,16 @@ void lt_gfx_fill_round_rect(lt_gfx *g, lt_rect r, int radius, lt_color c)
         lt_gfx_fill_rect(g, r, c);
         return;
     }
+    if (g->rec != NULL) {
+        lt_dcmd *k = rec_simple(g, LT_OP_ROUND, lt_rect_make(r.x + g->ox, r.y + g->oy, r.w, r.h), c);
+        if (k != NULL) {
+            k->i[0] = r.x; k->i[1] = r.y; k->i[2] = r.w; k->i[3] = r.h; k->d[0] = (double)radius;
+            lt_rec_done(g, k);
+        }
+        return;
+    }
+    if (g->canvas == NULL) { return; }
+    prep(g);
     r.x += g->ox; r.y += g->oy;
     rr = (double)rad;
     for (y = LT_MAX(0, g->clip.y - r.y); y < r.h && r.y + y < g->clip.y + g->clip.h; y++) {
@@ -659,6 +744,17 @@ void lt_gfx_fill_rect_vgrad(lt_gfx *g, lt_rect r, lt_color top, lt_color bottom)
         }
         return;
     }
+    if (g->rec != NULL) {
+        lt_dcmd *k = rec_simple(g, LT_OP_VGRAD, lt_rect_make(r.x + g->ox, r.y + g->oy, r.w, r.h), top);
+        if (k != NULL) {
+            k->c2 = bottom;
+            k->i[0] = r.x; k->i[1] = r.y; k->i[2] = r.w; k->i[3] = r.h;
+            lt_rec_done(g, k);
+        }
+        return;
+    }
+    if (g->canvas == NULL) { return; }
+    prep(g);
     r.x += g->ox; r.y += g->oy;
     v = lt_rect_intersect(r, g->clip);
     for (i = LT_MAX(0, v.y - r.y); i < r.h && r.y + i < v.y + v.h; i++) {
@@ -689,6 +785,18 @@ void lt_gfx_line(lt_gfx *g, double x0, double y0, double x1, double y1, double w
 {
     double dx, dy, len2, len, rad, rr, wcap;
     int py, ya, yb;
+    if (g->rec != NULL) {
+        double ax = x0 + g->ox, bx = x1 + g->ox, ay = y0 + g->oy, by = y1 + g->oy;
+        double r2 = (width < 0.0 ? 0.0 : width) / 2.0 + 0.5;
+        int ix = ifloor((ax < bx ? ax : bx) - r2), iy = ifloor((ay < by ? ay : by) - r2);
+        lt_dcmd *k = rec_simple(g, LT_OP_LINE, lt_rect_make(ix, iy, iceil((ax > bx ? ax : bx) + r2) - ix,
+                                                          iceil((ay > by ? ay : by) + r2) - iy), c);
+        if (k != NULL) {
+            k->d[0] = x0; k->d[1] = y0; k->d[2] = x1; k->d[3] = y1; k->d[4] = width;
+            lt_rec_done(g, k);
+        }
+        return;
+    }
     x0 += g->ox; x1 += g->ox; y0 += g->oy; y1 += g->oy;
     if (width < 0.0) { width = 0.0; }
     dx = x1 - x0; dy = y1 - y0;
@@ -708,6 +816,8 @@ void lt_gfx_line(lt_gfx *g, double x0, double y0, double x1, double y1, double w
     }
     rad = width / 2.0;
     rr = rad + 0.5;
+    if (g->canvas == NULL) { return; }
+    prep(g);
     wcap = width < 1.0 ? width : 1.0;
     ya = ifloor((y0 < y1 ? y0 : y1) - rr);
     yb = iceil((y0 > y1 ? y0 : y1) + rr);
@@ -770,6 +880,8 @@ static void arc_draw(lt_gfx *g, const arc_ctx *a, lt_color c)
         u1x = cos(a->a0 + a->sweep); u1y = sin(a->a0 + a->sweep);
     }
     convex = a->sweep <= LT_PI;
+    if (g->canvas == NULL) { return; }
+    prep(g);
     ya = ifloor(a->cy - ro); yb = iceil(a->cy + ro);
     if (ya < a->by0) { ya = a->by0; }
     if (yb > a->by1 + 1) { yb = a->by1 + 1; }
@@ -943,9 +1055,29 @@ static void cell_arc_marks(lt_gfx *g, double cx, double cy, double r, double a0,
     }
 }
 
+/* record an annulus/sector call: the box is the sector's (translated) bounding box */
+static void rec_arc(lt_gfx *g, int op, double rin, double rout, double a0, double a1,
+                    const double *par, lt_color c)
+{
+    arc_ctx a;
+    lt_dcmd *k;
+    int i;
+    arc_setup(&a, par[0] + g->ox, par[1] + g->oy, rin, rout, a0, a1);
+    k = rec_simple(g, op, lt_rect_make(a.bx0, a.by0, a.bx1 - a.bx0 + 1, a.by1 - a.by0 + 1), c);
+    if (k == NULL) { return; }
+    for (i = 0; i < 6; i++) { k->d[i] = par[i]; }
+    lt_rec_done(g, k);
+}
+
 void lt_gfx_fill_circle(lt_gfx *g, double cx, double cy, double r, lt_color c)
 {
     arc_ctx a;
+    if (g->rec != NULL) {
+        double par[6];
+        par[0] = cx; par[1] = cy; par[2] = r; par[3] = par[4] = par[5] = 0.0;
+        rec_arc(g, LT_OP_FCIRCLE, 0.0, r, 0.0, TWO_PI, par, c);
+        return;
+    }
     cx += g->ox; cy += g->oy;
     arc_setup(&a, cx, cy, 0.0, r, 0.0, TWO_PI);
     if (g->cells != NULL) {
@@ -958,6 +1090,12 @@ void lt_gfx_fill_circle(lt_gfx *g, double cx, double cy, double r, lt_color c)
 void lt_gfx_circle(lt_gfx *g, double cx, double cy, double r, double width, lt_color c)
 {
     arc_ctx a;
+    if (g->rec != NULL) {
+        double par[6];
+        par[0] = cx; par[1] = cy; par[2] = r; par[3] = width; par[4] = par[5] = 0.0;
+        rec_arc(g, LT_OP_CIRCLE, r - width / 2.0, r + width / 2.0, 0.0, TWO_PI, par, c);
+        return;
+    }
     cx += g->ox; cy += g->oy;
     if (g->cells != NULL) {
         cell_arc_marks(g, cx, cy, r, 0.0, TWO_PI, width, c);
@@ -971,6 +1109,12 @@ void lt_gfx_arc(lt_gfx *g, double cx, double cy, double r, double a0, double a1,
                 double width, lt_color c)
 {
     arc_ctx a;
+    if (g->rec != NULL) {
+        double par[6];
+        par[0] = cx; par[1] = cy; par[2] = r; par[3] = a0; par[4] = a1; par[5] = width;
+        rec_arc(g, LT_OP_ARC, r - width / 2.0, r + width / 2.0, a0, a1, par, c);
+        return;
+    }
     cx += g->ox; cy += g->oy;
     if (g->cells != NULL) {
         cell_arc_marks(g, cx, cy, r, a0, a1, width, c);
@@ -984,6 +1128,12 @@ void lt_gfx_fill_arc(lt_gfx *g, double cx, double cy, double r_in, double r_out,
                      double a0, double a1, lt_color c)
 {
     arc_ctx a;
+    if (g->rec != NULL) {
+        double par[6];
+        par[0] = cx; par[1] = cy; par[2] = r_in; par[3] = r_out; par[4] = a0; par[5] = a1;
+        rec_arc(g, LT_OP_FARC, r_in, r_out, a0, a1, par, c);
+        return;
+    }
     cx += g->ox; cy += g->oy;
     arc_setup(&a, cx, cy, r_in, r_out, a0, a1);
     if (g->cells != NULL) {
@@ -1020,6 +1170,27 @@ void lt_gfx_fill_poly(lt_gfx *g, const double *xy, int n, lt_color c)
     edge *edges;
     double *xs, *acc;
     if (n < 3) { return; }
+    if (g->rec != NULL) {
+        lt_dcmd *k;
+        for (i = 0; i < n; i++) {
+            double x = xy[2 * i] + g->ox, y = xy[2 * i + 1] + g->oy;
+            if (x < minx) { minx = x; }
+            if (x > maxx) { maxx = x; }
+            if (y < miny) { miny = y; }
+            if (y > maxy) { maxy = y; }
+        }
+        if (!(maxx >= minx) || !(maxy >= miny)) { return; }
+        cx0 = ifloor(minx); ya = ifloor(miny);
+        k = rec_simple(g, LT_OP_POLY, lt_rect_make(cx0, ya, iceil(maxx) + 1 - cx0,
+                                                   iceil(maxy) + 1 - ya), c);
+        if (k != NULL) {
+            k->i[0] = n;
+            k->off = lt_rec_doubles(g, xy, 2L * (long)n);
+            k->len = 2L * (long)n;
+            lt_rec_done(g, k);
+        }
+        return;
+    }
     if (g->cells != NULL) {
         poly_ctx pc;
         pc.xy = xy; pc.n = n; pc.ox = g->ox; pc.oy = g->oy;
@@ -1033,6 +1204,8 @@ void lt_gfx_fill_poly(lt_gfx *g, const double *xy, int n, lt_color c)
         cell_fill_shape(g, minx, miny, maxx, maxy, poly_inside, &pc, c);
         return;
     }
+    if (g->canvas == NULL) { return; }
+    prep(g);
     edges = (edge *)lt_malloc((size_t)n * sizeof(edge));
     xs = (double *)lt_malloc((size_t)n * sizeof(double));
     for (i = 0; i < n; i++) {
@@ -1118,8 +1291,18 @@ void lt_gfx_fill_poly(lt_gfx *g, const double *xy, int n, lt_color c)
 void lt_gfx_blit(lt_gfx *g, int x, int y, const lt_u32 *px, int w, int h, int pitch)
 {
     int j, i, ww;
-    x += g->ox; y += g->oy;
     if (w <= 0 || h <= 0) { return; }
+    if (g->rec != NULL) {
+        lt_dcmd *k = rec_simple(g, LT_OP_BLIT, lt_rect_make(x + g->ox, y + g->oy, w, h), 0);
+        if (k != NULL) {
+            k->i[0] = x; k->i[1] = y; k->i[2] = w; k->i[3] = h;
+            k->off = lt_rec_pixels(g, px, w, h, pitch);
+            k->len = (long)w * (long)h;
+            lt_rec_done(g, k);
+        }
+        return;
+    }
+    x += g->ox; y += g->oy;
     if (g->cells != NULL) {
         int cx, cy;
         int cy0 = cclamp(cdiv_floor(y, CELL_H), 0, g->cells->rows);
@@ -1136,6 +1319,8 @@ void lt_gfx_blit(lt_gfx *g, int x, int y, const lt_u32 *px, int w, int h, int pi
         }
         return;
     }
+    if (g->canvas == NULL) { return; }
+    prep(g);
     for (j = LT_MAX(0, g->clip.y - y); j < h && y + j < g->clip.y + g->clip.h; j++) {
         const lt_u32 *row = px + (size_t)j * (size_t)pitch;
         i = LT_MAX(0, g->clip.x - x);
@@ -1158,6 +1343,24 @@ void lt_gfx_blit_mask(lt_gfx *g, int x, int y, const lt_u8 *a, int w, int h, int
     lt_canvas *c = g->canvas;
     int x0, y0, x1, y1, j, i, ca, sr, sg, sb;
     if (c == NULL || a == NULL || w <= 0 || h <= 0) { return; }
+    if (g_measure != NULL) {
+        lt_rect_union_into(g_measure, lt_rect_make(x + g->ox, y + g->oy, w, h));
+        return;
+    }
+    if (g->rec != NULL) {
+        lt_dcmd *k = rec_simple(g, LT_OP_MASK, lt_rect_make(x + g->ox, y + g->oy, w, h), col);
+        if (k != NULL) {
+            int j;
+            k->i[0] = x; k->i[1] = y; k->i[2] = w; k->i[3] = h;
+            k->off = g->rec != NULL ? lt_rec_bytes(g, a, 0) : 0;
+            for (j = 0; j < h; j++) { (void)lt_rec_bytes(g, a + (size_t)j * (size_t)pitch, (long)w); }
+            k->len = (long)w * (long)h;
+            if (lut != NULL) { k->off2 = lt_rec_bytes(g, lut, 256); }
+            lt_rec_done(g, k);
+        }
+        return;
+    }
+    prep(g);
     x += g->ox; y += g->oy;
     x0 = LT_MAX(LT_MAX(g->clip.x, 0), x);
     y0 = LT_MAX(LT_MAX(g->clip.y, 0), y);
@@ -1213,6 +1416,29 @@ int lt_gfx_text(lt_gfx *g, int x, int y, const char *s, lt_color c, int scale)
     int total = lt_gfx_text_width(s, scale), cw, ch, x0;
     lt_u32 cp;
     if (scale < 1) { scale = 1; }
+    if (g->rec != NULL) {
+        lt_rect bb = lt_rect_make(x + g->ox, y + g->oy, total, LT_FONT_H * scale);
+        lt_dcmd *k;
+        if (!g->bitmap_text) {
+            lt_rect acc = lt_rect_make(0, 0, 0, 0);
+            struct lt_rec *saved = g->rec;
+            int ok;
+            g->rec = NULL;
+            lt_gfx_measure_begin(&acc);
+            ok = lt_gfx_text_cellfont(g, x, y, s, c, scale);
+            lt_gfx_measure_end();
+            g->rec = saved;
+            if (ok) { bb = acc; }
+        }
+        k = rec_simple(g, LT_OP_TEXT, bb, c);
+        if (k != NULL) {
+            k->i[0] = x; k->i[1] = y; k->i[2] = scale;
+            k->len = (long)strlen(s) + 1;
+            k->off = lt_rec_bytes(g, s, k->len);
+            lt_rec_done(g, k);
+        }
+        return total;
+    }
     if (g->canvas != NULL && g->cells == NULL && !g->bitmap_text &&
         lt_gfx_text_cellfont(g, x, y, s, c, scale)) {
         return total;
@@ -1239,6 +1465,7 @@ int lt_gfx_text(lt_gfx *g, int x, int y, const char *s, lt_color c, int scale)
         x + total <= g->clip.x || x >= g->clip.x + g->clip.w) {
         return total;
     }
+    prep(g);
     while ((cp = lt_utf8_next(&s)) != 0) {
         const lt_u8 *gl;
         int row;
@@ -1341,4 +1568,48 @@ void lt_gfx_vtext(lt_gfx *g, double x, double y, const char *s, double height,
         }
         pen += lt_vfont_adv[gi] * sc;
     }
+}
+
+/* ------------------------------------------------------------------ */
+/* replay of a recorded call (gfx_rec.c)                               */
+void lt_gfx_replay(lt_gfx *g, const struct lt_rec *r, const lt_dcmd *k, lt_rect lim)
+{
+    lt_rect sclip = g->clip, ri = lt_rect_make(k->i[0], k->i[1], k->i[2], k->i[3]);
+    int sox = g->ox, soy = g->oy, sbt = g->bitmap_text;
+    const char *b = k->off >= 0 ? lt_rec_bytes_at(r, k->off) : NULL;
+    g->clip = lt_rect_intersect(k->clip, lim);
+    g->ox = k->ox; g->oy = k->oy; g->bitmap_text = k->bitmap_text;
+    switch (k->op) {
+    case LT_OP_CLEAR: lt_gfx_clear(g, k->c); break;
+    case LT_OP_FILL: fill_rect_abs(g, ri, k->c); break;
+    case LT_OP_ROUND: lt_gfx_fill_round_rect(g, ri, (int)k->d[0], k->c); break;
+    case LT_OP_VGRAD: lt_gfx_fill_rect_vgrad(g, ri, k->c, k->c2); break;
+    case LT_OP_LINE: lt_gfx_line(g, k->d[0], k->d[1], k->d[2], k->d[3], k->d[4], k->c); break;
+    case LT_OP_FCIRCLE: lt_gfx_fill_circle(g, k->d[0], k->d[1], k->d[2], k->c); break;
+    case LT_OP_CIRCLE: lt_gfx_circle(g, k->d[0], k->d[1], k->d[2], k->d[3], k->c); break;
+    case LT_OP_ARC:
+        lt_gfx_arc(g, k->d[0], k->d[1], k->d[2], k->d[3], k->d[4], k->d[5], k->c);
+        break;
+    case LT_OP_FARC:
+        lt_gfx_fill_arc(g, k->d[0], k->d[1], k->d[2], k->d[3], k->d[4], k->d[5], k->c);
+        break;
+    case LT_OP_POLY: lt_gfx_fill_poly(g, lt_rec_doubles_at(r, k->off), k->i[0], k->c); break;
+    case LT_OP_BLIT:
+        lt_gfx_blit(g, k->i[0], k->i[1], lt_rec_pixels_at(r, k->off), k->i[2], k->i[3], k->i[2]);
+        break;
+    case LT_OP_PREMUL: lt_gfx_blit_premul(g, k->i[0], k->i[1], lt_rec_canvas_at(r, k->src)); break;
+    case LT_OP_MASK:
+        lt_gfx_blit_mask(g, k->i[0], k->i[1], (const lt_u8 *)b, k->i[2], k->i[3], k->i[2], k->c,
+                         k->off2 >= 0 ? (const lt_u8 *)lt_rec_bytes_at(r, k->off2) : NULL);
+        break;
+    case LT_OP_TEXT: (void)lt_gfx_text(g, k->i[0], k->i[1], b, k->c, k->i[2]); break;
+    case LT_OP_TEXTF: (void)lt_gfx_text_run(g, k->f, k->d[0], k->d[1], k->i[0], b, k->c); break;
+    case LT_OP_TEXTROT:
+        lt_gfx_text_rot(g, k->f, k->d[0], k->d[1], k->d[2], b, k->d[3], k->i[0], k->i[1], k->c);
+        break;
+    case LT_OP_ICON: lt_gfx_icon(g, k->i[0], k->d[0], k->d[1], k->d[2], k->d[3], k->c); break;
+    default: break;
+    }
+    g->clip = sclip;
+    g->ox = sox; g->oy = soy; g->bitmap_text = sbt;
 }

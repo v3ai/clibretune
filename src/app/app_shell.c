@@ -1358,14 +1358,57 @@ static void save_geometry(lt_app *app)
     }
 }
 
-/* Present the frame. Backends that take rectangles get only the 64x64 tiles that differ from the
- * previously presented frame (as a few merged rectangles); the others get the drawn bounding box.
- * Returns the number of pixels handed to the backend. */
+/* Rendering mode. Pixel frames are retained (gfx_rec.c): the frame's draw calls are recorded and
+ * only the screen tiles whose calls changed are rasterized; those tiles are also exactly what has
+ * to be presented. LT_RENDER=immediate draws every call directly and finds the changed pixels by
+ * comparing whole frames (lt_diff_rects). LT_RENDER_VERIFY=1 renders every retained frame a second
+ * time from scratch and exits with status 3 at the first pixel that differs. */
 #define PRESENT_MAX_RECTS 48
-static double present_frame(lt_app *app)
+typedef struct render_state {
+    int init, retained, verify;
+    lt_tiles *tiles;
+    long verified;
+    lt_rect rects[PRESENT_MAX_RECTS];
+    int nrects;
+} render_state;
+
+static void render_state_free(lt_app *app, void *state)
+{
+    render_state *rs = (render_state *)state;
+    LT_UNUSED(app);
+    if (rs->verify && rs->verified > 0) {
+        fprintf(stderr, "render verify: %ld frames identical\n", rs->verified);
+    }
+    lt_tiles_free(rs->tiles);
+    rs->tiles = NULL;
+}
+
+static render_state *render_get(lt_app *app)
+{
+    render_state *rs = (render_state *)lt_ext_state(app, "shell.render", sizeof(render_state),
+                                                    render_state_free);
+    if (!rs->init) {
+        char *e = lt_plat_getenv("LT_RENDER");
+        rs->init = 1;
+        rs->retained = !(e != NULL && strcmp(e, "immediate") == 0);
+        lt_free(e);
+        e = lt_plat_getenv("LT_RENDER_VERIFY");
+        rs->verify = e != NULL && e[0] != '0';
+        lt_free(e);
+        rs->tiles = lt_tiles_new();
+    }
+    return rs;
+}
+
+/* Present the frame. Backends that take rectangles get only the changed parts (the re-rendered
+ * tiles in retained mode, else the 64x64 tiles that differ from the previously presented frame)
+ * as a few merged rectangles; the others get their bounding box. Returns the number of pixels
+ * handed to the backend. */
+static double present_frame(lt_app *app, const render_state *rs, int retained)
 {
     lt_backend *be = app->backend;
     lt_rect rects[PRESENT_MAX_RECTS];
+    const lt_rect *rp = rects;
     int n, i;
     double px = 0.0;
     if (app->cell_mode) {
@@ -1376,10 +1419,15 @@ static double present_frame(lt_app *app)
         be->present(be, &app->canvas, NULL, app->gfx.dirty);
         return (double)app->gfx.dirty.w * (double)app->gfx.dirty.h;
     }
-    n = lt_diff_rects(&app->diff, &app->canvas, app->gfx.dirty, rects, PRESENT_MAX_RECTS);
+    if (retained) {
+        n = rs->nrects;
+        rp = rs->rects;
+    } else {
+        n = lt_diff_rects(&app->diff, &app->canvas, app->gfx.dirty, rects, PRESENT_MAX_RECTS);
+    }
     for (i = 0; i < n; i++) {
-        be->present(be, &app->canvas, NULL, rects[i]);
-        px += (double)rects[i].w * (double)rects[i].h;
+        be->present(be, &app->canvas, NULL, rp[i]);
+        px += (double)rp[i].w * (double)rp[i].h;
     }
     return px;
 }
@@ -1441,6 +1489,8 @@ static void perf_add(perf_stats *p, double draw, double pres, double pixels)
 static void run_frame(lt_app *app)
 {
     perf_stats *p = &g_perf;
+    render_state *rs = render_get(app);
+    int retained = rs->retained && !app->cell_mode;
     double t0, t1, t2, pixels = 0.0;
     if (!p->init) {
         char *e = lt_plat_getenv("LT_PERF");
@@ -1453,19 +1503,36 @@ static void run_frame(lt_app *app)
         p->t0 = lt_plat_now_ms();
     }
     t0 = lt_plat_now_ms();
+    if (retained) { lt_tiles_begin(rs->tiles, &app->gfx); }
     lt_ui_begin(app->ui, &app->gfx, t0);
     lt_app_frame(app);
     lt_ui_end(app->ui);
+    if (retained) { rs->nrects = lt_tiles_end(rs->tiles, &app->gfx, rs->rects, PRESENT_MAX_RECTS); }
     t1 = lt_plat_now_ms();
     if (app->backend != NULL) {
-        pixels = present_frame(app);
+        pixels = present_frame(app, rs, retained);
     } else if (p->on && !app->cell_mode) {      /* headless: still measure what would be presented */
-        lt_rect rs[PRESENT_MAX_RECTS];
-        int n = lt_diff_rects(&app->diff, &app->canvas, app->gfx.dirty, rs, PRESENT_MAX_RECTS), i;
-        for (i = 0; i < n; i++) { pixels += (double)rs[i].w * (double)rs[i].h; }
+        if (retained) {
+            int i;
+            for (i = 0; i < rs->nrects; i++) { pixels += (double)rs->rects[i].w * (double)rs->rects[i].h; }
+        } else {
+            lt_rect rr[PRESENT_MAX_RECTS];
+            int n = lt_diff_rects(&app->diff, &app->canvas, app->gfx.dirty, rr, PRESENT_MAX_RECTS), i;
+            for (i = 0; i < n; i++) { pixels += (double)rr[i].w * (double)rr[i].h; }
+        }
     }
     lt_gfx_reset_dirty(&app->gfx);
     t2 = lt_plat_now_ms();
+    if (retained && rs->verify) {
+        int vx, vy;
+        long bad = lt_tiles_verify(rs->tiles, &app->gfx, &vx, &vy);
+        if (bad != 0) {
+            fprintf(stderr, "render verify: frame %ld differs from a full render in %ld pixels "
+                    "(first at %d,%d)\n", rs->verified + 1, bad, vx, vy);
+            exit(3);
+        }
+        rs->verified++;
+    }
     if (p->on) {
         perf_add(p, t1 - t0, t2 - t1, pixels);
         if (!app->headless && t2 - p->t0 >= 1000.0) { perf_report(p, t2); }
@@ -1507,6 +1574,7 @@ int lt_app_run(lt_app *app)
                 }
             } else if (ev.type == LT_EV_EXPOSE) {
                 lt_diff_invalidate(&app->diff);      /* the window contents were lost */
+                lt_tiles_invalidate(render_get(app)->tiles);
                 lt_ui_request_redraw(app->ui);
             } else if (ev.type == LT_EV_RESIZE) {
                 if (app->cell_mode) {

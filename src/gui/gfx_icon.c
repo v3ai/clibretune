@@ -94,7 +94,7 @@ void lt_gfx_icon(lt_gfx *g, int icon, double x, double y, double size_px, double
                  lt_color c)
 {
     const lt_s16 *d = lt_icon_data(icon);
-    double scale, r, fx, fy;
+    double scale, r, fx, fy, stroke_in = stroke_px;
     int margin, ix, iy, mw, mh, fxq, fyq;
     size_t cells;
     icon_cached *e;
@@ -114,6 +114,15 @@ void lt_gfx_icon(lt_gfx *g, int icon, double x, double y, double size_px, double
     fy = (double)fyq / 16.0 + (double)margin;
     mw = (int)ceil(size_px) + 1 + 2 * margin;
     mh = mw;
+    if (g->rec != NULL) {
+        lt_dcmd *k = lt_rec_cmd(g, LT_OP_ICON, lt_rect_make(ix - margin + g->ox, iy - margin + g->oy, mw, mh));
+        if (k != NULL) {
+            k->c = c; k->i[0] = icon;
+            k->d[0] = x; k->d[1] = y; k->d[2] = size_px; k->d[3] = stroke_in;
+            lt_rec_done(g, k);
+        }
+        return;
+    }
     cells = (size_t)mw * (size_t)mh;
     h = ((unsigned)icon * 73856093U) ^ ((unsigned)fxq * 19349663U) ^ ((unsigned)fyq * 83492791U) ^
         ((unsigned)(size_px * 8.0) * 2654435761U);

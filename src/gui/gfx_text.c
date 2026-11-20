@@ -229,6 +229,43 @@ static double run_draw(lt_gfx *g, lt_font *f, double px, double x, int baseline,
     return w;
 }
 
+double lt_gfx_text_run(lt_gfx *g, lt_font *f, double px, double x, int baseline, const char *s,
+                       lt_color c)
+{
+    return run_draw(g, f, px, x, baseline, s, c);
+}
+
+/* run_draw, recorded: the box is measured by running it with blits turned into box updates
+ * (same culling, same advance) */
+static double run_rec(lt_gfx *g, lt_font *f, double px, double x, int baseline, const char *s,
+                      lt_color c)
+{
+    lt_rect acc = lt_rect_make(0, 0, 0, 0);
+    struct lt_rec *saved = g->rec;
+    double w;
+    lt_dcmd *k;
+    g->rec = NULL;
+    lt_gfx_measure_begin(&acc);
+    w = run_draw(g, f, px, x, baseline, s, c);
+    lt_gfx_measure_end();
+    g->rec = saved;
+    k = lt_rec_cmd(g, LT_OP_TEXTF, acc);
+    if (k != NULL) {
+        k->f = f; k->c = c;
+        k->d[0] = px; k->d[1] = x; k->i[0] = baseline;
+        k->len = (long)strlen(s) + 1;
+        k->off = lt_rec_bytes(g, s, k->len);
+        lt_rec_done(g, k);
+    }
+    return w;
+}
+
+static double run_any(lt_gfx *g, lt_font *f, double px, double x, int baseline, const char *s,
+                      lt_color c)
+{
+    return g->rec != NULL ? run_rec(g, f, px, x, baseline, s, c) : run_draw(g, f, px, x, baseline, s, c);
+}
+
 int lt_gfx_text_bl(lt_gfx *g, lt_font *f, double px, double x, int baseline, const char *utf8,
                    lt_color c)
 {
@@ -237,7 +274,7 @@ int lt_gfx_text_bl(lt_gfx *g, lt_font *f, double px, double x, int baseline, con
         int w = lt_gfx_text(g, (int)floor(x + 0.5), baseline - 13, utf8, c, 1);
         return w;
     }
-    return round_px(run_draw(g, f, px, x, baseline, utf8, c));
+    return round_px(run_any(g, f, px, x, baseline, utf8, c));
 }
 
 int lt_gfx_text_ex(lt_gfx *g, lt_font *f, double px, int x, int y, const char *utf8, lt_color c)
@@ -246,7 +283,7 @@ int lt_gfx_text_ex(lt_gfx *g, lt_font *f, double px, int x, int y, const char *u
     if (use_bitmap(g, f)) {
         return lt_gfx_text(g, x, y, utf8, c, 1);
     }
-    return round_px(run_draw(g, f, px, (double)x, y + lt_font_ascent(f, px), utf8, c));
+    return round_px(run_any(g, f, px, (double)x, y + lt_font_ascent(f, px), utf8, c));
 }
 
 void lt_gfx_text_rot(lt_gfx *g, lt_font *f, double px, double x, double y, const char *utf8,
@@ -269,7 +306,30 @@ void lt_gfx_text_rot(lt_gfx *g, lt_font *f, double px, double x, double y, const
     sa = sin(rotation);
     if (fabs(sa) < 1.0e-6 && ca > 0.0) {
         /* upright: reuse the cached, grid-fitted glyphs */
-        run_draw(g, f, px, x + start, round_px(y + vb), utf8, c);
+        run_any(g, f, px, x + start, round_px(y + vb), utf8, c);
+        return;
+    }
+    if (g->rec != NULL) {
+        /* conservative box: every glyph lies within 2 em of the baseline segment */
+        double ax = x + start * ca - vb * sa, ay = y + start * sa + vb * ca;
+        double bx = ax + tw * ca, by = ay + tw * sa, m = 2.0 * px + 4.0;
+        double x0 = (ax < bx ? ax : bx) - m, x1 = (ax > bx ? ax : bx) + m;
+        double y0 = (ay < by ? ay : by) - m, y1 = (ay > by ? ay : by) + m;
+        lt_rect bb;
+        if (!(x0 > -1.0e6 && x1 < 1.0e6 && y0 > -1.0e6 && y1 < 1.0e6)) { return; }
+        bb.x = (int)floor(x0) + g->ox; bb.y = (int)floor(y0) + g->oy;
+        bb.w = (int)ceil(x1) + g->ox - bb.x; bb.h = (int)ceil(y1) + g->oy - bb.y;
+        {
+            lt_dcmd *k = lt_rec_cmd(g, LT_OP_TEXTROT, bb);
+            if (k != NULL) {
+                k->f = f; k->c = c;
+                k->d[0] = px; k->d[1] = x; k->d[2] = y; k->d[3] = rotation;
+                k->i[0] = align; k->i[1] = valign;
+                k->len = (long)strlen(utf8) + 1;
+                k->off = lt_rec_bytes(g, utf8, k->len);
+                lt_rec_done(g, k);
+            }
+        }
         return;
     }
     sc = px / (double)lt_ttf_units_per_em(f);

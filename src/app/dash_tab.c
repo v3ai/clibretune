@@ -463,7 +463,7 @@ static void cache_store(dash_state *st, lt_gfx *g, lt_rect r)
     size_t cells;
     if (c == NULL || r.w <= 0 || r.h <= 0 || x < 0 || y < 0 || x + r.w > c->w || y + r.h > c->h ||
         !lt_mul_size((size_t)r.w, (size_t)r.h, &cells)) { st->cache_w = 0; return; }
-    if (st->cache_w != r.w || st->cache_h != r.h) {
+    if (st->cache_px == NULL || st->cache_w != r.w || st->cache_h != r.h) {
         st->cache_px = (lt_u32 *)lt_realloc(st->cache_px, sizeof(lt_u32) * (cells + 1));
     }
     for (j = 0; j < r.h; j++) {
@@ -480,7 +480,15 @@ static void render_cb(lt_gfx *g, lt_rect r, void *user)
     int i;
     size_t k;
     if (st->view == NULL) { lt_gfx_fill_rect(g, r, LT_RGB(0, 0, 0)); return; }
-    if (!st->refresh_now && st->cache_px != NULL && st->cache_w == r.w && st->cache_h == r.h && g->canvas != NULL) {
+    if (lt_gfx_recording(g)) {
+        /* retained rendering: the canvas cannot be read back, and an unchanged cluster costs
+         * nothing to re-record (its tiles keep their pixels); between refreshes the view state is
+         * unchanged, so this draws exactly what the cached copy would show */
+        if (st->cache_px != NULL) { lt_free(st->cache_px); st->cache_px = NULL; }
+        lt_gfx_fill_rect(g, r, LT_RGB(0, 0, 0));
+        lt_dash_view_render(st->view, g, r, st->env);
+        st->cache_w = r.w; st->cache_h = r.h;
+    } else if (!st->refresh_now && st->cache_px != NULL && st->cache_w == r.w && st->cache_h == r.h && g->canvas != NULL) {
         lt_gfx_blit(g, r.x, r.y, st->cache_px, r.w, r.h, r.w);
     } else {
         lt_gfx_fill_rect(g, r, LT_RGB(0, 0, 0));
