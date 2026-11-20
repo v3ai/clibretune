@@ -134,6 +134,7 @@ struct lt_app {
     /* ECU link */
     lt_app_conn conn;
     lt_ecusim  *sim;                 /* demo mode */
+    lt_simlink *simlink;             /* demo over a modelled slow link (LT_DEMO_BAUD) */
     lt_proto   *proto;
     lt_stream  *link_stream;
     lt_ecu_mem *mem;                 /* ECU shadow (online/demo) */

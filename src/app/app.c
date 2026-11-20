@@ -526,6 +526,7 @@ static void link_free(lt_app *app)
         lt_proto_free(app->proto);
         app->proto = NULL;
     }
+    if (app->simlink != NULL) { lt_simlink_free(app->simlink); app->simlink = NULL; }
     if (app->sim != NULL) { lt_ecusim_free(app->sim); app->sim = NULL; }
     app->link_stream = NULL;
     if (app->mem != NULL) { lt_ecu_mem_free(app->mem); app->mem = NULL; }
@@ -597,15 +598,37 @@ static int connect_io(lt_app *app, const lt_proto_io *io, const char *port, long
     return 0;
 }
 
+static long env_long(const char *name, long dflt)
+{
+    char *e = lt_plat_getenv(name);
+    long v = dflt;
+    if (e != NULL && e[0] != '\0') { v = atol(e); }
+    lt_free(e);
+    return v;
+}
+
 int lt_app_connect_demo(lt_app *app)
 {
     lt_proto_io io;
     int rc;
+    long baud = env_long("LT_DEMO_BAUD", 0L);
     if (app->ini == NULL) { lt_app_toast(app, 3, "No ECU definition loaded"); return -1; }
     lt_app_disconnect(app);
     app->sim = lt_ecusim_new(app->ini);
     io = lt_ecusim_io(app->sim);
-    rc = connect_io(app, &io, "demo", 115200L);
+    if (baud > 0) {
+        /* LT_DEMO_BAUD=115200 [LT_DEMO_LATENCY=ms] [LT_DEMO_CHUNK=bytes]: the simulator behind
+         * a modelled serial link, with real protocol pacing, so the demo waits like a real ECU */
+        lt_simlink_cfg lc;
+        lc.baud = baud;
+        lc.latency_ms = (double)env_long("LT_DEMO_LATENCY", 4L);
+        lc.chunk = (int)env_long("LT_DEMO_CHUNK", 64L);
+        app->simlink = lt_simlink_new(&io, &lc);
+        io = lt_simlink_io(app->simlink);
+        rc = connect_io(app, &io, "demo-link", baud);
+    } else {
+        rc = connect_io(app, &io, "demo", 115200L);
+    }
     if (rc < 0) { return rc; }
     app->conn = LT_APP_DEMO;
     rebind(app);
@@ -716,16 +739,64 @@ int lt_app_burn(lt_app *app)
     return 0;
 }
 
+/* LT_PERF=1: once a second on stderr, how long the ECU service kept the UI thread (avg/max per
+ * call and in total) and how many realtime frames arrived. */
+typedef struct link_perf {
+    int init, on;
+    double t0, sum, max;
+    long calls, frames;
+} link_perf;
+static link_perf g_link_perf;
+
+static void link_perf_add(lt_app *app, double t_in, double t_out, int got)
+{
+    link_perf *lp = &g_link_perf;
+    double d = t_out - t_in;
+    if (!lp->init) {
+        char *e = lt_plat_getenv("LT_PERF");
+        lp->init = 1;
+        lp->on = (e != NULL && e[0] != '\0' && e[0] != '0') ? 1 : 0;
+        lt_free(e);
+        lp->t0 = t_out;
+    }
+    if (!lp->on) { return; }
+    lp->sum += d;
+    if (d > lp->max) { lp->max = d; }
+    lp->calls++;
+    if (got > 0) { lp->frames++; }
+    if (t_out - lp->t0 >= 1000.0) {
+        if (!app->headless) {
+            fprintf(stderr, "perf: ecu %ld frames/s, service %ld calls avg %.3f ms max %.2f ms, "
+                    "UI thread in ECU service %.0f ms/s\n", lp->frames, lp->calls,
+                    lp->calls > 0 ? lp->sum / (double)lp->calls : 0.0, lp->max,
+                    lp->sum * 1000.0 / (t_out - lp->t0));
+        }
+        lp->t0 = t_out; lp->sum = 0.0; lp->max = 0.0; lp->calls = 0; lp->frames = 0;
+    }
+}
+
+static int service_link(lt_app *app);
+
 int lt_app_service(lt_app *app)
+{
+    double t0;
+    int got;
+    lt_ext_tick(app);
+    if ((app->conn != LT_APP_ONLINE && app->conn != LT_APP_DEMO) || app->proto == NULL) { return 0; }
+    t0 = lt_plat_now_ms();
+    got = service_link(app);
+    link_perf_add(app, t0, lt_plat_now_ms(), got);
+    return got;
+}
+
+static int service_link(lt_app *app)
 {
     double now;
     int rc, got = 0;
-    lt_ext_tick(app);
-    if ((app->conn != LT_APP_ONLINE && app->conn != LT_APP_DEMO) || app->proto == NULL) { return 0; }
     now = lt_plat_now_ms();
     /* the demo simulator runs in-process (no link to saturate): poll it at display rate */
-    if (now - app->last_poll_ms < 1000.0 / (app->conn == LT_APP_DEMO ? 60.0
-                                            : (double)LT_CLAMP(app->settings.poll_hz, 5, 100))) {
+    if (now - app->last_poll_ms < 1000.0 / ((app->conn == LT_APP_DEMO && app->simlink == NULL)
+                                            ? 60.0 : (double)LT_CLAMP(app->settings.poll_hz, 5, 100))) {
         return 0;
     }
     app->last_poll_ms = now;
