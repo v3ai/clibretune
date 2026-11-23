@@ -440,7 +440,8 @@ static void menu_tools(lt_app *app)
     int rec = app->rec != NULL && lt_rec_is_recording(app->rec);
     if (lt_ui_menu_item(ui, lt_tr("&AutoTune"), lt_hk_text(app, "tools.autotune"), 0)) { lt_app_autotune_open(app); }
     if (ini->n_dl_entries > 0 || ini->n_channels > 0) {
-        if (lt_ui_menu_item(ui, rec ? "Stop Data &Logging" : "Start Data &Logging", "Ctrl+L", 0)) {
+        if (lt_ui_menu_item(ui, rec ? lt_tr("Stop Data &Logging") : lt_tr("Start Data &Logging"),
+                            lt_hk_text(app, "tools.log"), 0)) {
             lt_app_log_toggle(app);
         }
         if (lt_ui_menu_item(ui, lt_tr("Datalog &Viewer..."), NULL, 0)) { lt_app_datalog_open(app, 1); }

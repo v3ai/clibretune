@@ -162,6 +162,22 @@ LT_TEST(menu_open)
     LT_CHECK(strstr(g_txt, "\xE2\x95\xB0") != NULL);               /* bottom-left corner */
 }
 
+/* the Tools menu shows the logging shortcut the user bound, not a fixed Ctrl+L */
+LT_TEST(menu_shows_rebound_log_shortcut)
+{
+    char *old = lt_plat_getenv("LIBRETUNE_CONFIG_DIR");
+    const char *hk = "tools.log=Ctrl+Alt+G\n";
+    (void)lt_plat_mkdirs("build/test_ttyshot_hk");
+    LT_CHECK(lt_file_write("build/test_ttyshot_hk/hotkeys.conf", hk, strlen(hk)) == 0);
+    lt_plat_setenv("LIBRETUNE_CONFIG_DIR", "build/test_ttyshot_hk");
+    render(80, 30, NULL, "alt+t", NULL, 0, NULL);
+    lt_plat_setenv("LIBRETUNE_CONFIG_DIR", old != NULL ? old : "");
+    lt_free(old);
+    LT_CHECK(strstr(g_txt, "Data Logging") != NULL);
+    LT_CHECK(strstr(g_txt, "Ctrl+Alt+G") != NULL);
+    LT_CHECK(strstr(g_txt, "Ctrl+L ") == NULL);
+}
+
 LT_TEST(ve_table_and_selection)
 {
     char l[1024];
@@ -355,6 +371,7 @@ int main(void)
     LT_RUN(main_view_80x24);
     LT_RUN(main_view_120x40_256);
     LT_RUN(menu_open);
+    LT_RUN(menu_shows_rebound_log_shortcut);
     LT_RUN(ve_table_and_selection);
     LT_RUN(ve_table_16_colors_ascii);
     LT_RUN(dialog_frame);
