@@ -242,7 +242,7 @@ static void rec_build(lt_app *app, lt_logx *x)
     size_t n, i, k = 0;
     rec_drop(app);
     n = lt_datalog_channels_from_ini(app->ini, &names, &units);
-    if (n == 0) { return; }
+    if (n == 0) { lt_strv_free(names, 0); lt_strv_free(units, 0); return; }
     kn = (char **)lt_calloc(n + 1, sizeof(char *));
     ku = (char **)lt_calloc(n + 1, sizeof(char *));
     for (i = 0; i < n; i++) {

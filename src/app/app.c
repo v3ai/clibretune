@@ -480,7 +480,13 @@ int lt_app_log_toggle(lt_app *app)
     if (app->ini == NULL) { return -1; }
     if (app->rec == NULL) {
         n = lt_datalog_channels_from_ini(app->ini, &app->rec_names, &units);
-        if (n == 0) { lt_app_toast(app, 2, "No channels to log"); return -1; }
+        if (n == 0) {
+            lt_strv_free(app->rec_names, 0);
+            app->rec_names = NULL;
+            lt_strv_free(units, 0);
+            lt_app_toast(app, 2, "No channels to log");
+            return -1;
+        }
         app->rec_n = n;
         app->rec = lt_rec_new((const char *const *)app->rec_names, (const char *const *)units, (int)n);
         app->rec_vals = (double *)lt_calloc(n, sizeof(double));
