@@ -88,3 +88,37 @@ cars should review which base tunes to recommend, and the browser should then ma
   cost 17-24 ms at 4K (p95) because whole-tile overdraw is not skipped; scrolling and the datalog
   graph are about 3.5 ms a frame. Next step: per-tile occlusion (skip commands fully covered by a
   later opaque command in that tile).
+- **Monkey testing** (`tools/monkey.py --build --runs 2000 --jobs 8`, needs
+  `tools/gen_definitions.py --extract`): about 20,000 random sessions under ASan/UBSan were clean
+  after the November 2026 usability pass. Re-run before each release and after UI changes.
+
+## 7. Usability decisions
+
+Found in the November 2026 usability pass; each needs a product decision rather than a bug fix.
+
+- **Settings search** (Ctrl+K) only matches names in the sidebar tree. Index the field captions of
+  every dialog and offer "Dialog > Field" results that open the dialog on that field.
+- **Menu conditions** (subMenu / groupMenu / groupChildMenu) are read as visibility then enable;
+  dialog fields were switched to TunerStudio's enable-then-visibility order. Doing the same for
+  menus changes which rusEFI items are greyed versus hidden (test_ini_parse `menus` encodes the
+  current order).
+- **Theme contrast**: several generated themes have warning, muted or border colours under WCAG
+  AA (light: warning text 2.7:1, status bar muted text 2.2:1; nord, dracula, solarized similar).
+  Selected text was fixed; the palette itself comes from tools/gen_themes.py.
+- **One spelling and one verb**: the UI mixes US and UK spelling (colour/color, centre/center)
+  and "burn", "write" and "flash" for writing to the ECU.
+- **Connect entries**: File > Connect ECU..., File > Connect ECU Wizard... and Tools > ECU
+  Connection... overlap; keep one.
+- **Table editing**: Esc reverts the whole selection (users expect it to cancel only the edit),
+  "-" while typing decrements instead of starting a negative number, typed values outside the
+  limits are clamped silently, a no-op operation still adds an undo step, curve "+" steps by 1.0.
+- **Narrow windows**: below about 1100 px the table toolbar hides Burn and 3D, and two-column INI
+  panels overflow; a resizable sidebar and a one-column fallback would help.
+- **Broken project or INI**: an empty or invalid project.json only shows a status-bar line, and an
+  INI with no menus opens silently with an empty sidebar; both deserve an error dialog with a way
+  out (show folder, replace definition, remove from recents).
+- **Recent projects** store paths as given (relative paths break when started elsewhere); needs a
+  per-OS `lt_plat_abspath`. Windows reserved names ("con", "nul") are accepted as project names.
+- **Dashboard Designer**: double-click does not open an item's properties; there is no visible
+  Properties button.
+- **Log viewer**: the file list does not refresh when a recording ends while it is open.
