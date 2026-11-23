@@ -1095,6 +1095,77 @@ LT_TEST(test_modal)
     h_close();
 }
 
+/* a dialog taller than the window: the body scrolls, so the buttons under the list stay
+ * reachable; with room to spare the fill row takes the slack and nothing scrolls */
+static void scene_modal_tall(lt_ui *ui)
+{
+    int w = -1, i;
+    if (lt_ui_modal_begin(ui, "Tall", 300, 600, &s_open)) {
+        for (i = 0; i < 8; i++) {
+            char b[16];
+            lt_snprintf(b, sizeof(b), "Field %d", i);
+            lt_ui_layout_row(ui, 1, &w, 0);
+            lt_ui_label(ui, b);
+        }
+        lt_ui_layout_row(ui, 1, &w, -(24 + 4 + 1));
+        lt_ui_label(ui, "list");
+        R[3] = lt_ui_last_rect(ui);
+        lt_ui_layout_row(ui, 1, &w, 0);
+        if (lt_ui_button(ui, "Create")) { s_n[0]++; }
+        R[0] = lt_ui_last_rect(ui);
+        s_n[7] = (int)lt_ui_last_id(ui);
+        R[1] = lt_ui_clip_get(ui);
+        lt_ui_modal_end(ui);
+    }
+}
+
+LT_TEST(test_modal_taller_than_window_scrolls)
+{
+    reset_state();
+    h_open(500, 240, 0);
+    H.scene = scene_modal_tall;
+    s_open = 1;
+    frames(4);
+    LT_CHECK(R[0].y + R[0].h > 240);                       /* below the window at first */
+    LT_CHECK_INT(R[3].h, 24);                              /* the fill row shrank to one row */
+    wheel(250, 120, -20);
+    LT_CHECK(R[0].y >= R[1].y && R[0].y + R[0].h <= R[1].y + R[1].h);
+    click_rect(R[0]);
+    LT_CHECK_INT(s_n[0], 1);
+    /* keyboard only: Tab to the button scrolls it into view */
+    wheel(250, 120, 20);
+    LT_CHECK(R[0].y + R[0].h > 240);
+    key(LT_KEY_TAB);
+    LT_CHECK(lt_ui_focus(H.ui) == (lt_u32)s_n[7]);
+    frames(2);
+    LT_CHECK(R[0].y >= R[1].y && R[0].y + R[0].h <= R[1].y + R[1].h);
+    h_close();
+    /* a window with room: no scrolling, the fill row grows */
+    reset_state();
+    h_open(500, 800, 0);
+    H.scene = scene_modal_tall;
+    s_open = 1;
+    frames(4);
+    LT_CHECK(R[3].h > 100);
+    LT_CHECK(R[0].y + R[0].h <= 400 + 300);
+    LT_CHECK_INT(H.ui->nscr, 0);
+    h_close();
+    /* the terminal too (80x8 cells) */
+    reset_state();
+    h_open(80, 8, 1);
+    H.scene = scene_modal_tall;
+    s_open = 1;
+    frames(4);
+    wheel(40 * 8, 4 * 16, 20);
+    LT_CHECK(R[0].y + R[0].h > R[1].y + R[1].h);
+    key(LT_KEY_TAB);
+    frames(2);
+    LT_CHECK(R[0].y >= R[1].y && R[0].y + R[0].h <= R[1].y + R[1].h);
+    key(LT_KEY_ENTER);
+    LT_CHECK_INT(s_n[0], 1);
+    h_close();
+}
+
 static void scene_msgbox(lt_ui *ui)
 {
     int r = lt_ui_msgbox(ui, "m", "Confirm", "Save the changes before closing?", "Save|Discard|Cancel", &s_open);
@@ -1232,6 +1303,47 @@ LT_TEST(test_scroll_area)
     wheel(R[0].x + 30, R[0].y + 20, -3);
     click_rect(R[1]);
     LT_CHECK_INT(s_n[5], 1);
+    h_close();
+}
+
+/* Tab through a scroll area: the focused widget is scrolled into view, both ways */
+static void scene_scroll_focus(lt_ui *ui)
+{
+    int w = -1, i;
+    lt_ui_layout_row(ui, 1, &w, 100);
+    if (lt_ui_scroll_begin(ui, "sc")) {
+        R[0] = lt_ui_scroll_view(ui);
+        for (i = 0; i < 12; i++) {
+            char b[24];
+            lt_snprintf(b, sizeof(b), "Row %d", i);
+            lt_ui_layout_row(ui, 1, &w, 0);
+            (void)lt_ui_button(ui, b);
+            if (lt_ui_last_focused(ui)) { R[1] = lt_ui_last_rect(ui); }
+        }
+        lt_ui_scroll_end(ui);
+    }
+}
+
+LT_TEST(test_tab_scrolls_focus_into_view)
+{
+    int i;
+    reset_state();
+    h_open(400, 300, 0);
+    H.scene = scene_scroll_focus;
+    frames(3);
+    for (i = 0; i < 12; i++) {
+        key(LT_KEY_TAB);
+        frame();                                  /* the scroll lands one frame later */
+        LT_CHECK(R[1].y >= R[0].y && R[1].y + R[1].h <= R[0].y + R[0].h);
+    }
+    for (i = 0; i < 11; i++) {
+        key_ex(LT_KEY_TAB, LT_MOD_SHIFT);
+        frame();
+        LT_CHECK(R[1].y >= R[0].y && R[1].y + R[1].h <= R[0].y + R[0].h);
+    }
+    /* the wheel still scrolls away from the focused widget */
+    wheel(R[0].x + 30, R[0].y + 20, -50);
+    LT_CHECK(R[1].y + R[1].h <= R[0].y);
     h_close();
 }
 
@@ -2163,9 +2275,11 @@ int main(void)
     LT_RUN(test_menus);
     LT_RUN(test_context_menu);
     LT_RUN(test_modal);
+    LT_RUN(test_modal_taller_than_window_scrolls);
     LT_RUN(test_msgbox);
     LT_RUN(test_windows);
     LT_RUN(test_scroll_area);
+    LT_RUN(test_tab_scrolls_focus_into_view);
     LT_RUN(test_splitter);
     LT_RUN(test_layout);
     LT_RUN(test_grid_selection);

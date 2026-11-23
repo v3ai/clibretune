@@ -67,6 +67,7 @@ typedef struct ui_layout {
     int has_override;
     lt_rect override_r;
     int sp_x, sp_y;
+    int fill_slack;      /* height that fill rows (height < 0) took beyond one row */
 } ui_layout;
 
 /* persistent per-id state; pointers are stable until ui_state_gc */
@@ -187,6 +188,7 @@ struct lt_ui {
     /* focus cycling */
     lt_u32 first_focusable, last_focusable, prev_focusable;
     int focus_seen, focus_miss, focus_req, focus_req_kind, focus_kind, wrap_back;
+    lt_u32 focus_reveal;           /* focus moved by the keyboard: scroll this widget into view */
     int tab_taken;
     /* hover timing (tooltips) */
     lt_u32 tip_id, tip_id_prev;
@@ -262,6 +264,7 @@ struct lt_ui {
     /* cell mode: fit a modal to its content (measured while it is drawn, used next frame) */
     lt_u32 modal_id[4];
     int modal_lay[4], modal_fill[4], modal_slackn[4], modal_slack[4];
+    int modal_scr[4];              /* the modal's content did not fit: it is drawn in a scroll area */
     lt_u32 prev_tree;
     /* grids */
     ui_grid grids[4];

@@ -514,12 +514,36 @@ lt_bool ui_modal_begin_dev(lt_ui *ui, const char *title, int w, int h, int *open
     ui_layout_push(ui, lt_rect_make(dlg.x + pad, dlg.y + th + (ui->cell ? 0 : lt_ui_px(ui, 12)), dlg.w - 2 * pad,
                                     dlg.h - th - (ui->cell ? 16 : lt_ui_px(ui, 24))));
     ui->modal_lay[ui->nmodal - 1] = ui->nlay - 1;
+    ui->modal_scr[ui->nmodal - 1] = 0;
+    {
+        /* content that did not fit last frame (small window, large scale): scroll the dialog
+         * body; fill rows get their minimum height in the taller virtual body */
+        lt_rect body = ui_lay(ui)->body;
+        int need = fresh ? 0 : st->i[1];
+        if (need > body.h && ui->nscr < UI_MAX_SCROLL) {
+            lt_ui_layout_set_rect(ui, body);
+            if (lt_ui_scroll_begin(ui, "##modalscroll")) {
+                ui_layout *CL = ui_lay(ui);
+                if (need > CL->body.h) { CL->body.h = need; }
+                ui->modal_scr[ui->nmodal - 1] = 1;
+                ui->modal_lay[ui->nmodal - 1] = ui->nlay - 1;
+            }
+        }
+    }
     return LT_TRUE;
 }
 
 void lt_ui_modal_end(lt_ui *ui)
 {
     int *open;
+    if (ui->nmodal > 0) {
+        /* height the content needs with every fill row at its minimum, for the next frame */
+        const ui_layout *CL = ui_lay(ui);
+        ui_state *ms = ui_state_get(ui, ui->modal_id[ui->nmodal - 1]);
+        int need = CL->max_y - CL->body.y - CL->fill_slack;
+        need = LT_CLAMP(need, 0, 16 * LT_MAX(ui->sh, 1));
+        if (need != ms->i[1]) { ms->i[1] = need; ui_request(ui); }
+    }
     if (ui->cell && ui->nmodal > 0) {
         /* content height of this frame: all fill rows must be scroll areas to know the slack */
         int m = ui->nmodal - 1;
@@ -535,6 +559,7 @@ void lt_ui_modal_end(lt_ui *ui)
             ms->d[1] = 1.0;
         }
     }
+    if (ui->nmodal > 0 && ui->modal_scr[ui->nmodal - 1]) { lt_ui_scroll_end(ui); }
     ui_layout_pop(ui);
     lt_ui_clip_pop(ui);
     lt_ui_pop_id(ui);
