@@ -162,6 +162,17 @@ LT_TEST(menu_open)
     LT_CHECK(strstr(g_txt, "\xE2\x95\xB0") != NULL);               /* bottom-left corner */
 }
 
+/* a File menu taller than the terminal scrolls inside its frame: no row is drawn over the
+ * bottom edge */
+LT_TEST(scrolled_menu_keeps_its_frame)
+{
+    char l[1024];
+    render(80, 24, NULL, "alt+f", NULL, 1, NULL);
+    line_of(23, l, sizeof(l));
+    LT_CHECK(strncmp(l, "+-----", 6) == 0);
+    LT_CHECK(strstr(l, "CSV") == NULL);
+}
+
 /* the Tools menu shows the logging shortcut the user bound, not a fixed Ctrl+L */
 LT_TEST(menu_shows_rebound_log_shortcut)
 {
@@ -399,6 +410,7 @@ int main(void)
     LT_RUN(main_view_80x24);
     LT_RUN(main_view_120x40_256);
     LT_RUN(menu_open);
+    LT_RUN(scrolled_menu_keeps_its_frame);
     LT_RUN(menu_shows_rebound_log_shortcut);
     LT_RUN(one_help_menu);
     LT_RUN(sidebar_search_enter_opens_first_match);

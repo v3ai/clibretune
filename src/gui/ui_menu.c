@@ -132,7 +132,8 @@ void ui_popup_begin(lt_ui *ui, int idx, int min_w, int est_h)
     ui->pop_need[idx] = 0;
     ui_layout_push(ui, lt_rect_make(x + ins, y + insy - sc, w - 2 * ins, h - 2 * insy));
     ui_lay(ui)->sp_y = 0;
-    lt_ui_clip_push(ui, rect);
+    /* scrolled: rows stop at the frame instead of running over its top and bottom edges */
+    lt_ui_clip_push(ui, h > vh ? lt_rect_make(x, y + insy, w, vh - 2 * insy) : rect);
 }
 
 static void popup_nav(lt_ui *ui, int idx)
