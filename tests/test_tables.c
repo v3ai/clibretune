@@ -274,6 +274,40 @@ LT_TEST(curve_edit_commit_on_tab)
     lt_app_free(app);
 }
 
+/* Paste only writes the pasted cells: other cells keep values finer than the display precision
+ * (Speeduino's closed loop boost duty table is 0.5 % per step shown with 0 decimals) */
+LT_TEST(table_paste_leaves_other_cells)
+{
+    static double before[4096], after[4096];
+    double arr[64];
+    lt_app *app = lt_app_new();
+    const lt_ini_const *zc;
+    lt_pagesrc ps;
+    size_t n, k, changed = 0;
+    LT_CHECK(lt_app_start_demo(app, "tests/fixtures/ini/speeduino_202501.ini") == 0);
+    zc = lt_ini_find_const(app->ini, "boostTableDutyLookup");
+    LT_CHECK(zc != NULL);
+    if (zc == NULL) { lt_app_free(app); return; }
+    for (k = 0; k < 64; k++) { arr[k] = 30.5 + (double)k; }
+    ps = lt_app_pages(app);
+    LT_CHECK(lt_ini_const_set_array(app->ini, zc, &ps, arr, 64) == 0);
+    LT_CHECK(lt_app_table_editor_open(app, "boostDCLupTbl") == 0);
+    lt_app_screenshot(app, "build/lt_test_tables6.ppm", 1100, 800, 3);
+    click(app, 500, 300, LT_MB_LEFT);
+    press(app, LT_KEY_HOME, LT_MOD_CTRL);
+    n = table_snap(app, "boostDCLupTbl", before, 4096);
+    LT_CHECK(n == 64);
+    press(app, 'c', LT_MOD_CTRL);
+    press(app, LT_KEY_RIGHT, 0);
+    press(app, 'v', LT_MOD_CTRL);
+    LT_CHECK(table_snap(app, "boostDCLupTbl", after, 4096) == n);
+    for (k = 0; k < n; k++) {
+        if (after[k] != before[k]) { changed++; }
+    }
+    LT_CHECK(changed == 1);
+    lt_app_free(app);
+}
+
 int main(void)
 {
     LT_RUN(table_selection_keys);
@@ -281,5 +315,6 @@ int main(void)
     LT_RUN(curve_edit_commit_on_tab);
     LT_RUN(table_keys_edit_undo);
     LT_RUN(curve_and_autotune_tabs);
+    LT_RUN(table_paste_leaves_other_cells);
     LT_TEST_MAIN_END
 }

@@ -360,7 +360,8 @@ static void tbl_paste(lt_app *app, lt_app_tab *tab, tbl_tab *st, int mode)
 {
     char *txt = lt_ui_clipboard_get(app->ui);
     double *blk = NULL, row[64];
-    size_t bh = 0, bw = 0;
+    lt_tcell *put;
+    size_t bh = 0, bw = 0, nput = 0;
     int r0, c0, r1, c1, r, c, rows = (int)st->v.rows, cols = (int)st->v.cols;
     if (txt != NULL && txt[0] != '\0') {
         const char *p = txt;
@@ -397,11 +398,14 @@ static void tbl_paste(lt_app *app, lt_app_tab *tab, tbl_tab *st, int mode)
     if (blk == NULL) { lt_app_toast(app, 2, "Clipboard is empty"); return; }
     tbl_bbox_disp(st, &r0, &c0, &r1, &c1);
     lt_tblview_push_undo(&st->v);
+    /* only the pasted cells are clamped and rounded: the others keep their stored values */
+    put = (lt_tcell *)lt_calloc((size_t)(rows * cols) + 1, sizeof(lt_tcell));
     if (bh == 1 && bw == 1 && st->nsel > 1) {
         for (r = 0; r < rows; r++) {
             for (c = 0; c < cols; c++) {
                 if (st->sel[(size_t)r * (size_t)cols + (size_t)c]) {
                     tbl_put(st, (size_t)r, (size_t)c, blk[0], mode);
+                    put[nput].y = (size_t)r; put[nput].x = (size_t)c; nput++;
                 }
             }
         }
@@ -412,17 +416,13 @@ static void tbl_paste(lt_app *app, lt_app_tab *tab, tbl_tab *st, int mode)
                 int dr = r0 + (int)i, dc = c0 + (int)j;
                 if (dr < rows && dc < cols) {
                     tbl_put(st, (size_t)drow(st, dr), (size_t)dc, blk[i * bw + j], mode);
+                    put[nput].y = (size_t)drow(st, dr); put[nput].x = (size_t)dc; nput++;
                 }
             }
         }
     }
-    {
-        lt_tcell *all = (lt_tcell *)lt_calloc((size_t)(rows * cols), sizeof(lt_tcell));
-        size_t y, x, n = 0;
-        for (y = 0; y < (size_t)rows; y++) { for (x = 0; x < (size_t)cols; x++) { all[n].y = y; all[n].x = x; n++; } }
-        tbl_fix(st, all, n);
-        lt_free(all);
-    }
+    tbl_fix(st, put, nput);
+    lt_free(put);
     lt_free(blk);
     tbl_commit(app, tab, st);
 }
