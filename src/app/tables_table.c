@@ -1064,7 +1064,7 @@ static void tbl_toolbar(lt_app *app, lt_app_tab *tab, tbl_tab *st)
     case TB_STYLE3D: st->t3.style = (st->t3.style + 1) % LT_T3D_STYLES; break;
     case TB_COLOR3D: st->t3.color_mode = (st->t3.color_mode + 1) % LT_T3D_MODES; break;
     case TB_GRID3D: st->t3.grid = !st->t3.grid; break;
-    case TB_BURN: lt_app_burn(app); tab->dirty = 0; break;
+    case TB_BURN: if (lt_app_burn(app) == 0) { tab->dirty = 0; } break;   /* a failed burn keeps the mark */
     default: break;
     }
 }
