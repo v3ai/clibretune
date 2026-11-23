@@ -503,7 +503,8 @@ void lt_feat_basetune_open(lt_app *app, const char *mode)
                                                                           : "Base Tunes");
 }
 
-static void act_new(lt_app *app) { lt_feat_basetune_open(app, "new"); }
+static void sw_new(lt_app *app, const char *mode) { lt_feat_basetune_open(app, mode); }
+static void act_new(lt_app *app) { lt_feat_guard_switch(app, sw_new, "new"); }
 static void act_load(lt_app *app) { lt_feat_basetune_open(app, "load"); }
 
 void lt_feat_basetune_register(lt_app_ext *reg)

@@ -121,9 +121,9 @@ flame button, or the **Burn** button next to "*N* unburned changes" in the statu
 the settings that are only in the ECU's RAM. LibreTune checks the tune for pin conflicts before
 burning.
 
-Quitting, closing the project or disconnecting with unburned or unsaved changes asks first:
-**Burn and quit**, **Save and quit**, **Quit without saving** or **Cancel** (the same for close and
-disconnect).
+Quitting, closing the project (also by opening, creating or importing another one, or starting the
+demo) or disconnecting with unburned or unsaved changes asks first: **Burn and quit**, **Save and
+quit**, **Quit without saving** or **Cancel** (the same for close and disconnect).
 
 Save often (Ctrl+S). While a project has unsaved changes LibreTune also writes them every minute to
 `recovery/autosave.msq` in the project folder; if it was not closed normally (crash, power cut), the

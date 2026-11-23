@@ -894,9 +894,15 @@ static void wiz_close(lt_app *app, lt_app_dialog *d)
     d->data = NULL;
 }
 
+static void sw_wizard(lt_app *app, const char *arg)
+{
+    LT_UNUSED(arg);
+    (void)lt_app_dialog_push(app, "connect_wizard", "", "Connect ECU");
+}
+
 static void act_wizard(lt_app *app)
 {
-    (void)lt_app_dialog_push(app, "connect_wizard", "", "Connect ECU");
+    lt_feat_guard_switch(app, sw_wizard, "");    /* the wizard opens a new project */
 }
 
 /* ------------------------------------------------------------------ */

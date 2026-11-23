@@ -22,6 +22,8 @@ typedef struct guard_state {
     /* question */
     int open, what;
     lt_guard_q q;
+    lt_feat_guard_fn next;           /* lt_feat_guard_switch: what to do instead of closing */
+    char next_arg[512];
     /* autosave / recovery */
     char proj[512];
     double t_auto, dirty_since;
@@ -180,10 +182,21 @@ static void do_it(lt_app *app, int what)
     }
 }
 
+/* close / quit / disconnect, or the action lt_feat_guard_switch was given */
+static void go_on(lt_app *app, guard_state *g, int what)
+{
+    lt_feat_guard_fn fn = g->next;
+    char arg[512];
+    g->next = NULL;
+    if (fn == NULL) { do_it(app, what); return; }
+    lt_strlcpy(arg, g->next_arg, sizeof(arg));
+    fn(app, arg);
+}
+
 static void act(lt_app *app, guard_state *g, int a)
 {
     int what = g->what;
-    if (a == LT_GA_CANCEL) { return; }
+    if (a == LT_GA_CANCEL) { g->next = NULL; return; }
     if (a == LT_GA_BURN) {
         if (lt_app_burn(app) != 0) { return; }             /* burn explains what went wrong */
         if (app->has_project && app->modified && lt_app_save_tune(app) != 0) { return; }
@@ -191,25 +204,29 @@ static void act(lt_app *app, guard_state *g, int a)
         if (lt_app_save_tune(app) != 0) { return; }
     }
     if (what != LT_GUARD_DISCONNECT) { lt_feat_autosave_discard(app); }
-    do_it(app, what);
+    go_on(app, g, what);
 }
 
-static void ask(lt_app *app, int what)
+static void ask_then(lt_app *app, int what, lt_feat_guard_fn fn, const char *arg)
 {
     guard_state *g = gs(app);
     int unb, unsaved;
+    g->next = fn;
+    lt_strlcpy(g->next_arg, arg != NULL ? arg : "", sizeof(g->next_arg));
     if (what != LT_GUARD_DISCONNECT) { (void)lt_feat_prefs_auto_burn(app); }   /* "burn on close" */
     update_unburned(app, g);
     unb = app->conn == LT_APP_ONLINE ? lt_feat_guard_unburned(app) : 0;
     unsaved = app->ini != NULL && app->has_project && app->modified;
     if (!lt_guard_question(what, unb, unsaved, &g->q)) {
         if (what != LT_GUARD_DISCONNECT && app->has_project) { lt_feat_autosave_discard(app); }
-        do_it(app, what);
+        go_on(app, g, what);
         return;
     }
     g->what = what;
     g->open = 1;
 }
+
+static void ask(lt_app *app, int what) { ask_then(app, what, NULL, NULL); }
 
 void lt_feat_guard_quit(lt_app *app) { ask(app, LT_GUARD_QUIT); }
 void lt_feat_guard_close_project(lt_app *app) { ask(app, LT_GUARD_CLOSE); }
@@ -217,6 +234,10 @@ void lt_feat_guard_disconnect(lt_app *app)
 {
     if (app->conn == LT_APP_OFFLINE && app->proto == NULL) { return; }
     ask(app, LT_GUARD_DISCONNECT);
+}
+void lt_feat_guard_switch(lt_app *app, lt_feat_guard_fn fn, const char *arg)
+{
+    if (fn != NULL) { ask_then(app, LT_GUARD_CLOSE, fn, arg); }
 }
 
 /* A question with buttons sized to their labels (lt_ui_msgbox has fixed narrow ones).

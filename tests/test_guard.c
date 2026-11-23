@@ -2,7 +2,7 @@
  * quit / close / disconnect (which buttons, what they do), the autosave recovery file (write,
  * offer only when it differs, remove), the setup checklist's links into real ECU definitions
  * (rusEFI demo, Speeduino) and its per-project state; in the app, a project closed from the
- * question.
+ * question, and the same question before another project replaces one with unsaved changes.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 #include "lt_test.h"
@@ -286,6 +286,44 @@ LT_TEST(test_close_from_question)
     lt_app_free(app);
 }
 
+static int g_switched;
+static void sw_open(lt_app *app, const char *dir)
+{
+    g_switched++;
+    LT_CHECK(lt_app_open_project(app, dir) == 0);
+}
+
+/* File > Open Recent (and the other ways to replace the project) with unsaved changes: the
+ * question first; Escape keeps everything, "Close without saving" opens the other project */
+LT_TEST(test_switch_project_asks)
+{
+    lt_app *app = lt_app_new();
+    char a[512], b[512], k[64];
+    LT_CHECK(make_project(app, "sw_a", a, sizeof(a)) == 0);
+    LT_CHECK(make_project(app, "sw_b", b, sizeof(b)) == 0);
+    /* nothing to lose: at once */
+    g_switched = 0;
+    lt_feat_guard_switch(app, sw_open, a);
+    LT_CHECK(g_switched == 1 && strcmp(app->project.path, a) == 0);
+    lt_feat_guard_switch(app, sw_open, b);
+    LT_CHECK(g_switched == 2 && strcmp(app->project.path, b) == 0);
+    /* an unsaved edit: asked first */
+    LT_CHECK(edit_one(app) == 0);
+    g_switched = 0;
+    lt_feat_guard_switch(app, sw_open, a);
+    tty(app, NULL);
+    LT_CHECK(g_switched == 0 && strcmp(app->project.path, b) == 0);
+    LT_CHECK(strstr(g_txt, "Close without saving") != NULL);
+    tty(app, "esc");                                   /* closed: nothing happens */
+    LT_CHECK(g_switched == 0 && strcmp(app->project.path, b) == 0 && app->modified);
+    lt_feat_guard_switch(app, sw_open, a);
+    tty(app, NULL);
+    LT_CHECK(click_on("Close without saving", k, sizeof(k)));
+    tty(app, k);
+    LT_CHECK(g_switched == 1 && strcmp(app->project.path, a) == 0);
+    lt_app_free(app);
+}
+
 int main(void)
 {
     LT_RUN(test_question);
@@ -294,5 +332,6 @@ int main(void)
     LT_RUN(test_setup_links);
     LT_RUN(test_setup_state);
     LT_RUN(test_close_from_question);
+    LT_RUN(test_switch_project_asks);
     LT_TEST_MAIN_END
 }

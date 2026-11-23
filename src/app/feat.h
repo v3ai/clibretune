@@ -242,6 +242,12 @@ int  lt_feat_guard_unburned(lt_app *app);
 void lt_feat_guard_quit(lt_app *app);
 void lt_feat_guard_close_project(lt_app *app);
 void lt_feat_guard_disconnect(lt_app *app);
+/* something is about to replace the open project (open another, new project, import, demo):
+ * ask like close does when changes would be lost, then call fn(app, arg) - at once when nothing
+ * would be lost, after Burn / Save / "Close without saving", never after Cancel. The project is
+ * not closed here: fn opening another one closes it, fn opening a dialog leaves it open. */
+typedef void (*lt_feat_guard_fn)(lt_app *app, const char *arg);
+void lt_feat_guard_switch(lt_app *app, lt_feat_guard_fn fn, const char *arg);
 void lt_feat_guard_statusbar(lt_app *app, lt_rect r);
 int  lt_feat_guard_statusbar_width(lt_app *app);
 int  lt_feat_autosave_now(lt_app *app);
