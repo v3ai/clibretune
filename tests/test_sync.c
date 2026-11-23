@@ -259,6 +259,20 @@ LT_TEST(connect_dialog_without_definition)
     lt_app_free(app);
 }
 
+/* the wizard's "nothing found" note may say "tick Show all ports": the box is there to tick */
+LT_TEST(wizard_offers_show_all_ports)
+{
+    lt_app *app = lt_app_new();
+    int i;
+    g_txt[0] = '\0';
+    LT_CHECK(lt_app_dialog_push(app, "connect_wizard", "", "Connect ECU") != NULL);
+    for (i = 0; i < 20 && strstr(g_txt, "Scan again") == NULL; i++) { tty(app, NULL); }
+    if (strstr(g_txt, "Show all ports to") != NULL || strstr(g_txt, "ports are hidden") != NULL) {
+        LT_CHECK(strstr(g_txt, "Show all ports (also") != NULL);
+    }
+    lt_app_free(app);
+}
+
 int main(void)
 {
     LT_RUN(signature_match);
@@ -268,5 +282,6 @@ int main(void)
     LT_RUN(use_ecu_replaces_project);
     LT_RUN(ignore_keeps_project_tune);
     LT_RUN(connect_dialog_without_definition);
+    LT_RUN(wizard_offers_show_all_ports);
     LT_TEST_MAIN_END
 }
