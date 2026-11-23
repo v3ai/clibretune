@@ -69,6 +69,14 @@ REWRITES = [
      " dashboard.\n\n"),
     ("introduction", r",\s*keyboard navigation,\s*and multi-monitor support\.",
      " and keyboard navigation."),
+    ("features/autotune", r"3\. Or click \*\*Apply & Save\*\* to update the tune file\n"
+     r"4\. \*\*Burn\*\* to make changes permanent in ECU flash\n",
+     "3. **Undo** (Ctrl+Z) writes the table back as it was before the last Send to ECU\n"
+     "4. **Burn** to make changes permanent in ECU flash; File > Save Tune keeps them in the"
+     " project\n"),
+    ("features/autotune/usage-guide", r"This sends changes to ECU RAM\. They take effect immediately\.\n",
+     "This sends changes to ECU RAM. They take effect immediately. **Undo** (Ctrl+Z) writes the\n"
+     "table back as it was before the last Send to ECU.\n"),
 ]
 FORBIDDEN_RE = re.compile(r"Install and restart|pop-out icon|Pop out dashboards|popped out|"
                           r"multi-monitor support|cryptographically signed", re.I)

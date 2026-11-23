@@ -1,6 +1,7 @@
 /* test_tables.c - table editor / AutoTune screens driven headlessly through key events.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
+#include <math.h>
 #include <string.h>
 #include "lt_test.h"
 #include "../src/app/app.h"
@@ -173,8 +174,61 @@ LT_TEST(table_selection_keys)
     lt_app_free(app);
 }
 
+/* number of veTableTbl cells that differ from z (rows*cols values, row-major) */
+static int ve_diffs(lt_app *app, const double *z, size_t rows, size_t cols)
+{
+    size_t r, c;
+    int n = 0;
+    for (r = 0; r < rows; r++) {
+        for (c = 0; c < cols; c++) { if (fabs(cell0(app, "veTableTbl", r, c) - z[r * cols + c]) > 1e-9) { n++; } }
+    }
+    return n;
+}
+
+/* AutoTune: Send to ECU, then Undo (Ctrl+Z) writes the table back as it was */
+LT_TEST(autotune_send_undo)
+{
+    char buf[512];
+    lt_app *app;
+    double z[1024];
+    size_t rows, cols, r, c;
+    int i;
+    const lt_ini_table *t;
+    lt_pagesrc ps;
+    lt_tblview v;
+    lt_plat_clock_virtual(1);                  /* 30 s of demo driving without waiting */
+    app = lt_app_new();
+    LT_CHECK(lt_app_find_demo_ini(buf, sizeof(buf)) != NULL);
+    LT_CHECK(lt_app_start_demo(app, buf) == 0);
+    LT_CHECK(lt_app_autotune_open(app) == 0);
+    lt_app_screenshot(app, "build/lt_test_at_undo.ppm", 1280, 800, 3);
+    t = lt_ini_find_table(app->ini, "veTableTbl");
+    ps = lt_app_pages(app);
+    lt_tblview_init(&v);
+    LT_CHECK(t != NULL && lt_tblview_load_table(&v, app->ini, t, &ps) == 0);
+    rows = v.rows; cols = v.cols;
+    lt_tblview_free(&v);
+    LT_CHECK(rows * cols > 0 && rows * cols <= 1024);
+    if (rows * cols == 0 || rows * cols > 1024) { lt_app_free(app); lt_plat_clock_virtual(0); return; }
+    for (r = 0; r < rows; r++) {
+        for (c = 0; c < cols; c++) { z[r * cols + c] = cell0(app, "veTableTbl", r, c); }
+    }
+    press(app, ' ', 0);
+    for (i = 0; i < 500; i++) { lt_plat_sleep_ms(60); lt_app_service(app); frame(app); }
+    press(app, ' ', 0);
+    click(app, 1093, 115, LT_MB_LEFT);         /* Send to ECU (1280 x 800 window) */
+    LT_CHECK(ve_diffs(app, z, rows, cols) > 0);
+    press(app, 'z', LT_MOD_CTRL);
+    LT_CHECK_INT(ve_diffs(app, z, rows, cols), 0);
+    press(app, 'z', LT_MOD_CTRL);              /* nothing more to undo */
+    LT_CHECK_INT(ve_diffs(app, z, rows, cols), 0);
+    lt_app_free(app);
+    lt_plat_clock_virtual(0);
+}
+
 int main(void)
 {
+    LT_RUN(autotune_send_undo);
     LT_RUN(table_selection_keys);
     LT_RUN(table_keys_edit_undo);
     LT_RUN(curve_and_autotune_tabs);

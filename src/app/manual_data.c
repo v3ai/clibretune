@@ -1687,8 +1687,8 @@ static const char *const mp_9_0[] = {
     "",
     "1. Review recommendations in the grid",
     "2. Click **Send to ECU** to apply without saving",
-    "3. Or click **Apply & Save** to update the tune file",
-    "4. **Burn** to make changes permanent in ECU flash",
+    "3. **Undo** (Ctrl+Z) writes the table back as it was before the last Send to ECU",
+    "4. **Burn** to make changes permanent in ECU flash; File > Save Tune keeps them in the project",
     "",
     "## Cell Locking",
     "",
@@ -1910,7 +1910,8 @@ static const char *const mp_10_0[] = {
     "Button: Send to ECU (applies without saving)",
     "```",
     "",
-    "This sends changes to ECU RAM. They take effect immediately.",
+    "This sends changes to ECU RAM. They take effect immediately. **Undo** (Ctrl+Z) writes the",
+    "table back as it was before the last Send to ECU.",
     "",
     "**Drive Test (5 minutes)**",
     "- Take a short drive (just around the block)",
@@ -2287,7 +2288,7 @@ static const char *const mp_10_0[] = {
     "",
 };
 static const lt_man_part mpp_10[] = {
-    { mp_10_0, 576 },
+    { mp_10_0, 577 },
 };
 
 static const char *const mp_11_0[] = {

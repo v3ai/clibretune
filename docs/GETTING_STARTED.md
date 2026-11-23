@@ -141,8 +141,9 @@ TunerStudio open directly.
 With a wideband sensor and a warm engine: **Tools > AutoTune** (Ctrl+Shift+A), choose the VE table,
 check the target AFR table and the filter settings, then press Space to start. Drive steadily
 through the load and rpm range; cells fill as data arrives. Lock cells you trust with `L`, review the
-proposed changes, apply them and burn. **Tools > WUE Analyze** and **Trim Table Analyze** work the same
-way for warm-up enrichment and per-cylinder trims.
+proposed changes, apply them with **Send to ECU** (**Undo** or Ctrl+Z puts the table back) and burn.
+**Tools > WUE Analyze** and **Trim Table Analyze** work the same way for warm-up enrichment and
+per-cylinder trims.
 
 ## 8. Update the firmware
 

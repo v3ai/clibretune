@@ -26,6 +26,9 @@ typedef struct at_slot {
     lt_at_rec *recs; size_t nrecs, cap;
     unsigned char *sel; size_t sel_cap;
     lt_atx_trace trace;            /* cells visited by the live operating point */
+    double *undo_z;                /* the table before the last Send to ECU (or NULL) */
+    size_t undo_rows, undo_cols;
+    int undo_tsel;
 } at_slot;
 
 typedef struct at_tab {
@@ -412,6 +415,12 @@ static int at_apply(lt_app *app, at_tab *st)
     if (!st->s.loaded || st->s.nrecs == 0) { lt_app_toast(app, 2, "No recommendations to apply"); return 0; }
     lt_tblview_z_range(&st->s.ve, app->ini, &zl, &zh);
     if (zh > zl) { if (zl > lo) { lo = zl; } if (zh < hi) { hi = zh; } }
+    lt_free(st->s.undo_z);         /* at_load below drops the view's own undo history */
+    st->s.undo_z = (double *)lt_malloc((st->s.ve.rows * st->s.ve.cols + 1) * sizeof(double));
+    memcpy(st->s.undo_z, st->s.ve.z, st->s.ve.rows * st->s.ve.cols * sizeof(double));
+    st->s.undo_rows = st->s.ve.rows;
+    st->s.undo_cols = st->s.ve.cols;
+    st->s.undo_tsel = st->s.tsel;
     lt_tblview_push_undo(&st->s.ve);
     for (i = 0; i < st->s.nrecs; i++) {
         const lt_at_rec *r = &st->s.recs[i];
@@ -440,6 +449,46 @@ static int at_apply(lt_app *app, at_tab *st)
         else { lt_app_toast(app, 2, "Sent to RAM; connect to burn"); }
     }
     return 1;
+}
+
+static int at_can_undo(const at_slot *sl)
+{
+    return sl->loaded && sl->undo_z != NULL && sl->undo_tsel == sl->tsel && sl->undo_rows == sl->ve.rows &&
+           sl->undo_cols == sl->ve.cols;
+}
+
+/* write back the shown table as it was before the last Send to ECU; returns 1 when written */
+static int at_undo_slot(lt_app *app, at_tab *st)
+{
+    lt_pagesrc dst = lt_app_pages(app);
+    size_t r, c;
+    int was = st->running;
+    if (!at_can_undo(&st->s)) { return 0; }
+    for (r = 0; r < st->s.ve.rows; r++) {
+        for (c = 0; c < st->s.ve.cols; c++) { lt_tblview_set(&st->s.ve, r, c, st->s.undo_z[r * st->s.ve.cols + c]); }
+    }
+    if (lt_tblview_commit(&st->s.ve, app->ini, &dst) < 0) {
+        lt_app_toast(app, 3, "Write failed: %s", lt_err_get());
+        return 0;
+    }
+    lt_free(st->s.undo_z);
+    st->s.undo_z = NULL;
+    lt_app_edited(app);
+    at_load(app, st);
+    if (was) { lt_at_start(st->s.at); }
+    return 1;
+}
+
+static void at_undo(lt_app *app, at_tab *st)
+{
+    int n = at_undo_slot(app, st);
+    if (st->sec_on) {
+        at_swap(st);
+        n += at_undo_slot(app, st);
+        at_swap(st);
+    }
+    if (n == 0) { lt_app_toast(app, 2, "Nothing to undo"); return; }
+    lt_app_toast(app, 1, "%s restored as before Send to ECU", n > 1 ? "Both tables" : st->names[st->s.tsel]);
 }
 
 static void at_apply_other(lt_app *app, at_tab *st)
@@ -1513,7 +1562,7 @@ static void at_report_group(lt_app *app, at_tab *st)
 }
 
 /* ---- header / heat-map strip (pixel mode) ---- */
-enum { AT_REPLAY, AT_RESET, AT_START, AT_APPLY, AT_BURN, AT_LOCK, AT_UNLOCK, AT_FLIP, AT_TAB_H, AT_TAB_S, AT_TRACE, AT_HMODE,
+enum { AT_REPLAY, AT_RESET, AT_START, AT_APPLY, AT_UNDO, AT_BURN, AT_LOCK, AT_UNLOCK, AT_FLIP, AT_TAB_H, AT_TAB_S, AT_TRACE, AT_HMODE,
        AT_ZIN, AT_ZOUT, AT_ZRESET, AT_ZFIT, AT_SAMPLES };
 
 static void ati(lt_vk_item *it, int kind, int icon, const char *label, const char *tip)
@@ -1554,6 +1603,8 @@ static int at_header(lt_app *app, at_tab *st, int *combo_sel)
     ids[n++] = AT_START;
     ati(&it[n], LT_VK_BTN, LT_ICON_UPLOAD, "Send to ECU", "Write the recommendations (except locked cells) to the table");
     it[n].disabled = st->s.nrecs == 0 ? 1 : 0; ids[n++] = AT_APPLY;
+    ati(&it[n], LT_VK_BTN, LT_ICON_UNDO_2, "Undo", "Restore the table as it was before the last Send to ECU (Ctrl+Z)");
+    it[n].disabled = at_can_undo(&st->s) || (st->sec_on && at_can_undo(&st->o)) ? 0 : 1; ids[n++] = AT_UNDO;
     ati(&it[n], LT_VK_BTN, LT_ICON_FLAME, "Burn", "Write the changes to ECU flash");
     it[n].accent = 1; it[n].disabled = lt_app_can_burn(app) ? 0 : 1; ids[n++] = AT_BURN;
     ati(&it[n], LT_VK_END, 0, NULL, NULL);
@@ -1708,6 +1759,7 @@ static void at_cmd(lt_app *app, at_tab *st, int cmd)
         break; }
     case AT_START: if (st->running) { at_stop(st); } else { at_start(app, st); } break;
     case AT_APPLY: (void)at_apply(app, st); if (st->sec_on && st->o.nrecs > 0) { at_apply_other(app, st); } break;
+    case AT_UNDO: at_undo(app, st); break;
     case AT_BURN: lt_app_burn(app); break;
     case AT_LOCK: at_sel_cells(st, 2, 0); break;
     case AT_UNLOCK: at_sel_cells(st, 0, 1); break;
@@ -1753,7 +1805,7 @@ static void at_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
     at_tab *st = (at_tab *)tab->data;
     lt_ui *ui = app->ui;
     const lt_theme *th = lt_ui_theme(ui);
-    int w1 = -1, wt[10], wm[2], i, combo_sel;
+    int w1 = -1, wt[11], wm[2], i, combo_sel;
     const char *picked;
     LT_UNUSED(r);
     if (st == NULL) {
@@ -1796,6 +1848,7 @@ static void at_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
     if (picked != NULL) { at_dyno_load(st, picked); }
     if (lt_ui_key_pressed(ui, ' ', 0)) { if (st->running) { at_stop(st); } else { at_start(app, st); } }
     if (lt_ui_key_pressed(ui, 'l', 0)) { at_sel_cells(st, 2, 0); }
+    if (lt_ui_key_pressed(ui, 'z', LT_MOD_CTRL)) { at_undo(app, st); }
     if (!lt_ui_cell_mode(ui)) { at_zoom_keys(app, st); }
     st->frame++;
     if (!st->hr_valid || st->frame % 20 == 0 || st->hr_stamp != lt_at_total_samples(st->s.at)) {
@@ -1804,9 +1857,9 @@ static void at_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
     }
     if (lt_ui_cell_mode(ui)) {
         /* toolbar */
-        for (i = 0; i < 10; i++) { wt[i] = 0; }
+        for (i = 0; i < 11; i++) { wt[i] = 0; }
         wt[0] = 90; wt[1] = 220;
-        lt_ui_layout_row(ui, 10, wt, 0);
+        lt_ui_layout_row(ui, 11, wt, 0);
         lt_ui_label(ui, "VE table");
         combo_sel = st->s.tsel;
         if (st->ntables > 0 && lt_ui_combo(ui, "tsel", &combo_sel, (const char *const *)st->names, (int)st->ntables)) { }
@@ -1814,6 +1867,7 @@ static void at_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
             if (lt_ui_button_ex(ui, "Stop", LT_UI_BTN_DANGER)) { at_stop(st); }
         } else if (lt_ui_button_ex(ui, "Start", LT_UI_BTN_PRIMARY)) { at_start(app, st); }
         if (lt_ui_button_ex(ui, "Apply", LT_UI_BTN_ACCENT | (st->s.nrecs == 0 ? LT_UI_BTN_DISABLED : 0))) { at_apply(app, st); }
+        if (lt_ui_button_ex(ui, "Undo", LT_UI_BTN_FLAT | (at_can_undo(&st->s) ? 0 : LT_UI_BTN_DISABLED))) { at_cmd(app, st, AT_UNDO); }
         if (lt_ui_button_ex(ui, "Reset", LT_UI_BTN_FLAT)) { at_cmd(app, st, AT_RESET); }
         if (lt_ui_button_ex(ui, "Replay log...", LT_UI_BTN_FLAT)) { at_cmd(app, st, AT_REPLAY); }
         if (lt_ui_button_ex(ui, "Lock", LT_UI_BTN_FLAT)) { at_cmd(app, st, AT_LOCK); }
@@ -1865,6 +1919,8 @@ static void at_close(lt_app *app, lt_app_tab *tab)
     if (g_at == st) { g_at = NULL; }
     at_free_views(st);
     slot_free_views(&st->o);
+    lt_free(st->s.undo_z);
+    lt_free(st->o.undo_z);
     if (st->o.at != NULL) { lt_at_free(st->o.at); }
     lt_free(st->report);
     lt_at_samples_free(&st->sv);
