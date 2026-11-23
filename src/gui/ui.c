@@ -713,6 +713,22 @@ void lt_ui_draw_custom(lt_ui *ui, lt_rect r, lt_ui_draw_fn fn, void *user)
     k->i[0] = r.x; k->i[1] = r.y; k->i[2] = r.w; k->i[3] = r.h;
 }
 
+void lt_ui_forget_custom(lt_ui *ui)
+{
+    int i;
+    size_t k;
+    if (ui == NULL || !ui->in_frame) { return; }
+    for (i = 0; i < ui->nlayers; i++) {
+        ui_layer *L = &ui->layers[i];
+        for (k = 0; k < L->cmds.len; k++) {
+            ui_cmd *c = &LT_VEC_AT(&L->cmds, ui_cmd, k);
+            /* the toolkit's own cell attributes point at static data: keep them */
+            if (c->type == UC_CUSTOM && c->fn != cell_attr_cb && c->fn != cell_shadow_cb) { c->fn = NULL; }
+        }
+    }
+    ui_request(ui);
+}
+
 /* truncate with an ellipsis so the result fits in maxw pixels */
 int ui_fit_text(const lt_ui *ui, const char *s, int maxw, char *out, size_t cap, int font, int px)
 {

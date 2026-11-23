@@ -1,13 +1,16 @@
 /* test_guard.c - never lose work and the setup checklist, without UI: the question asked before
  * quit / close / disconnect (which buttons, what they do), the autosave recovery file (write,
  * offer only when it differs, remove), the setup checklist's links into real ECU definitions
- * (rusEFI demo, Speeduino) and its per-project state.
+ * (rusEFI demo, Speeduino) and its per-project state; in the app, a project closed from the
+ * question.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 #include "lt_test.h"
 #include "../src/app/guard_logic.h"
 #include "../src/app/setup_logic.h"
 #include "../src/plat/plat.h"
+#include "../src/app/app.h"
+#include "../src/app/feat.h"
 
 static int count_char(const char *s, char c)
 {
@@ -192,6 +195,97 @@ LT_TEST(test_setup_state)
     lt_free(f);
 }
 
+/* ---------------------------------------------------------------- in the app (terminal UI) */
+static char g_txt[60000];
+
+/* render app in cell mode (120x40) after keys (LT_SHOT_KEYS syntax); the text lands in g_txt */
+static void tty(lt_app *app, const char *keys)
+{
+    size_t n = 0;
+    char *d;
+    lt_plat_setenv("LT_SHOT_TEXT", "build/test_guard_tty.txt");
+    lt_plat_setenv("LT_SHOT_KEYS", keys != NULL ? keys : "");
+    (void)lt_app_screenshot(app, "", 120, 40, 3);
+    lt_plat_setenv("LT_SHOT_TEXT", "");
+    lt_plat_setenv("LT_SHOT_KEYS", "");
+    d = lt_file_read("build/test_guard_tty.txt", &n);
+    g_txt[0] = '\0';
+    if (d == NULL) { return; }
+    if (n >= sizeof(g_txt)) { n = sizeof(g_txt) - 1; }
+    memcpy(g_txt, d, n);
+    g_txt[n] = '\0';
+    lt_free(d);
+}
+
+/* "click:col/row" on the middle of label in g_txt (columns count UTF-8 characters); 0 not found */
+static int click_on(const char *label, char *out, size_t cap)
+{
+    const char *hit = strstr(g_txt, label), *p;
+    int row = 0, col = 0;
+    if (hit == NULL) { return 0; }
+    for (p = g_txt; p < hit; p++) {
+        if (*p == '\n') { row++; col = 0; }
+        else if (((unsigned char)*p & 0xC0) != 0x80) { col++; }
+    }
+    lt_snprintf(out, cap, "click:%d/%d", col + (int)strlen(label) / 2, row);
+    return 1;
+}
+
+
+/* a new project named tag_<time> from the demo INI, opened; its directory in dir */
+static int make_project(lt_app *app, const char *tag, char *dir, size_t cap)
+{
+    char ini[512], name[64], stamp[32];
+    size_t i;
+    lt_plat_timestamp(stamp, sizeof(stamp));
+    for (i = 0; stamp[i] != '\0'; i++) { if (stamp[i] < '0' || stamp[i] > '9') { stamp[i] = '_'; } }
+    if (lt_app_find_demo_ini(ini, sizeof(ini)) == NULL) { return -1; }
+    lt_snprintf(name, sizeof(name), "%s_%s", tag, stamp);
+    if (lt_app_new_project(app, name, ini) != 0) { return -1; }
+    lt_strlcpy(dir, app->project.path, cap);
+    return 0;
+}
+
+/* change one scalar setting: the tune has unsaved changes */
+static int edit_one(lt_app *app)
+{
+    const lt_ini_const *c = NULL;
+    lt_pagesrc ps;
+    size_t i;
+    double v = 0.0;
+    for (i = 0; i < app->ini->n_constants && c == NULL; i++) {
+        const lt_ini_const *x = app->ini->constants[i];
+        if (!x->is_pc_var && x->shape.cols <= 1 && x->shape.rows <= 1 && x->type != LT_DT_BITS &&
+            x->size_bytes > 0 && x->max > x->min) { c = x; }
+    }
+    if (c == NULL) { return -1; }
+    ps = lt_app_pages(app);
+    lt_ini_get(app->ini, &ps, c->name, &v);
+    if (lt_ini_set(app->ini, &ps, c->name, v == c->max ? c->min : c->max) != 0) { return -1; }
+    lt_app_edited(app);
+    return app->modified ? 0 : -1;
+}
+
+/* File > Close Project with unsaved changes, "Close without saving": the project closes from the
+ * question drawn after the dashboard (whose gauges were already queued for drawing) */
+LT_TEST(test_close_from_question)
+{
+    lt_app *app = lt_app_new();
+    char dir[512], k[64];
+    LT_CHECK(make_project(app, "cl", dir, sizeof(dir)) == 0);
+    LT_CHECK(edit_one(app) == 0);
+    tty(app, NULL);
+    lt_feat_guard_close_project(app);
+    LT_CHECK(app->has_project);
+    tty(app, NULL);
+    LT_CHECK(click_on("Close without saving", k, sizeof(k)));
+    tty(app, k);
+    LT_CHECK(!app->has_project && app->ini == NULL);
+    tty(app, NULL);                    /* the start screen */
+    LT_CHECK(strstr(g_txt, "Connect to my ECU") != NULL);
+    lt_app_free(app);
+}
+
 int main(void)
 {
     LT_RUN(test_question);
@@ -199,5 +293,6 @@ int main(void)
     LT_RUN(test_recovery);
     LT_RUN(test_setup_links);
     LT_RUN(test_setup_state);
+    LT_RUN(test_close_from_question);
     LT_TEST_MAIN_END
 }

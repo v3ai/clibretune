@@ -904,6 +904,8 @@ int lt_app_service_wait_ms(lt_app *app)
 void lt_app_close_project(lt_app *app)
 {
     int i;
+    /* called from a menu or dialog: what this frame drew of the tabs and dialogs is freed below */
+    lt_ui_forget_custom(app->ui);
     lt_app_disconnect(app);
     rec_free(app);
     while (app->n_tabs > 0) { lt_app_tab_close(app, app->tabs[app->n_tabs - 1]); }

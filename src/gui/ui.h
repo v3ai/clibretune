@@ -213,6 +213,9 @@ int  lt_ui_text_width(const lt_ui *ui, const char *utf8);
 /* callback executed at replay time with the clip set to r (for gauges etc.) */
 typedef void (*lt_ui_draw_fn)(lt_gfx *g, lt_rect r, void *user);
 void lt_ui_draw_custom(lt_ui *ui, lt_rect r, lt_ui_draw_fn fn, void *user);
+/* the data behind this frame's custom callbacks is being freed mid-frame (a project closes from
+ * a dialog or menu): they are skipped at replay and another frame is drawn */
+void lt_ui_forget_custom(lt_ui *ui);
 void lt_ui_clip_push(lt_ui *ui, lt_rect r);     /* intersected with current */
 void lt_ui_clip_pop(lt_ui *ui);
 lt_rect lt_ui_clip_get(const lt_ui *ui);

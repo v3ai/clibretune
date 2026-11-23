@@ -985,6 +985,9 @@ static void app_dialogs(lt_app *app)
         for (k = 0; k < app->n_dlg_kinds; k++) {
             if (strcmp(app->dlg_kinds[k].kind, d->kind) == 0) { app->dlg_kinds[k].draw(app, d); break; }
         }
+        /* the dialog opened a project (Create, Switch, Demo...): that closed and freed every
+         * dialog, d included; the rest are drawn next frame */
+        if (i >= app->n_dialogs || app->dialogs[i] != d) { break; }
         if (!d->open) {
             int j;
             if (k < app->n_dlg_kinds && app->dlg_kinds[k].close != NULL) { app->dlg_kinds[k].close(app, d); }
@@ -1059,6 +1062,11 @@ void lt_app_frame(lt_app *app)
 /* window + main loop                                                  */
 static void init_surface(lt_app *app, int w, int h)
 {
+    /* a second screenshot of the same app (tests) replaces the first one's surface */
+    lt_ui_destroy(app->ui);
+    app->ui = NULL;
+    lt_cells_free(&app->cells);
+    lt_canvas_free(&app->canvas);
     if (app->cell_mode) {
         lt_cells_init(&app->cells, w, h);
         lt_gfx_init_cells(&app->gfx, &app->cells);
