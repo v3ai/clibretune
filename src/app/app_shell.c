@@ -281,7 +281,7 @@ static void file_dialog_frame(lt_app *app)
     res = lt_ui_file_dialog(app->ui, &app->fd, title);
     if (res != 1) { return; }
     switch (app->fd_purpose) {
-    case LT_APP_FD_LOAD_TUNE: lt_app_load_tune(app, app->fd.path); break;
+    case LT_APP_FD_LOAD_TUNE: (void)lt_feat_load_tune_checked(app, app->fd.path); break;
     case LT_APP_FD_SAVE_TUNE: lt_app_save_tune_as(app, app->fd.path); break;
     case LT_APP_FD_OPEN_INI_DEMO: lt_app_start_demo(app, app->fd.path); break;
     case LT_APP_FD_IMPORT_TS:
@@ -1142,6 +1142,8 @@ void lt_app_frame(lt_app *app)
 
 /* ------------------------------------------------------------------ */
 /* window + main loop                                                  */
+static void render_surface_new(lt_app *app);
+
 static void init_surface(lt_app *app, int w, int h)
 {
     /* a second screenshot of the same app (tests) replaces the first one's surface */
@@ -1160,6 +1162,7 @@ static void init_surface(lt_app *app, int w, int h)
     lt_ui_set_backend(app->ui, app->backend);
     lt_ui_set_scale_pct(app->ui, app->scale_pct);
     lt_app_apply_theme(app, app->settings.theme);
+    render_surface_new(app);
 }
 
 #define WIN_DEF_W 1280          /* stock LibreTune window, logical px */
@@ -1347,6 +1350,13 @@ static render_state *render_get(lt_app *app)
         rs->tiles = lt_tiles_new();
     }
     return rs;
+}
+
+/* a new, blank surface (init_surface): tiles cached for the old one are stale */
+static void render_surface_new(lt_app *app)
+{
+    lt_diff_invalidate(&app->diff);
+    lt_tiles_invalidate(render_get(app)->tiles);
 }
 
 /* Present the frame. Backends that take rectangles get only the changed parts (the re-rendered
