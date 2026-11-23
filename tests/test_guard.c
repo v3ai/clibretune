@@ -219,9 +219,9 @@ static double g_cell(lt_app *app)
 {
     lt_pagesrc ps = lt_app_pages(app);
     const lt_ini_const *c = lt_ini_find_const(app->ini, "veTable");
-    static double v[4096];
+    static double v[2048];
     v[0] = -1.0;
-    if (c != NULL) { (void)lt_ini_const_get_array(app->ini, c, &ps, v, 4096); }
+    if (c != NULL) { (void)lt_ini_const_get_array(app->ini, c, &ps, v, 2048); }
     return v[0];
 }
 
@@ -235,7 +235,7 @@ LT_TEST(test_close_without_saving)
     char *dir = NULL;
     const lt_ini_const *c;
     lt_pagesrc ps;
-    static double arr[4096];
+    static double arr[2048];
     double v0, v1;
     LT_CHECK(lt_app_find_demo_ini(buf, sizeof(buf)) != NULL);
     lt_plat_mkdirs("build/test_guard_proj");
@@ -250,7 +250,7 @@ LT_TEST(test_close_without_saving)
     v1 = v0 + 5.0;
     c = lt_ini_find_const(app->ini, "veTable");
     ps = lt_app_pages(app);
-    LT_CHECK(c != NULL && lt_ini_const_get_array(app->ini, c, &ps, arr, 4096) > 0);
+    LT_CHECK(c != NULL && lt_ini_const_get_array(app->ini, c, &ps, arr, 2048) > 0);
     arr[0] = v1;
     LT_CHECK(c != NULL && lt_ini_const_set_array(app->ini, c, &ps, arr, c->shape.rows * c->shape.cols) == 0);
     lt_app_edited(app);

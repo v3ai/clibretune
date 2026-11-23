@@ -631,10 +631,10 @@ int lt_emb_table(lt_app *app, lt_embeds *e, const lt_ini_table *t, int enabled)
                 lt_ui_grid_editing(ui, &er, &ec);
                 memcpy(m->esel, m->gsel, m->gsel_cap);
                 if (er >= 0 && ec >= 0 && er < rows && ec < cols) {
-                    size_t k = (size_t)(rows - 1 - er) * (size_t)cols + (size_t)ec;
-                    if (m->nsel == 0) { m->esel[k] = 1; }
+                    size_t ki = (size_t)(rows - 1 - er) * (size_t)cols + (size_t)ec;
+                    if (m->nsel == 0) { m->esel[ki] = 1; }
                     if (lt_ui_grid_edit_wants_text(ui)) {
-                        lt_tabs_fmt(b, sizeof(b), m->v.z[k], m->zdig);
+                        lt_tabs_fmt(b, sizeof(b), m->v.z[ki], m->zdig);
                         lt_ui_grid_edit_set_text(ui, b);
                     }
                 }

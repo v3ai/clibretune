@@ -203,7 +203,7 @@ static size_t table_snap(lt_app *app, const char *tname, double *out, size_t cap
  * edited, not to the cell that was clicked */
 LT_TEST(table_edit_commit_on_click_away)
 {
-    static double before[4096], after[4096];
+    static double before[2048], after[2048];
     char buf[512];
     lt_app *app = lt_app_new();
     size_t n, k, changed = 0, at = 0;
@@ -213,11 +213,11 @@ LT_TEST(table_edit_commit_on_click_away)
     lt_app_screenshot(app, "build/lt_test_tables4.ppm", 1100, 800, 3);
     click(app, 500, 300, LT_MB_LEFT);
     press(app, LT_KEY_HOME, LT_MOD_CTRL);
-    n = table_snap(app, "veTableTbl", before, 4096);
+    n = table_snap(app, "veTableTbl", before, 2048);
     LT_CHECK(n > 0);
     type_text(app, "12");
     click(app, 700, 450, LT_MB_LEFT);
-    LT_CHECK(table_snap(app, "veTableTbl", after, 4096) == n);
+    LT_CHECK(table_snap(app, "veTableTbl", after, 2048) == n);
     for (k = 0; k < n; k++) {
         if (after[k] != before[k]) { changed++; at = k; }
     }
@@ -278,7 +278,7 @@ LT_TEST(curve_edit_commit_on_tab)
  * (Speeduino's closed loop boost duty table is 0.5 % per step shown with 0 decimals) */
 LT_TEST(table_paste_leaves_other_cells)
 {
-    static double before[4096], after[4096];
+    static double before[2048], after[2048];
     double arr[64];
     lt_app *app = lt_app_new();
     const lt_ini_const *zc;
@@ -295,12 +295,12 @@ LT_TEST(table_paste_leaves_other_cells)
     lt_app_screenshot(app, "build/lt_test_tables6.ppm", 1100, 800, 3);
     click(app, 500, 300, LT_MB_LEFT);
     press(app, LT_KEY_HOME, LT_MOD_CTRL);
-    n = table_snap(app, "boostDCLupTbl", before, 4096);
+    n = table_snap(app, "boostDCLupTbl", before, 2048);
     LT_CHECK(n == 64);
     press(app, 'c', LT_MOD_CTRL);
     press(app, LT_KEY_RIGHT, 0);
     press(app, 'v', LT_MOD_CTRL);
-    LT_CHECK(table_snap(app, "boostDCLupTbl", after, 4096) == n);
+    LT_CHECK(table_snap(app, "boostDCLupTbl", after, 2048) == n);
     for (k = 0; k < n; k++) {
         if (after[k] != before[k]) { changed++; }
     }
@@ -360,11 +360,11 @@ LT_TEST(table_tab_closed_mid_frame)
 
 static double afr_raw(lt_app *app, size_t i)
 {
-    static double v[4096];
+    static double v[2048];
     lt_pagesrc ps = lt_app_pages(app);
     const lt_ini_const *c = lt_ini_find_const(app->ini, "lambdaTable");
     v[i] = -999.0;
-    if (c != NULL) { (void)lt_ini_const_get_array(app->ini, c, &ps, v, 4096); }
+    if (c != NULL) { (void)lt_ini_const_get_array(app->ini, c, &ps, v, 2048); }
     return v[i];
 }
 
