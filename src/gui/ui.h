@@ -130,6 +130,10 @@ lt_bool lt_ui_needs_redraw(const lt_ui *ui);
  * (caret blink, tooltip delay, spinner, toast), or -1 = sleep until input */
 int    lt_ui_wait_hint_ms(const lt_ui *ui);
 void   lt_ui_request_redraw(lt_ui *ui);
+/* Inside a frame: do not paint this frame (the surface keeps the previous one) and run another
+ * right away. For when state that this frame's custom draw callbacks point at is freed before
+ * lt_ui_end replays them (a tab or dialog closed after it was drawn). */
+void   lt_ui_discard_frame(lt_ui *ui);
 lt_bool lt_ui_quit_requested(const lt_ui *ui);  /* LT_EV_QUIT seen */
 lt_bool lt_ui_cell_mode(const lt_ui *ui);
 int    lt_ui_row_height(const lt_ui *ui);       /* 24 pixel mode, 16 cell mode (scaled) */

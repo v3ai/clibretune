@@ -309,6 +309,8 @@ void lt_app_tab_close(lt_app *app, lt_app_tab *tab)
         if (app->tabs[i] == tab) { idx = i; }
     }
     if (idx < 0) { return; }
+    /* this frame may already have recorded draw callbacks that point into the tab's state */
+    if (app->ui != NULL) { lt_ui_discard_frame(app->ui); }
     for (k = 0; k < app->n_tab_kinds; k++) {
         if (strcmp(app->tab_kinds[k].kind, tab->kind) == 0 && app->tab_kinds[k].close != NULL) {
             app->tab_kinds[k].close(app, tab);

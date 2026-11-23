@@ -161,6 +161,7 @@ struct lt_ui {
     int sw, sh;
     int frame_no;
     int in_frame;
+    int discard;                   /* lt_ui_discard_frame: skip this frame's replay */
     /* input */
     int mx, my;
     int mbtn, mpressed, mreleased, mpress_x, mpress_y;

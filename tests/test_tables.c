@@ -337,6 +337,27 @@ LT_TEST(table_revert_after_many_edits)
     lt_app_free(app);
 }
 
+/* Closing a table tab after it drew in the same frame (Ctrl+W, closing the project from a
+ * question) must not replay its live-cell overlay from freed state (caught by ASan builds) */
+LT_TEST(table_tab_closed_mid_frame)
+{
+    char buf[512];
+    lt_app *app = lt_app_new();
+    LT_CHECK(lt_app_find_demo_ini(buf, sizeof(buf)) != NULL);
+    LT_CHECK(lt_app_start_demo(app, buf) == 0);
+    LT_CHECK(lt_app_table_editor_open(app, "veTableTbl") == 0);
+    lt_app_screenshot(app, "build/lt_test_tables8.ppm", 1100, 800, 4);
+    LT_CHECK(lt_app_tab_find(app, "table", "veTableTbl") != NULL);
+    lt_ui_begin(app->ui, &app->gfx, lt_plat_now_ms());
+    lt_app_frame(app);
+    lt_app_tab_close(app, lt_app_tab_find(app, "table", "veTableTbl"));
+    lt_ui_end(app->ui);
+    LT_CHECK(lt_ui_needs_redraw(app->ui));
+    frame(app);
+    LT_CHECK(lt_app_tab_find(app, "table", "veTableTbl") == NULL);
+    lt_app_free(app);
+}
+
 int main(void)
 {
     LT_RUN(table_selection_keys);
@@ -346,5 +367,6 @@ int main(void)
     LT_RUN(curve_and_autotune_tabs);
     LT_RUN(table_paste_leaves_other_cells);
     LT_RUN(table_revert_after_many_edits);
+    LT_RUN(table_tab_closed_mid_frame);
     LT_TEST_MAIN_END
 }
