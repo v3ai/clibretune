@@ -246,10 +246,12 @@ void lt_graph_trace_range(const lt_graph_trace *t, const double *v, long n, doub
         return;
     }
     if (b - a < 1e-9) {
-        pad = 0.5;
-        if (!(a - pad < b + pad)) { pad = fabs(a) * 1e-9; }   /* below the precision of huge values */
-        *lo = a - pad;
-        *hi = b + pad;
+        /* +-0.5 is below the precision of huge values; checked on the stored doubles (volatile),
+         * since x87 compares in extended precision where the sum is still exact */
+        volatile double l = a - 0.5, h = b + 0.5;
+        if (!(l < h)) { pad = fabs(a) * 1e-9; l = a - pad; h = b + pad; }
+        *lo = l;
+        *hi = h;
         return;
     }
     pad = (b - a) * 0.05;
