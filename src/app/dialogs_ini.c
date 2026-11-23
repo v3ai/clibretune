@@ -788,11 +788,18 @@ static void ini_dialog_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
     if (st->close_req) { lt_app_tab_close(app, tab); }
 }
 
+static void ini_dialog_destroy(void *p)
+{
+    ini_state *st = (ini_state *)p;
+    lt_emb_free(&st->emb);
+    lt_free(st->map);
+    lt_free(st);
+}
+
 static void ini_dialog_close(lt_app *app, lt_app_tab *tab)
 {
     ini_state *st = (ini_state *)tab->data;
-    LT_UNUSED(app);
-    if (st != NULL) { lt_emb_free(&st->emb); lt_free(st->map); lt_free(st); }
+    if (st != NULL) { lt_ui_after_frame(app->ui, ini_dialog_destroy, st); }   /* embedded plots read it */
     tab->data = NULL;
 }
 

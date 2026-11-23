@@ -91,8 +91,7 @@ static void result_note(char *buf, size_t cap, lt_app *app, const char *what, co
 
 static void calib_close(lt_app *app, lt_app_dialog *d)
 {
-    LT_UNUSED(app);
-    lt_free(d->data);
+    if (d->data != NULL) { lt_ui_after_frame(app->ui, lt_free, d->data); }   /* the plot callback reads it */
     d->data = NULL;
 }
 
@@ -501,15 +500,19 @@ static void afr_draw(lt_app *app, lt_app_dialog *d)
     d->open = open;
 }
 
-static void afr_close(lt_app *app, lt_app_dialog *d)
+static void afr_destroy(void *p)
 {
-    afr_state *s = (afr_state *)d->data;
-    LT_UNUSED(app);
-    if (s != NULL && s->cache != NULL) {
+    afr_state *s = (afr_state *)p;
+    if (s->cache != NULL) {
         lt_inc_cache_free(s->cache);
         lt_free(s->cache);
     }
     lt_free(s);
+}
+
+static void afr_close(lt_app *app, lt_app_dialog *d)
+{
+    if (d->data != NULL) { lt_ui_after_frame(app->ui, afr_destroy, d->data); }   /* the plot callback reads it */
     d->data = NULL;
 }
 

@@ -213,6 +213,9 @@ int  lt_ui_text_width(const lt_ui *ui, const char *utf8);
 /* callback executed at replay time with the clip set to r (for gauges etc.) */
 typedef void (*lt_ui_draw_fn)(lt_gfx *g, lt_rect r, void *user);
 void lt_ui_draw_custom(lt_ui *ui, lt_rect r, lt_ui_draw_fn fn, void *user);
+/* fn(user) once this frame's drawing has been replayed (at once outside a frame): frees state that
+ * a queued lt_ui_draw_custom callback may still read, e.g. of a tab or dialog closed mid-frame */
+void lt_ui_after_frame(lt_ui *ui, void (*fn)(void *user), void *user);
 void lt_ui_clip_push(lt_ui *ui, lt_rect r);     /* intersected with current */
 void lt_ui_clip_pop(lt_ui *ui);
 lt_rect lt_ui_clip_get(const lt_ui *ui);

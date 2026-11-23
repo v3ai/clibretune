@@ -918,17 +918,22 @@ static void crv_draw(lt_app *app, lt_app_tab *tab, lt_rect rr)
     crv_dialogs(app, tab, st);
 }
 
-static void crv_close(lt_app *app, lt_app_tab *tab)
+static void crv_destroy(void *p)
 {
-    crv_tab *st = (crv_tab *)tab->data;
-    LT_UNUSED(app);
-    if (st == NULL) { return; }
+    crv_tab *st = (crv_tab *)p;
     lt_tblview_free(&st->v);
     lt_free(st->ox); lt_free(st->oz); lt_free(st->selr);
     lt_xyring_free(&st->xy_ring);
     lt_free(st->xy_px); lt_free(st->xy_py); lt_free(st->xy_pa);
     lt_free(st);
+}
+
+static void crv_close(lt_app *app, lt_app_tab *tab)
+{
+    crv_tab *st = (crv_tab *)tab->data;
+    if (st == NULL) { return; }
     tab->data = NULL;
+    lt_ui_after_frame(app->ui, crv_destroy, st);    /* this frame's plot callback reads it */
 }
 
 const lt_app_tab_kind lt_tabs_kind_curve = { "curve", crv_draw, crv_close };

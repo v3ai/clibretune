@@ -182,6 +182,33 @@ LT_TEST(t3d_pick_and_pan)
     }
 }
 
+/* closing a tab or dialog mid-frame (Ctrl+W, Esc) freed the state that the frame's custom draw
+ * callbacks (3D view, overlay, dyno chart) read when the frame was replayed */
+LT_TEST(close_mid_frame_keeps_draw_state)
+{
+    lt_app *app;
+    LT_CHECK(lt_plat_setenv("LT_TABLE_VIEW", "3d") == 0);
+    LT_CHECK(lt_plat_setenv("LT_DYNO_RUNS", "tests/fixtures/dyno/run_before.csv") == 0);
+    app = demo_app();
+    LT_CHECK(lt_app_table_editor_open(app, "veTableTbl") == 0);
+    lt_app_screenshot(app, "build/lt_test_close_mid.ppm", 1100, 800, 2);
+    LT_CHECK(app->n_tabs >= 2);
+    while (app->n_tabs > 1) {
+        int n = app->n_tabs;
+        press(app, 'w', LT_MOD_CTRL);
+        if (app->n_tabs == n) { break; }        /* the dashboard tab may be pinned */
+    }
+    LT_CHECK(lt_app_dialog_push(app, "dyno", "", "Dyno Overlay") != NULL);
+    frame(app);
+    frame(app);
+    press(app, LT_KEY_ESCAPE, 0);
+    frame(app);
+    LT_CHECK(app->n_dialogs == 0);
+    lt_app_free(app);
+    LT_CHECK(lt_plat_setenv("LT_TABLE_VIEW", "") == 0);
+    LT_CHECK(lt_plat_setenv("LT_DYNO_RUNS", "") == 0);
+}
+
 LT_TEST(t3d_tab_renders_and_takes_input)
 {
     lt_app *app;
@@ -603,6 +630,7 @@ int main(void)
     LT_RUN(t3d_camera_limits);
     LT_RUN(t3d_pick_and_pan);
     LT_RUN(t3d_tab_renders_and_takes_input);
+    LT_RUN(close_mid_frame_keeps_draw_state);
     LT_RUN(lambda_helpers);
     LT_RUN(lambda_preview_renders);
     LT_RUN(large_change_alert);

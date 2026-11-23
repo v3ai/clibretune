@@ -1667,15 +1667,20 @@ static void tbl_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
     tbl_dialogs(app, tab, st);
 }
 
-static void tbl_close(lt_app *app, lt_app_tab *tab)
+static void tbl_destroy(void *p)
 {
-    tbl_tab *st = (tbl_tab *)tab->data;
-    LT_UNUSED(app);
-    if (st == NULL) { return; }
+    tbl_tab *st = (tbl_tab *)p;
     tbl_free_data(st);
     lt_free(st->clip);
     lt_free(st);
+}
+
+static void tbl_close(lt_app *app, lt_app_tab *tab)
+{
+    tbl_tab *st = (tbl_tab *)tab->data;
+    if (st == NULL) { return; }
     tab->data = NULL;
+    lt_ui_after_frame(app->ui, tbl_destroy, st);    /* this frame's 3D / overlay callbacks read it */
 }
 
 const lt_app_tab_kind lt_tabs_kind_table = { "table", tbl_draw, tbl_close };

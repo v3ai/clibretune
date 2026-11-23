@@ -476,11 +476,16 @@ static void dd_draw(lt_app *app, lt_app_dialog *d)
     d->open = open;
 }
 
+static void dd_destroy(void *p)
+{
+    dd_free((dyno_dlg *)p);
+    lt_free(p);
+}
+
 static void dd_close(lt_app *app, lt_app_dialog *d)
 {
     dyno_dlg *s = (dyno_dlg *)d->data;
-    LT_UNUSED(app);
-    if (s != NULL) { dd_free(s); lt_free(s); }
+    if (s != NULL) { lt_ui_after_frame(app->ui, dd_destroy, s); }   /* the chart callback reads it */
     d->data = NULL;
 }
 

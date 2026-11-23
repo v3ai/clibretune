@@ -324,6 +324,33 @@ static void scene_buttons(lt_ui *ui)
     R[4] = lt_ui_last_rect(ui);
 }
 
+/* lt_ui_after_frame: runs after the replay of the frame's custom draws, at once outside a frame */
+static char g_order[8];
+static void order_draw(lt_gfx *g, lt_rect r, void *user)
+{
+    LT_UNUSED(g); LT_UNUSED(r);
+    lt_strlcat(g_order, (const char *)user, sizeof(g_order));
+}
+static void order_later(void *user) { lt_strlcat(g_order, (const char *)user, sizeof(g_order)); }
+
+LT_TEST(test_after_frame)
+{
+    h_open(200, 100, 0);
+    g_order[0] = '\0';
+    lt_ui_after_frame(H.ui, order_later, "a");
+    LT_CHECK_STR(g_order, "a");
+    lt_ui_begin(H.ui, &H.g, H.t);
+    lt_ui_draw_custom(H.ui, lt_rect_make(0, 0, 50, 50), order_draw, "d");
+    lt_ui_after_frame(H.ui, order_later, "f");
+    LT_CHECK_STR(g_order, "a");
+    lt_ui_end(H.ui);
+    LT_CHECK_STR(g_order, "adf");
+    lt_ui_begin(H.ui, &H.g, H.t);
+    lt_ui_after_frame(H.ui, order_later, "x");
+    h_close();                                  /* destroyed mid-frame: still runs */
+    LT_CHECK_STR(g_order, "adfx");
+}
+
 LT_TEST(test_button_click)
 {
     reset_state();
@@ -2149,6 +2176,7 @@ int main(void)
 {
     lt_plat_mkdirs("build");
     LT_RUN(test_ids_and_theme);
+    LT_RUN(test_after_frame);
     LT_RUN(test_button_click);
     LT_RUN(test_check_radio_toggle);
     LT_RUN(test_text_editing);
