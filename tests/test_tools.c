@@ -465,6 +465,27 @@ LT_TEST(dyno_dialog_with_runs)
     LT_CHECK(lt_plat_setenv("LT_DYNO_TAB", "") == 0);
 }
 
+/* a log whose channel is a constant 1e17: the viewer's ranges came out empty (division by zero
+ * into an int) and the scatter's tick loop never advanced (1e17 + step == 1e17) */
+LT_TEST(logview_huge_values)
+{
+    static const char csv[] = "Time,RPM,MAP\ns,rpm,kPa\n0.0,1e17,30\n0.1,1e17,31\n0.2,1e17,32\n"
+                              "0.3,100000000000000016,33\n";
+    static const char *const modes[3] = { "graph", "scatter", "hist" };
+    int i;
+    LT_CHECK(lt_file_write("build/lt_test_huge_log.csv", csv, sizeof(csv) - 1) == 0);
+    LT_CHECK(lt_plat_setenv("LT_SHOT_LOG", "build/lt_test_huge_log.csv") == 0);
+    for (i = 0; i < 3; i++) {
+        lt_app *app = demo_app();
+        LT_CHECK(lt_plat_setenv("LT_SHOT_LOGVIEW", modes[i]) == 0);
+        LT_CHECK(lt_app_open_target(app, "datalog-viewer", "Datalog Viewer") == 0);
+        lt_app_screenshot(app, "build/lt_test_huge_log.ppm", 1000, 700, 3);
+        lt_app_free(app);
+    }
+    LT_CHECK(lt_plat_setenv("LT_SHOT_LOG", "") == 0);
+    LT_CHECK(lt_plat_setenv("LT_SHOT_LOGVIEW", "") == 0);
+}
+
 /* a run with absurd values: the chart grid stepped 50 at a time up to 1e23 (never finished) */
 LT_TEST(dyno_hostile_values)
 {
@@ -683,6 +704,7 @@ int main(void)
     LT_RUN(dyno_chart_range);
     LT_RUN(dyno_dialog_with_runs);
     LT_RUN(dyno_hostile_values);
+    LT_RUN(logview_huge_values);
     LT_RUN(actions_logic);
     LT_RUN(actions_record_save_play);
     LT_RUN(actions_record_constants);

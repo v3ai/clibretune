@@ -278,6 +278,7 @@ static void xy_collect(lt_app *app, crv_tab *st)
     if (lo > hi) { lo = 0.0; hi = 1.0; }
     if (hi - lo < 1e-9) { lo -= 0.5; hi += 0.5; }
     else { double pad = (hi - lo) * 0.08; lo -= pad; hi += pad; }
+    if (!(lo < hi)) { double pad = fabs(lo) * 1e-9; lo -= pad; hi += pad; }   /* huge values */
     st->xy_lo = lo; st->xy_hi = hi;
     st->xy_n = n;
 }
@@ -313,7 +314,7 @@ static void xy_plot(lt_gfx *g, const plot_ctx *p, int x0, int x1, int y0, int y1
     crv_tab *st = p->st;
     lt_font *fm = lt_font_get(LT_FONT_MONO);
     double f10 = lt_gfx_fpx(g, 10.0), rad = p->cell ? 1.0 : 2.2 * (double)p->pct / 100.0, step, v;
-    int i;
+    int i, k;
     char b[32];
     lt_color live = p->xy, logc = p->xy_log;
     LT_UNUSED(x0);
@@ -329,7 +330,7 @@ static void xy_plot(lt_gfx *g, const plot_ctx *p, int x0, int x1, int y0, int y1
     }
     /* right axis */
     step = lt_graph_nice_step(st->xy_hi - st->xy_lo, 4);
-    for (v = ceil(st->xy_lo / step) * step; v <= st->xy_hi; v += step) {
+    for (v = ceil(st->xy_lo / step) * step, k = 0; v <= st->xy_hi && k < 500; v += step, k++) {
         double yy = (double)y0 - (v - st->xy_lo) / (st->xy_hi - st->xy_lo) * (double)(y0 - y1);
         lt_fmt_double(b, sizeof(b), v, step >= 1.0 ? 0 : (step >= 0.1 ? 1 : 2));
         lt_gfx_text_bl(g, fm, f10, (double)x1 + (double)lt_gfx_px(g, 6), (int)yy + lt_gfx_px(g, 4), b, live);

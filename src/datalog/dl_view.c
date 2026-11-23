@@ -246,8 +246,10 @@ void lt_graph_trace_range(const lt_graph_trace *t, const double *v, long n, doub
         return;
     }
     if (b - a < 1e-9) {
-        *lo = a - 0.5;
-        *hi = b + 0.5;
+        pad = 0.5;
+        if (!(a - pad < b + pad)) { pad = fabs(a) * 1e-9; }   /* below the precision of huge values */
+        *lo = a - pad;
+        *hi = b + pad;
         return;
     }
     pad = (b - a) * 0.05;
