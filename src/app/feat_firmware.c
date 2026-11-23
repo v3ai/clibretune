@@ -848,6 +848,8 @@ static void draw_hint(lt_app *app, fw_state *st)
     const lt_theme *th = lt_ui_theme(ui);
     const char *t;
     int w1 = -1;
+    /* how to get into the bootloader: not needed once it is there */
+    if (!lt_fw_method_serial(st->method) && find_dev(st, st->method) >= 0) { return; }
     lt_ui_layout_row(ui, 1, &w1, 0);
     switch (st->method) {
     case LT_FW_DFUSE:
