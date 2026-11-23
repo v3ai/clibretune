@@ -366,6 +366,20 @@ const char *lt_fw_format_name(int format)
     }
 }
 
+/* the first 256 bytes are printable text (a machine code image starts with a vector table or
+ * jump instructions: there are zero bytes in it) */
+static int is_text(const lt_u8 *d, size_t len)
+{
+    size_t i, n = len < 256 ? len : 256;
+    if (n < 16) { return 0; }
+    for (i = 0; i < n; i++) {
+        if (!(d[i] == '\t' || d[i] == '\n' || d[i] == '\r' || (d[i] >= 0x20 && d[i] < 0x7F) || d[i] >= 0x80)) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
 static int sniff(const lt_u8 *d, size_t len)
 {
     size_t i = 0;
@@ -391,7 +405,21 @@ int lt_fw_image_parse(lt_fw_image *img, const lt_u8 *data, size_t len, int forma
     case LT_FW_FMT_IHEX: rc = parse_ihex(img, (const char *)data, len, err, errcap); break;
     case LT_FW_FMT_SREC: rc = parse_srec(img, (const char *)data, len, err, errcap); break;
     case LT_FW_FMT_DFUSE: rc = parse_dfuse(img, data, len, err, errcap); break;
-    default: rc = lt_fw_image_add(img, bin_base, data, len, err, errcap); break;
+    default:
+        /* a raw image is written as it is: refuse what is plainly not one (a firmware bundle
+         * .zip, a tune or an INI picked by mistake) instead of flashing it */
+        if (len >= 4 && data[0] == 'P' && data[1] == 'K' && data[2] < 9 && data[3] < 9) {
+            set_err(err, errcap, "this is a zip archive: extract it and pick the firmware .bin, .hex or .dfu "
+                    "inside");
+            rc = -1;
+        } else if (is_text(data, len)) {
+            set_err(err, errcap, "this is a text file, not a firmware image: pick the firmware .bin, .hex, "
+                    ".srec or .dfu");
+            rc = -1;
+        } else {
+            rc = lt_fw_image_add(img, bin_base, data, len, err, errcap);
+        }
+        break;
     }
     if (rc == 0) { rc = lt_fw_image_finish(img, err, errcap); }
     if (rc != 0) {

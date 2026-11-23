@@ -105,6 +105,16 @@ LT_TEST(bin_and_names)
     LT_CHECK_INT(lt_fw_format_from_name("a.zip"), LT_FW_FMT_UNKNOWN);
     /* data past the 32-bit address space */
     LT_CHECK_INT(lt_fw_image_parse(&img, d, 8, LT_FW_FMT_BIN, 0xFFFFFFFCUL, err, sizeof(err)), -1);
+    {   /* a firmware bundle .zip or a tune picked by mistake is refused, not flashed as raw data */
+        static const lt_u8 zip[30] = { 'P', 'K', 3, 4, 20, 0, 0, 0, 8, 0 };
+        static const char msq[] = "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n<msq xmlns=\"x\">\n<bibliography/>\n";
+        LT_CHECK_INT(lt_fw_image_parse(&img, zip, sizeof(zip), LT_FW_FMT_UNKNOWN, LT_FW_STM32_FLASH, err, sizeof(err)), -1);
+        LT_CHECK(strstr(err, "zip") != NULL);
+        LT_CHECK_INT(lt_fw_image_parse(&img, zip, sizeof(zip), LT_FW_FMT_BIN, LT_FW_STM32_FLASH, err, sizeof(err)), -1);
+        LT_CHECK_INT(lt_fw_image_parse(&img, (const lt_u8 *)msq, sizeof(msq) - 1, LT_FW_FMT_BIN, LT_FW_STM32_FLASH, err,
+                                       sizeof(err)), -1);
+        LT_CHECK(strstr(err, "text file") != NULL);
+    }
 }
 
 LT_TEST(merge_out_of_order)
