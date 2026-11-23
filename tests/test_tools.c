@@ -209,6 +209,33 @@ LT_TEST(close_mid_frame_keeps_draw_state)
     LT_CHECK(lt_plat_setenv("LT_DYNO_RUNS", "") == 0);
 }
 
+/* a dialog that opens another project (New Project's Create, sync, import...) closes the old one,
+ * which frees every dialog; the dialog loop then read the freed dialog */
+static int g_reopen_draws;
+static void reopen_draw(lt_app *app, lt_app_dialog *d)
+{
+    LT_UNUSED(d);
+    g_reopen_draws++;
+    lt_app_close_project(app);                  /* d is freed here: touch nothing */
+}
+
+LT_TEST(dialog_that_closes_the_project)
+{
+    lt_app *app = demo_app();
+    lt_app_dialog_kind dk;
+    memset(&dk, 0, sizeof(dk));
+    dk.kind = "test_reopen"; dk.draw = reopen_draw; dk.close = NULL;
+    lt_app_register_dialog_kind(app, &dk);
+    LT_CHECK(lt_app_dialog_push(app, "about", "", "About") != NULL);
+    LT_CHECK(lt_app_dialog_push(app, "test_reopen", "", "Reopen") != NULL);
+    LT_CHECK(lt_app_dialog_push(app, "shortcuts", "", "Keys") != NULL);
+    g_reopen_draws = 0;
+    lt_app_screenshot(app, "build/lt_test_reopen.ppm", 800, 600, 2);
+    LT_CHECK(g_reopen_draws == 1);
+    LT_CHECK(app->n_dialogs == 0);
+    lt_app_free(app);
+}
+
 /* "3D view" from the grid's context menu: the 3D callback ran before the table's colours (and its
  * app pointer) were set that frame and crashed on a NULL app */
 LT_TEST(t3d_from_context_menu)
@@ -643,6 +670,7 @@ int main(void)
     LT_RUN(tablecmp_dialog_runs);
     LT_RUN(t3d_camera_limits);
     LT_RUN(t3d_pick_and_pan);
+    LT_RUN(dialog_that_closes_the_project);
     LT_RUN(t3d_from_context_menu);
     LT_RUN(t3d_tab_renders_and_takes_input);
     LT_RUN(close_mid_frame_keeps_draw_state);

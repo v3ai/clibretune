@@ -924,6 +924,7 @@ void lt_app_close_project(lt_app *app)
         lt_free(d);
     }
     app->n_dialogs = 0;
+    app->dlg_gen++;
     if (app->rt != NULL) { lt_ini_rt_free(app->rt); app->rt = NULL; }
     if (app->has_project) {
         lt_project_close(&app->project);

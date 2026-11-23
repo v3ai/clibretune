@@ -982,9 +982,12 @@ static void app_dialogs(lt_app *app)
     lt_ext_overlays(app);
     for (i = 0; i < app->n_dialogs; i++) {
         lt_app_dialog *d = app->dialogs[i];
+        unsigned gen = app->dlg_gen;
         for (k = 0; k < app->n_dlg_kinds; k++) {
             if (strcmp(app->dlg_kinds[k].kind, d->kind) == 0) { app->dlg_kinds[k].draw(app, d); break; }
         }
+        /* the dialog opened a project: closing the old one freed every dialog, this one too */
+        if (app->dlg_gen != gen) { break; }
         if (!d->open) {
             int j;
             if (k < app->n_dlg_kinds && app->dlg_kinds[k].close != NULL) { app->dlg_kinds[k].close(app, d); }

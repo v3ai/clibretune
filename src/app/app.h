@@ -158,6 +158,7 @@ struct lt_app {
     lt_app_tab  **tabs; int n_tabs, cap_tabs;
     int          active_tab;
     lt_app_dialog **dialogs; int n_dialogs, cap_dialogs;
+    unsigned     dlg_gen;            /* +1 whenever closing the project drops every dialog */
     lt_app_tab_kind *tab_kinds; int n_tab_kinds, cap_tab_kinds;
     lt_app_dialog_kind *dlg_kinds; int n_dlg_kinds, cap_dlg_kinds;
     lt_app_ext  *ext;                /* feature registry (app_ext.c); features keep state there */
