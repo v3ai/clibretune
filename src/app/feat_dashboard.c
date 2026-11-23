@@ -26,6 +26,7 @@ static int clamp_hz(int hz)
 {
     static const int ok[6] = { 10, 15, 20, 25, 30, 60 };
     int i, best = 4;
+    hz = LT_CLAMP(hz, 0, 1000);                 /* a hand-edited dashboard.conf: no overflow below */
     for (i = 0; i < 6; i++) {
         int d = hz > ok[i] ? hz - ok[i] : ok[i] - hz;
         int bd = hz > ok[best] ? hz - ok[best] : ok[best] - hz;

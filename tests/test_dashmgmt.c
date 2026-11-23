@@ -522,6 +522,21 @@ LT_TEST(tab_edit_undo_kiosk)
     LT_CHECK(cfg->refresh_hz == 15 && cfg->right_align == 1 && cfg->ind_cols == 7 && cfg->lock == 1);
     cfg->refresh_hz = 30; cfg->right_align = 0; cfg->ind_cols = 0; cfg->lock = 0;
     lt_dashx_cfg_save(app);
+    {   /* a hand-edited rate of INT_MIN overflowed the nearest-rate search (UBSan) */
+        char *p = lt_path_join(app->config_dir, "dashboard.conf");
+        lt_props pr;
+        lt_props_init(&pr);
+        LT_CHECK(lt_props_load(&pr, p) == 0);
+        lt_props_set(&pr, "refresh_hz", "-2147483648");
+        LT_CHECK(lt_props_save(&pr, p) == 0);
+        lt_props_free(&pr);
+        lt_app_free(app);
+        app = lt_app_new();
+        LT_CHECK(lt_dashx_cfg(app)->refresh_hz == 10);
+        lt_dashx_cfg(app)->refresh_hz = 30;
+        lt_dashx_cfg_save(app);
+        lt_free(p);
+    }
     lt_app_free(app);
 }
 
