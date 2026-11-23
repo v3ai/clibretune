@@ -50,6 +50,8 @@ void     lt_logx_save(lt_app *app);                 /* write logging.conf */
 /* excluded-channel helpers */
 int      lt_logx_excluded(const lt_logx *x, const char *name);
 void     lt_logx_set_excluded(lt_logx *x, const char *name, int excluded);
+/* how many of names[0..n) are recorded (not excluded) */
+size_t   lt_logx_n_recorded(const lt_logx *x, const char *const *names, size_t n);
 /* project math channels (reloaded when the project changes) */
 lt_math_set *lt_logx_math(lt_app *app);
 int      lt_logx_math_save(lt_app *app);

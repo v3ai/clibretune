@@ -115,6 +115,14 @@ LT_TEST(logx_config_and_math)
     lt_logx_set_excluded(x, "foo", 0);
     LT_CHECK_INT(x->n_off, 1);
     LT_CHECK(lt_logx_excluded(x, "bar"));
+    {   /* exclusions of another definition's channels do not count against this one */
+        static const char *const chans[] = { "rpm", "bar" };
+        lt_logx_set_excluded(x, "other1", 1);
+        lt_logx_set_excluded(x, "other2", 1);
+        LT_CHECK_INT((int)lt_logx_n_recorded(x, chans, 2), 1);
+        lt_logx_set_excluded(x, "other1", 0);
+        lt_logx_set_excluded(x, "other2", 0);
+    }
     lt_logx_save(app);
     lt_app_free(app);
     app = lt_app_new();

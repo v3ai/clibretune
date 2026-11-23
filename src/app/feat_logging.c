@@ -75,6 +75,15 @@ void lt_logx_set_excluded(lt_logx *x, const char *name, int excluded)
     }
 }
 
+/* logging.conf is shared by every project, so the excluded list can hold other definitions'
+ * channels: count the given ones that are recorded */
+size_t lt_logx_n_recorded(const lt_logx *x, const char *const *names, size_t n)
+{
+    size_t k, on = 0;
+    for (k = 0; k < n; k++) { if (!lt_logx_excluded(x, names[k])) { on++; } }
+    return on;
+}
+
 static void conf_load(lt_app *app, lt_logx *x)
 {
     lt_props p;
@@ -561,7 +570,8 @@ static void rc_draw(lt_app *app, lt_app_dialog *d)
             changed = 1;
         }
         lt_snprintf(b, sizeof(b), "%lu of %lu channels recorded",
-                    (unsigned long)(s->n - x->n_off), (unsigned long)s->n);
+                    (unsigned long)lt_logx_n_recorded(x, (const char *const *)s->names, s->n),
+                    (unsigned long)s->n);
         lt_ui_layout_row(ui, 1, &w1, 0);
         lt_ui_label_ex(ui, b, lt_ui_theme(ui)->muted, LT_UI_ALIGN_LEFT);
         lt_ui_layout_row(ui, 1, &w1, -36);
