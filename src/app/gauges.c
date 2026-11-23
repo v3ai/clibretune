@@ -1008,7 +1008,8 @@ static void tach_static(gp *p)
         }
     }
     resolve_text(p->c->title, t, sizeof t);
-    p_text(p, cx, cy + radius * 0.30, t, LT_MAX(8.0, radius * 0.11), 1, 1, p->tc, radius);
+    /* between the hub and the value box, above the end labels at the bottom */
+    p_text(p, cx, cy + radius * 0.22, t, LT_MAX(8.0, radius * 0.11), 1, 1, p->tc, radius * 1.1);
 }
 
 static void paint_tach(gp *p)
@@ -1023,8 +1024,8 @@ static void paint_tach(gp *p)
     layer_paint(p, &k, tach_static);
     if (range <= 0.0) { return; }
     fmt_val(p, p->v, vdig(p), buf, sizeof buf);
-    p_round(p, cx - radius * 0.34, cy + radius * 0.42, radius * 0.68, radius * 0.24, 4, LT_RGB(0, 0, 0));
-    p_val(p, cx, cy + radius * 0.54, buf, LT_MAX(10.0, radius * 0.17), 1, 1, p->vc, radius * 0.6);
+    p_round(p, cx - radius * 0.30, cy + radius * 0.47, radius * 0.60, radius * 0.24, 4, LT_RGB(0, 0, 0));
+    p_val(p, cx, cy + radius * 0.59, buf, LT_MAX(10.0, radius * 0.17), 1, 1, p->vc, radius * 0.54);
     pc = clamp01((p->v - p->mn) / range);
     ang = sa + sw * pc;
     {
