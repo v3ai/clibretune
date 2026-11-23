@@ -218,8 +218,8 @@ static int save_config_to(const lt_project *p)
     return rc;
 }
 
-int lt_project_create(const char *name, const char *ini_src, const char *signature,
-                      const char *parent_dir, lt_project *out)
+static int project_create(const char *name, const char *ini_src, const char *signature,
+                          const char *parent_dir, lt_project *out)
 {
     char *parent, *safe, *path, *sub, *dst, now[21];
     int rc;
@@ -297,6 +297,17 @@ int lt_project_create(const char *name, const char *ini_src, const char *signatu
     }
     *out = p;
     return LT_OK;
+}
+
+/* the name without surrounding white space: "  " is empty, and a directory name ending in a space
+ * is not one Windows can open */
+int lt_project_create(const char *name, const char *ini_src, const char *signature,
+                      const char *parent_dir, lt_project *out)
+{
+    char *nm = name != NULL ? lt_str_trim(lt_strdup(name)) : NULL;
+    int rc = project_create(nm, ini_src, signature, parent_dir, out);
+    lt_free(nm);
+    return rc;
 }
 
 int lt_project_load_tune(lt_project *p)
