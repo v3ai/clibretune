@@ -321,12 +321,42 @@ lt_ecusim *lt_ecusim_new(const lt_ini *ini)
             static const char *const enables[] = {
                 "isInjectionEnabled", "isIgnitionEnabled"
             };
+            static const struct { const char *name; double value; } basics[] = {
+                { "rpmHardLimit", 7000.0 },      /* rusEFI, FOME */
+                { "hardRevLim", 7000.0 },        /* Speeduino */
+                { "cylindersCount", 4.0 },
+                { "displacement", 1.8 },
+                { "injector_flow", 240.0 },
+                { "stoich", 14.7 }
+            };
             lt_bool seeded = LT_FALSE;
             size_t e;
 
             for (e = 0; e < LT_COUNTOF(enables); e++) {
                 if (lt_ini_find_const(ini, enables[e]) != NULL &&
                     lt_ini_set(ini, &src, enables[e], 1.0) == 0) {
+                    seeded = LT_TRUE;
+                }
+            }
+            /* a few engine basics, so gauges whose range follows them (rusEFI's tachometer goes
+             * to rpmHardLimit + 2000) and the setup pages look like a running 1.8 l four */
+            for (e = 0; e < LT_COUNTOF(basics); e++) {
+                if (lt_ini_find_const(ini, basics[e].name) != NULL &&
+                    lt_ini_set(ini, &src, basics[e].name, basics[e].value) == 0) {
+                    seeded = LT_TRUE;
+                }
+            }
+            /* every other scalar a blank image leaves below its minimum (a cylinder count of 0)
+             * starts at the minimum instead */
+            for (e = 0; e < ini->n_constants; e++) {
+                const lt_ini_const *c = ini->constants[e];
+                double v = 0.0;
+                if (c->is_pc_var || c->type == LT_DT_BITS || c->type == LT_DT_STRING ||
+                    c->shape.kind != LT_SH_SCALAR || !(c->max > c->min) || c->name == NULL) {
+                    continue;
+                }
+                if (lt_ini_get(ini, &src, c->name, &v) == 0 && v < c->min &&
+                    lt_ini_set(ini, &src, c->name, c->min) == 0) {
                     seeded = LT_TRUE;
                 }
             }

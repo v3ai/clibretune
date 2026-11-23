@@ -591,6 +591,37 @@ LT_TEST(seed_ve_demo_ini)
     lt_ini_free(ini);
 }
 
+/* a blank page image is seeded like a configured engine: a rev limit (the tachometer's range
+ * follows it) and no scalar below its minimum (a cylinder count of 0) */
+LT_TEST(seed_engine_basics)
+{
+    lt_ini *ini = lt_ini_load_file(DEMO_INI, NULL);
+    lt_ecusim *s;
+    lt_pagesrc src;
+    size_t i, low = 0;
+    double v = 0.0;
+
+    LT_CHECK(ini != NULL);
+    if (!ini) {
+        return;
+    }
+    s = lt_ecusim_new(ini);
+    src.ud = s; src.page = simram_page; src.write = NULL;
+    LT_CHECK(lt_ini_get(ini, &src, "rpmHardLimit", &v) == 0 && v == 7000.0);
+    LT_CHECK(lt_ini_get(ini, &src, "cylindersCount", &v) == 0 && v == 4.0);
+    for (i = 0; i < ini->n_constants; i++) {
+        const lt_ini_const *c = ini->constants[i];
+        if (c->is_pc_var || c->type == LT_DT_BITS || c->type == LT_DT_STRING ||
+            c->shape.kind != LT_SH_SCALAR || !(c->max > c->min)) {
+            continue;
+        }
+        if (lt_ini_get(ini, &src, c->name, &v) == 0 && v < c->min - 1e-9) { low++; }
+    }
+    LT_CHECK_INT((int)low, 0);
+    lt_ecusim_free(s);
+    lt_ini_free(ini);
+}
+
 /* ------------------------------------------------------------------ */
 /* virtual ECU wire protocol                                            */
 /* ------------------------------------------------------------------ */
@@ -1193,6 +1224,7 @@ int main(void)
     LT_RUN(och_block_size);
     LT_RUN(seed_ve_table_values);
     LT_RUN(seed_ve_demo_ini);
+    LT_RUN(seed_engine_basics);
     LT_RUN(ecu_plain_default);
     LT_RUN(ecu_def_backed_signature);
     LT_RUN(ecu_rt_window_plain);
