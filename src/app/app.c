@@ -8,6 +8,7 @@
 #include "app_ext.h"
 #include "feat.h"
 #include "iniext.h"
+#include "../project/inidb.h"
 
 static const char *g_build_id = "dev";
 
@@ -1207,11 +1208,35 @@ const char *lt_app_find_demo_ini(char *buf, size_t cap)
     return NULL;
 }
 
+/* no demo.ini beside the program: the bundled rusEFI Proteus definition as <config>/demo.ini */
+const char *lt_app_bundled_demo_ini(lt_app *app, char *buf, size_t cap)
+{
+    const lt_inidb_def *d = NULL;
+    size_t i, len = 0;
+    char *txt, *path;
+    int rc;
+    if (app->config_dir == NULL || lt_inidb_count() == 0) { return NULL; }
+    for (i = 0; i < lt_inidb_count() && d == NULL; i++) {
+        const lt_inidb_def *c = lt_inidb_at(i);
+        if (strcmp(c->family, "rusefi") == 0 && strcmp(c->board, "proteus_f4") == 0) { d = c; }
+    }
+    if (d == NULL) { d = lt_inidb_at(0); }
+    txt = lt_inidb_text(d, &len);
+    path = lt_path_join(app->config_dir, "demo.ini");
+    (void)lt_plat_mkdirs(app->config_dir);
+    rc = txt != NULL && path != NULL ? lt_plat_write_atomic(path, txt, len) : -1;
+    if (rc == 0) { lt_strlcpy(buf, path, cap); }
+    lt_free(txt);
+    lt_free(path);
+    return rc == 0 ? buf : NULL;
+}
+
 int lt_app_start_demo(lt_app *app, const char *ini_path)
 {
     char buf[512];
     if (ini_path == NULL) {
         ini_path = lt_app_find_demo_ini(buf, sizeof(buf));
+        if (ini_path == NULL) { ini_path = lt_app_bundled_demo_ini(app, buf, sizeof(buf)); }
         if (ini_path == NULL) {
             lt_app_toast(app, 2, "Choose an INI file for demo mode");
             lt_app_file_dialog(app, LT_APP_FD_OPEN_INI_DEMO, LT_UI_FILE_OPEN, NULL, "",
