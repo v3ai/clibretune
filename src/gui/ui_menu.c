@@ -388,7 +388,7 @@ static void item_draw(lt_ui *ui, lt_rect r, int st, int disabled, const char *la
     int hi = (st & UI_ITEM_HI) && !disabled;
     if (hi) {
         lt_ui_draw_box(ui, hr, ui->cell ? t->primary_active : t->selected, 0, ui->cell ? 0 : t->radius);
-        fg = ui->cell ? t->text : t->primary_text;
+        fg = ui->cell ? t->text : ui_text_on(t->primary_text, t->text, t->selected);
     }
     if (flags & LT_UI_MENU_CHECKED) {
         lt_ui_draw_icon(ui, lt_rect_make(r.x + (ui->cell ? 0 : lt_ui_px(ui, 4)), r.y, ui->cell ? 16 : lt_ui_px(ui, 18), r.h),
@@ -642,7 +642,7 @@ lt_bool lt_ui_combo_cb(lt_ui *ui, const char *label, int *sel, int n,
             ui_popup_need(ui, lt_ui_text_width(ui, s) + 2 * t->pad_x + (n > 10 ? t->scrollbar_w : 0) + 8);
             if (st & UI_ITEM_HI) {
                 lt_ui_draw_box(ui, hr, ui->cell ? t->primary_active : t->selected, 0, t->radius);
-                if (!ui->cell) { fg = t->primary_text; }
+                if (!ui->cell) { fg = ui_text_on(t->primary_text, t->text, t->selected); }
                 if (ui->menu_hi[0] == i && !(ui->mx != ui->lmx || ui->my != ui->lmy) && n > 10) {
                     lt_ui_scroll_ensure_visible(ui, ir);
                 }
@@ -742,6 +742,7 @@ int lt_ui_listbox_cb(lt_ui *ui, const char *label, int *sel, int n,
             bg = t->hover;
         }
         if (bg != 0) { lt_ui_draw_box(ui, lt_rect_inset(ir, ui->cell ? 0 : lt_ui_px(ui, 2), ui->cell ? 0 : 1), bg, 0, 3); }
+        if (i == *sel && !ui->cell) { fg = ui_text_on(t->text, t->primary_text, bg); }
         if (s[0] == '\x01' || s[0] == '\x02') {
             lt_ui_draw_icon(ui, lt_rect_make(ir.x + t->pad_x, ir.y, ui->cell ? 16 : lt_ui_px(ui, 20), ir.h),
                             s[0] == '\x01' ? LT_UI_ICON_FOLDER : LT_UI_ICON_FILE,

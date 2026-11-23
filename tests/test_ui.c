@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <math.h>
 #include "lt_test.h"
 #include "../src/gui/ui.h"
 #include "../src/gui/ui_priv.h"
@@ -2297,6 +2298,65 @@ LT_TEST(test_backend_select)
     }
 }
 
+/* highlighted menu rows and selected tree rows stay readable in every theme (4.0 allows for
+ * anti-aliasing; light theme had white primary text on a pale blue selection, 1.4:1) */
+static double t_lin(int v) { double c = v / 255.0; return c <= 0.03928 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4); }
+static double t_lum(lt_u32 c)
+{
+    return 0.2126 * t_lin((int)((c >> 16) & 255)) + 0.7152 * t_lin((int)((c >> 8) & 255)) + 0.0722 * t_lin((int)(c & 255));
+}
+static double best_contrast(lt_rect r, lt_u32 bg)
+{
+    int x, y;
+    double best = 1.0, lb = t_lum(bg) + 0.05;
+    for (y = r.y; y < r.y + r.h; y++) {
+        for (x = r.x; x < r.x + r.w; x++) {
+            double l = t_lum(px(x, y)) + 0.05, c = l > lb ? l / lb : lb / l;
+            if (c > best) { best = c; }
+        }
+    }
+    return best;
+}
+
+static void scene_sel_rows(lt_ui *ui)
+{
+    static const char *const items[] = { "Alpha", "Beta" };
+    int w = -1;
+    scene_menu(ui);
+    lt_ui_layout_set_rect(ui, lt_rect_make(250, 250, 200, 24));
+    lt_ui_tree_node(ui, "Selected node", 0, LT_UI_TREE_LEAF | LT_UI_TREE_SELECTED);
+    R[8] = lt_ui_last_rect(ui);
+    lt_ui_layout_set_rect(ui, lt_rect_make(250, 300, 200, 80));
+    lt_ui_layout_row(ui, 1, &w, 0);
+    lt_ui_listbox(ui, "lb", &s_sel, items, 2);
+    R[9] = lt_ui_last_rect(ui);
+}
+
+LT_TEST(test_selection_text_readable_in_all_themes)
+{
+    static const char *names[] = { "dark", "light", "midnight", "carbon", "synthwave", "solarized",
+                                   "nord", "dracula", "highcontrast" };
+    size_t i;
+    for (i = 0; i < LT_COUNTOF(names); i++) {
+        lt_theme t;
+        lt_rect hr;
+        LT_CHECK(lt_theme_preset(&t, names[i]) == 0);
+        reset_state();
+        h_open(500, 400, 0);
+        H.scene = scene_sel_rows;
+        lt_ui_set_theme(H.ui, &t);
+        frames(2);
+        click_rect(R[9]);                                  /* focus the list: row 0 selected */
+        key_ex('f', LT_MOD_ALT);                           /* File open, New highlighted */
+        frames(2);
+        hr = lt_rect_inset(R[1], 4, 3);
+        if (best_contrast(hr, px(hr.x, hr.y + hr.h / 2)) < 4.0) { printf("menu row in %s\n", names[i]); LT_CHECK(0); }
+        hr = lt_rect_inset(R[8], 4, 3);
+        if (best_contrast(hr, t.selected & 0xFFFFFFUL) < 4.0) { printf("tree row in %s %.2f\n", names[i], best_contrast(hr, t.selected & 0xFFFFFFUL)); LT_CHECK(0); }
+        h_close();
+    }
+}
+
 LT_TEST(test_widgets_in_all_themes)
 {
     static const char *names[] = { "dark", "light", "midnight", "carbon", "synthwave", "solarized",
@@ -2360,6 +2420,7 @@ int main(void)
     LT_RUN(test_fuzz_gallery);
     LT_RUN(test_backend_select);
     LT_RUN(test_widgets_in_all_themes);
+    LT_RUN(test_selection_text_readable_in_all_themes);
     LT_RUN(test_gallery_render);
     gallery_free(&GAL);
     LT_TEST_MAIN_END

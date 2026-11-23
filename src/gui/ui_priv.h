@@ -349,6 +349,7 @@ int  ui_pressed(const lt_ui *ui, int button);   /* press event available */
 void ui_focus_ring(lt_ui *ui, lt_rect r, int radius);
 int  ui_disabled(const lt_ui *ui);
 lt_color ui_dim(lt_ui *ui, lt_color c);
+lt_color ui_text_on(lt_color preferred, lt_color alt, lt_color bg);
 
 /* ---- popups (ui_menu.c) ---- */
 #define UI_ITEM_ACT 1

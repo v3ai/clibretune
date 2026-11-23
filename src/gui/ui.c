@@ -393,6 +393,41 @@ lt_color ui_dim(lt_ui *ui, lt_color c)
     return ui->disabled ? lt_color_mix(c, ui->theme.bg_app, 150) : c;
 }
 
+/* WCAG relative luminance and contrast ratio of two opaque colours */
+static double lum_ch(int v)
+{
+    double c = (double)v / 255.0;
+    return c <= 0.03928 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4);
+}
+
+static double lum_of(lt_color c)
+{
+    return 0.2126 * lum_ch(LT_COLOR_R(c)) + 0.7152 * lum_ch(LT_COLOR_G(c)) + 0.0722 * lum_ch(LT_COLOR_B(c));
+}
+
+static double contrast_of(lt_color a, lt_color b)
+{
+    double la = lum_of(a) + 0.05, lb = lum_of(b) + 0.05;
+    return la > lb ? la / lb : lb / la;
+}
+
+/* text colour on a highlight: the preferred one when it reads (4.5:1), otherwise the better of
+ * alt and black/white (light themes pair a pale selection with white primary text) */
+lt_color ui_text_on(lt_color preferred, lt_color alt, lt_color bg)
+{
+    lt_color best = preferred, cand[3];
+    double cb = contrast_of(preferred, bg);
+    int i;
+    if (cb >= 4.5) { return preferred; }
+    cand[0] = alt; cand[1] = LT_RGBA(16, 16, 16, 255); cand[2] = LT_RGBA(255, 255, 255, 255);
+    for (i = 0; i < 3; i++) {
+        double c = contrast_of(cand[i], bg);
+        if (c >= 4.5 && i == 0) { return alt; }
+        if (c > cb) { cb = c; best = cand[i]; }
+    }
+    return best;
+}
+
 void ui_request(lt_ui *ui) { ui->extra = 2; }
 
 void ui_animate(lt_ui *ui, int ms)
