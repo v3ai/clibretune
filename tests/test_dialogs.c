@@ -103,6 +103,20 @@ LT_TEST(modals_and_log_viewer)
     lt_app_free(app);
 }
 
+/* A dialog declared with an empty title ("dialog = injectorConfig, \"\"") opened from the menu
+ * is titled with the menu label, not its internal name */
+LT_TEST(untitled_dialog_uses_menu_label)
+{
+    char buf[512];
+    lt_app *app = lt_app_new();
+    lt_app_tab *t;
+    LT_CHECK(lt_app_start_demo(app, lt_app_find_demo_ini(buf, sizeof(buf))) == 0);
+    LT_CHECK(lt_app_open_target(app, "injectorConfig", "&Injection configuration") == 0);
+    t = lt_app_tab_active(app);
+    LT_CHECK(t != NULL && strcmp(t->title, "Injection configuration") == 0);
+    lt_app_free(app);
+}
+
 /* A field caption too long for a narrow window is elided; hovering it shows the whole caption
  * (and the help icon sits after the "...", not on top of it). */
 LT_TEST(elided_field_caption_has_tooltip)
@@ -138,6 +152,7 @@ int main(void)
 {
     LT_RUN(ini_dialogs_render);
     LT_RUN(elided_field_caption_has_tooltip);
+    LT_RUN(untitled_dialog_uses_menu_label);
     LT_RUN(modals_and_log_viewer);
     LT_TEST_MAIN_END
 }
