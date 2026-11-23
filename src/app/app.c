@@ -483,7 +483,13 @@ int lt_app_log_toggle(lt_app *app)
     if (app->ini == NULL) { return -1; }
     if (app->rec == NULL) {
         n = lt_datalog_channels_from_ini(app->ini, &app->rec_names, &units);
-        if (n == 0) { lt_app_toast(app, 2, "No channels to log"); return -1; }
+        if (n == 0) {
+            lt_strv_free(app->rec_names, 0);
+            app->rec_names = NULL;
+            lt_strv_free(units, 0);
+            lt_app_toast(app, 2, "No channels to log");
+            return -1;
+        }
         app->rec_n = n;
         app->rec = lt_rec_new((const char *const *)app->rec_names, (const char *const *)units, (int)n);
         app->rec_vals = (double *)lt_calloc(n, sizeof(double));
@@ -907,6 +913,8 @@ int lt_app_service_wait_ms(lt_app *app)
 
 /* ------------------------------------------------------------------ */
 /* project / ini / tune                                                */
+static void ini_free_later(void *p) { lt_ini_free((lt_ini *)p); }
+
 void lt_app_close_project(lt_app *app)
 {
     int i;
@@ -927,6 +935,7 @@ void lt_app_close_project(lt_app *app)
         lt_free(d);
     }
     app->n_dialogs = 0;
+    app->dlg_gen++;
     if (app->rt != NULL) { lt_ini_rt_free(app->rt); app->rt = NULL; }
     if (app->has_project) {
         lt_project_close(&app->project);
@@ -936,7 +945,8 @@ void lt_app_close_project(lt_app *app)
         lt_tune_free(app->tune);
         app->tune = NULL;
     }
-    if (app->ini != NULL) { lt_ini_free(app->ini); app->ini = NULL; }
+    /* tabs drawn this frame may have queued draw callbacks that still read the definition */
+    if (app->ini != NULL) { lt_ui_after_frame(app->ui, ini_free_later, app->ini); app->ini = NULL; }
     lt_expr_cache_free(&app->expr);
     lt_expr_cache_init(&app->expr);
     app->modified = 0;
@@ -1331,7 +1341,7 @@ int lt_app_reload_ini(lt_app *app)
     lt_tune_free(d);
     (void)lt_tune_apply_to_pages(app->tune, ini);
     (void)lt_tune_capture_from_pages(app->tune, ini);
-    lt_ini_free(app->ini);
+    lt_ui_after_frame(app->ui, ini_free_later, app->ini);      /* see lt_app_close_project */
     app->ini = ini;
     lt_expr_cache_free(&app->expr);
     lt_expr_cache_init(&app->expr);

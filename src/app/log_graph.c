@@ -15,6 +15,7 @@ const lt_color lt_lg_palette[LT_LG_COLORS] = {
 };
 
 #define LG_MAXCOLS 4096
+#define LG_TICKS_MAX 500        /* tick loops: never more (huge values from a hostile log) */
 
 long lt_lg_find(const lt_log *l, double t)
 {
@@ -159,9 +160,11 @@ static void axis_ticks(lt_ui *ui, lt_rect pl, const lg_tr *t, int side, int gutt
     int want = pl.h / (cell ? 32 : lt_ui_px(ui, 34)), lh = cell ? 16 : lt_ui_px(ui, 14);
     double step, v;
     char b[32];
+    int nt = 0;
     if (want < 1) { want = 1; }
     step = lt_graph_nice_step(t->hi - t->lo, want);
-    for (v = ceil(t->lo / step) * step; v <= t->hi + step * 1e-9; v += step) {
+    /* counted: a step below the precision of huge values never advances v */
+    for (v = ceil(t->lo / step) * step; v <= t->hi + step * 1e-9 && nt < LG_TICKS_MAX; v += step, nt++) {
         int y = pl.y + pl.h - 1 - (int)((v - t->lo) / (t->hi - t->lo) * (double)(pl.h - 1));
         fmt_tick(b, sizeof(b), v, step);
         if (side == 0) {
@@ -224,7 +227,8 @@ int lt_lg_draw(lt_app *app, lt_rect r, const lt_log *L, const lt_graph_page *pg,
         }
         {   /* time grid */
             double st = lt_graph_nice_step(t1 - t0, pl.w / (cell ? 96 : lt_ui_px(ui, 110)) + 1), tt;
-            for (tt = ceil(t0 / st) * st; tt < t1; tt += st) {
+            int nl = 0;
+            for (tt = ceil(t0 / st) * st; tt < t1 && nl < LG_TICKS_MAX; tt += st, nl++) {
                 int x = pl.x + (int)((tt - t0) / (t1 - t0) * (double)(pl.w - 1));
                 lt_ui_draw_vline(ui, x, pl.y, pl.y + pl.h,
                                  cell ? th->table_grid : (th->dark ? LT_RGBA(255, 255, 255, 14) : LT_RGBA(0, 0, 0, 16)));
@@ -313,8 +317,8 @@ int lt_lg_draw(lt_app *app, lt_rect r, const lt_log *L, const lt_graph_page *pg,
         lt_rect ax = lt_rect_make(r.x, r.y + np * pane_h, r.w, axis_h);
         double st = lt_graph_nice_step(t1 - t0, plot_any.w / (cell ? 96 : lt_ui_px(ui, 110)) + 1), tt;
         char b[64];
-        int tw = cell ? 64 : lt_ui_px(ui, 60);
-        for (tt = ceil(t0 / st) * st; tt < t1; tt += st) {
+        int tw = cell ? 64 : lt_ui_px(ui, 60), nt = 0;
+        for (tt = ceil(t0 / st) * st; tt < t1 && nt < LG_TICKS_MAX; tt += st, nt++) {
             int x = plot_any.x + (int)((tt - t0) / (t1 - t0) * (double)(plot_any.w - 1));
             fmt_tick(b, sizeof(b), tt, st);
             lt_snprintf(b + strlen(b), sizeof(b) - strlen(b), "s");

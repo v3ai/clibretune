@@ -143,22 +143,24 @@ static void scatter_draw(lt_app *app, lt_lxy *s, const lt_log *L, lt_rect r, lon
     }
     pad = (xh - xl) * 0.04;
     if (pad <= 0.0) { pad = 0.5; }
+    if (!(xl - pad < xh + pad)) { pad = fabs(xl) * 1e-9; }   /* 0.5 is below the precision of 1e17 */
     xl -= pad; xh += pad;
     pad = (yh - yl) * 0.04;
     if (pad <= 0.0) { pad = 0.5; }
+    if (!(yl - pad < yh + pad)) { pad = fabs(yl) * 1e-9; }
     yl -= pad; yh += pad;
     if (zh <= zl) { zh = zl + 1.0; }
     /* grid + ticks */
     if (!cell) { lt_ui_draw_vgrad(ui, pl, LT_RGBA(255, 255, 255, th->dark ? 5 : 0), LT_RGBA(0, 0, 0, th->dark ? 36 : 6)); }
     st = lt_graph_nice_step(yh - yl, pl.h / (cell ? 32 : lt_ui_px(ui, 40)) + 1);
-    for (v = ceil(yl / st) * st; v <= yh; v += st) {
+    for (v = ceil(yl / st) * st, k = 0; v <= yh && k < 500; v += st, k++) {   /* counted: see log_graph.c */
         int y = pl.y + pl.h - 1 - (int)((v - yl) / (yh - yl) * (double)(pl.h - 1));
         lt_ui_draw_hline(ui, pl.x, pl.x + pl.w, y, cell ? th->table_grid : (th->dark ? LT_RGBA(255, 255, 255, 18) : LT_RGBA(0, 0, 0, 20)));
         ftick(b, sizeof(b), v, st);
         txt(ui, lt_rect_make(r.x, y - 8, lm - 6, 16), b, th->text2, 2);
     }
     st = lt_graph_nice_step(xh - xl, pl.w / (cell ? 80 : lt_ui_px(ui, 90)) + 1);
-    for (v = ceil(xl / st) * st; v <= xh; v += st) {
+    for (v = ceil(xl / st) * st, k = 0; v <= xh && k < 500; v += st, k++) {
         int x = pl.x + (int)((v - xl) / (xh - xl) * (double)(pl.w - 1));
         lt_ui_draw_vline(ui, x, pl.y, pl.y + pl.h, cell ? th->table_grid : (th->dark ? LT_RGBA(255, 255, 255, 14) : LT_RGBA(0, 0, 0, 16)));
         ftick(b, sizeof(b), v, st);

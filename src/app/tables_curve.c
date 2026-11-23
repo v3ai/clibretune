@@ -278,6 +278,7 @@ static void xy_collect(lt_app *app, crv_tab *st)
     if (lo > hi) { lo = 0.0; hi = 1.0; }
     if (hi - lo < 1e-9) { lo -= 0.5; hi += 0.5; }
     else { double pad = (hi - lo) * 0.08; lo -= pad; hi += pad; }
+    if (!(lo < hi)) { double pad = fabs(lo) * 1e-9; lo -= pad; hi += pad; }   /* huge values */
     st->xy_lo = lo; st->xy_hi = hi;
     st->xy_n = n;
 }
@@ -313,10 +314,12 @@ static void xy_plot(lt_gfx *g, const plot_ctx *p, int x0, int x1, int y0, int y1
     crv_tab *st = p->st;
     lt_font *fm = lt_font_get(LT_FONT_MONO);
     double f10 = lt_gfx_fpx(g, 10.0), rad = p->cell ? 1.0 : 2.2 * (double)p->pct / 100.0, step, v;
-    int i;
+    int i, k;
     char b[32];
     lt_color live = p->xy, logc = p->xy_log;
     LT_UNUSED(x0);
+    /* switched on after this frame's collection ran: no range yet (0/0 made NaN pixel positions) */
+    if (!(st->xy_hi > st->xy_lo)) { return; }
     for (i = 0; i < st->xy_n; i++) {
         double sx, sy, a = st->xy_pa[i];
         lt_color c;
@@ -329,7 +332,7 @@ static void xy_plot(lt_gfx *g, const plot_ctx *p, int x0, int x1, int y0, int y1
     }
     /* right axis */
     step = lt_graph_nice_step(st->xy_hi - st->xy_lo, 4);
-    for (v = ceil(st->xy_lo / step) * step; v <= st->xy_hi; v += step) {
+    for (v = ceil(st->xy_lo / step) * step, k = 0; v <= st->xy_hi && k < 500; v += step, k++) {
         double yy = (double)y0 - (v - st->xy_lo) / (st->xy_hi - st->xy_lo) * (double)(y0 - y1);
         lt_fmt_double(b, sizeof(b), v, step >= 1.0 ? 0 : (step >= 0.1 ? 1 : 2));
         lt_gfx_text_bl(g, fm, f10, (double)x1 + (double)lt_gfx_px(g, 6), (int)yy + lt_gfx_px(g, 4), b, live);
@@ -923,17 +926,22 @@ static void crv_draw(lt_app *app, lt_app_tab *tab, lt_rect rr)
     crv_dialogs(app, tab, st);
 }
 
-static void crv_close(lt_app *app, lt_app_tab *tab)
+static void crv_destroy(void *p)
 {
-    crv_tab *st = (crv_tab *)tab->data;
-    LT_UNUSED(app);
-    if (st == NULL) { return; }
+    crv_tab *st = (crv_tab *)p;
     lt_tblview_free(&st->v);
     lt_free(st->ox); lt_free(st->oz); lt_free(st->selr);
     lt_xyring_free(&st->xy_ring);
     lt_free(st->xy_px); lt_free(st->xy_py); lt_free(st->xy_pa);
     lt_free(st);
+}
+
+static void crv_close(lt_app *app, lt_app_tab *tab)
+{
+    crv_tab *st = (crv_tab *)tab->data;
+    if (st == NULL) { return; }
     tab->data = NULL;
+    lt_ui_after_frame(app->ui, crv_destroy, st);    /* this frame's plot callback reads it */
 }
 
 const lt_app_tab_kind lt_tabs_kind_curve = { "curve", crv_draw, crv_close };

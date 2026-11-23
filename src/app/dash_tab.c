@@ -1229,11 +1229,9 @@ static void dash_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
     if (st->changed) { lt_ui_request_redraw(ui); }
 }
 
-static void dash_close(lt_app *app, lt_app_tab *tab)
+static void dash_destroy(void *p)
 {
-    dash_state *st = (dash_state *)tab->data;
-    if (st == NULL) { return; }
-    if (lt_dashx_cfg(app)->kiosk) { (void)lt_dashx_set_kiosk(app, 0); }
+    dash_state *st = (dash_state *)p;
     if (st->view != NULL) { lt_dash_view_free(st->view); }
     if (st->file != NULL) { lt_dash_free(st->file); }
     lt_dash_hist_free(&st->hist);
@@ -1247,9 +1245,17 @@ static void dash_close(lt_app *app, lt_app_tab *tab)
     lt_free(st->orig_all);
     lt_free(st->clip);
     lt_free(st->cache_px);
-    g_demo.st = NULL;
     lt_free(st);
+}
+
+static void dash_close(lt_app *app, lt_app_tab *tab)
+{
+    dash_state *st = (dash_state *)tab->data;
+    if (st == NULL) { return; }
+    if (lt_dashx_cfg(app)->kiosk) { (void)lt_dashx_set_kiosk(app, 0); }
+    g_demo.st = NULL;
     tab->data = NULL;
+    lt_ui_after_frame(app->ui, dash_destroy, st);   /* this frame's render callback reads it */
 }
 
 void lt_app_register_dash(lt_app *app)

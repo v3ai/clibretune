@@ -255,6 +255,17 @@ LT_TEST(logx_registered)
     lt_app_free(app);
 }
 
+/* an INI without output channels: "No channels to log" leaked the channel arrays (LeakSanitizer) */
+LT_TEST(log_toggle_no_channels)
+{
+    lt_app *app = lt_app_new();
+    LT_CHECK(lt_app_start_demo(app, "tests/fixtures/project/ts_proj/projectCfg/mainController.ini") == 0);
+    LT_CHECK(lt_app_log_toggle(app) == -1);
+    LT_CHECK(lt_app_log_toggle(app) == -1);
+    LT_CHECK(app->rec == NULL && app->rec_names == NULL);
+    lt_app_free(app);
+}
+
 int main(void)
 {
     LT_RUN(stats_basic);
@@ -266,5 +277,6 @@ int main(void)
     LT_RUN(log_toggle_never_overwrites);
     LT_RUN(log_toggle_uses_chosen_format);
     LT_RUN(log_errors_are_reported);
+    LT_RUN(log_toggle_no_channels);
     LT_TEST_MAIN_END
 }

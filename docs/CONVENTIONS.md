@@ -134,6 +134,9 @@ python3 tools/audit_names.py --only src/ini            # reserved names, banned 
 Parsers of untrusted files also have libFuzzer harnesses (`tools/fuzz/run.sh NAME SECONDS`,
 clang only, not part of the build) and a real-world INI check (`tools/fetch_ini_corpus.sh`, then
 `tools/ini_corpus_check.sh`: parse timing plus every menu target in the app under ASan+UBSan).
+`tools/monkey.py` drives the whole app (pixel and terminal UI, MCP, hostile project and
+config files) with seeded random input under ASan+UBSan and keeps a minimizable repro per
+failure (a sweep to run after larger changes, not part of the build).
 
 All of it must pass before a change is done. The compile flags are
 `-Wall -Wextra -pedantic-errors -Werror -Wconversion -Wsign-conversion -Wshadow -Wformat=2

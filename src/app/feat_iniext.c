@@ -314,9 +314,15 @@ static void pins_draw(lt_app *app, lt_app_dialog *d)
     lt_ui *ui = app->ui;
     const lt_theme *t = lt_ui_theme(ui);
     int open = d->open, w1 = -1, w3[3], fh = lt_ui_cell_mode(ui) ? 16 : 28, burn = strcmp(d->target, "burn") == 0;
-    lt_pin_report r;
+    lt_pin_report *r = (lt_pin_report *)d->data;
     size_t i, j;
-    int n = lt_app_pin_conflicts(app, &r);
+    int n;
+    if (r == NULL) {        /* scanned once per opening: a large INI has ~1M bit options to test */
+        r = (lt_pin_report *)lt_malloc(sizeof(*r));
+        (void)lt_app_pin_conflicts(app, r);
+        d->data = r;
+    }
+    n = (int)r->n;
     if (lt_ui_modal_begin(ui, burn ? "Pin Conflicts - Confirm Burn" : "Pin Conflict Report", 640, 440, &open)) {
         lt_ui_layout_row(ui, 1, &w1, 0);
         if (n == 0) {
@@ -330,15 +336,15 @@ static void pins_draw(lt_app *app, lt_app_dialog *d)
         }
         lt_ui_layout_row(ui, 1, &w1, -(fh * 2 + 18));
         if (lt_ui_scroll_begin(ui, "pins")) {
-            for (i = 0; i < r.n; i++) {
+            for (i = 0; i < r->n; i++) {
                 lt_buf b;
                 char *s;
                 lt_buf_init(&b);
-                lt_buf_puts(&b, r.c[i].pin_label != NULL ? r.c[i].pin_label : "?");
+                lt_buf_puts(&b, r->c[i].pin_label != NULL ? r->c[i].pin_label : "?");
                 lt_buf_puts(&b, ": ");
-                for (j = 0; j < r.c[i].n; j++) {
+                for (j = 0; j < r->c[i].n; j++) {
                     if (j > 0) { lt_buf_puts(&b, ", "); }
-                    lt_buf_puts(&b, r.c[i].constants[j]);
+                    lt_buf_puts(&b, r->c[i].constants[j]);
                 }
                 s = lt_buf_take(&b);
                 lt_ui_layout_row(ui, 1, &w1, 0);
@@ -366,8 +372,17 @@ static void pins_draw(lt_app *app, lt_app_dialog *d)
         if (lt_ui_button_ex(ui, burn ? "Cancel" : "Close", LT_UI_BTN_DEFAULT)) { open = 0; }
         lt_ui_modal_end(ui);
     }
-    lt_pin_report_free(&r);
     d->open = open;
+}
+
+static void pins_close(lt_app *app, lt_app_dialog *d)
+{
+    LT_UNUSED(app);
+    if (d->data != NULL) {
+        lt_pin_report_free((lt_pin_report *)d->data);
+        lt_free(d->data);
+        d->data = NULL;
+    }
 }
 
 static void pin_menu(lt_app *app) { lt_app_pin_report_open(app); }
@@ -668,7 +683,7 @@ void lt_feat_iniext_register(lt_app_ext *reg)
     lt_app_dialog_kind dk;
     dk.kind = "ini-help"; dk.draw = help_draw; dk.close = help_close;
     lt_ext_add_dialog_kind(reg, &dk);
-    dk.kind = "pin-report"; dk.draw = pins_draw; dk.close = NULL;
+    dk.kind = "pin-report"; dk.draw = pins_draw; dk.close = pins_close;
     lt_ext_add_dialog_kind(reg, &dk);
     lt_ext_add_tab_kind(reg, &lt_portedit_tab_kind);
     lt_ext_add_menu_item(reg, LT_EXT_MENU_TOOLS, "Pin Conflict Report...", NULL, pin_menu, lt_ext_pred_ini);

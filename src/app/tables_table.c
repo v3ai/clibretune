@@ -1641,6 +1641,7 @@ static void tbl_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
     if (st == NULL) {
         st = (tbl_tab *)lt_calloc(1, sizeof(*st));
         tab->data = st;
+        st->app_ = app;                         /* the 3D callback reads it even before its colours exist */
         st->shading = 1; st->ybottom = app->settings.prefs.y_bottom ? 1 : 0; lt_t3d_init(&st->t3);
         st->rebin_interp = 1; st->scale_val = 1.05; st->cur_r = st->cur_c = 0;
         st->step_mult = 5.0; st->step_pct = 5.0;
@@ -1695,15 +1696,20 @@ static void tbl_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
     tbl_dialogs(app, tab, st);
 }
 
-static void tbl_close(lt_app *app, lt_app_tab *tab)
+static void tbl_destroy(void *p)
 {
-    tbl_tab *st = (tbl_tab *)tab->data;
-    LT_UNUSED(app);
-    if (st == NULL) { return; }
+    tbl_tab *st = (tbl_tab *)p;
     tbl_free_data(st);
     lt_free(st->clip);
     lt_free(st);
+}
+
+static void tbl_close(lt_app *app, lt_app_tab *tab)
+{
+    tbl_tab *st = (tbl_tab *)tab->data;
+    if (st == NULL) { return; }
     tab->data = NULL;
+    lt_ui_after_frame(app->ui, tbl_destroy, st);    /* this frame's 3D / overlay callbacks read it */
 }
 
 const lt_app_tab_kind lt_tabs_kind_table = { "table", tbl_draw, tbl_close };

@@ -220,6 +220,9 @@ void lt_ui_draw_custom(lt_ui *ui, lt_rect r, lt_ui_draw_fn fn, void *user);
 /* the data behind this frame's custom callbacks is being freed mid-frame (a project closes from
  * a dialog or menu): they are skipped at replay and another frame is drawn */
 void lt_ui_forget_custom(lt_ui *ui);
+/* fn(user) once this frame's drawing has been replayed (at once outside a frame): frees state that
+ * a queued lt_ui_draw_custom callback may still read, e.g. of a tab or dialog closed mid-frame */
+void lt_ui_after_frame(lt_ui *ui, void (*fn)(void *user), void *user);
 void lt_ui_clip_push(lt_ui *ui, lt_rect r);     /* intersected with current */
 void lt_ui_clip_pop(lt_ui *ui);
 lt_rect lt_ui_clip_get(const lt_ui *ui);

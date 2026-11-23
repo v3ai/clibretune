@@ -214,6 +214,15 @@ LT_TEST(trace_range_and_ticks)
     t.autoscale = 0; t.lo = -5.0; t.hi = 5.0;
     lt_graph_trace_range(&t, v, 3, &lo, &hi);
     LT_CHECK_NEAR(lo, -5.0, 1e-9);
+    /* a constant huge channel: +-0.5 is below its precision and left an empty range */
+    t.autoscale = 1;
+    v[0] = v[1] = v[2] = 1e17;
+    lt_graph_trace_range(&t, v, 3, &lo, &hi);
+    LT_CHECK(lo < 1e17 && hi > 1e17);
+    v[0] = v[1] = v[2] = 850.0;
+    lt_graph_trace_range(&t, v, 3, &lo, &hi);
+    LT_CHECK_NEAR(lo, 849.5, 1e-9);
+    LT_CHECK_NEAR(hi, 850.5, 1e-9);
     LT_CHECK_NEAR(lt_graph_nice_step(100.0, 4), 25.0, 1e-9);
     LT_CHECK_NEAR(lt_graph_nice_step(7.0, 4), 2.0, 1e-9);
 }

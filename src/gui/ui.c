@@ -20,6 +20,7 @@ lt_ui *lt_ui_create(void)
     lt_buf_init(&ui->tbuf);
     lt_buf_init(&ui->clipbuf);
     lt_vec_init(&ui->dpool, sizeof(double));
+    lt_vec_init(&ui->later, sizeof(ui_later));
     for (i = 0; i < UI_MAX_LAYERS; i++) {
         lt_vec_init(&ui->layers[i].cmds, sizeof(ui_cmd));
     }
@@ -31,10 +32,33 @@ lt_ui *lt_ui_create(void)
     return ui;
 }
 
+static void run_later(lt_ui *ui)
+{
+    size_t i;
+    for (i = 0; i < ui->later.len; i++) {       /* a callback may queue more: they run too */
+        ui_later *l = (ui_later *)lt_vec_at(&ui->later, i);
+        void (*fn)(void *) = l->fn;
+        void *user = l->user;
+        fn(user);
+    }
+    lt_vec_clear(&ui->later);
+}
+
+void lt_ui_after_frame(lt_ui *ui, void (*fn)(void *user), void *user)
+{
+    ui_later *l;
+    if (ui == NULL || !ui->in_frame) { fn(user); return; }
+    l = (ui_later *)lt_vec_push(&ui->later);
+    l->fn = fn;
+    l->user = user;
+}
+
 void lt_ui_destroy(lt_ui *ui)
 {
     int i;
     if (ui == NULL) { return; }
+    run_later(ui);
+    lt_vec_free(&ui->later);
     for (i = 0; i < UI_MAX_LAYERS; i++) { lt_vec_free(&ui->layers[i].cmds); }
     for (i = 0; i < ui->tab_cap; i++) { lt_free(ui->tab[i]); }
     for (i = 0; i < 4; i++) { lt_free(ui->grids[i].mask); }
@@ -1724,6 +1748,7 @@ void lt_ui_end(lt_ui *ui)
     ui->dirty = 0;
     if (ui->extra > 0) { ui->extra--; }
     ui->in_frame = 0;
+    run_later(ui);
 }
 
 void lt_ui_layout_row_px(lt_ui *ui, int n, const int *widths, int height)

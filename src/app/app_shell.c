@@ -1063,12 +1063,14 @@ static void app_dialogs(lt_app *app)
     lt_ext_overlays(app);
     for (i = 0; i < app->n_dialogs; i++) {
         lt_app_dialog *d = app->dialogs[i];
+        unsigned gen = app->dlg_gen;
         for (k = 0; k < app->n_dlg_kinds; k++) {
             if (strcmp(app->dlg_kinds[k].kind, d->kind) == 0) { app->dlg_kinds[k].draw(app, d); break; }
         }
         /* the dialog opened a project (Create, Switch, Demo...): that closed and freed every
-         * dialog, d included; the rest are drawn next frame */
-        if (i >= app->n_dialogs || app->dialogs[i] != d) { break; }
+         * dialog, d included (a new one may even sit at the same address); the rest are drawn
+         * next frame */
+        if (app->dlg_gen != gen || i >= app->n_dialogs || app->dialogs[i] != d) { break; }
         if (!d->open) {
             int j;
             lt_ui_discard_frame(ui);    /* the dialog drew this frame; its callbacks may use its data */

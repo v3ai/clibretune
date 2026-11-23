@@ -375,6 +375,14 @@ LT_TEST(sidebar_resize_keys)
     LT_CHECK(strstr(g_txt, "Odd Fire Cylinder offsets") != NULL);
 }
 
+/* the curve's XY overlay switched on by keyboard (last control, Enter): its right axis was drawn
+ * in the same frame from a 0..0 range, NaN rows into an int (UBSan overflow in the text call) */
+LT_TEST(curve_xy_toggle)
+{
+    render(60, 30, "knockThresholdCurve", "shift+tab enter", NULL, 0, NULL);
+    LT_CHECK(strstr(g_txt, "X-Y: Y") != NULL);
+}
+
 LT_TEST(logger_screens)
 {
     render(120, 40, "tooth-logger", "click:79/3", NULL, 0, "build/ttyshot_tooth120.ppm");
@@ -436,6 +444,7 @@ int main(void)
     LT_RUN(braille_plot);
     LT_RUN(modal_fits_content);
     LT_RUN(sidebar_resize_keys);
+    LT_RUN(curve_xy_toggle);
     LT_RUN(logger_screens);
     LT_RUN(deterministic);
     LT_RUN(keys_script_parser);

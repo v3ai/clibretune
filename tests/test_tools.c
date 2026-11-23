@@ -182,6 +182,77 @@ LT_TEST(t3d_pick_and_pan)
     }
 }
 
+/* closing a tab or dialog mid-frame (Ctrl+W, Esc) freed the state that the frame's custom draw
+ * callbacks (3D view, overlay, dyno chart) read when the frame was replayed */
+LT_TEST(close_mid_frame_keeps_draw_state)
+{
+    lt_app *app;
+    LT_CHECK(lt_plat_setenv("LT_TABLE_VIEW", "3d") == 0);
+    LT_CHECK(lt_plat_setenv("LT_DYNO_RUNS", "tests/fixtures/dyno/run_before.csv") == 0);
+    app = demo_app();
+    LT_CHECK(lt_app_table_editor_open(app, "veTableTbl") == 0);
+    lt_app_screenshot(app, "build/lt_test_close_mid.ppm", 1100, 800, 2);
+    LT_CHECK(app->n_tabs >= 2);
+    while (app->n_tabs > 1) {
+        int n = app->n_tabs;
+        press(app, 'w', LT_MOD_CTRL);
+        if (app->n_tabs == n) { break; }        /* the dashboard tab may be pinned */
+    }
+    LT_CHECK(lt_app_dialog_push(app, "dyno", "", "Dyno Overlay") != NULL);
+    frame(app);
+    frame(app);
+    press(app, LT_KEY_ESCAPE, 0);
+    frame(app);
+    LT_CHECK(app->n_dialogs == 0);
+    lt_app_free(app);
+    LT_CHECK(lt_plat_setenv("LT_TABLE_VIEW", "") == 0);
+    LT_CHECK(lt_plat_setenv("LT_DYNO_RUNS", "") == 0);
+}
+
+/* a dialog that opens another project (New Project's Create, sync, import...) closes the old one,
+ * which frees every dialog; the dialog loop then read the freed dialog */
+static int g_reopen_draws;
+static void reopen_draw(lt_app *app, lt_app_dialog *d)
+{
+    LT_UNUSED(d);
+    g_reopen_draws++;
+    lt_app_close_project(app);                  /* d is freed here: touch nothing */
+}
+
+LT_TEST(dialog_that_closes_the_project)
+{
+    lt_app *app = demo_app();
+    lt_app_dialog_kind dk;
+    memset(&dk, 0, sizeof(dk));
+    dk.kind = "test_reopen"; dk.draw = reopen_draw; dk.close = NULL;
+    lt_app_register_dialog_kind(app, &dk);
+    /* the curve tab's plot callback, queued before the dialogs draw, reads the definition that
+     * closing the project frees */
+    LT_CHECK(lt_app_curve_editor_open(app, "knockThresholdCurve") == 0);
+    LT_CHECK(lt_app_dialog_push(app, "about", "", "About") != NULL);
+    LT_CHECK(lt_app_dialog_push(app, "test_reopen", "", "Reopen") != NULL);
+    LT_CHECK(lt_app_dialog_push(app, "shortcuts", "", "Keys") != NULL);
+    g_reopen_draws = 0;
+    lt_app_screenshot(app, "build/lt_test_reopen.ppm", 800, 600, 2);
+    LT_CHECK(g_reopen_draws == 1);
+    LT_CHECK(app->n_dialogs == 0);
+    lt_app_free(app);
+}
+
+/* "3D view" from the grid's context menu: the 3D callback ran before the table's colours (and its
+ * app pointer) were set that frame and crashed on a NULL app */
+LT_TEST(t3d_from_context_menu)
+{
+    lt_app *app;
+    LT_CHECK(lt_plat_setenv("LT_SHOT_SCRIPT", "m:400/400 rclick:50/25 m:470/785 m:470/785 "
+                            "d:470/785 u:470/785 m:470/785") == 0);
+    app = demo_app();
+    LT_CHECK(lt_app_table_editor_open(app, "veTableTbl") == 0);
+    lt_app_screenshot(app, "build/lt_test_3d_menu.ppm", 1100, 800, 2);
+    lt_app_free(app);
+    LT_CHECK(lt_plat_setenv("LT_SHOT_SCRIPT", "") == 0);
+}
+
 LT_TEST(t3d_tab_renders_and_takes_input)
 {
     lt_app *app;
@@ -397,6 +468,48 @@ LT_TEST(dyno_dialog_with_runs)
     LT_CHECK(lt_plat_setenv("LT_DYNO_TAB", "") == 0);
 }
 
+/* a log whose channel is a constant 1e17: the viewer's ranges came out empty (division by zero
+ * into an int) and the scatter's tick loop never advanced (1e17 + step == 1e17) */
+LT_TEST(logview_huge_values)
+{
+    static const char csv[] = "Time,RPM,MAP\ns,rpm,kPa\n0.0,1e17,30\n0.1,1e17,31\n0.2,1e17,32\n"
+                              "0.3,100000000000000016,33\n";
+    static const char *const modes[3] = { "graph", "scatter", "hist" };
+    int i;
+    LT_CHECK(lt_file_write("build/lt_test_huge_log.csv", csv, sizeof(csv) - 1) == 0);
+    LT_CHECK(lt_plat_setenv("LT_SHOT_LOG", "build/lt_test_huge_log.csv") == 0);
+    for (i = 0; i < 3; i++) {
+        lt_app *app = demo_app();
+        LT_CHECK(lt_plat_setenv("LT_SHOT_LOGVIEW", modes[i]) == 0);
+        LT_CHECK(lt_app_open_target(app, "datalog-viewer", "Datalog Viewer") == 0);
+        lt_app_screenshot(app, "build/lt_test_huge_log.ppm", 1000, 700, 3);
+        lt_app_free(app);
+    }
+    LT_CHECK(lt_plat_setenv("LT_SHOT_LOG", "") == 0);
+    LT_CHECK(lt_plat_setenv("LT_SHOT_LOGVIEW", "") == 0);
+}
+
+/* a run with absurd values: the chart grid stepped 50 at a time up to 1e23 (never finished) */
+LT_TEST(dyno_hostile_values)
+{
+    static const char csv[] = "RPM,HP,Torque\n2000,60,150\n3000,99999999999999999999999,inf\n"
+                              "4000,nan,1e309\n5000,120,160\n";
+    lt_dyno_run run;
+    lt_app *app;
+    LT_CHECK(lt_file_write("build/lt_test_dyno_hostile.csv", csv, sizeof(csv) - 1) == 0);
+    LT_CHECK(lt_dyno_from_csv("build/lt_test_dyno_hostile.csv", "H", &run) == 0);
+    LT_CHECK(run.n == 4);
+    LT_CHECK(run.data[1].has_hp && !run.data[1].has_tq);
+    LT_CHECK(!run.data[2].has_hp && !run.data[2].has_tq);
+    lt_dyno_run_free(&run);
+    LT_CHECK(lt_plat_setenv("LT_DYNO_RUNS", "build/lt_test_dyno_hostile.csv") == 0);
+    app = demo_app();
+    LT_CHECK(lt_app_dialog_push(app, "dyno", "", "Dyno Overlay") != NULL);
+    lt_app_screenshot(app, "build/lt_test_dyno3.ppm", 800, 600, 3);
+    lt_app_free(app);
+    LT_CHECK(lt_plat_setenv("LT_DYNO_RUNS", "") == 0);
+}
+
 /* ---- G-82 ---- */
 LT_TEST(actions_logic)
 {
@@ -581,7 +694,10 @@ int main(void)
     LT_RUN(tablecmp_dialog_runs);
     LT_RUN(t3d_camera_limits);
     LT_RUN(t3d_pick_and_pan);
+    LT_RUN(dialog_that_closes_the_project);
+    LT_RUN(t3d_from_context_menu);
     LT_RUN(t3d_tab_renders_and_takes_input);
+    LT_RUN(close_mid_frame_keeps_draw_state);
     LT_RUN(lambda_helpers);
     LT_RUN(lambda_preview_renders);
     LT_RUN(large_change_alert);
@@ -590,6 +706,8 @@ int main(void)
     LT_RUN(perf_dialog_renders);
     LT_RUN(dyno_chart_range);
     LT_RUN(dyno_dialog_with_runs);
+    LT_RUN(dyno_hostile_values);
+    LT_RUN(logview_huge_values);
     LT_RUN(actions_logic);
     LT_RUN(actions_record_save_play);
     LT_RUN(actions_record_constants);

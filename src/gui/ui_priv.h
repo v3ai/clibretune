@@ -147,6 +147,11 @@ typedef struct ui_grid {
     int lru;
 } ui_grid;
 
+typedef struct ui_later {        /* lt_ui_after_frame */
+    void (*fn)(void *user);
+    void *user;
+} ui_later;
+
 typedef struct ui_grp {
     lt_u32 id;
     lt_rect r;
@@ -220,6 +225,7 @@ struct lt_ui {
     /* text / double arenas for draw commands */
     lt_buf tbuf;
     lt_vec dpool;
+    lt_vec later;                  /* ui_later: run after the replay */
     /* state table */
     ui_state **tab;
     int tab_cap, tab_count;
