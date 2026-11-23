@@ -6,7 +6,9 @@
 #include "lt_test.h"
 #include "../src/app/app.h"
 #include "../src/app/dialogs.h"
+#include "../src/gui/ui_priv.h"
 #include <stdlib.h>
+#include <string.h>
 
 static int shot(lt_app *app, const char *name)
 {
@@ -101,9 +103,41 @@ LT_TEST(modals_and_log_viewer)
     lt_app_free(app);
 }
 
+/* A field caption too long for a narrow window is elided; hovering it shows the whole caption
+ * (and the help icon sits after the "...", not on top of it). */
+LT_TEST(elided_field_caption_has_tooltip)
+{
+    char buf[512];
+    lt_app *app = lt_app_new();
+    double t = 1000.0;
+    int x, y, found = 0;
+    lt_event ev;
+    LT_CHECK(lt_app_start_demo(app, lt_app_find_demo_ini(buf, sizeof(buf))) == 0);
+    LT_CHECK(lt_app_open_target(app, "fuelClosedLoopDialog", "fuelClosedLoopDialog") == 0);
+    LT_CHECK(lt_app_screenshot(app, "build/test_dialogs_caption.ppm", 800, 600, 2) == 0);
+    for (y = 130; y < 240 && !found; y += 8) {      /* the caption column of the middle panel */
+        for (x = 280; x < 800 && !found; x += 12) {
+            int k;
+            memset(&ev, 0, sizeof(ev));
+            ev.type = LT_EV_MOUSE_MOVE; ev.x = x; ev.y = y;
+            lt_ui_input(app->ui, &ev);
+            for (k = 0; k < 3; k++) {
+                lt_ui_begin(app->ui, &app->gfx, t);
+                lt_app_frame(app);
+                lt_ui_end(app->ui);
+                t += 400.0;
+            }
+            if (strcmp(app->ui->tip_text, "CAN BOX AFR Trim range ADD MAX (+) (lambda)") == 0) { found = 1; }
+        }
+    }
+    LT_CHECK(found);
+    lt_app_free(app);
+}
+
 int main(void)
 {
     LT_RUN(ini_dialogs_render);
+    LT_RUN(elided_field_caption_has_tooltip);
     LT_RUN(modals_and_log_viewer);
     LT_TEST_MAIN_END
 }

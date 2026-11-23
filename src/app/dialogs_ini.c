@@ -135,7 +135,7 @@ static void field_label(lt_app *app, const char *label, const lt_ini_const *c, i
     lt_rect r, body;
     char up[160];
     size_t i, n = 0;
-    int tw, x, help = c != NULL && c->help != NULL && app->settings.prefs.help_icons;
+    int tw, lw, x, help = c != NULL && c->help != NULL && app->settings.prefs.help_icons;
     int pcyc = c != NULL && lt_ini_needs_power_cycle(app->ini, c->name);
     if (lt_ui_cell_mode(ui)) {
         if (pcyc) {
@@ -157,10 +157,18 @@ static void field_label(lt_app *app, const char *label, const lt_ini_const *c, i
         up[n++] = (ch >= 'a' && ch <= 'z') ? (char)(ch - 'a' + 'A') : ch;
     }
     up[n] = '\0';
-    lt_vk_text(ui, lt_rect_make(r.x + lt_ui_px(ui, 4), r.y, r.w - lt_ui_px(ui, 8 + (help ? 22 : 0) + (pcyc ? 22 : 0)), r.h),
+    lw = r.w - lt_ui_px(ui, 8 + (help ? 22 : 0) + (pcyc ? 22 : 0));
+    lt_vk_text(ui, lt_rect_make(r.x + lt_ui_px(ui, 4), r.y, lw, r.h),
                (int)LT_FONT_SANS_SEMIBOLD, 11.0, up, enabled ? t->text2 : t->disabled, 0);
     tw = lt_vk_text_w(ui, (int)LT_FONT_SANS_SEMIBOLD, 11.0, up);
-    if (tw > r.w - lt_ui_px(ui, 52)) { tw = r.w - lt_ui_px(ui, 52); }
+    if (tw > lw) {                  /* elided: full caption as a tooltip, icons after the "..." */
+        char tid[180];
+        tw = lw;
+        lt_snprintf(tid, sizeof(tid), "##flbl%s", label);
+        lt_ui_layout_set_rect(ui, lt_rect_make(r.x, r.y, lw + lt_ui_px(ui, 4), r.h));
+        lt_ui_label(ui, tid);
+        lt_ui_tooltip(ui, label);
+    }
     x = r.x + lt_ui_px(ui, 4) + tw + lt_ui_px(ui, 6);
     if (help) {
         lt_rect hr = lt_rect_make(x, r.y, lt_ui_px(ui, 16), r.h);
