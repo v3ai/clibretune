@@ -8,6 +8,10 @@
 #include "../src/app/guard_logic.h"
 #include "../src/app/setup_logic.h"
 #include "../src/plat/plat.h"
+#include <string.h>
+#include "../src/app/app.h"
+#include "../src/app/feat.h"
+#include "../src/project/project.h"
 
 static int count_char(const char *s, char c)
 {
@@ -192,6 +196,79 @@ LT_TEST(test_setup_state)
     lt_free(f);
 }
 
+static void g_frame(lt_app *app)
+{
+    lt_ui_begin(app->ui, &app->gfx, lt_plat_now_ms());
+    lt_app_frame(app);
+    lt_ui_end(app->ui);
+}
+
+static void g_click(lt_app *app, int x, int y)
+{
+    lt_event ev;
+    memset(&ev, 0, sizeof(ev));
+    ev.type = LT_EV_MOUSE_MOVE; ev.x = x; ev.y = y; lt_ui_input(app->ui, &ev);
+    g_frame(app);
+    ev.type = LT_EV_MOUSE_DOWN; ev.button = LT_MB_LEFT; lt_ui_input(app->ui, &ev);
+    g_frame(app);
+    ev.type = LT_EV_MOUSE_UP; lt_ui_input(app->ui, &ev);
+    g_frame(app);
+}
+
+static double g_cell(lt_app *app)
+{
+    lt_pagesrc ps = lt_app_pages(app);
+    const lt_ini_const *c = lt_ini_find_const(app->ini, "veTable");
+    static double v[4096];
+    v[0] = -1.0;
+    if (c != NULL) { (void)lt_ini_const_get_array(app->ini, c, &ps, v, 4096); }
+    return v[0];
+}
+
+/* "Close without saving" must not save: the project's "save the tune when the project closes"
+ * setting (on by default) used to write the discarded edits anyway */
+LT_TEST(test_close_without_saving)
+{
+    char buf[512];
+    lt_app *app = lt_app_new();
+    lt_project p;
+    char *dir = NULL;
+    const lt_ini_const *c;
+    lt_pagesrc ps;
+    static double arr[4096];
+    double v0, v1;
+    LT_CHECK(lt_app_find_demo_ini(buf, sizeof(buf)) != NULL);
+    lt_plat_mkdirs("build/test_guard_proj");
+    if (lt_project_create("discard", buf, "", "build/test_guard_proj", &p) < 0) {
+        LT_CHECK(lt_project_open("build/test_guard_proj/discard", &p) == 0);
+    }
+    dir = lt_strdup(p.path);
+    lt_project_close(&p);
+    LT_CHECK(lt_app_open_project(app, dir) == 0);
+    LT_CHECK(app->project.cfg.settings.auto_save_tune);
+    v0 = g_cell(app);
+    v1 = v0 + 5.0;
+    c = lt_ini_find_const(app->ini, "veTable");
+    ps = lt_app_pages(app);
+    LT_CHECK(c != NULL && lt_ini_const_get_array(app->ini, c, &ps, arr, 4096) > 0);
+    arr[0] = v1;
+    LT_CHECK(c != NULL && lt_ini_const_set_array(app->ini, c, &ps, arr, c->shape.rows * c->shape.cols) == 0);
+    lt_app_edited(app);
+    LT_CHECK(app->modified);
+    lt_app_screenshot(app, "build/test_guard_close.ppm", 1100, 800, 2);
+    lt_feat_guard_close_project(app);
+    g_frame(app);
+    g_frame(app);
+    LT_CHECK(app->has_project);                        /* the question is open */
+    g_click(app, 673, 437);                            /* Close without saving */
+    LT_CHECK(!app->has_project);
+    LT_CHECK(lt_app_open_project(app, dir) == 0);
+    LT_CHECK_NEAR(g_cell(app), v0, 1e-9);
+    LT_CHECK(app->project.cfg.settings.auto_save_tune);  /* the setting itself is kept */
+    lt_app_free(app);
+    lt_free(dir);
+}
+
 int main(void)
 {
     LT_RUN(test_question);
@@ -199,5 +276,6 @@ int main(void)
     LT_RUN(test_recovery);
     LT_RUN(test_setup_links);
     LT_RUN(test_setup_state);
+    LT_RUN(test_close_without_saving);
     LT_TEST_MAIN_END
 }
