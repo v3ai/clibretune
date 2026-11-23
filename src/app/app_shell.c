@@ -1071,6 +1071,7 @@ static void app_dialogs(lt_app *app)
         if (i >= app->n_dialogs || app->dialogs[i] != d) { break; }
         if (!d->open) {
             int j;
+            lt_ui_discard_frame(ui);    /* the dialog drew this frame; its callbacks may use its data */
             if (k < app->n_dlg_kinds && app->dlg_kinds[k].close != NULL) { app->dlg_kinds[k].close(app, d); }
             for (j = i; j < app->n_dialogs - 1; j++) { app->dialogs[j] = app->dialogs[j + 1]; }
             app->n_dialogs--;

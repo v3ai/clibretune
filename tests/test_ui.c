@@ -2377,6 +2377,39 @@ LT_TEST(test_widgets_in_all_themes)
     }
 }
 
+static int g_custom_calls;
+static void count_cb(lt_gfx *g, lt_rect r, void *user)
+{
+    LT_UNUSED(g); LT_UNUSED(r); LT_UNUSED(user);
+    g_custom_calls++;
+}
+
+/* a discarded frame does not replay its draw callbacks (their state may be freed by then), leaves
+ * the surface alone and asks for the next frame; outside a frame the call does nothing */
+LT_TEST(discard_frame)
+{
+    h_open(200, 100, 0);
+    lt_ui_discard_frame(H.ui);
+    g_custom_calls = 0;
+    lt_ui_begin(H.ui, &H.g, H.t);
+    lt_ui_draw_custom(H.ui, lt_rect_make(0, 0, 50, 50), count_cb, NULL);
+    lt_ui_end(H.ui);
+    LT_CHECK_INT(g_custom_calls, 1);
+    H.cv.px[0] = 0x12345678UL;
+    lt_ui_begin(H.ui, &H.g, H.t + 20.0);
+    lt_ui_draw_custom(H.ui, lt_rect_make(0, 0, 50, 50), count_cb, NULL);
+    lt_ui_discard_frame(H.ui);
+    lt_ui_end(H.ui);
+    LT_CHECK_INT(g_custom_calls, 1);
+    LT_CHECK(H.cv.px[0] == 0x12345678UL);
+    LT_CHECK(lt_ui_needs_redraw(H.ui));
+    lt_ui_begin(H.ui, &H.g, H.t + 40.0);
+    lt_ui_draw_custom(H.ui, lt_rect_make(0, 0, 50, 50), count_cb, NULL);
+    lt_ui_end(H.ui);
+    LT_CHECK_INT(g_custom_calls, 2);
+    h_close();
+}
+
 int main(void)
 {
     lt_plat_mkdirs("build");
@@ -2422,6 +2455,7 @@ int main(void)
     LT_RUN(test_widgets_in_all_themes);
     LT_RUN(test_selection_text_readable_in_all_themes);
     LT_RUN(test_gallery_render);
+    LT_RUN(discard_frame);
     gallery_free(&GAL);
     LT_TEST_MAIN_END
 }

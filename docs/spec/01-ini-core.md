@@ -389,7 +389,7 @@ Dialog components (require current_dialog; unknown keys ignored):
 | liveGraph | `name, "Title"[, position]` (>=2) position default "South" | LiveGraph{channels=[]} |
 | graphLine | value trimmed | appended to LAST component if it is a LiveGraph |
 | runtimeValue | `"Label", channel[, {vis}]` (>=2); vis = first braced part idx>=2 inner trimmed | RuntimeValue |
-| field | `"Label", name[, {c1}[, {c2}]]` (>=2): braces: 2+ -> visibility=c[0], enabled=c[1]; 1 -> enabled=c[0]; (inner NOT trimmed: `{ x }` keeps spaces). With ONE part (e.g. `field = "# blue text"` or `"! red text"` or `"normal text"`) -> Label{text}. Leading `#`/`!` in the label text = blue section header / red note styling by convention | Field/Label |
+| field | `"Label", name[, {c1}[, {c2}]]` (>=2): braces: 2+ -> enabled=c[0], visibility=c[1]; 1 -> enabled=c[0]; name empty or braced -> Label with the conditions; (inner NOT trimmed: `{ x }` keeps spaces). With ONE part (e.g. `field = "# blue text"` or `"! red text"` or `"normal text"`) -> Label{text}. Leading `#`/`!` in the label text = blue section header / red note styling by convention | Field/Label |
 | checkbox | `"Label", name[, flipValue][, {c1}[, {c2}]]` (>=2); `flipValue` case-insens token; conds as field (inner trimmed): 2 -> vis=c0, en=c1; 1 -> en=c0 | Checkbox{flip_value}: unflipped: checked iff value!=0, writes 1/0; flipped: inverted |
 | slider | `"Label", name[, horizontal|vertical][, {c1}[, {c2}]]` (>=2) | Slider{orientation lowercased or none} |
 | displayOnlyField | `"Label"[, name][, {c1}[, {c2}]]`: name = parts[1] unless empty, `blankfield`, or braced; conds are braced parts after the name slot (empty braces skipped), same 2/1 rule | DisplayOnlyField{name optional} |

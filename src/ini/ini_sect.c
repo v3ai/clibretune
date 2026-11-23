@@ -235,11 +235,15 @@ static size_t braces_from(char **p, size_t n, size_t from, char ***out)
     return cnt;
 }
 
+/* Conditions of a field / checkbox / slider / displayOnlyField: the first is the enable condition
+ * (greyed when false), a second one the visibility condition, as TunerStudio reads them. Speeduino
+ * relies on it: "Maximum lambda" and "Maximum lambda deviation" edit the same constant with the
+ * same {afrProtectEnabled} first and a different mode test second, only one of them shown. */
 static void assign_vis_en(lt_ini_comp *c, char **b, size_t nb)
 {
     if (nb >= 2) {
-        if (b[0][0]) c->vis_cond = lt_strdup(b[0]);
-        if (b[1][0]) c->en_cond = lt_strdup(b[1]);
+        if (b[0][0]) c->en_cond = lt_strdup(b[0]);
+        if (b[1][0]) c->vis_cond = lt_strdup(b[1]);
     } else if (nb == 1) {
         if (b[0][0]) c->en_cond = lt_strdup(b[0]);
     }
@@ -447,12 +451,22 @@ static void handle_userdefined(lt_ini *ini, ini_pstate *st, const char *lk, cons
         n = ini_split(fixed ? fixed : value, &p);
         lt_free(fixed);
         if (n >= 2) {
-            lt_ini_comp *c = comp_add(d, LT_COMP_FIELD);
+            /* no constant (`field = "!Note", {}, {}, { cond }`): a text line with conditions; `{}`
+             * or nothing holds the constant's place, a non-empty brace there is the first condition */
+            int text = !p[1][0] || ini_is_braced(p[1]);
+            size_t from = 2;
+            lt_ini_comp *c = comp_add(d, text ? LT_COMP_LABEL : LT_COMP_FIELD);
             char **b;
             size_t nb;
             c->label = ini_dequote(p[0]);
-            c->name = lt_strdup(p[1]);
-            nb = braces_from(p, n, 2, &b);
+            if (!text) {
+                c->name = lt_strdup(p[1]);
+            } else {
+                char *u = ini_unbrace(p[1], 1);
+                if (u[0]) { from = 1; }
+                lt_free(u);
+            }
+            nb = braces_from(p, n, from, &b);
             assign_vis_en(c, b, nb);
             ini_strv_free(b, nb);
         } else if (n == 1 && p[0][0]) {

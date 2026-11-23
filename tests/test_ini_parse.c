@@ -1155,8 +1155,8 @@ LT_TEST(dialogs)
         "dialog = plainDialog, \"No hint\"\n",
         "checkbox = \"Use Prediction\", use_prediction, { !use_prediction }\n",
         "checkbox = \"Don't use Prediction\", use_prediction, flipValue, { use_prediction }\n",
-        "checkbox = \"VisEn\", cbx, { vv }, { ee }\n",
-        "field = \"Both\", fld, { fv }, { fe }\n",
+        "checkbox = \"VisEn\", cbx, { ee }, { vv }\n",
+        "field = \"Both\", fld, { fe }, { fv }\n",
         "field = \"OnlyEn\", fld2, { fe2 }\n",
         "field = \"# blue header\"\n",
         "field = \"! red note\"\n",
@@ -1720,6 +1720,51 @@ LT_TEST(field_missing_comma)
     lt_ini_free(ini);
 }
 
+/* field conditions as TunerStudio and the Speeduino INI use them: enable first, visibility second;
+ * a field without a constant ({} or nothing in its place) is a text line with conditions */
+LT_TEST(field_conditions)
+{
+    lt_ini *ini = load_n(
+        "[UserDefined]\n",
+        "dialog = afrProtect, \"AFR Protection\"\n",
+        "  field = \"Maximum lambda \", dev, {afrProtectEnabled}, {afrProtectEnabled == 0 || afrProtectEnabled == 1}\n",
+        "  field = \"Maximum lambda deviation \", dev, {afrProtectEnabled}, {afrProtectEnabled == 2}\n",
+        "  field = \"!Warning: not enough channels\", {}, {}, { injLayout == 3 && !seq }\n",
+        "  field = \"#Please calibrate\", { egoType }\n",
+        "  field = \"Base duty\", { } , { boostType == 2 }\n",
+        "  field = \"!Shared\", , {}, { wmi }, { wmi }\n",
+        "  field = \"Pairing\", inj4CylPairing, {}, { injLayout != 0 }\n",
+        (const char *)NULL);
+    const lt_ini_dialog *d = lt_ini_find_dialog(ini, "afrProtect");
+    const lt_ini_comp *c;
+    LT_CHECK(d != NULL && d->n_comps == 7);
+    if (d == NULL || d->n_comps != 7) { lt_ini_free(ini); return; }
+    c = &d->comps[0];
+    LT_CHECK(c->kind == LT_COMP_FIELD);
+    LT_CHECK_STR(c->name, "dev");
+    LT_CHECK_STR(c->en_cond, "afrProtectEnabled");
+    LT_CHECK_STR(c->vis_cond, "afrProtectEnabled == 0 || afrProtectEnabled == 1");
+    LT_CHECK_STR(d->comps[1].vis_cond, "afrProtectEnabled == 2");
+    c = &d->comps[2];
+    LT_CHECK(c->kind == LT_COMP_LABEL && c->name == NULL);
+    LT_CHECK_STR(c->label, "!Warning: not enough channels");
+    LT_CHECK(c->en_cond == NULL);
+    LT_CHECK_STR(c->vis_cond, "injLayout == 3 && !seq");
+    c = &d->comps[3];
+    LT_CHECK(c->kind == LT_COMP_LABEL && c->vis_cond == NULL);
+    LT_CHECK_STR(c->en_cond, "egoType");
+    c = &d->comps[4];
+    LT_CHECK(c->kind == LT_COMP_LABEL && c->vis_cond == NULL);
+    LT_CHECK_STR(c->en_cond, "boostType == 2");
+    c = &d->comps[5];
+    LT_CHECK(c->kind == LT_COMP_LABEL);
+    LT_CHECK_STR(c->vis_cond, "wmi");
+    c = &d->comps[6];
+    LT_CHECK(c->kind == LT_COMP_FIELD && c->en_cond == NULL);
+    LT_CHECK_STR(c->vis_cond, "injLayout != 0");
+    lt_ini_free(ini);
+}
+
 int main(void)
 {
     LT_RUN(field_missing_comma);
@@ -1764,5 +1809,6 @@ int main(void)
     LT_RUN(reference_tables);
     LT_RUN(settings_misc);
     LT_RUN(dynamic_scale_resolution);
+    LT_RUN(field_conditions);
     LT_TEST_MAIN_END
 }

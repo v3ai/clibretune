@@ -20,6 +20,7 @@ typedef struct tbl_tab {
     double lo, hi;                /* constant limits (display units) */
     int show3d, follow, shading, ybottom, lambda_on, is_afr;
     unsigned char *sel;           /* rows*cols mask in data coordinates */
+    unsigned char *esel;          /* the selection when the cell edit began (it gets the value) */
     size_t sel_cap;
     int cur_r, cur_c;             /* cursor in data coordinates */
     int nsel;
@@ -69,6 +70,7 @@ static void tbl_free_data(tbl_tab *st)
 {
     lt_tblview_free(&st->v);
     lt_free(st->sel); st->sel = NULL; st->sel_cap = 0;
+    lt_free(st->esel); st->esel = NULL;
     lt_free(st->cellcol); st->cellcol = NULL;
     lt_free(st->orig); st->orig = NULL; st->orig_n = 0;
 }
@@ -84,13 +86,16 @@ static void tbl_digits(lt_app *app, tbl_tab *st)
 /* the unit preference changed: convert the open edits, the revert copy and the limits */
 static void tbl_units_sync(lt_app *app, tbl_tab *st)
 {
-    lt_uconv zold = st->v.zu;
+    lt_uconv zold = st->v.zu, w0, w1;
     size_t i;
     if (!st->loaded || !lt_tblview_units_sync(&st->v)) { return; }
     for (i = 0; i < st->orig_n; i++) {
         lt_uconv w = zold;
         st->orig[i] = lt_uconv_retarget(&w, st->orig[i]);
     }
+    /* the step amount is in display units too: +1 AFR becomes +0.068 lambda, not +1 lambda */
+    w0 = zold; w1 = zold;
+    st->step = fabs(lt_uconv_retarget(&w1, st->step) - lt_uconv_retarget(&w0, 0.0));
     tbl_digits(app, st);
     lt_tblview_z_range(&st->v, app->ini, &st->lo, &st->hi);
 }
@@ -114,12 +119,14 @@ static void tbl_load(lt_app *app, lt_app_tab *tab, tbl_tab *st)
     lt_tblview_z_range(&st->v, app->ini, &st->lo, &st->hi);
     n = st->v.rows * st->v.cols;
     if (n > st->sel_cap) {
-        lt_free(st->sel); lt_free(st->cellcol);
+        lt_free(st->sel); lt_free(st->esel); lt_free(st->cellcol);
         st->sel = (unsigned char *)lt_calloc(n, 1);
+        st->esel = (unsigned char *)lt_calloc(n, 1);
         st->cellcol = (lt_color *)lt_calloc(n, sizeof(lt_color));
         st->sel_cap = n;
     }
     memset(st->sel, 0, st->sel_cap);
+    memset(st->esel, 0, st->sel_cap);
     st->nsel = 0;
     lt_free(st->orig);
     st->orig = (double *)lt_calloc(n, sizeof(double));
@@ -288,7 +295,14 @@ static void tbl_revert(lt_app *app, lt_app_tab *tab, tbl_tab *st)
 {
     /* undo everything back to the state at open: walk the undo ring */
     int guard = 0;
+    size_t i, n = st->v.rows * st->v.cols;
     while (lt_tblview_undo(&st->v) && guard++ < LT_TBLVIEW_UNDO_MAX) { }
+    /* more edits than the undo ring holds: the oldest snapshot is not the state at open */
+    if (st->orig != NULL && st->orig_n == n) {
+        for (i = 0; i < n; i++) {
+            if (st->v.z[i] != st->orig[i]) { lt_tblview_set(&st->v, i / st->v.cols, i % st->v.cols, st->orig[i]); }
+        }
+    }
     tbl_commit(app, tab, st);
     lt_app_toast(app, 0, "Reverted to the values at open (undo history)");
 }
@@ -356,7 +370,8 @@ static void tbl_paste(lt_app *app, lt_app_tab *tab, tbl_tab *st, int mode)
 {
     char *txt = lt_ui_clipboard_get(app->ui);
     double *blk = NULL, row[64];
-    size_t bh = 0, bw = 0;
+    lt_tcell *put;
+    size_t bh = 0, bw = 0, nput = 0;
     int r0, c0, r1, c1, r, c, rows = (int)st->v.rows, cols = (int)st->v.cols;
     if (txt != NULL && txt[0] != '\0') {
         const char *p = txt;
@@ -393,11 +408,14 @@ static void tbl_paste(lt_app *app, lt_app_tab *tab, tbl_tab *st, int mode)
     if (blk == NULL) { lt_app_toast(app, 2, "Clipboard is empty"); return; }
     tbl_bbox_disp(st, &r0, &c0, &r1, &c1);
     lt_tblview_push_undo(&st->v);
+    /* only the pasted cells are clamped and rounded: the others keep their stored values */
+    put = (lt_tcell *)lt_calloc((size_t)(rows * cols) + 1, sizeof(lt_tcell));
     if (bh == 1 && bw == 1 && st->nsel > 1) {
         for (r = 0; r < rows; r++) {
             for (c = 0; c < cols; c++) {
                 if (st->sel[(size_t)r * (size_t)cols + (size_t)c]) {
                     tbl_put(st, (size_t)r, (size_t)c, blk[0], mode);
+                    put[nput].y = (size_t)r; put[nput].x = (size_t)c; nput++;
                 }
             }
         }
@@ -408,17 +426,13 @@ static void tbl_paste(lt_app *app, lt_app_tab *tab, tbl_tab *st, int mode)
                 int dr = r0 + (int)i, dc = c0 + (int)j;
                 if (dr < rows && dc < cols) {
                     tbl_put(st, (size_t)drow(st, dr), (size_t)dc, blk[i * bw + j], mode);
+                    put[nput].y = (size_t)drow(st, dr); put[nput].x = (size_t)dc; nput++;
                 }
             }
         }
     }
-    {
-        lt_tcell *all = (lt_tcell *)lt_calloc((size_t)(rows * cols), sizeof(lt_tcell));
-        size_t y, x, n = 0;
-        for (y = 0; y < (size_t)rows; y++) { for (x = 0; x < (size_t)cols; x++) { all[n].y = y; all[n].x = x; n++; } }
-        tbl_fix(st, all, n);
-        lt_free(all);
-    }
+    tbl_fix(st, put, nput);
+    lt_free(put);
     lt_free(blk);
     tbl_commit(app, tab, st);
 }
@@ -957,8 +971,8 @@ static void tbl_toolbar(lt_app *app, lt_app_tab *tab, tbl_tab *st)
 #define TB_SEP() do { tb_item(&it[n], LT_VK_SEP, 0, NULL, NULL, NULL); ids[n] = -1; n++; } while (0)
 #define TB_GAP() do { tb_item(&it[n], LT_VK_SPACER, 0, NULL, NULL, NULL); ids[n] = -1; n++; } while (0)
     TB_ADD(TB_EQ, LT_ICON_EQUAL, cell ? "Set=" : NULL, "=", "Set selected cells to their average (=)");
-    TB_ADD(TB_UP, LT_ICON_PLUS, cell ? "+" : NULL, ">", "Increase by 1 (+ or >); q = small step");
-    TB_ADD(TB_DOWN, LT_ICON_MINUS, cell ? "-" : NULL, "<", "Decrease by 1 (- or <); w = small step");
+    TB_ADD(TB_UP, LT_ICON_PLUS, cell ? "+" : NULL, ">", "Increase by the step amount (+ or >); q = small step");
+    TB_ADD(TB_DOWN, LT_ICON_MINUS, cell ? "-" : NULL, "<", "Decrease by the step amount (- or <); w = small step");
     TB_SEP();
     TB_ADD(TB_SCALE, LT_ICON_X, cell ? "Scale" : NULL, "*", "Multiply or add an amount (*)");
     TB_ADD(TB_INTERP, LT_ICON_TRENDING_UP, cell ? "Interp" : NULL, "/",
@@ -1019,8 +1033,8 @@ static void tbl_toolbar(lt_app *app, lt_app_tab *tab, tbl_tab *st)
     if (hit < 0) { return; }
     switch (ids[hit]) {
     case TB_EQ: tbl_op(app, tab, st, OP_EQUAL, 0); break;
-    case TB_UP: tbl_op(app, tab, st, OP_ADD, 1.0); break;
-    case TB_DOWN: tbl_op(app, tab, st, OP_ADD, -1.0); break;
+    case TB_UP: tbl_op(app, tab, st, OP_ADD, st->step); break;
+    case TB_DOWN: tbl_op(app, tab, st, OP_ADD, -st->step); break;
     case TB_SCALE: st->scale_open = 1; break;
     case TB_INTERP: tbl_op(app, tab, st, OP_INTERP, 0); break;
     case TB_SMOOTH: tbl_op(app, tab, st, OP_SMOOTH, 0); break;
@@ -1409,18 +1423,29 @@ static void tbl_grid(lt_app *app, lt_app_tab *tab, tbl_tab *st, int vh)
         st->cur_r = r >= 0 ? drow(st, r) : 0;
         st->cur_c = c >= 0 ? c : 0;
         fl = lt_ui_grid_end(ui);
-        if ((fl & LT_UI_GRID_EDIT_BEGIN) && lt_ui_grid_edit_wants_text(ui)) {
-            int er, ec;
-            lt_ui_grid_editing(ui, &er, &ec);
-            lt_tabs_fmt(b, sizeof(b), st->v.z[(size_t)drow(st, er) * (size_t)cols + (size_t)ec], st->zdig);
-            lt_ui_grid_edit_set_text(ui, b);
-        }
         if (fl & LT_UI_GRID_EDIT_COMMIT) {
+            /* the value goes to the cells selected when the edit began: a click-away or Tab has
+             * already moved the selection to another cell */
             double v;
             if (lt_parse_double(lt_ui_grid_edit_text(ui), &v)) {
+                unsigned char *keep = st->sel;
                 if (st->hi > st->lo) { v = v < st->lo ? st->lo : (v > st->hi ? st->hi : v); }
+                st->sel = st->esel;
                 tbl_op(app, tab, st, OP_SET, lt_tabs_round(v, st->zdig));
+                st->sel = keep;
             } else { lt_app_toast(app, 2, "Not a number"); }
+        }
+        if (fl & LT_UI_GRID_EDIT_BEGIN) {
+            int er, ec;
+            lt_ui_grid_editing(ui, &er, &ec);
+            memcpy(st->esel, st->sel, st->v.rows * st->v.cols);
+            if (er >= 0 && ec >= 0 && er < rows && ec < cols) {
+                if (st->nsel == 0) { st->esel[(size_t)drow(st, er) * (size_t)cols + (size_t)ec] = 1; }
+                if (lt_ui_grid_edit_wants_text(ui)) {
+                    lt_tabs_fmt(b, sizeof(b), st->v.z[(size_t)drow(st, er) * (size_t)cols + (size_t)ec], st->zdig);
+                    lt_ui_grid_edit_set_text(ui, b);
+                }
+            }
         }
     }
     /* colours for the 3D view */
@@ -1618,8 +1643,11 @@ static void tbl_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
         tab->data = st;
         st->shading = 1; st->ybottom = app->settings.prefs.y_bottom ? 1 : 0; lt_t3d_init(&st->t3);
         st->rebin_interp = 1; st->scale_val = 1.05; st->cur_r = st->cur_c = 0;
-        st->step = 1.0; st->step_mult = 5.0; st->step_pct = 5.0;
+        st->step_mult = 5.0; st->step_pct = 5.0;
         tbl_load(app, tab, st);
+        /* one native unit (1 AFR, 1 degree, 1 %) in the unit shown */
+        st->step = st->loaded ? fabs(lt_uconv_to_disp(&st->v.zu, 1.0) - lt_uconv_to_disp(&st->v.zu, 0.0)) : 1.0;
+        if (st->step <= 0.0) { st->step = 1.0; }
         st->lambda_on = st->is_afr && !lt_ui_cell_mode(ui);
         tbl_preview_env(st);
     }

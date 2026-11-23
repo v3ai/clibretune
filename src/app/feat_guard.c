@@ -202,6 +202,10 @@ static void act(lt_app *app, guard_state *g, int a)
         if (app->has_project && app->modified && lt_app_save_tune(app) != 0) { return; }
     } else if (a == LT_GA_SAVE) {
         if (lt_app_save_tune(app) != 0) { return; }
+    } else if (what != LT_GUARD_DISCONNECT && app->has_project && app->modified) {
+        /* "... without saving": the project's save-on-close must not write the changes anyway
+         * (the setting is only switched off in memory, for this close) */
+        app->project.cfg.settings.auto_save_tune = LT_FALSE;
     }
     if (what != LT_GUARD_DISCONNECT) { lt_feat_autosave_discard(app); }
     go_on(app, g, what);

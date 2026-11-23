@@ -436,6 +436,8 @@ void ui_animate(lt_ui *ui, int ms)
     if (ui->wake_in < 0.0 || (double)ms < ui->wake_in) { ui->wake_in = (double)ms; }
 }
 
+void lt_ui_discard_frame(lt_ui *ui) { if (ui->in_frame) { ui->discard = 1; } }
+
 lt_bool lt_ui_needs_redraw(const lt_ui *ui) { return (ui->dirty || ui->extra > 0) ? LT_TRUE : LT_FALSE; }
 void lt_ui_request_redraw(lt_ui *ui) { ui->dirty = 1; }
 
@@ -1693,12 +1695,17 @@ void lt_ui_end(lt_ui *ui)
     }
     draw_toasts(ui);
     ui_layer_end(ui);
-    /* replay */
-    lt_gfx_set_clip(ui->g, lt_rect_make(0, 0, ui->sw, ui->sh));
-    lt_gfx_clear(ui->g, ui->theme.bg_app);
+    /* replay (not for a discarded frame: its callbacks may point at freed state) */
     sort_layers(ui, order);
-    for (i = 0; i < ui->nlayers; i++) { replay_layer(ui, &ui->layers[order[i]]); }
-    lt_gfx_set_clip(ui->g, lt_rect_make(0, 0, ui->sw, ui->sh));
+    if (ui->discard) {
+        ui->discard = 0;
+        ui_request(ui);
+    } else {
+        lt_gfx_set_clip(ui->g, lt_rect_make(0, 0, ui->sw, ui->sh));
+        lt_gfx_clear(ui->g, ui->theme.bg_app);
+        for (i = 0; i < ui->nlayers; i++) { replay_layer(ui, &ui->layers[order[i]]); }
+        lt_gfx_set_clip(ui->g, lt_rect_make(0, 0, ui->sw, ui->sh));
+    }
     /* remember layer rects for next frame's hit testing */
     ui->nprev = 0;
     for (i = 0; i < ui->nlayers; i++) {
