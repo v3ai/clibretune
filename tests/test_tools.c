@@ -209,6 +209,20 @@ LT_TEST(close_mid_frame_keeps_draw_state)
     LT_CHECK(lt_plat_setenv("LT_DYNO_RUNS", "") == 0);
 }
 
+/* "3D view" from the grid's context menu: the 3D callback ran before the table's colours (and its
+ * app pointer) were set that frame and crashed on a NULL app */
+LT_TEST(t3d_from_context_menu)
+{
+    lt_app *app;
+    LT_CHECK(lt_plat_setenv("LT_SHOT_SCRIPT", "m:400/400 rclick:50/25 m:470/785 m:470/785 "
+                            "d:470/785 u:470/785 m:470/785") == 0);
+    app = demo_app();
+    LT_CHECK(lt_app_table_editor_open(app, "veTableTbl") == 0);
+    lt_app_screenshot(app, "build/lt_test_3d_menu.ppm", 1100, 800, 2);
+    lt_app_free(app);
+    LT_CHECK(lt_plat_setenv("LT_SHOT_SCRIPT", "") == 0);
+}
+
 LT_TEST(t3d_tab_renders_and_takes_input)
 {
     lt_app *app;
@@ -629,6 +643,7 @@ int main(void)
     LT_RUN(tablecmp_dialog_runs);
     LT_RUN(t3d_camera_limits);
     LT_RUN(t3d_pick_and_pan);
+    LT_RUN(t3d_from_context_menu);
     LT_RUN(t3d_tab_renders_and_takes_input);
     LT_RUN(close_mid_frame_keeps_draw_state);
     LT_RUN(lambda_helpers);

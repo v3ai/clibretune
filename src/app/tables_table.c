@@ -1616,6 +1616,7 @@ static void tbl_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
     if (st == NULL) {
         st = (tbl_tab *)lt_calloc(1, sizeof(*st));
         tab->data = st;
+        st->app_ = app;                         /* the 3D callback reads it even before its colours exist */
         st->shading = 1; st->ybottom = app->settings.prefs.y_bottom ? 1 : 0; lt_t3d_init(&st->t3);
         st->rebin_interp = 1; st->scale_val = 1.05; st->cur_r = st->cur_c = 0;
         st->step = 1.0; st->step_mult = 5.0; st->step_pct = 5.0;
