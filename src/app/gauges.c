@@ -1008,8 +1008,9 @@ static void tach_static(gp *p)
         }
     }
     resolve_text(p->c->title, t, sizeof t);
-    /* between the hub and the value box, above the end labels at the bottom */
-    p_text(p, cx, cy + radius * 0.22, t, LT_MAX(8.0, radius * 0.11), 1, 1, p->tc, radius * 1.1);
+    /* between the hub and the value box, above the end labels at the bottom; narrower than
+     * the gap between the side labels (at 0.6 r) */
+    p_text(p, cx, cy + radius * 0.28, t, LT_MAX(8.0, radius * 0.11), 1, 1, p->tc, radius * 0.7);
 }
 
 static void paint_tach(gp *p)
