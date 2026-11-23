@@ -206,6 +206,38 @@ LT_TEST(log_toggle_uses_chosen_format)
     lt_app_free(app);
 }
 
+/* a recording that cannot start, or stops on a write error, says so */
+LT_TEST(log_errors_are_reported)
+{
+    lt_app *app;
+    double t0;
+    /* "datalogs" is a file: the folder for the logs cannot be made */
+    (void)lt_plat_mkdirs("build/logx_ro");
+    (void)lt_plat_remove("build/logx_ro/datalogs");
+    LT_CHECK(lt_file_write("build/logx_ro/datalogs", "x", 1) == 0);
+    app = log_demo_app("build/logx_ro", "build/logx_ro/none");
+    LT_CHECK(lt_app_log_toggle(app) < 0);
+    LT_CHECK(app->rec == NULL || !lt_rec_is_recording(app->rec));
+    LT_CHECK(strstr(app->status, "Cannot start log") != NULL);
+    lt_app_free(app);
+    (void)lt_plat_remove("build/logx_ro/datalogs");
+    if (!lt_file_exists("/dev/full")) { return; }
+    app = log_demo_app("build/logx_rec", "build/logx_rec/datalogs");
+    LT_CHECK_INT(lt_app_log_toggle(app), 0);
+    LT_CHECK_INT(lt_app_log_toggle(app), 0);
+    if (app->rec == NULL) { lt_app_free(app); return; }
+    lt_rec_set_sample_rate(app->rec, 200.0);
+    LT_CHECK_INT(lt_rec_start(app->rec, "/dev/full"), 0);
+    t0 = lt_plat_now_ms();
+    while (lt_rec_is_recording(app->rec) && lt_plat_now_ms() - t0 < 10000.0) {
+        (void)lt_app_service(app);
+        lt_plat_sleep_ms(1);
+    }
+    LT_CHECK(!lt_rec_is_recording(app->rec));
+    LT_CHECK(strstr(app->status, "Logging stopped") != NULL);
+    lt_app_free(app);
+}
+
 LT_TEST(logx_registered)
 {
     lt_app *app = lt_app_new();
@@ -225,5 +257,6 @@ int main(void)
     LT_RUN(logx_registered);
     LT_RUN(log_toggle_never_overwrites);
     LT_RUN(log_toggle_uses_chosen_format);
+    LT_RUN(log_errors_are_reported);
     LT_TEST_MAIN_END
 }

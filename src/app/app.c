@@ -505,7 +505,7 @@ int lt_app_log_toggle(lt_app *app)
     else { lt_app_toast(app, 1, "Logging to %s", lt_path_base(lt_rec_path(app->rec))); }
     lt_free(path);
     lt_free(dir);
-    return 0;
+    return (int)i < 0 ? -1 : 0;
 }
 
 /* ------------------------------------------------------------------ */
@@ -841,7 +841,10 @@ static int rt_finished(lt_app *app, int rc, double now)
             lt_ini_rt_get(app->rt, app->rec_names[i], &v);
             app->rec_vals[i] = v;
         }
-        lt_rec_record(app->rec, app->rec_vals, (int)app->rec_n);
+        if (lt_rec_record(app->rec, app->rec_vals, (int)app->rec_n) == LT_EIO) {
+            lt_app_toast(app, 3, "Logging stopped: cannot write %s (disk full or removed?); %ld rows kept",
+                         lt_path_base(lt_rec_path(app->rec)), lt_rec_count(app->rec));
+        }
     }
     return 1;
 }
