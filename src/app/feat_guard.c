@@ -197,7 +197,12 @@ static void act(lt_app *app, guard_state *g, int a)
 static void ask(lt_app *app, int what)
 {
     guard_state *g = gs(app);
-    int unb, unsaved;
+    int unb, unsaved, fw = lt_feat_firmware_busy(app);
+    if (fw == 2 || (fw == 1 && what == LT_GUARD_QUIT)) {   /* a cut-off flash leaves no firmware */
+        lt_app_toast(app, 2, "%s", fw == 1 ? "A firmware update is running: wait for it or Cancel it first"
+                                           : "The wideband is being flashed: wait until it finishes");
+        return;
+    }
     if (what != LT_GUARD_DISCONNECT) { (void)lt_feat_prefs_auto_burn(app); }   /* "burn on close" */
     update_unburned(app, g);
     unb = app->conn == LT_APP_ONLINE ? lt_feat_guard_unburned(app) : 0;

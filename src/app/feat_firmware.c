@@ -124,6 +124,12 @@ static fw_state *fw_get(lt_app *app)
     return (fw_state *)lt_ext_state(app, "firmware", sizeof(fw_state), fw_free);
 }
 
+int lt_feat_firmware_busy(lt_app *app)
+{
+    fw_state *st = fw_get(app);
+    return st->running ? 1 : (st->wb == WB_RUN ? 2 : 0);
+}
+
 static int is_online(const lt_app *app)
 {
     return (app->conn == LT_APP_ONLINE || app->conn == LT_APP_DEMO) && app->proto != NULL;

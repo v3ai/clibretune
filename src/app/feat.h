@@ -173,6 +173,9 @@ void lt_feat_wue_register(lt_app_ext *reg);
 void lt_feat_trim_register(lt_app_ext *reg);
 /* Tools > Firmware Update (USB DFU / OpenBLT flashing, miata-ecus wideband) */
 void lt_feat_firmware_register(lt_app_ext *reg);
+/* 0 idle, 1 flashing an ECU through its bootloader, 2 flashing the on-board wideband through
+ * the ECU connection (quit, close and disconnect must wait) */
+int  lt_feat_firmware_busy(lt_app *app);
 /* Tools > Calculators (feat_calc.c): expression, linear calibration, units, injectors; eval = the
  * Expression tab on the open app (0 ok, -1 error with the message in out) */
 void lt_feat_calc_register(lt_app_ext *reg);

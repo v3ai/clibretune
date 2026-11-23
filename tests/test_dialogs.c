@@ -6,6 +6,8 @@
 #include "lt_test.h"
 #include "../src/app/app.h"
 #include "../src/app/dialogs.h"
+#include "../src/app/feat.h"
+#include <string.h>
 #include <stdlib.h>
 
 static int shot(lt_app *app, const char *name)
@@ -101,8 +103,37 @@ LT_TEST(modals_and_log_viewer)
     lt_app_free(app);
 }
 
+/* quitting while a firmware update runs would cut the flash off: the app refuses and says why */
+LT_TEST(firmware_flash_blocks_quit)
+{
+    char buf[512];
+    lt_app *app;
+    int i;
+    lt_plat_clock_virtual(1);
+    app = lt_app_new();
+    LT_CHECK(lt_app_start_demo(app, lt_app_find_demo_ini(buf, sizeof(buf))) == 0);
+    LT_CHECK(lt_plat_setenv("LT_SHOT_FW_START", "1") == 0);   /* reboot the demo ECU, then flash */
+    LT_CHECK(lt_app_dialog_push(app, "firmware", "", "Firmware Update") != NULL);
+    LT_CHECK(shot(app, "fw") == 0);
+    for (i = 0; i < 400 && lt_feat_firmware_busy(app) != 1; i++) {
+        lt_plat_sleep_ms(60);
+        lt_app_service(app);
+        lt_ui_begin(app->ui, &app->gfx, lt_plat_now_ms());
+        lt_app_frame(app);
+        lt_ui_end(app->ui);
+    }
+    LT_CHECK_INT(lt_feat_firmware_busy(app), 1);
+    lt_app_request_quit(app);
+    LT_CHECK(!app->quit);
+    LT_CHECK(strstr(app->status, "firmware update is running") != NULL);
+    (void)lt_plat_setenv("LT_SHOT_FW_START", "");
+    lt_app_free(app);
+    lt_plat_clock_virtual(0);
+}
+
 int main(void)
 {
+    LT_RUN(firmware_flash_blocks_quit);
     LT_RUN(ini_dialogs_render);
     LT_RUN(modals_and_log_viewer);
     LT_TEST_MAIN_END
