@@ -102,6 +102,8 @@ int  lt_feat_sync_connect_auto(lt_app *app, const char *port, long baud, const c
                                lt_feat_auto *res);
 
 void lt_feat_logging_register(lt_app_ext *reg);  /* smart recording, sample rate, rec channels, alerts */
+/* sample rate and file format of the Data Logging settings into app->rec (before a recording starts) */
+void lt_feat_logging_apply(lt_app *app);
 void lt_feat_math_register(lt_app_ext *reg);     /* math channels editor */
 void lt_feat_afrdelay_register(lt_app_ext *reg);  /* AFR delay test dialog */
 

@@ -188,6 +188,24 @@ LT_TEST(log_toggle_never_overwrites)
     lt_app_free(app);
 }
 
+/* the format chosen in the Data Logging settings applies to the very first recording */
+LT_TEST(log_toggle_uses_chosen_format)
+{
+    lt_app *app = log_demo_app("build/logx_rec", "build/logx_rec/datalogs");
+    lt_logx *x = lt_logx_get(app);
+    x->rec_fmt = 1;
+    x->rate_hz = 50;
+    LT_CHECK(app->rec == NULL);
+    LT_CHECK_INT(lt_app_log_toggle(app), 0);
+    LT_CHECK(app->rec != NULL && lt_rec_is_recording(app->rec));
+    if (app->rec != NULL) {
+        LT_CHECK(lt_str_ends(lt_rec_path(app->rec), ".msl"));
+        LT_CHECK(lt_rec_format(app->rec) == LT_FMT_MSL);
+    }
+    LT_CHECK_INT(lt_app_log_toggle(app), 0);
+    lt_app_free(app);
+}
+
 LT_TEST(logx_registered)
 {
     lt_app *app = lt_app_new();
@@ -206,5 +224,6 @@ int main(void)
     LT_RUN(logx_config_and_math);
     LT_RUN(logx_registered);
     LT_RUN(log_toggle_never_overwrites);
+    LT_RUN(log_toggle_uses_chosen_format);
     LT_TEST_MAIN_END
 }

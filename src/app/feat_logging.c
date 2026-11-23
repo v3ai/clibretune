@@ -397,6 +397,14 @@ static int rec_has_virtuals(const lt_app *app)
     return 1;
 }
 
+void lt_feat_logging_apply(lt_app *app)
+{
+    lt_logx *x = lt_logx_get(app);
+    if (app->rec == NULL) { return; }
+    lt_rec_set_sample_rate(app->rec, (double)x->rate_hz);
+    if (!lt_rec_is_recording(app->rec)) { lt_rec_set_format(app->rec, x->rec_fmt == 1 ? LT_FMT_MSL : LT_FMT_MLG); }
+}
+
 static void logx_tick(lt_app *app)
 {
     lt_logx *x = lt_logx_get(app);
@@ -428,10 +436,7 @@ static void logx_tick(lt_app *app)
         x->virt_rec_gen = x->virt_gen;
         if (x->n_off > 0 || lt_datalog_virtual_count() > 0) { rec_build(app, x); } else { rec_drop(app); }
     }
-    if (app->rec != NULL) {
-        lt_rec_set_sample_rate(app->rec, (double)x->rate_hz);
-        lt_rec_set_format(app->rec, x->rec_fmt == 1 ? LT_FMT_MSL : LT_FMT_MLG);
-    }
+    lt_feat_logging_apply(app);
     if (!online) { x->key.on = 0; x->key.pending = 0; x->auto_started = 0; return; }
     now = lt_plat_now_ms();
     /* smart recording */
