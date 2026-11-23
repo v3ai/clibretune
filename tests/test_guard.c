@@ -269,6 +269,39 @@ LT_TEST(test_close_without_saving)
     lt_free(dir);
 }
 
+/* Save Tune As writes a copy: with a project open its own tune file is still unsaved, so the
+ * changes are still offered for saving on close (and not lost when save-on-close is off) */
+LT_TEST(test_save_as_keeps_project_unsaved)
+{
+    char buf[512];
+    lt_app *app = lt_app_new();
+    lt_project p;
+    char *dir = NULL;
+    LT_CHECK(lt_app_find_demo_ini(buf, sizeof(buf)) != NULL);
+    lt_plat_mkdirs("build/test_guard_proj");
+    if (lt_project_create("saveas", buf, "", "build/test_guard_proj", &p) < 0) {
+        LT_CHECK(lt_project_open("build/test_guard_proj/saveas", &p) == 0);
+    }
+    dir = lt_strdup(p.path);
+    lt_project_close(&p);
+    LT_CHECK(lt_app_open_project(app, dir) == 0);
+    lt_app_edited(app);
+    LT_CHECK(app->modified);
+    LT_CHECK(lt_app_save_tune_as(app, "build/test_guard_proj/copy.msq") == 0);
+    LT_CHECK(lt_file_exists("build/test_guard_proj/copy.msq"));
+    LT_CHECK(app->modified);
+    LT_CHECK(lt_app_save_tune(app) == 0);
+    LT_CHECK(!app->modified);
+    lt_app_free(app);
+    lt_free(dir);
+    app = lt_app_new();                 /* without a project Save As is the save */
+    LT_CHECK(lt_app_start_demo(app, buf) == 0);
+    lt_app_edited(app);
+    LT_CHECK(lt_app_save_tune_as(app, "build/test_guard_proj/copy2.msq") == 0);
+    LT_CHECK(!app->modified);
+    lt_app_free(app);
+}
+
 int main(void)
 {
     LT_RUN(test_question);
@@ -277,5 +310,6 @@ int main(void)
     LT_RUN(test_setup_links);
     LT_RUN(test_setup_state);
     LT_RUN(test_close_without_saving);
+    LT_RUN(test_save_as_keeps_project_unsaved);
     LT_TEST_MAIN_END
 }

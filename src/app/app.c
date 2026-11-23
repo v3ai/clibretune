@@ -1113,7 +1113,7 @@ int lt_app_save_tune_as(lt_app *app, const char *path)
     sync_tune(app);
     rc = lt_tune_save(app->tune, path);
     if (rc < 0) { lt_app_toast(app, 3, "Save failed: %s", lt_err_get()); return rc; }
-    app->modified = 0;
+    if (!app->has_project) { app->modified = 0; }   /* a copy: the project's own tune is still unsaved */
     lt_app_toast(app, 1, "Saved %s", lt_path_base(path));
     return 0;
 }
