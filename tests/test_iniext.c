@@ -330,6 +330,15 @@ LT_TEST(reload_keeps_tune)
     lt_app_free(app);
 }
 
+static const lt_pin_report *pin_dialog_report(lt_app *app)
+{
+    int i;
+    for (i = 0; i < app->n_dialogs; i++) {
+        if (strcmp(app->dialogs[i]->kind, "pin-report") == 0) { return (const lt_pin_report *)app->dialogs[i]->data; }
+    }
+    return NULL;
+}
+
 LT_TEST(pin_conflict_gate_and_power_cycle)
 {
     lt_app *app = lt_app_new();
@@ -356,6 +365,13 @@ LT_TEST(pin_conflict_gate_and_power_cycle)
     }
     LT_CHECK(open);
     LT_CHECK(render(app, "pins") == 0);
+    /* scanned once per opening, not every frame (~1M bit options in a large INI: 230 ms a frame) */
+    {
+        const lt_pin_report *shown = pin_dialog_report(app);
+        LT_CHECK(shown != NULL && shown->n == 1);
+        LT_CHECK(render(app, "pins") == 0);
+        LT_CHECK(pin_dialog_report(app) == shown);
+    }
     LT_CHECK_STR(lt_app_pc_pending(app), "");
     lt_app_pin_ack(app);                            /* "Burn anyway" */
     for (i = 0; i < app->n_dialogs; i++) { app->dialogs[i]->open = 0; }
