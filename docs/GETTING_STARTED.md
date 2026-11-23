@@ -107,7 +107,7 @@ connect and read it.
 
 ## 4. Find your way around
 
-- The sidebar is the ECU's own menu tree from its INI; **Ctrl+K** searches it.
+- The sidebar is the ECU's own menu tree from its INI; **Ctrl+K** searches it and **Enter** opens the first match.
 - Tables: arrow keys or the mouse select, type a number to set, `+`/`-` step, `=` average,
   `/` interpolate, `s` smooth, Ctrl+Z undo. Right-click for every other operation, including the 3D view.
 - **View > Dashboard** (Ctrl+D) shows gauges; the Designer button edits them.

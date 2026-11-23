@@ -585,12 +585,50 @@ static void sidebar_items(lt_app *app, lt_ini_menu_item *const *items, size_t n,
     }
 }
 
+/* first leaf the filtered sidebar shows (an enabled one when there is one): Enter in the search
+ * field opens it */
+static const lt_ini_menu_item *search_first(lt_app *app, lt_ini_menu_item *const *items, size_t n,
+                                            const char *q, lt_bool parent_match, lt_bool want_enabled)
+{
+    size_t i;
+    for (i = 0; i < n; i++) {
+        const lt_ini_menu_item *it = items[i], *f;
+        if (it->kind == LT_MENU_SEPARATOR ||
+            (it->target != NULL && strcmp(it->target, "std_separator") == 0)) { continue; }
+        if (!env_test(app, it->vis_cond)) { continue; }
+        if (it->kind == LT_MENU_SUBMENU) {
+            f = search_first(app, it->items, it->n_items, q, parent_match || item_matches(it, q), want_enabled);
+            if (f != NULL) { return f; }
+        } else if (it->target != NULL && (parent_match || item_matches(it, q)) &&
+                   (!want_enabled || env_test(app, it->en_cond))) {
+            return it;
+        }
+    }
+    return NULL;
+}
+
+static void search_open_first(lt_app *app)
+{
+    const lt_ini *ini = app->ini;
+    const lt_ini_menu_item *f = NULL;
+    size_t i;
+    int pass;
+    for (pass = 0; pass < 2 && f == NULL; pass++) {
+        for (i = 0; i < ini->n_menus && f == NULL; i++) {
+            f = search_first(app, ini->menus[i].items, ini->menus[i].n_items, app->search,
+                             icontains(ini->menus[i].title, app->search), pass == 0);
+        }
+    }
+    if (f != NULL) { lt_app_open_target(app, f->target, f->label); }
+    else { lt_app_toast(app, 2, "Nothing in the sidebar matches \"%s\"", app->search); }
+}
+
 static void sidebar(lt_app *app, lt_rect r)
 {
     lt_ui *ui = app->ui;
     const lt_theme *t = lt_ui_theme(ui);
     const lt_ini *ini = app->ini;
-    int w1 = -1, counter = 0;
+    int w1 = -1, counter = 0, sres = 0;
     int cell = lt_ui_cell_mode(ui);
     int hh = t->tab_h, sh = cell ? 16 : lt_ui_px(ui, 30);
     size_t i;
@@ -631,8 +669,9 @@ static void sidebar(lt_app *app, lt_rect r)
         lt_ui_layout_row_px(ui, 1, &w1, sin.h);
         lt_ui_layout_gap(ui, 0, 0);
         lt_ui_text_style(ui, (int)LT_FONT_SANS, LT_UI_FS_SM);
-        lt_ui_text(ui, "search", app->search, sizeof(app->search), 0);
+        sres = lt_ui_text(ui, "search", app->search, sizeof(app->search), 0);
         lt_ui_text_style_reset(ui);
+        if ((sres & LT_UI_SUBMIT) && ini != NULL && app->search[0] != '\0') { search_open_first(app); }
         if (ini != NULL && lt_hk_pressed(app, "sidebar.search")) { lt_ui_set_focus(ui, lt_ui_last_id(ui)); }
         if (app->search[0] == '\0' && !lt_ui_text_focused(ui)) {
             lt_rect sr = lt_ui_last_rect(ui);

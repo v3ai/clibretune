@@ -178,6 +178,17 @@ LT_TEST(menu_shows_rebound_log_shortcut)
     LT_CHECK(strstr(g_txt, "Ctrl+L ") == NULL);
 }
 
+/* keyboard only: Ctrl+K, type, Enter opens the first match of the filtered sidebar */
+LT_TEST(sidebar_search_enter_opens_first_match)
+{
+    char l[1024];
+    render(100, 30, NULL, "ctrl+k,text:inject,enter", NULL, 0, NULL);
+    line_of(1, l, sizeof(l));
+    LT_CHECK(strstr(l, "Injection configuration") != NULL);
+    render(100, 30, NULL, "ctrl+k,text:zzzq,enter", NULL, 0, NULL);
+    LT_CHECK(strstr(g_txt, "Nothing in the sidebar matches") != NULL);
+}
+
 LT_TEST(ve_table_and_selection)
 {
     char l[1024];
@@ -372,6 +383,7 @@ int main(void)
     LT_RUN(main_view_120x40_256);
     LT_RUN(menu_open);
     LT_RUN(menu_shows_rebound_log_shortcut);
+    LT_RUN(sidebar_search_enter_opens_first_match);
     LT_RUN(ve_table_and_selection);
     LT_RUN(ve_table_16_colors_ascii);
     LT_RUN(dialog_frame);
