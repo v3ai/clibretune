@@ -187,6 +187,8 @@ LT_TEST(sidebar_search_enter_opens_first_match)
     LT_CHECK(strstr(l, "Injection configuration") != NULL);
     render(100, 30, NULL, "ctrl+k,text:zzzq,enter", NULL, 0, NULL);
     LT_CHECK(strstr(g_txt, "Nothing in the sidebar matches") != NULL);
+    render(100, 30, NULL, "ctrl+k,text:zzzq", NULL, 0, NULL);
+    LT_CHECK(strstr(g_txt, "No menu entry matches") != NULL);     /* an empty tree says why */
 }
 
 LT_TEST(ve_table_and_selection)

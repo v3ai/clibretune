@@ -628,7 +628,7 @@ static void sidebar(lt_app *app, lt_rect r)
     lt_ui *ui = app->ui;
     const lt_theme *t = lt_ui_theme(ui);
     const lt_ini *ini = app->ini;
-    int w1 = -1, counter = 0, sres = 0;
+    int w1 = -1, counter = 0, sres = 0, shown = 0;
     int cell = lt_ui_cell_mode(ui);
     int hh = t->tab_h, sh = cell ? 16 : lt_ui_px(ui, 30);
     size_t i;
@@ -719,6 +719,7 @@ static void sidebar(lt_app *app, lt_rect r)
                     if (!any) { continue; }
                 }
             }
+            shown++;
             clean_label(lab, sizeof(lab), m->title);
             lt_ui_push_id_int(ui, 100000 + (int)i);
             ico = node_icon(lab, NODE_FOLDER, &ic, t);
@@ -730,6 +731,11 @@ static void sidebar(lt_app *app, lt_rect r)
                 lt_ui_tree_end(ui);
             }
             lt_ui_pop_id(ui);
+        }
+        if (shown == 0 && app->search[0] != '\0') {
+            lt_ui_layout_indent(ui, cell ? 1 : 8);
+            lt_ui_label_wrap(ui, lt_tr("No menu entry matches. The search looks at the names in this "
+                                       "tree, not at the settings inside the dialogs."), t->muted);
         }
         lt_ui_scroll_end(ui);
     }
