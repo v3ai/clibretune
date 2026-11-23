@@ -12,6 +12,7 @@
 #include "feat.h"
 #include "files_logic.h"
 #include "../plat/plat.h"
+#include "../project/inidb.h"
 
 #define FD_TS_INI (LT_APP_FD_USER0 + 40)
 
@@ -37,7 +38,9 @@ typedef struct tsi_dlg {
     int ok;                      /* preview valid */
     char err[256];
     char ini_override[512];      /* INI chosen for a missing one */
-    char ini_note[160];
+    char ini_note[300];
+    long bundle;                 /* a missing INI: the bundled definition for the tune, -1 none */
+    int bundle_near;             /*   only the closest build */
     char tune_sig[96];
     int importing;
 } tsi_dlg;
@@ -158,6 +161,7 @@ static void load_preview(tsi_dlg *s, const char *picked)
     s->tune_sig[0] = '\0';
     s->ini_override[0] = '\0';
     s->ini_note[0] = '\0';
+    s->bundle = -1L;
     p = lt_path_join(s->root, "CurrentTune.msq");
     if (s->pv.has_tune) {
         lt_tuneinfo ti;
@@ -175,10 +179,41 @@ static void load_preview(tsi_dlg *s, const char *picked)
                     lt_snprintf(s->ini_note, sizeof(s->ini_note), "From the INI library: %s", e->name);
                     lt_free(path);
                 }
+            } else {                                        /* else one bundled with LibreTune */
+                lt_inidb_pick pk;
+                int q = lt_inidb_resolve(s->tune_sig, NULL, 0, &pk);
+                if (q != LT_INIDB_NONE && pk.src == LT_INIDB_SRC_BUNDLE) {
+                    s->bundle = pk.bundle;
+                    s->bundle_near = q != LT_INIDB_EXACT;
+                    lt_snprintf(s->ini_note, sizeof(s->ini_note), q == LT_INIDB_EXACT
+                                ? "Will use: %s" : "Will use the closest build: %s. Some settings "
+                                "may not match.", pk.label);
+                }
             }
             lt_ini_repo_close(&repo);
         }
     }
+}
+
+/* the INI to import with when the project's own is missing (a bundled one is unpacked into the
+ * INI library now); 0 ok */
+static int pick_ini(tsi_dlg *s, char *out, size_t cap)
+{
+    lt_ini_repo repo;
+    char *id = NULL, *path = NULL;
+    const lt_inidb_def *d = s->bundle >= 0 ? lt_inidb_at((size_t)s->bundle) : NULL;
+    if (s->ini_override[0] != '\0' || d == NULL) {
+        lt_strlcpy(out, s->ini_override, cap);
+        return out[0] != '\0' ? 0 : -1;
+    }
+    if (lt_ini_repo_open(&repo, NULL) != 0) { return -1; }
+    if (lt_inidb_materialise(&repo, d, &id) == 0) { path = lt_ini_repo_path(&repo, id); }
+    lt_ini_repo_close(&repo);
+    lt_free(id);
+    if (path == NULL) { return -1; }
+    lt_strlcpy(out, path, cap);
+    lt_free(path);
+    return 0;
 }
 
 static void row(lt_ui *ui, const char *label, const char *val, lt_color c)
@@ -201,6 +236,7 @@ static void tsi_draw(lt_app *app, lt_app_dialog *d)
     if (s == NULL) {
         s = (tsi_dlg *)lt_calloc(1, sizeof(*s));
         d->data = s;
+        s->bundle = -1L;
         if (d->target[0] != '\0') { load_preview(s, d->target); }
         else {                                  /* LT_SHOT_OPEN preview of a sample project */
             lt_strlcpy(s->pv.name, "Sample Project", sizeof(s->pv.name));
@@ -216,7 +252,8 @@ static void tsi_draw(lt_app *app, lt_app_dialog *d)
         lt_strlcpy(s->ini_override, picked, sizeof(s->ini_override));
         lt_snprintf(s->ini_note, sizeof(s->ini_note), "Chosen file: %s", lt_path_base(picked));
     }
-    if (lt_ui_modal_begin(ui, "Import TS Project", 560, 460, &open)) {
+    /* the missing-INI part needs room for its note and button */
+    if (lt_ui_modal_begin(ui, "Import TS Project", 560, s->ok && !s->pv.ini_found ? 540 : 460, &open)) {
         lt_ui_layout_row(ui, 1, &w1, 0);
         lt_ui_label_ex(ui, "Step 2 of 2: Confirm Import", t->muted, LT_UI_ALIGN_LEFT);
         if (!s->ok) {
@@ -248,8 +285,9 @@ static void tsi_draw(lt_app *app, lt_app_dialog *d)
                 lt_ui_label_wrap(ui, "The project's ECU definition file was not found. Choose an INI "
                                      "to use instead, or import only the tune into the open project.",
                                  t->warning);
-                if (s->ini_override[0] != '\0') {
-                    lt_ui_label_ex(ui, s->ini_note, t->success, LT_UI_ALIGN_LEFT);
+                if (s->ini_override[0] != '\0' || s->bundle >= 0) {
+                    lt_ui_label_wrap(ui, s->ini_note, s->ini_override[0] == '\0' && s->bundle_near
+                                     ? t->warning : t->success);
                 }
                 if (lt_ui_button(ui, "Choose ECU Definition...")) {
                     lt_app_file_dialog(app, FD_TS_INI, LT_UI_FILE_OPEN, NULL, "",
@@ -267,7 +305,7 @@ static void tsi_draw(lt_app *app, lt_app_dialog *d)
         if (lt_ui_button_ex(ui, "Import Tune Only",
                             s->ok && s->pv.has_tune && app->ini != NULL ? 0 : LT_UI_BTN_DISABLED)) { act = 2; }
         if (lt_ui_button_ex(ui, "Import Project",
-                            s->ok && (s->pv.ini_found || s->ini_override[0] != '\0')
+                            s->ok && (s->pv.ini_found || s->ini_override[0] != '\0' || s->bundle >= 0)
                               ? LT_UI_BTN_DEFAULT : LT_UI_BTN_DISABLED)) { act = 1; }
         if (lt_ui_button(ui, "Cancel")) { open = 0; }
         lt_ui_modal_end(ui);
@@ -275,7 +313,11 @@ static void tsi_draw(lt_app *app, lt_app_dialog *d)
     if (act == 1 || act == 2) {
         char root[512], ini[512];
         lt_strlcpy(root, s->root, sizeof(root));
-        lt_strlcpy(ini, s->pv.ini_found ? "" : s->ini_override, sizeof(ini));
+        ini[0] = '\0';
+        if (act == 1 && !s->pv.ini_found && pick_ini(s, ini, sizeof(ini)) != 0) {
+            lt_snprintf(s->ini_note, sizeof(s->ini_note), "Cannot unpack the definition: %s", lt_err_get());
+            act = 0;
+        }
         if (act == 1) {
             imp_state *ist = impst(app);
             ist->pending = 1;
