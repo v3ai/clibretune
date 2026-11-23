@@ -178,6 +178,21 @@ LT_TEST(menu_shows_rebound_log_shortcut)
     LT_CHECK(strstr(g_txt, "Ctrl+L ") == NULL);
 }
 
+/* the ECU definition's own Help menu joins LibreTune's Help instead of a second "Help" title */
+LT_TEST(one_help_menu)
+{
+    char l[1024];
+    const char *a, *b;
+    render(200, 40, NULL, "alt+h", NULL, 0, NULL);
+    line_of(0, l, sizeof(l));
+    a = strstr(l, "Help");
+    LT_CHECK(a != NULL);
+    b = a != NULL ? strstr(a + 4, "Help") : NULL;
+    LT_CHECK(b == NULL);
+    LT_CHECK(strstr(g_txt, "About LibreTune") != NULL);
+    LT_CHECK(strstr(g_txt, "rusEFI Help") != NULL);
+}
+
 /* keyboard only: Ctrl+K, type, Enter opens the first match of the filtered sidebar */
 LT_TEST(sidebar_search_enter_opens_first_match)
 {
@@ -385,6 +400,7 @@ int main(void)
     LT_RUN(main_view_120x40_256);
     LT_RUN(menu_open);
     LT_RUN(menu_shows_rebound_log_shortcut);
+    LT_RUN(one_help_menu);
     LT_RUN(sidebar_search_enter_opens_first_match);
     LT_RUN(ve_table_and_selection);
     LT_RUN(ve_table_16_colors_ascii);

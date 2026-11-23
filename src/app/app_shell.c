@@ -457,6 +457,14 @@ static void menu_tools(lt_app *app)
     lt_ext_menu_draw(app, LT_EXT_MENU_TOOLS, 1);
 }
 
+/* an ECU menu titled Help goes into LibreTune's own Help menu rather than a second "Help" */
+static lt_bool ini_menu_is_help(const char *title)
+{
+    char lab[160];
+    clean_label(lab, sizeof(lab), title);
+    return lt_stricmp(lab, "Help") == 0;
+}
+
 static void menu_ini(lt_app *app)
 {
     lt_ui *ui = app->ui;
@@ -466,12 +474,14 @@ static void menu_ini(lt_app *app)
     const lt_ini *ini = app->ini;
     if (ini == NULL || !app->settings.show_ecu_menus || ini->n_menus == 0) { return; }
     for (i = 0; i < ini->n_menus; i++) {
+        if (ini_menu_is_help(ini->menus[i].title)) { continue; }
         total += (size_t)lt_ui_text_width(ui, ini->menus[i].title) + (size_t)lt_ui_px(ui, 24);
     }
     group = (int)total > lt_ui_surface(ui).w - lt_ui_px(ui, 520);
     if (group) {
         if (lt_ui_menu_begin(ui, lt_tr("&Tuning"))) {
             for (i = 0; i < ini->n_menus; i++) {
+                if (ini_menu_is_help(ini->menus[i].title)) { continue; }
                 clean_label(lab, sizeof(lab), ini->menus[i].title);
                 if (lt_ui_submenu_begin(ui, lab, 0)) {
                     ini_items(app, ini->menus[i].items, ini->menus[i].n_items);
@@ -483,6 +493,7 @@ static void menu_ini(lt_app *app)
         return;
     }
     for (i = 0; i < ini->n_menus; i++) {
+        if (ini_menu_is_help(ini->menus[i].title)) { continue; }
         if (lt_ui_menu_begin(ui, ini->menus[i].title)) {
             ini_items(app, ini->menus[i].items, ini->menus[i].n_items);
             lt_ui_menu_end(ui);
@@ -516,6 +527,14 @@ static void menubar(lt_app *app)
     lt_ui_menubar_separator(ui);
     if (lt_ui_menu_begin(ui, lt_tr("&Help"))) {
         lt_ext_menu_draw(app, LT_EXT_MENU_HELP, 0);
+        if (app->ini != NULL && app->settings.show_ecu_menus) {
+            size_t i;
+            for (i = 0; i < app->ini->n_menus; i++) {
+                if (!ini_menu_is_help(app->ini->menus[i].title)) { continue; }
+                lt_ui_menu_separator(ui);
+                ini_items(app, app->ini->menus[i].items, app->ini->menus[i].n_items);
+            }
+        }
         lt_ui_menu_end(ui);
     }
     lt_ui_menubar_end(ui);
