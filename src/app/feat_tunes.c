@@ -216,7 +216,7 @@ static void tune_draw(lt_app *app, lt_app_dialog *d)
         lt_strlcpy(path, s->e[s->sel].path, sizeof(path));
         lt_strlcpy(name, s->name, sizeof(name));
         if (s->project_mode) {
-            if (lt_app_load_tune(app, path) == 0) { open = 0; }
+            if (lt_feat_load_tune_checked(app, path) >= 0) { open = 0; }
         } else if (s->n_m > 0) {
             ini = lt_ini_repo_path(&s->repo, s->m[LT_CLAMP(s->ini_sel, 0, s->n_m - 1)].id);
             if (ini != NULL) {

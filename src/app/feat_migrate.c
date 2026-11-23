@@ -40,6 +40,8 @@ typedef struct mig_state {
     int  has_ext;
     char ext_intro[600];
     lt_ext_action_fn ext_cont;
+    char load[512];        /* lt_feat_load_tune_checked: the tune file the report is about */
+    int  load_pending;     /* "Continue with Tune" pressed: load it from the tick */
 } mig_state;
 
 static void mig_state_free(lt_app *app, void *p)
@@ -66,6 +68,50 @@ void lt_feat_migrate_show(lt_app *app, const char *title, const char *intro, lt_
     lt_strlcpy(s->ext_intro, intro != NULL ? intro : "", sizeof(s->ext_intro));
     s->ext_cont = on_continue;
     (void)lt_app_dialog_push(app, "migration", "external", title != NULL ? title : "Tune Migration Report");
+}
+
+/* ---- Load Tune from a file, checked against the open definition ---- */
+static void load_cont(lt_app *app)
+{
+    mig_state *s = mig_st(app);
+    if (s->load[0] != '\0') { s->load_pending = 1; }     /* loaded from the tick, not the dialog */
+}
+
+int lt_feat_load_tune_checked(lt_app *app, const char *path)
+{
+    mig_state *s = mig_st(app);
+    lt_migration_report rep;
+    lt_tune *t;
+    const char *isig;
+    char intro[600], tsig[128];
+    int same;
+    if (app->ini == NULL || path == NULL) { return -1; }
+    t = lt_tune_load(path);
+    if (t == NULL) { lt_app_toast(app, 3, "Cannot load tune: %s", lt_err_get()); return -1; }
+    isig = app->ini->signature != NULL ? app->ini->signature : "";
+    lt_strlcpy(tsig, t->signature != NULL ? t->signature : "", sizeof(tsig));   /* t is freed below */
+    same = tsig[0] == '\0' || lt_sig_compare(tsig, isig, NULL) == LT_SIG_EXACT;
+    lt_migration_init(&rep);
+    lt_migration_compare_tune(&rep, t, app->ini);
+    if (same && rep.n_type == 0 && rep.n_missing_in_ini == 0) {
+        lt_migration_clear(&rep);
+        return lt_app_load_tune_mem(app, t, lt_path_base(path));
+    }
+    lt_tune_free(t);
+    lt_strlcpy(s->load, path, sizeof(s->load));
+    s->load_pending = 0;
+    if (same) {
+        lt_snprintf(intro, sizeof(intro), "\"%s\" matches this ECU definition, but some of its values do "
+                    "not map onto it. They are listed below. Continue only if that is expected.",
+                    lt_path_base(path));
+    } else {
+        lt_snprintf(intro, sizeof(intro), "\"%s\" was saved by firmware %s, but this project's ECU "
+                    "definition is %s. Values are matched by name; the lists below show what does not "
+                    "map. A tune from another ECU can make the engine run badly: check every page "
+                    "before burning.", lt_path_base(path), tsig, isig[0] != '\0' ? isig : "(unknown)");
+    }
+    lt_feat_migrate_show(app, "Load Tune: Different ECU Definition", intro, &rep, load_cont);
+    return 1;
 }
 
 /* ---- the update itself ---- */
@@ -119,6 +165,12 @@ int lt_feat_migrate_apply(lt_app *app, const char *new_ini)
 static void mig_tick(lt_app *app)
 {
     mig_state *s = mig_st(app);
+    if (s->load_pending) {
+        char path[512];
+        lt_strlcpy(path, s->load, sizeof(path));
+        s->load_pending = 0;
+        (void)lt_app_load_tune(app, path);
+    }
     if (s->pending) {
         char path[512];
         lt_strlcpy(path, s->path, sizeof(path));

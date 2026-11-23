@@ -74,6 +74,10 @@ int  lt_feat_migrate_apply(lt_app *app, const char *new_ini);
  * queue work (a tick hook does it), not replace the session. */
 void lt_feat_migrate_show(lt_app *app, const char *title, const char *intro, lt_migration_report *rep,
                           lt_ext_action_fn on_continue);
+/* File > Load Tune: a tune saved by other firmware, or one whose values do not map onto the open
+ * definition, shows the migration report first and loads on "Continue with Tune". 0 loaded,
+ * 1 the report is shown, <0 error (toasted). */
+int  lt_feat_load_tune_checked(lt_app *app, const char *path);
 /* Difference Report "Ignore": project tune is kept, also on disconnect; tests and scripts */
 void lt_feat_sync_ignore(lt_app *app);
 

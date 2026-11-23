@@ -5,6 +5,7 @@
  */
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include "lt_test.h"
 #include "../src/tune/basetune.h"
 #include "../src/app/app.h"
@@ -397,6 +398,53 @@ LT_TEST(app_new_project_and_load)
     lt_app_free(app);
 }
 
+/* File > Load Tune with a tune from other firmware: the migration report first, nothing loaded
+ * until "Continue with Tune"; a tune from the same firmware loads at once */
+LT_TEST(load_tune_checks_firmware)
+{
+    lt_app *app = lt_app_new();
+    const lt_basetune *bmw = lt_basetune_find("BMW/M52_PnP.msq");
+    lt_tune *ref = bmw != NULL ? lt_basetune_load(bmw) : NULL;
+    const lt_tune_entry *e;
+    lt_pagesrc ps;
+    double v = 0.0, want = 0.0;
+    LT_CHECK(ref != NULL && ref->signature != NULL && strcmp(ref->signature, "speeduino 202501") != 0);
+    if (ref == NULL) { lt_app_free(app); return; }
+    e = lt_tune_get_constant(ref, "reqFuel");
+    LT_CHECK(e != NULL);
+    if (e != NULL) { want = e->value.scalar; }
+    LT_CHECK(lt_tune_save(ref, "build/test_basetune_other_fw.msq") == 0);
+    lt_tune_free(ref);
+    LT_CHECK(lt_app_start_demo(app, SPEEDUINO_INI) == 0);
+    (void)lt_app_screenshot(app, "build/test_basetune_demo.ppm", 1100, 800, 2);   /* sets up the UI */
+    ps = lt_app_pages(app);
+    LT_CHECK(lt_ini_get(app->ini, &ps, "reqFuel", &v) == 0 && v != want);
+    /* the same firmware: straight in */
+    LT_CHECK(lt_app_save_tune_as(app, "build/test_basetune_same_fw.msq") == 0);
+    LT_CHECK_INT(lt_feat_load_tune_checked(app, "build/test_basetune_same_fw.msq"), 0);
+    LT_CHECK(app->n_dialogs == 0);
+    /* other firmware: the report, and Cancel leaves the ECU alone */
+    LT_CHECK_INT(lt_feat_load_tune_checked(app, "build/test_basetune_other_fw.msq"), 1);
+    frame(app);
+    LT_CHECK_STR(last_dialog(app), "migration");
+    press(app, LT_KEY_ESCAPE);
+    (void)lt_app_service(app);
+    frame(app);
+    ps = lt_app_pages(app);
+    LT_CHECK(lt_ini_get(app->ini, &ps, "reqFuel", &v) == 0 && v != want);
+    /* again, Continue with Tune: loaded */
+    LT_CHECK_INT(lt_feat_load_tune_checked(app, "build/test_basetune_other_fw.msq"), 1);
+    frame(app);
+    (void)lt_app_screenshot(app, "build/test_basetune_load_other_fw.ppm", 1100, 800, 2);
+    LT_CHECK_STR(last_dialog(app), "migration");
+    press(app, LT_KEY_ENTER);
+    (void)lt_app_service(app);
+    frame(app);
+    ps = lt_app_pages(app);
+    LT_CHECK(lt_ini_get(app->ini, &ps, "reqFuel", &v) == 0 && fabs(v - want) < 1e-6);
+    lt_app_free(app);
+}
+
 int main(void)
 {
     g_ini = lt_ini_load_file(SPEEDUINO_INI, NULL);
@@ -409,6 +457,7 @@ int main(void)
     LT_RUN(family_and_credit);
     LT_RUN(report_lists_misfits);
     LT_RUN(app_new_project_and_load);
+    LT_RUN(load_tune_checks_firmware);
     lt_ini_free(g_ini);
     LT_TEST_MAIN_END
 }
