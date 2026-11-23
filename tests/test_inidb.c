@@ -446,8 +446,6 @@ LT_TEST(demo_per_family)
     lt_free(dir);
 }
 
-/* lt_feat_sync_connect_auto: connect (demo answering with a bundled signature), identify, pick
- * the definition, create the project; again: the same project is opened */
 /* a release binary without demo.ini beside it: "Try the demo" runs on a bundled definition
  * instead of asking for an INI file the user does not have */
 LT_TEST(demo_without_demo_ini)
@@ -471,6 +469,8 @@ LT_TEST(demo_without_demo_ini)
     lt_app_free(app);
 }
 
+/* lt_feat_sync_connect_auto: connect (demo answering with a bundled signature), identify, pick
+ * the definition, create the project; again: the same project is opened */
 LT_TEST(connect_auto_flow)
 {
     lt_app *app;
@@ -591,6 +591,34 @@ LT_TEST(mismatch_switches_automatically)
     lt_app_free(app);
 }
 
+/* the wizard on an ECU that already has a project offers to reopen it (Enter), instead of
+ * creating "Speeduino 202402 2" */
+LT_TEST(wizard_reopens_existing_project)
+{
+    lt_app *app;
+    lt_feat_auto res;
+    char first[512];
+    lt_project_info *v = NULL;
+    size_t n = 0;
+    use_test_dirs();
+    app = lt_app_new();
+    LT_CHECK(lt_feat_sync_connect_auto(app, "demo", 0, "speeduino 202402", &res) == LT_INIDB_EXACT);
+    lt_strlcpy(first, res.project, sizeof(first));
+    lt_app_free(app);
+
+    app = lt_app_new();
+    (void)lt_app_dialog_push(app, "connect_wizard", "demo\t0\tspeeduino 202402", "Connect ECU");
+    LT_CHECK(lt_plat_setenv("LT_SHOT_SCRIPT", "enter") == 0);
+    (void)lt_app_screenshot(app, "build/test_inidb_wizard_reopen.ppm", 1000, 760, 3);
+    (void)lt_plat_setenv("LT_SHOT_SCRIPT", "");
+    LT_CHECK(app->has_project && app->conn == LT_APP_DEMO);
+    LT_CHECK(app->has_project && strcmp(app->project.path, first) == 0);
+    LT_CHECK(n_dialogs_of(app, "connect_wizard") == 0);
+    LT_CHECK(lt_project_list(&v, &n, NULL) == 0 && n == 1);      /* no second project */
+    lt_project_info_free(v, n);
+    lt_app_free(app);
+}
+
 /* the wizard opened on an identified ECU, the New Project dialog with its bundled tree */
 LT_TEST(dialogs_draw)
 {
@@ -633,6 +661,7 @@ int main(void)
     LT_RUN(demo_per_family);
     LT_RUN(demo_without_demo_ini);
     LT_RUN(connect_auto_flow);
+    LT_RUN(wizard_reopens_existing_project);
     LT_RUN(mismatch_switches_automatically);
     LT_RUN(dialogs_draw);
     LT_TEST_MAIN_END

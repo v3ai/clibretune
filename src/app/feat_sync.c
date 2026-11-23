@@ -638,7 +638,10 @@ typedef struct wiz_state {
     lt_ini_repo repo; int repo_ok;
     lt_sync_ini_match m[MAX_MATCH]; int n_m, sel;
     lt_inidb_pick pk;
+    char have_dir[512], have_name[64];  /* a project that already uses this ECU's signature */
 } wiz_state;
+
+static int find_project(const char *sig, char *out, size_t cap, char *name, size_t ncap);
 
 /* default project name for a picked definition: "rusEFI proteus_f4", "Speeduino 202501" */
 static void pick_name(const lt_inidb_pick *pk, const char *sig, char *out, size_t cap)
@@ -688,6 +691,12 @@ static void wiz_match(wiz_state *w)
     w->repo_ok = lt_ini_repo_open(&w->repo, NULL) == 0;
     w->n_m = collect_defs(&w->repo, w->repo_ok, w->sig, w->m, MAX_MATCH, &w->pk);
     w->sel = 0;
+    w->have_dir[0] = '\0';
+    w->have_name[0] = '\0';
+    if (w->sig[0] != '\0') {
+        (void)find_project(w->sig, w->have_dir, sizeof(w->have_dir), w->have_name,
+                           sizeof(w->have_name));
+    }
     if (strcmp(w->name, "My ECU") == 0 || w->name[0] == '\0') {
         pick_name(&w->pk, w->sig, w->name, sizeof(w->name));
     }
@@ -757,7 +766,7 @@ static void wiz_draw(lt_app *app, lt_app_dialog *d)
     lt_ui *ui = app->ui;
     const lt_theme *t = lt_ui_theme(ui);
     wiz_state *w = (wiz_state *)d->data;
-    int open = d->open, w1 = -1, w2[2], w3[3], create = 0;
+    int open = d->open, w1 = -1, w2[2], w3[3], create = 0, reopen = 0;
     const char *picked;
     if (w == NULL) {
         w = (wiz_state *)lt_calloc(1, sizeof(*w));
@@ -793,7 +802,7 @@ static void wiz_draw(lt_app *app, lt_app_dialog *d)
             lt_snprintf(w->err, sizeof(w->err), "Import failed: %s", lt_err_get());
         }
     }
-    if (lt_ui_modal_begin(ui, "Connect ECU", CH * 76, CV * 24, &open)) {
+    if (lt_ui_modal_begin(ui, "Connect ECU", CH * 76, CV * 30, &open)) {
         lt_ui_layout_row(ui, 1, &w1, 0);
         if (w->step == 0) {
             char b[240];
@@ -822,7 +831,8 @@ static void wiz_draw(lt_app *app, lt_app_dialog *d)
             lt_ui_label(ui, "ECU found on");
             {
                 char b[200];
-                lt_snprintf(b, sizeof(b), "%s at %ld baud", w->port, w->baud);
+                if (strcmp(w->port, "demo") == 0) { lt_strlcpy(b, "the demo (simulated ECU)", sizeof(b)); }
+                else { lt_snprintf(b, sizeof(b), "%s at %ld baud", w->port, w->baud); }
                 lt_ui_label_ex(ui, b, t->success, LT_UI_ALIGN_LEFT);
             }
             lt_ui_label(ui, "Signature");
@@ -853,14 +863,41 @@ static void wiz_draw(lt_app *app, lt_app_dialog *d)
             lt_ui_layout_row(ui, 1, &w1, 0);
             if (w->err[0] != '\0') { lt_ui_label_wrap(ui, w->err, t->error); }
             ok = w->n_m > 0 && w->name[0] != '\0';
-            w2[0] = -1; w2[1] = -1;
-            lt_ui_layout_row(ui, 2, w2, 0);
-            if (lt_ui_button_ex(ui, "Create Project and Connect", ok ? LT_UI_BTN_DEFAULT : LT_UI_BTN_DISABLED) && ok) {
-                create = 1;
+            if (w->have_dir[0] != '\0') {
+                /* this ECU was set up before: reopening it is the usual intent, not a "name 2" copy */
+                char b[200];
+                lt_snprintf(b, sizeof(b), "You already have a project for this ECU: %s.", w->have_name);
+                lt_ui_label_wrap(ui, b, t->success);
+                w3[0] = -1; w3[1] = -1; w3[2] = CH * 12;
+                lt_ui_layout_row(ui, 3, w3, 0);
+                lt_snprintf(b, sizeof(b), "Open \"%s\" and Connect", w->have_name);
+                if (lt_ui_button_ex(ui, b, LT_UI_BTN_DEFAULT)) { reopen = 1; }
+                if (lt_ui_button_ex(ui, "Create New Project", ok ? 0 : LT_UI_BTN_DISABLED) && ok) {
+                    create = 1;
+                }
+            } else {
+                w2[0] = -1; w2[1] = -1;
+                lt_ui_layout_row(ui, 2, w2, 0);
+                if (lt_ui_button_ex(ui, "Create Project and Connect", ok ? LT_UI_BTN_DEFAULT : LT_UI_BTN_DISABLED) && ok) {
+                    create = 1;
+                }
             }
             if (lt_ui_button(ui, "Cancel")) { open = 0; }
         }
         lt_ui_modal_end(ui);
+    }
+    if (reopen) {
+        char port[128], dir[512];
+        long baud = w->baud;
+        lt_strlcpy(port, w->port, sizeof(port));
+        lt_strlcpy(dir, w->have_dir, sizeof(dir));
+        if (lt_app_open_project(app, dir) == 0) {
+            /* the project closed this dialog (and freed d/w): nothing may touch them now */
+            if (strcmp(port, "demo") == 0) { (void)lt_app_connect_demo(app); }
+            else { (void)lt_app_connect_serial(app, port, baud); }
+            return;
+        }
+        lt_snprintf(w->err, sizeof(w->err), "Cannot open the project: %s", lt_err_get());
     }
     if (create) {
         char *ini_path = w->repo_ok ? match_path(&w->repo, &w->m[w->sel]) : NULL;
@@ -908,8 +945,9 @@ static void act_wizard(lt_app *app)
 /* ------------------------------------------------------------------ */
 /* connect, identify, pick the INI, open or create the project          */
 
-/* the newest project whose definition has exactly signature sig; 1 found (dir in out) */
-static int find_project(const char *sig, char *out, size_t cap)
+/* the newest project whose definition has exactly signature sig; 1 found (dir in out, its
+ * name in name when not NULL) */
+static int find_project(const char *sig, char *out, size_t cap, char *name, size_t ncap)
 {
     lt_project_info *v = NULL;
     size_t n = 0, i;
@@ -918,6 +956,7 @@ static int find_project(const char *sig, char *out, size_t cap)
     for (i = 0; i < n && !found; i++) {
         if (v[i].signature != NULL && v[i].path != NULL && same_sig(v[i].signature, sig)) {
             lt_strlcpy(out, v[i].path, cap);
+            if (name != NULL) { lt_strlcpy(name, v[i].name != NULL ? v[i].name : v[i].path, ncap); }
             found = 1;
         }
     }
@@ -990,7 +1029,7 @@ int lt_feat_sync_connect_auto(lt_app *app, const char *port, long baud, const ch
     r->quality = q;
     lt_strlcpy(r->label, pk.label, sizeof(r->label));
     dir[0] = '\0';
-    if (find_project(pk.signature, dir, sizeof(dir))) {
+    if (find_project(pk.signature, dir, sizeof(dir), NULL, 0)) {
         lt_ini_repo_close(&repo);
         rc = lt_app_open_project(app, dir);
     } else {
