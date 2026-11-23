@@ -308,6 +308,35 @@ LT_TEST(table_paste_leaves_other_cells)
     lt_app_free(app);
 }
 
+/* Revert brings back the values at open even after more edits than the undo history holds */
+LT_TEST(table_revert_after_many_edits)
+{
+    char buf[512];
+    lt_app *app = lt_app_new();
+    size_t rows = 0;
+    double v0;
+    int i;
+    lt_pagesrc ps;
+    lt_tblview v;
+    LT_CHECK(lt_app_find_demo_ini(buf, sizeof(buf)) != NULL);
+    LT_CHECK(lt_app_start_demo(app, buf) == 0);
+    LT_CHECK(lt_app_table_editor_open(app, "veTableTbl") == 0);
+    lt_app_screenshot(app, "build/lt_test_tables7.ppm", 1100, 800, 3);
+    ps = lt_app_pages(app);
+    lt_tblview_init(&v);
+    LT_CHECK(lt_tblview_load_table(&v, app->ini, lt_ini_find_table(app->ini, "veTableTbl"), &ps) == 0);
+    rows = v.rows;
+    lt_tblview_free(&v);
+    click(app, 500, 300, LT_MB_LEFT);
+    press(app, LT_KEY_HOME, LT_MOD_CTRL);
+    v0 = cell0(app, "veTableTbl", rows - 1, 0);
+    for (i = 0; i < LT_TBLVIEW_UNDO_MAX + 8; i++) { press(app, '+', 0); }
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 0), v0 + (double)(LT_TBLVIEW_UNDO_MAX + 8), 0.051);
+    click(app, 871, 137, LT_MB_LEFT);                /* toolbar: Revert */
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 0), v0, 1e-9);
+    lt_app_free(app);
+}
+
 int main(void)
 {
     LT_RUN(table_selection_keys);
@@ -316,5 +345,6 @@ int main(void)
     LT_RUN(table_keys_edit_undo);
     LT_RUN(curve_and_autotune_tabs);
     LT_RUN(table_paste_leaves_other_cells);
+    LT_RUN(table_revert_after_many_edits);
     LT_TEST_MAIN_END
 }

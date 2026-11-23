@@ -292,7 +292,14 @@ static void tbl_revert(lt_app *app, lt_app_tab *tab, tbl_tab *st)
 {
     /* undo everything back to the state at open: walk the undo ring */
     int guard = 0;
+    size_t i, n = st->v.rows * st->v.cols;
     while (lt_tblview_undo(&st->v) && guard++ < LT_TBLVIEW_UNDO_MAX) { }
+    /* more edits than the undo ring holds: the oldest snapshot is not the state at open */
+    if (st->orig != NULL && st->orig_n == n) {
+        for (i = 0; i < n; i++) {
+            if (st->v.z[i] != st->orig[i]) { lt_tblview_set(&st->v, i / st->v.cols, i % st->v.cols, st->orig[i]); }
+        }
+    }
     tbl_commit(app, tab, st);
     lt_app_toast(app, 0, "Reverted to the values at open (undo history)");
 }
