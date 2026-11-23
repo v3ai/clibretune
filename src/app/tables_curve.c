@@ -318,6 +318,8 @@ static void xy_plot(lt_gfx *g, const plot_ctx *p, int x0, int x1, int y0, int y1
     char b[32];
     lt_color live = p->xy, logc = p->xy_log;
     LT_UNUSED(x0);
+    /* switched on after this frame's collection ran: no range yet (0/0 made NaN pixel positions) */
+    if (!(st->xy_hi > st->xy_lo)) { return; }
     for (i = 0; i < st->xy_n; i++) {
         double sx, sy, a = st->xy_pa[i];
         lt_color c;
