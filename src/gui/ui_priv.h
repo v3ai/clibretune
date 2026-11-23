@@ -95,6 +95,8 @@ typedef struct ui_popup {
     int kind;       /* 0 menu 1 combo 2 context 3 colour */
     int right;      /* submenu: open to the right of anchor */
     int minw;
+    int maxh;       /* visible height; taller content scrolls (state d[0] = offset) */
+    int kbd;        /* the highlight moved by the keyboard: scroll it into view */
 } ui_popup;
 
 /* queued keyboard event (key or text), consumed by widgets in order */

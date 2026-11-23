@@ -26,6 +26,9 @@ void ui_popup_open(lt_ui *ui, int depth, lt_u32 id, int kind, lt_rect anchor, in
     p = &ui->popups[depth];
     p->id = id; p->kind = kind; p->anchor = anchor; p->right = right; p->x = x; p->y = y;
     p->minw = 0;
+    p->maxh = 0;
+    p->kbd = 0;
+    ui_state_get(ui, id ^ 0x5BD1E995UL)->d[0] = 0.0;
     ui->npopups = depth + 1;
     ui->menu_hi[depth] = -1;
     memset(ui->menu_dis[depth], 0, sizeof(ui->menu_dis[depth]));
@@ -62,7 +65,7 @@ void ui_popup_begin(lt_ui *ui, int idx, int min_w, int est_h)
 {
     ui_popup *P = &ui->popups[idx];
     ui_state *st = ui_state_get(ui, P->id ^ 0x5BD1E995UL);
-    int w, h, x, y, z, base, ins = popup_ins(ui), insy = popup_insy(ui);
+    int w, h, x, y, z, base, ins = popup_ins(ui), insy = popup_insy(ui), maxh, vh, sc;
     lt_rect rect;
     ui_layer *L;
     ui_cmd *c;
@@ -83,13 +86,23 @@ void ui_popup_begin(lt_ui *ui, int idx, int min_w, int est_h)
         x = P->right ? P->anchor.x - w + 2 : ui->sw - w;
     }
     if (x < 0) { x = 0; }
+    maxh = ui->sh;
     if (y + h > ui->sh) {
         if (P->kind == 2 || P->kind == 3 || P->right) { y = ui->sh - h; }
         else if (P->anchor.y - h - 2 >= 0) { y = P->anchor.y - h - 2; }
-        else { y = ui->sh - h; }
+        else if (P->anchor.y - 2 > ui->sh - y) { y = 0; maxh = P->anchor.y - 2; }  /* more room above */
+        /* else: below the anchor (a menu bar menu stays under its title) and scrolls */
     }
     if (y < 0) { y = 0; }
-    rect = lt_rect_make(x, y, w, h);
+    if (maxh > ui->sh - y) { maxh = ui->sh - y; }
+    if (ui->cell) { maxh = maxh / 16 * 16; }
+    if (maxh < 2 * insy + t->row_h) { maxh = 2 * insy + t->row_h; }
+    vh = LT_MIN(h, maxh);
+    sc = h > vh ? LT_CLAMP((int)st->d[0], 0, h - vh) : 0;
+    if (ui->cell) { sc = sc / 16 * 16; }
+    st->d[0] = (double)sc;
+    P->maxh = maxh;
+    rect = lt_rect_make(x, y, w, vh);
     base = ui_layer_z(ui);
     z = base < 1000 ? 900 + idx : base + 1 + idx;
     L = ui_layer_begin(ui, P->id ^ 0x1234567UL, UL_POPUP, z, rect);
@@ -117,7 +130,7 @@ void ui_popup_begin(lt_ui *ui, int idx, int min_w, int est_h)
         c->r = rect; c->c = t->border_strong;
     }
     ui->pop_need[idx] = 0;
-    ui_layout_push(ui, lt_rect_make(x + ins, y + insy, w - 2 * ins, h - 2 * insy));
+    ui_layout_push(ui, lt_rect_make(x + ins, y + insy - sc, w - 2 * ins, h - 2 * insy));
     ui_lay(ui)->sp_y = 0;
     lt_ui_clip_push(ui, rect);
 }
@@ -144,6 +157,7 @@ static void popup_nav(lt_ui *ui, int idx)
             if (hi >= 64 || !ui->menu_dis[idx][hi]) { break; }
         }
         ui->menu_hi[idx] = hi;
+        ui->popups[idx].kbd = 1;
         ui_request(ui);
     }
 }
@@ -156,14 +170,31 @@ void ui_popup_end(lt_ui *ui, int idx)
     ui_layer *L = ui_layer_cur(ui);
     int ins = popup_ins(ui), insy = popup_insy(ui);
     int nw = LT_MAX(P->minw, ui->pop_need[idx] + 2 * ins);
-    int nh = LY->max_y - LY->body.y + 2 * insy;
+    int nh = LY->max_y - LY->body.y + 2 * insy, vh;
     lt_rect rect = L->rect;
     if (nh < 4) { nh = 4; }
     if (st->i[0] != nw || st->i[1] != nh) {
         st->i[0] = nw; st->i[1] = nh;
         ui_request(ui);
     }
-    rect.w = nw; rect.h = nh;
+    vh = P->maxh > 0 ? LT_MIN(nh, P->maxh) : nh;
+    if (nh > vh) {
+        /* taller than the window: wheel scrolling and a thin position bar */
+        int range = nh - vh, sc = (int)st->d[0];
+        int th = LT_MAX(vh * vh / nh, ui->cell ? 16 : lt_ui_px(ui, 16));
+        int bw = ui->cell ? 8 : lt_ui_px(ui, 3);
+        if (ui->wheel != 0 && lt_rect_contains(lt_rect_make(rect.x, rect.y, nw, vh), ui->mx, ui->my)) {
+            sc = LT_CLAMP(sc - ui->wheel * ui->theme.row_h * 2, 0, range);
+            if (ui->cell) { sc = sc / 16 * 16; }
+            st->d[0] = (double)sc;
+            ui->wheel = 0;
+            ui_request(ui);
+        }
+        lt_ui_draw_fill(ui, lt_rect_make(rect.x + nw - bw - (ui->cell ? 0 : 1),
+                                         rect.y + (vh - th) * sc / LT_MAX(range, 1), bw, th),
+                        ui->theme.scroll_thumb);
+    }
+    rect.w = nw; rect.h = vh;
     L->rect = rect;
     if (L->bg_cmd >= 0 && (size_t)L->bg_cmd + 4 < L->cmds.len) {
         ui_cmd *c = &LT_VEC_AT(&L->cmds, ui_cmd, L->bg_cmd);
@@ -196,6 +227,17 @@ int ui_popup_item(lt_ui *ui, int depth, lt_rect r, int disabled)
         ui->menu_hi[depth] = idx;
     }
     if (over) { res |= UI_ITEM_OVER; }
+    if (ui->menu_hi[depth] == idx && ui->popups[depth].kbd) {
+        /* keyboard highlight of a scrolled popup: bring the row into view next frame */
+        ui_popup *P = &ui->popups[depth];
+        ui_state *st = ui_state_get(ui, P->id ^ 0x5BD1E995UL);
+        lt_rect vis = ui_layer_cur(ui)->rect;
+        int top = vis.y + popup_insy(ui), bot = vis.y + vis.h - popup_insy(ui);
+        if (r.y < top) { st->d[0] -= (double)(top - r.y); ui_request(ui); }
+        else if (r.y + r.h > bot) { st->d[0] += (double)(r.y + r.h - bot); ui_request(ui); }
+        if (st->d[0] < 0.0) { st->d[0] = 0.0; }
+        P->kbd = 0;
+    }
     if (ui->menu_hi[depth] == idx && !disabled) {
         res |= UI_ITEM_HI;
         if (depth == ui->npopups - 1 &&

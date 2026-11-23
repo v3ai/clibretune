@@ -1014,6 +1014,66 @@ LT_TEST(test_menus)
     h_close();
 }
 
+/* a menu longer than the window stays under its title and scrolls (keys and wheel) */
+static void scene_long_menu(lt_ui *ui)
+{
+    int i, open;
+    if (lt_ui_menubar_begin(ui)) {
+        open = lt_ui_menu_begin(ui, "&File");
+        R[0] = lt_ui_last_rect(ui);
+        if (open) {
+            for (i = 0; i < 30; i++) {
+                char b[16];
+                lt_snprintf(b, sizeof(b), "Item %d", i);
+                if (lt_ui_menu_item(ui, b, NULL, 0)) { s_n[0] = 100 + i; }
+                if (i == 0) { R[1] = lt_ui_last_rect(ui); }
+            }
+            if (lt_ui_menu_item(ui, "Exit", NULL, 0)) { s_n[1]++; }
+            R[2] = lt_ui_last_rect(ui);
+            lt_ui_menu_end(ui);
+        }
+        lt_ui_menubar_end(ui);
+    }
+}
+
+LT_TEST(test_menu_taller_than_window_scrolls)
+{
+    reset_state();
+    h_open(400, 300, 0);
+    H.scene = scene_long_menu;
+    frames(2);
+    key_ex('f', LT_MOD_ALT);
+    frames(2);
+    LT_CHECK(R[1].y >= R[0].y + R[0].h);                  /* does not cover the menu bar */
+    LT_CHECK(R[2].y > 300);                               /* Exit is below the window */
+    key(LT_KEY_UP);                                       /* wraps to the last item */
+    frames(2);
+    LT_CHECK(R[2].y >= R[0].y + R[0].h && R[2].y + R[2].h <= 300);
+    key(LT_KEY_ENTER);
+    LT_CHECK_INT(s_n[1], 1);
+    /* the wheel scrolls; a row scrolled into view can be clicked */
+    key_ex('f', LT_MOD_ALT);
+    frames(2);
+    LT_CHECK(R[2].y > 300);
+    wheel(R[1].x + 10, 150, -30);
+    LT_CHECK(R[2].y + R[2].h <= 300);
+    LT_CHECK(R[1].y + R[1].h <= R[0].y + R[0].h);
+    click_rect(R[2]);
+    LT_CHECK_INT(s_n[1], 2);
+    h_close();
+    /* terminal: 80x12 cells */
+    reset_state();
+    h_open(80, 12, 1);
+    H.scene = scene_long_menu;
+    frames(2);
+    key_ex('f', LT_MOD_ALT);
+    key(LT_KEY_UP);
+    frames(2);
+    LT_CHECK(R[2].y + R[2].h <= 12 * 16);
+    LT_CHECK(cells_has_text("Exit"));
+    h_close();
+}
+
 static void scene_context(lt_ui *ui)
 {
     R[0] = lt_rect_make(100, 100, 200, 100);
@@ -2273,6 +2333,7 @@ int main(void)
     LT_RUN(test_tab_bar);
     LT_RUN(test_shell_widgets);
     LT_RUN(test_menus);
+    LT_RUN(test_menu_taller_than_window_scrolls);
     LT_RUN(test_context_menu);
     LT_RUN(test_modal);
     LT_RUN(test_modal_taller_than_window_scrolls);
