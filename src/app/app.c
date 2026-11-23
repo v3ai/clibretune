@@ -906,6 +906,8 @@ int lt_app_service_wait_ms(lt_app *app)
 
 /* ------------------------------------------------------------------ */
 /* project / ini / tune                                                */
+static void ini_free_later(void *p) { lt_ini_free((lt_ini *)p); }
+
 void lt_app_close_project(lt_app *app)
 {
     int i;
@@ -934,7 +936,8 @@ void lt_app_close_project(lt_app *app)
         lt_tune_free(app->tune);
         app->tune = NULL;
     }
-    if (app->ini != NULL) { lt_ini_free(app->ini); app->ini = NULL; }
+    /* tabs drawn this frame may have queued draw callbacks that still read the definition */
+    if (app->ini != NULL) { lt_ui_after_frame(app->ui, ini_free_later, app->ini); app->ini = NULL; }
     lt_expr_cache_free(&app->expr);
     lt_expr_cache_init(&app->expr);
     app->modified = 0;
@@ -1305,7 +1308,7 @@ int lt_app_reload_ini(lt_app *app)
     lt_tune_free(d);
     (void)lt_tune_apply_to_pages(app->tune, ini);
     (void)lt_tune_capture_from_pages(app->tune, ini);
-    lt_ini_free(app->ini);
+    lt_ui_after_frame(app->ui, ini_free_later, app->ini);      /* see lt_app_close_project */
     app->ini = ini;
     lt_expr_cache_free(&app->expr);
     lt_expr_cache_init(&app->expr);

@@ -226,6 +226,9 @@ LT_TEST(dialog_that_closes_the_project)
     memset(&dk, 0, sizeof(dk));
     dk.kind = "test_reopen"; dk.draw = reopen_draw; dk.close = NULL;
     lt_app_register_dialog_kind(app, &dk);
+    /* the curve tab's plot callback, queued before the dialogs draw, reads the definition that
+     * closing the project frees */
+    LT_CHECK(lt_app_curve_editor_open(app, "knockThresholdCurve") == 0);
     LT_CHECK(lt_app_dialog_push(app, "about", "", "About") != NULL);
     LT_CHECK(lt_app_dialog_push(app, "test_reopen", "", "Reopen") != NULL);
     LT_CHECK(lt_app_dialog_push(app, "shortcuts", "", "Keys") != NULL);
