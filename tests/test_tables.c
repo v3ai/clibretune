@@ -173,9 +173,112 @@ LT_TEST(table_selection_keys)
     lt_app_free(app);
 }
 
+static void type_text(lt_app *app, const char *s)
+{
+    lt_event ev;
+    for (; *s != '\0'; s++) {
+        memset(&ev, 0, sizeof(ev));
+        ev.type = LT_EV_TEXT; ev.text[0] = *s;
+        lt_ui_input(app->ui, &ev);
+        frame(app);
+    }
+}
+
+static size_t table_snap(lt_app *app, const char *tname, double *out, size_t cap)
+{
+    lt_pagesrc ps = lt_app_pages(app);
+    lt_tblview v;
+    size_t n = 0;
+    const lt_ini_table *t = lt_ini_find_table(app->ini, tname);
+    lt_tblview_init(&v);
+    if (t != NULL && lt_tblview_load_table(&v, app->ini, t, &ps) == 0 && v.rows * v.cols <= cap) {
+        n = v.rows * v.cols;
+        memcpy(out, v.z, n * sizeof(double));
+    }
+    lt_tblview_free(&v);
+    return n;
+}
+
+/* a typed value is committed by clicking another cell: it belongs to the cell that was being
+ * edited, not to the cell that was clicked */
+LT_TEST(table_edit_commit_on_click_away)
+{
+    static double before[4096], after[4096];
+    char buf[512];
+    lt_app *app = lt_app_new();
+    size_t n, k, changed = 0, at = 0;
+    LT_CHECK(lt_app_find_demo_ini(buf, sizeof(buf)) != NULL);
+    LT_CHECK(lt_app_start_demo(app, buf) == 0);
+    LT_CHECK(lt_app_table_editor_open(app, "veTableTbl") == 0);
+    lt_app_screenshot(app, "build/lt_test_tables4.ppm", 1100, 800, 3);
+    click(app, 500, 300, LT_MB_LEFT);
+    press(app, LT_KEY_HOME, LT_MOD_CTRL);
+    n = table_snap(app, "veTableTbl", before, 4096);
+    LT_CHECK(n > 0);
+    type_text(app, "12");
+    click(app, 700, 450, LT_MB_LEFT);
+    LT_CHECK(table_snap(app, "veTableTbl", after, 4096) == n);
+    for (k = 0; k < n; k++) {
+        if (after[k] != before[k]) { changed++; at = k; }
+    }
+    LT_CHECK(changed == 1);
+    LT_CHECK_NEAR(after[at], 12.0, 1e-9);
+    {   /* the cursor cell at display (0,0) is data (rows-1, 0) */
+        lt_pagesrc ps = lt_app_pages(app);
+        lt_tblview v;
+        lt_tblview_init(&v);
+        LT_CHECK(lt_tblview_load_table(&v, app->ini, lt_ini_find_table(app->ini, "veTableTbl"), &ps) == 0);
+        LT_CHECK(at == (v.rows - 1) * v.cols);
+        lt_tblview_free(&v);
+    }
+    lt_app_free(app);
+}
+
+static double curve_val(lt_app *app, const char *cname, int xaxis, size_t i)
+{
+    lt_pagesrc ps = lt_app_pages(app);
+    lt_tblview v;
+    double r = -1e9;
+    const lt_ini_curve *c = lt_ini_find_curve(app->ini, cname);
+    lt_tblview_init(&v);
+    if (c != NULL && lt_tblview_load_curve(&v, app->ini, c, &ps) == 0 && i < v.cols) {
+        r = xaxis ? v.x[i] : v.z[i];
+    }
+    lt_tblview_free(&v);
+    return r;
+}
+
+/* Tab after typing in the curve list commits to the edited cell (not the next one) and an X value
+ * that would break the axis order is kept between its neighbours */
+LT_TEST(curve_edit_commit_on_tab)
+{
+    char buf[512];
+    lt_app *app = lt_app_new();
+    double x1, x2;
+    LT_CHECK(lt_app_find_demo_ini(buf, sizeof(buf)) != NULL);
+    LT_CHECK(lt_app_start_demo(app, buf) == 0);
+    LT_CHECK(lt_app_curve_editor_open(app, "cltFuelCorrCurve") == 0);
+    lt_app_screenshot(app, "build/lt_test_tables5.ppm", 1600, 1000, 3);
+    x1 = curve_val(app, "cltFuelCorrCurve", 1, 1);
+    x2 = curve_val(app, "cltFuelCorrCurve", 1, 2);
+    click(app, 1224, 192, LT_MB_LEFT);               /* first row, Y column */
+    type_text(app, "2");
+    press(app, LT_KEY_TAB, 0);
+    LT_CHECK_NEAR(curve_val(app, "cltFuelCorrCurve", 0, 0), 2.0, 1e-6);
+    LT_CHECK_NEAR(curve_val(app, "cltFuelCorrCurve", 1, 1), x1, 1e-9);
+    /* the cursor is now on the second row's X: 500 is past the third point */
+    type_text(app, "500");
+    press(app, LT_KEY_TAB, 0);
+    LT_CHECK_NEAR(curve_val(app, "cltFuelCorrCurve", 1, 1), x2, 1e-6);
+    LT_CHECK(curve_val(app, "cltFuelCorrCurve", 0, 1) < 2.0);
+    lt_app_free(app);
+}
+
 int main(void)
 {
     LT_RUN(table_selection_keys);
+    LT_RUN(table_edit_commit_on_click_away);
+    LT_RUN(curve_edit_commit_on_tab);
     LT_RUN(table_keys_edit_undo);
     LT_RUN(curve_and_autotune_tabs);
     LT_TEST_MAIN_END

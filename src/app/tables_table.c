@@ -20,6 +20,7 @@ typedef struct tbl_tab {
     double lo, hi;                /* constant limits (display units) */
     int show3d, follow, shading, ybottom, lambda_on, is_afr;
     unsigned char *sel;           /* rows*cols mask in data coordinates */
+    unsigned char *esel;          /* the selection when the cell edit began (it gets the value) */
     size_t sel_cap;
     int cur_r, cur_c;             /* cursor in data coordinates */
     int nsel;
@@ -69,6 +70,7 @@ static void tbl_free_data(tbl_tab *st)
 {
     lt_tblview_free(&st->v);
     lt_free(st->sel); st->sel = NULL; st->sel_cap = 0;
+    lt_free(st->esel); st->esel = NULL;
     lt_free(st->cellcol); st->cellcol = NULL;
     lt_free(st->orig); st->orig = NULL; st->orig_n = 0;
 }
@@ -114,12 +116,14 @@ static void tbl_load(lt_app *app, lt_app_tab *tab, tbl_tab *st)
     lt_tblview_z_range(&st->v, app->ini, &st->lo, &st->hi);
     n = st->v.rows * st->v.cols;
     if (n > st->sel_cap) {
-        lt_free(st->sel); lt_free(st->cellcol);
+        lt_free(st->sel); lt_free(st->esel); lt_free(st->cellcol);
         st->sel = (unsigned char *)lt_calloc(n, 1);
+        st->esel = (unsigned char *)lt_calloc(n, 1);
         st->cellcol = (lt_color *)lt_calloc(n, sizeof(lt_color));
         st->sel_cap = n;
     }
     memset(st->sel, 0, st->sel_cap);
+    memset(st->esel, 0, st->sel_cap);
     st->nsel = 0;
     lt_free(st->orig);
     st->orig = (double *)lt_calloc(n, sizeof(double));
@@ -1409,18 +1413,29 @@ static void tbl_grid(lt_app *app, lt_app_tab *tab, tbl_tab *st, int vh)
         st->cur_r = r >= 0 ? drow(st, r) : 0;
         st->cur_c = c >= 0 ? c : 0;
         fl = lt_ui_grid_end(ui);
-        if ((fl & LT_UI_GRID_EDIT_BEGIN) && lt_ui_grid_edit_wants_text(ui)) {
-            int er, ec;
-            lt_ui_grid_editing(ui, &er, &ec);
-            lt_tabs_fmt(b, sizeof(b), st->v.z[(size_t)drow(st, er) * (size_t)cols + (size_t)ec], st->zdig);
-            lt_ui_grid_edit_set_text(ui, b);
-        }
         if (fl & LT_UI_GRID_EDIT_COMMIT) {
+            /* the value goes to the cells selected when the edit began: a click-away or Tab has
+             * already moved the selection to another cell */
             double v;
             if (lt_parse_double(lt_ui_grid_edit_text(ui), &v)) {
+                unsigned char *keep = st->sel;
                 if (st->hi > st->lo) { v = v < st->lo ? st->lo : (v > st->hi ? st->hi : v); }
+                st->sel = st->esel;
                 tbl_op(app, tab, st, OP_SET, lt_tabs_round(v, st->zdig));
+                st->sel = keep;
             } else { lt_app_toast(app, 2, "Not a number"); }
+        }
+        if (fl & LT_UI_GRID_EDIT_BEGIN) {
+            int er, ec;
+            lt_ui_grid_editing(ui, &er, &ec);
+            memcpy(st->esel, st->sel, st->v.rows * st->v.cols);
+            if (er >= 0 && ec >= 0 && er < rows && ec < cols) {
+                if (st->nsel == 0) { st->esel[(size_t)drow(st, er) * (size_t)cols + (size_t)ec] = 1; }
+                if (lt_ui_grid_edit_wants_text(ui)) {
+                    lt_tabs_fmt(b, sizeof(b), st->v.z[(size_t)drow(st, er) * (size_t)cols + (size_t)ec], st->zdig);
+                    lt_ui_grid_edit_set_text(ui, b);
+                }
+            }
         }
     }
     /* colours for the 3D view */

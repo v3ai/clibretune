@@ -27,6 +27,7 @@ typedef struct emb {
     double live_x, live_y;
     int live_ok;
     unsigned char *gsel; size_t gsel_cap;   /* curve: per point bit0 X / bit1 Y; table: per cell */
+    unsigned char *esel;            /* table: gsel when the cell edit began (gsel_cap bytes) */
     int nsel;
     lt_rect pr;
     lt_color line, grid, pt, selc, live, axis, bg;
@@ -44,6 +45,7 @@ void lt_emb_free(lt_embeds *e)
         lt_tblview_free(&m->v);
         if (m->g_init) { lt_dash_gauge_free(&m->g); }
         lt_free(m->gsel);
+        lt_free(m->esel);
         lt_free(m);
     }
     lt_free(e->v);
@@ -132,7 +134,9 @@ static void emb_ensure(lt_app *app, emb *m)
     need = m->v.rows * m->v.cols + 1;
     if (need > m->gsel_cap) {
         lt_free(m->gsel);
+        lt_free(m->esel);
         m->gsel = (unsigned char *)lt_calloc(need, 1);
+        m->esel = (unsigned char *)lt_calloc(need, 1);
         m->gsel_cap = need;
     }
 }
@@ -488,8 +492,9 @@ int lt_emb_curve(lt_app *app, lt_embeds *e, const lt_ini_curve *c, int enabled)
             }
             if ((fl & LT_UI_GRID_EDIT_COMMIT) && enabled) {
                 double v;
-                int er, ec;
-                lt_ui_grid_cursor(ui, &er, &ec);
+                int er = -1, ec = -1;
+                /* the edited cell, not the cursor: Tab or a click-away has already moved that */
+                (void)lt_ui_grid_editing(ui, &er, &ec);
                 if (lt_parse_double(lt_ui_grid_edit_text(ui), &v) && er >= 0 && ec >= 0 && ec < (int)m->v.cols) {
                     lt_tblview_push_undo(&m->v);
                     if (er == 0) {
@@ -611,20 +616,28 @@ int lt_emb_table(lt_app *app, lt_embeds *e, const lt_ini_table *t, int enabled)
             lt_ui_grid_cursor(ui, &r, &c);
             m->sel = r >= 0 && c >= 0 ? (rows - 1 - r) * cols + c : -1;
             fl = lt_ui_grid_end(ui);
-            if ((fl & LT_UI_GRID_EDIT_BEGIN) && lt_ui_grid_edit_wants_text(ui)) {
-                int er, ec;
-                lt_ui_grid_editing(ui, &er, &ec);
-                if (er >= 0 && ec >= 0) {
-                    lt_tabs_fmt(b, sizeof(b), m->v.z[(size_t)(rows - 1 - er) * (size_t)cols + (size_t)ec], m->zdig);
-                    lt_ui_grid_edit_set_text(ui, b);
-                }
-            }
             if ((fl & LT_UI_GRID_EDIT_COMMIT) && enabled) {
+                /* the cells selected when the edit began: Tab or a click-away moved the selection */
                 double v;
                 if (lt_parse_double(lt_ui_grid_edit_text(ui), &v)) {
-                    if (m->nsel == 0 && m->sel >= 0) { m->gsel[m->sel] = 1; }
+                    unsigned char *keep = m->gsel;
+                    m->gsel = m->esel;
                     tbl_adjust(app, m, 0.0, 1, v);
+                    m->gsel = keep;
                 } else { lt_app_toast(app, 2, "Not a number"); }
+            }
+            if (fl & LT_UI_GRID_EDIT_BEGIN) {
+                int er, ec;
+                lt_ui_grid_editing(ui, &er, &ec);
+                memcpy(m->esel, m->gsel, m->gsel_cap);
+                if (er >= 0 && ec >= 0 && er < rows && ec < cols) {
+                    size_t k = (size_t)(rows - 1 - er) * (size_t)cols + (size_t)ec;
+                    if (m->nsel == 0) { m->esel[k] = 1; }
+                    if (lt_ui_grid_edit_wants_text(ui)) {
+                        lt_tabs_fmt(b, sizeof(b), m->v.z[k], m->zdig);
+                        lt_ui_grid_edit_set_text(ui, b);
+                    }
+                }
             }
         }
         lt_ui_disabled_end(ui);

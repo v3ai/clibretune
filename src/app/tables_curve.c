@@ -901,12 +901,17 @@ static void crv_draw(lt_app *app, lt_app_tab *tab, lt_rect rr)
             }
             if (fl & LT_UI_GRID_EDIT_COMMIT) {
                 double v;
-                int er, ec;
-                lt_ui_grid_cursor(ui, &er, &ec);
-                if (lt_parse_double(lt_ui_grid_edit_text(ui), &v) && er >= 0 && ec >= 0) {
+                int er = -1, ec = -1;
+                /* the edited cell, not the cursor: Tab or a click-away has already moved that */
+                (void)lt_ui_grid_editing(ui, &er, &ec);
+                if (lt_parse_double(lt_ui_grid_edit_text(ui), &v) && er >= 0 && ec >= 0 && er < (int)st->v.cols) {
                     lt_tblview_push_undo(&st->v);
                     if (ec == 0) {
+                        double typed;
                         if (st->xhi > st->xlo) { v = v < st->xlo ? st->xlo : (v > st->xhi ? st->xhi : v); }
+                        typed = v;
+                        v = lt_tbl_clamp_between(st->v.x, st->v.cols, (size_t)er, v);
+                        if (v != typed) { lt_app_toast(app, 2, "The X axis must increase: kept at %g", v); }
                         lt_tblview_set_x(&st->v, (size_t)er, lt_tabs_round(v, st->xdig));
                     } else { lt_tblview_set(&st->v, 0, (size_t)er, clampy(st, v)); }
                     crv_commit(app, tab, st);
