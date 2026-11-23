@@ -141,6 +141,53 @@ LT_TEST(logx_config_and_math)
     lt_app_free(app);
 }
 
+/* empty build/<dir>/datalogs, demo app whose config (and so the logs) is in build/<dir> */
+static lt_app *log_demo_app(const char *dir, const char *logs)
+{
+    char buf[512], **names = NULL;
+    int n, i;
+    lt_app *app = lt_app_new();
+    n = lt_plat_list_dir(logs, &names);
+    for (i = 0; i < n; i++) {
+        char *f = lt_path_join(logs, names[i]);
+        (void)lt_plat_remove(f);
+        lt_free(f);
+    }
+    if (n > 0) { lt_plat_free_list(names, n); }
+    use_tmp_config(app, dir);
+    (void)lt_plat_remove("build/logx_rec/logging.conf");
+    LT_CHECK(lt_app_find_demo_ini(buf, sizeof(buf)) != NULL);
+    LT_CHECK(lt_app_start_demo(app, buf) == 0);
+    return app;
+}
+
+static int count_files(const char *dir)
+{
+    char **names = NULL;
+    int n = lt_plat_list_dir(dir, &names);
+    if (n > 0) { lt_plat_free_list(names, n); }
+    return n < 0 ? 0 : n;
+}
+
+/* two recordings started within the same second each get their own file */
+LT_TEST(log_toggle_never_overwrites)
+{
+    lt_app *app = log_demo_app("build/logx_rec", "build/logx_rec/datalogs");
+    char first[512];
+    LT_CHECK_INT(lt_app_log_toggle(app), 0);
+    LT_CHECK(app->rec != NULL && lt_rec_is_recording(app->rec));
+    if (app->rec == NULL) { lt_app_free(app); return; }
+    lt_strlcpy(first, lt_rec_path(app->rec), sizeof(first));
+    LT_CHECK_INT(lt_app_log_toggle(app), 0);
+    LT_CHECK_INT(lt_app_log_toggle(app), 0);
+    LT_CHECK(lt_rec_is_recording(app->rec));
+    LT_CHECK(strcmp(first, lt_rec_path(app->rec)) != 0);
+    LT_CHECK_INT(lt_app_log_toggle(app), 0);
+    LT_CHECK(lt_file_exists(first));
+    LT_CHECK_INT(count_files("build/logx_rec/datalogs"), 2);
+    lt_app_free(app);
+}
+
 LT_TEST(logx_registered)
 {
     lt_app *app = lt_app_new();
@@ -158,5 +205,6 @@ int main(void)
     LT_RUN(alert_rules);
     LT_RUN(logx_config_and_math);
     LT_RUN(logx_registered);
+    LT_RUN(log_toggle_never_overwrites);
     LT_TEST_MAIN_END
 }

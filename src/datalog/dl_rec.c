@@ -316,6 +316,11 @@ static char *unique_path(const lt_recorder *r, const char *dir)
     return cand;
 }
 
+char *lt_rec_new_path(const lt_recorder *r, const char *dir)
+{
+    return unique_path(r, dir);
+}
+
 void lt_rec_clear(lt_recorder *r)
 {
     reset_timeline(r);

@@ -176,6 +176,9 @@ const char *lt_rec_path(const lt_recorder *r);           /* current or last fini
 void   lt_rec_live_window(const lt_recorder *r, long start, long count, lt_log *out);
 /* "<dir>/YYYY-MM-DD_HH.MM.SS.mlg" (local time), malloc'd */
 char  *lt_rec_default_path(const char *dir);
+/* the same with the recorder format's extension, for a file that does not exist yet: "_1", "_2"...
+ * is added to the name when it does (two recordings started within one second), malloc'd */
+char  *lt_rec_new_path(const lt_recorder *r, const char *dir);
 
 /* ====================================================================== */
 /* Playback (spec 6)                                                       */

@@ -498,7 +498,7 @@ int lt_app_log_toggle(lt_app *app)
     dir = app->has_project ? lt_project_file(&app->project, "datalogs")
                            : lt_path_join(app->config_dir != NULL ? app->config_dir : ".", "datalogs");
     lt_plat_mkdirs(dir);
-    path = lt_rec_default_path(dir);
+    path = lt_rec_new_path(app->rec, dir);
     i = (size_t)lt_rec_start(app->rec, path);
     if ((int)i < 0) { lt_app_toast(app, 3, "Cannot start log: %s", lt_err_get()); }
     else { lt_app_toast(app, 1, "Logging to %s", lt_path_base(lt_rec_path(app->rec))); }
