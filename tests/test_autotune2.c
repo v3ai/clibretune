@@ -1082,6 +1082,12 @@ LT_TEST(health_region_boundaries)
     for (i = 0; i < 100; i++) {
         LT_CHECK(seen[i] >= 1);   /* every cell is covered */
     }
+    {   /* the Health panel lists them by name: no two regions share one */
+        size_t k;
+        for (i = 0; i < h.n_regions; i++) {
+            for (k = i + 1; k < h.n_regions; k++) { LT_CHECK(strcmp(h.regions[i].name, h.regions[k].name) != 0); }
+        }
+    }
     /* tiny table falls back / stays valid */
     {
         double z2[4] = {40, 41, 42, 43}, xb2[2] = {1000, 2000}, yb2[2] = {30, 60};

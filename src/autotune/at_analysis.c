@@ -529,10 +529,10 @@ void lt_health_score(const double *z, const unsigned *hits, size_t rows, size_t 
         size_t pe = sat1(wot_row_start);
         if (pe >= ps) {
             if (idle_col_end > 0) {
-                add_region(out, "Part Throttle", LT_REG_PART_THROTTLE, ps, pe, 0, idle_col_end);
+                add_region(out, "Part Throttle, low RPM", LT_REG_PART_THROTTLE, ps, pe, 0, idle_col_end);
             }
             if (wot_col_start < cols) {
-                add_region(out, "Part Throttle", LT_REG_PART_THROTTLE, ps, pe, wot_col_start,
+                add_region(out, "Part Throttle, high RPM", LT_REG_PART_THROTTLE, ps, pe, wot_col_start,
                            cols - 1);
             }
         }

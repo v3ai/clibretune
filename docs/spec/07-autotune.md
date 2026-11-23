@@ -543,7 +543,7 @@ regions in this order:
  "WOT" (WOT): rows wot_row_start..=rows-1, ALL columns 0..=cols-1   [if wot_row_start<rows]
  "Low Load" (Transition): rows 0..=min(idle_row_end,rows-1), cols idle_col_end+1..=cols-1   [if idle_row_end<rows && idle_col_end+1<cols]
  pt_row_start=min(idle_row_end+1,rows-1); pt_row_end=wot_row_start-1 (sat)
- if pt_row_end>=pt_row_start: "Part Throttle" (PartThrottle) cols 0..=idle_col_end [if idle_col_end>0];  "Part Throttle" cols wot_col_start..=cols-1 [if wot_col_start<cols]
+ if pt_row_end>=pt_row_start: "Part Throttle, low RPM" (PartThrottle) cols 0..=idle_col_end [if idle_col_end>0];  "Part Throttle, high RPM" cols wot_col_start..=cols-1 [if wot_col_start<cols]
  if none emitted: "Full Table" (Cruise) whole table.
 ```
 (`pos` = first index satisfying predicate; `saturating_sub` floors at 0. Note `.unwrap_or(1).max(1).saturating_sub(1)` => index >=0.) Regions tile the table without overlap (test `regions_cover_every_cell`, `part_throttle_does_not_overlap_cruise`).
