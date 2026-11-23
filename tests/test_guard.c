@@ -196,7 +196,7 @@ LT_TEST(test_setup_state)
 }
 
 /* ---------------------------------------------------------------- in the app (terminal UI) */
-static char g_txt[60000];
+static char g_txt[32000];
 
 /* render app in cell mode (120x40) after keys (LT_SHOT_KEYS syntax); the text lands in g_txt */
 static void tty(lt_app *app, const char *keys)

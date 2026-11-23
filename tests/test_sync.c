@@ -205,7 +205,7 @@ LT_TEST(ignore_keeps_project_tune)
 }
 
 /* ---------------------------------------------------------------- dialogs in the terminal UI */
-static char g_txt[60000];
+static char g_txt[32000];
 
 /* render app in cell mode (120x40), feeding keys (LT_SHOT_KEYS syntax) first; text in g_txt */
 static void tty(lt_app *app, const char *keys)
