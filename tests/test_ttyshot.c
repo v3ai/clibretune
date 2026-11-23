@@ -173,6 +173,18 @@ LT_TEST(scrolled_menu_keeps_its_frame)
     LT_CHECK(strstr(l, "CSV") == NULL);
 }
 
+/* Edit > Reset Tune to Defaults asks first: Esc keeps the tune, Enter resets */
+LT_TEST(reset_defaults_asks_first)
+{
+    render(100, 30, NULL, "alt+e,end,enter", NULL, 0, NULL);
+    LT_CHECK(strstr(g_txt, "Reset Tune to Defaults") != NULL);
+    LT_CHECK(strstr(g_txt, "pages to defaults") == NULL);
+    render(100, 30, NULL, "alt+e,end,enter,esc", NULL, 0, NULL);
+    LT_CHECK(strstr(g_txt, "pages to defaults") == NULL);
+    render(100, 30, NULL, "alt+e,end,enter,enter", NULL, 0, NULL);
+    LT_CHECK(strstr(g_txt, "pages to defaults") != NULL);
+}
+
 /* the Tools menu shows the logging shortcut the user bound, not a fixed Ctrl+L */
 LT_TEST(menu_shows_rebound_log_shortcut)
 {
@@ -411,6 +423,7 @@ int main(void)
     LT_RUN(main_view_120x40_256);
     LT_RUN(menu_open);
     LT_RUN(scrolled_menu_keeps_its_frame);
+    LT_RUN(reset_defaults_asks_first);
     LT_RUN(menu_shows_rebound_log_shortcut);
     LT_RUN(one_help_menu);
     LT_RUN(sidebar_search_enter_opens_first_match);

@@ -515,7 +515,7 @@ static void menubar(lt_app *app)
         if (lt_ui_menu_item(ui, lt_tr("&Paste"), lt_hk_text(app, "edit.paste"), 0)) { lt_feat_edit_do(app, "edit.paste"); }
         if (lt_ui_menu_item(ui, lt_tr("Select &All"), lt_hk_text(app, "edit.select_all"), 0)) { lt_feat_edit_do(app, "edit.select_all"); }
         lt_ui_menu_separator(ui);
-        if (lt_ui_menu_item(ui, lt_tr("Reset Tune to &Defaults"), NULL, 0)) { lt_app_reset_defaults(app); }
+        if (lt_ui_menu_item(ui, lt_tr("Reset Tune to &Defaults"), NULL, 0)) { app->reset_open = 1; }
         lt_ui_menu_end(ui);
     }
     if (lt_ui_menu_begin(ui, lt_tr("&View"))) { menu_view(app); lt_ui_menu_end(ui); }
@@ -1030,6 +1030,13 @@ static void app_dialogs(lt_app *app)
                            "Burn writes the current tune to the ECU's permanent flash memory.\n"
                            "Make sure the engine is not running. Continue?", "Burn|Cancel", &app->burn_open);
         if (res == 1) { lt_app_burn(app); }
+    }
+    if (app->reset_open) {
+        res = lt_ui_msgbox(ui, "resetdef", lt_tr("Reset Tune to Defaults"),
+                           lt_tr("Every value in the tune is replaced by the default from the ECU "
+                                 "definition, and sent to the ECU when connected. Undo does not bring "
+                                 "the old values back. Continue?"), lt_tr("Reset|Cancel"), &app->reset_open);
+        if (res == 1) { lt_app_reset_defaults(app); }
     }
     if (app->quit_open) {
         res = lt_ui_msgbox(ui, "quit", "Unsaved changes", "The tune has unsaved changes.",
