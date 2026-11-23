@@ -190,7 +190,7 @@ LT_TEST(autotune_send_undo)
 {
     char buf[512];
     lt_app *app;
-    double z[1024];
+    static double z[1024];                     /* zeroed: cppcheck cannot see the fill loop */
     size_t rows, cols, r, c;
     int i;
     const lt_ini_table *t;
