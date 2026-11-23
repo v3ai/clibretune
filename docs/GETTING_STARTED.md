@@ -130,6 +130,10 @@ Save often (Ctrl+S). While a project has unsaved changes LibreTune also writes t
 next time the project opens it offers to **Restore** that tune. Restore points (**File > Create
 Restore Point**) and **File > Tune History...** let you go back to any earlier tune.
 
+**File > Load Tune...** opens a `.msq` file. A tune saved by other firmware (or one with values that
+do not fit this ECU definition) first shows what does not map, and is loaded only when you press
+**Continue with Tune**; check every page before burning a tune that came from another ECU.
+
 ## 6. Log
 
 **Tools > Data Logging** (Ctrl+L) records every channel. **Tools > Datalog Viewer...** opens logs
