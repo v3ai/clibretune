@@ -166,7 +166,7 @@ struct lt_app {
     char        search[64];
     lt_ui_filedlg fd;
     int         fd_purpose;          /* LT_APP_FD_* */
-    int         burn_open, quit_open, close_proj_open;
+    int         burn_open, quit_open, close_proj_open, reset_open;
     int         confirm_delete;      /* recent index awaiting a second click, -1 */
     int         theme_idx;
     int         settings_tab;        /* active tab of the Settings dialog */

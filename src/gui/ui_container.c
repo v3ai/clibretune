@@ -514,12 +514,36 @@ lt_bool ui_modal_begin_dev(lt_ui *ui, const char *title, int w, int h, int *open
     ui_layout_push(ui, lt_rect_make(dlg.x + pad, dlg.y + th + (ui->cell ? 0 : lt_ui_px(ui, 12)), dlg.w - 2 * pad,
                                     dlg.h - th - (ui->cell ? 16 : lt_ui_px(ui, 24))));
     ui->modal_lay[ui->nmodal - 1] = ui->nlay - 1;
+    ui->modal_scr[ui->nmodal - 1] = 0;
+    {
+        /* content that did not fit last frame (small window, large scale): scroll the dialog
+         * body; fill rows get their minimum height in the taller virtual body */
+        lt_rect body = ui_lay(ui)->body;
+        int need = fresh ? 0 : st->i[1];
+        if (need > body.h && ui->nscr < UI_MAX_SCROLL) {
+            lt_ui_layout_set_rect(ui, body);
+            if (lt_ui_scroll_begin(ui, "##modalscroll")) {
+                ui_layout *CL = ui_lay(ui);
+                if (need > CL->body.h) { CL->body.h = need; }
+                ui->modal_scr[ui->nmodal - 1] = 1;
+                ui->modal_lay[ui->nmodal - 1] = ui->nlay - 1;
+            }
+        }
+    }
     return LT_TRUE;
 }
 
 void lt_ui_modal_end(lt_ui *ui)
 {
     int *open;
+    if (ui->nmodal > 0) {
+        /* height the content needs with every fill row at its minimum, for the next frame */
+        const ui_layout *CL = ui_lay(ui);
+        ui_state *ms = ui_state_get(ui, ui->modal_id[ui->nmodal - 1]);
+        int need = CL->max_y - CL->body.y - CL->fill_slack;
+        need = LT_CLAMP(need, 0, 16 * LT_MAX(ui->sh, 1));
+        if (need != ms->i[1]) { ms->i[1] = need; ui_request(ui); }
+    }
     if (ui->cell && ui->nmodal > 0) {
         /* content height of this frame: all fill rows must be scroll areas to know the slack */
         int m = ui->nmodal - 1;
@@ -535,6 +559,7 @@ void lt_ui_modal_end(lt_ui *ui)
             ms->d[1] = 1.0;
         }
     }
+    if (ui->nmodal > 0 && ui->modal_scr[ui->nmodal - 1]) { lt_ui_scroll_end(ui); }
     ui_layout_pop(ui);
     lt_ui_clip_pop(ui);
     lt_ui_pop_id(ui);
@@ -620,7 +645,7 @@ int lt_ui_tree_node_ex(lt_ui *ui, const char *label, int icon, lt_color icon_col
     ui_state *st = ui_state_get(ui, id ^ 0x7472UL);
     int open, res, out = 0, leaf = (flags & LT_UI_TREE_LEAF) != 0, mods = 0, ex = ui->cell ? 16 : lt_ui_px(ui, 14);
     int dis = (flags & LT_UI_TREE_DISABLED) != 0;
-    lt_color bg = 0, fg;
+    lt_color bg = 0, fg, sel_fg;
     lt_rect hr;
     if (st->i[1] == 0) {
         st->i[1] = 1;
@@ -661,12 +686,13 @@ int lt_ui_tree_node_ex(lt_ui *ui, const char *label, int icon, lt_color icon_col
         if (ui->cell) { lt_ui_draw_fill(ui, hr, t->hover); }
         else { lt_ui_draw_rect(ui, hr, t->focus); }
     }
-    fg = dis ? t->muted : ((flags & LT_UI_TREE_SELECTED) ? t->primary_text : t->text);
+    sel_fg = ui_text_on(t->primary_text, t->text, ui->cell ? t->primary_active : t->selected);
+    fg = dis ? t->muted : ((flags & LT_UI_TREE_SELECTED) ? sel_fg : t->text);
     if (!leaf) {
         lt_rect er = lt_rect_make(r.x + (ui->cell ? 0 : lt_ui_px(ui, 2)), r.y, ex - (ui->cell ? 0 : lt_ui_px(ui, 2)), r.h);
         if (ui->cell) {
             lt_ui_draw_icon(ui, er, open ? LT_UI_ICON_ARROW_DOWN : LT_UI_ICON_ARROW_RIGHT,
-                            (flags & LT_UI_TREE_SELECTED) ? t->primary_text : t->text2);
+                            (flags & LT_UI_TREE_SELECTED) ? sel_fg : t->text2);
         } else {
             double cx = (double)er.x + (double)er.w / 2.0, cy = (double)er.y + (double)er.h / 2.0;
             double q = 3.0 * (double)ui->pct / 100.0, pts[6];
@@ -677,7 +703,7 @@ int lt_ui_tree_node_ex(lt_ui *ui, const char *label, int icon, lt_color icon_col
                 pts[0] = cx - q * 0.5; pts[1] = cy - q; pts[2] = cx + q * 0.9; pts[3] = cy;
                 pts[4] = cx - q * 0.5; pts[5] = cy + q;
             }
-            lt_ui_draw_poly(ui, pts, 3, (flags & LT_UI_TREE_SELECTED) ? t->primary_text : t->muted);
+            lt_ui_draw_poly(ui, pts, 3, (flags & LT_UI_TREE_SELECTED) ? sel_fg : t->muted);
         }
     }
     {
@@ -686,12 +712,12 @@ int lt_ui_tree_node_ex(lt_ui *ui, const char *label, int icon, lt_color icon_col
         if (icon != 0 && ui->cell) {
             if (leaf) {       /* a bullet in the node's kind color keeps leaves aligned and scannable */
                 lt_ui_draw_icon(ui, lt_rect_make(tx, r.y, 8, r.h), LT_UI_ICON_DOT,
-                                dis ? t->muted : ((flags & LT_UI_TREE_SELECTED) ? t->primary_text : icon_color));
+                                dis ? t->muted : ((flags & LT_UI_TREE_SELECTED) ? sel_fg : icon_color));
                 tx += 16;
             }
         } else if (icon != 0) {
             lt_ui_draw_icon(ui, lt_rect_make(tx, r.y, ui->cell ? 16 : lt_ui_px(ui, 14), r.h), icon,
-                              dis ? t->muted : ((flags & LT_UI_TREE_SELECTED) ? t->primary_text : icon_color));
+                              dis ? t->muted : ((flags & LT_UI_TREE_SELECTED) ? sel_fg : icon_color));
             tx += ui->cell ? 16 : lt_ui_px(ui, 18);
         }
         if (ui->cell) {

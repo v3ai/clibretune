@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <math.h>
 #include "lt_test.h"
 #include "../src/gui/ui.h"
 #include "../src/gui/ui_priv.h"
@@ -1014,6 +1015,66 @@ LT_TEST(test_menus)
     h_close();
 }
 
+/* a menu longer than the window stays under its title and scrolls (keys and wheel) */
+static void scene_long_menu(lt_ui *ui)
+{
+    int i, open;
+    if (lt_ui_menubar_begin(ui)) {
+        open = lt_ui_menu_begin(ui, "&File");
+        R[0] = lt_ui_last_rect(ui);
+        if (open) {
+            for (i = 0; i < 30; i++) {
+                char b[16];
+                lt_snprintf(b, sizeof(b), "Item %d", i);
+                if (lt_ui_menu_item(ui, b, NULL, 0)) { s_n[0] = 100 + i; }
+                if (i == 0) { R[1] = lt_ui_last_rect(ui); }
+            }
+            if (lt_ui_menu_item(ui, "Exit", NULL, 0)) { s_n[1]++; }
+            R[2] = lt_ui_last_rect(ui);
+            lt_ui_menu_end(ui);
+        }
+        lt_ui_menubar_end(ui);
+    }
+}
+
+LT_TEST(test_menu_taller_than_window_scrolls)
+{
+    reset_state();
+    h_open(400, 300, 0);
+    H.scene = scene_long_menu;
+    frames(2);
+    key_ex('f', LT_MOD_ALT);
+    frames(2);
+    LT_CHECK(R[1].y >= R[0].y + R[0].h);                  /* does not cover the menu bar */
+    LT_CHECK(R[2].y > 300);                               /* Exit is below the window */
+    key(LT_KEY_UP);                                       /* wraps to the last item */
+    frames(2);
+    LT_CHECK(R[2].y >= R[0].y + R[0].h && R[2].y + R[2].h <= 300);
+    key(LT_KEY_ENTER);
+    LT_CHECK_INT(s_n[1], 1);
+    /* the wheel scrolls; a row scrolled into view can be clicked */
+    key_ex('f', LT_MOD_ALT);
+    frames(2);
+    LT_CHECK(R[2].y > 300);
+    wheel(R[1].x + 10, 150, -30);
+    LT_CHECK(R[2].y + R[2].h <= 300);
+    LT_CHECK(R[1].y + R[1].h <= R[0].y + R[0].h);
+    click_rect(R[2]);
+    LT_CHECK_INT(s_n[1], 2);
+    h_close();
+    /* terminal: 80x12 cells */
+    reset_state();
+    h_open(80, 12, 1);
+    H.scene = scene_long_menu;
+    frames(2);
+    key_ex('f', LT_MOD_ALT);
+    key(LT_KEY_UP);
+    frames(2);
+    LT_CHECK(R[2].y + R[2].h <= 12 * 16);
+    LT_CHECK(cells_has_text("Exit"));
+    h_close();
+}
+
 static void scene_context(lt_ui *ui)
 {
     R[0] = lt_rect_make(100, 100, 200, 100);
@@ -1092,6 +1153,77 @@ LT_TEST(test_modal)
     /* the window is centered */
     s_open = 1; frames(3);
     LT_CHECK(R[1].x > 100 && R[1].x < 250 && R[1].y > 125 && R[1].y < 275);
+    h_close();
+}
+
+/* a dialog taller than the window: the body scrolls, so the buttons under the list stay
+ * reachable; with room to spare the fill row takes the slack and nothing scrolls */
+static void scene_modal_tall(lt_ui *ui)
+{
+    int w = -1, i;
+    if (lt_ui_modal_begin(ui, "Tall", 300, 600, &s_open)) {
+        for (i = 0; i < 8; i++) {
+            char b[16];
+            lt_snprintf(b, sizeof(b), "Field %d", i);
+            lt_ui_layout_row(ui, 1, &w, 0);
+            lt_ui_label(ui, b);
+        }
+        lt_ui_layout_row(ui, 1, &w, -(24 + 4 + 1));
+        lt_ui_label(ui, "list");
+        R[3] = lt_ui_last_rect(ui);
+        lt_ui_layout_row(ui, 1, &w, 0);
+        if (lt_ui_button(ui, "Create")) { s_n[0]++; }
+        R[0] = lt_ui_last_rect(ui);
+        s_n[7] = (int)lt_ui_last_id(ui);
+        R[1] = lt_ui_clip_get(ui);
+        lt_ui_modal_end(ui);
+    }
+}
+
+LT_TEST(test_modal_taller_than_window_scrolls)
+{
+    reset_state();
+    h_open(500, 240, 0);
+    H.scene = scene_modal_tall;
+    s_open = 1;
+    frames(4);
+    LT_CHECK(R[0].y + R[0].h > 240);                       /* below the window at first */
+    LT_CHECK_INT(R[3].h, 24);                              /* the fill row shrank to one row */
+    wheel(250, 120, -20);
+    LT_CHECK(R[0].y >= R[1].y && R[0].y + R[0].h <= R[1].y + R[1].h);
+    click_rect(R[0]);
+    LT_CHECK_INT(s_n[0], 1);
+    /* keyboard only: Tab to the button scrolls it into view */
+    wheel(250, 120, 20);
+    LT_CHECK(R[0].y + R[0].h > 240);
+    key(LT_KEY_TAB);
+    LT_CHECK(lt_ui_focus(H.ui) == (lt_u32)s_n[7]);
+    frames(2);
+    LT_CHECK(R[0].y >= R[1].y && R[0].y + R[0].h <= R[1].y + R[1].h);
+    h_close();
+    /* a window with room: no scrolling, the fill row grows */
+    reset_state();
+    h_open(500, 800, 0);
+    H.scene = scene_modal_tall;
+    s_open = 1;
+    frames(4);
+    LT_CHECK(R[3].h > 100);
+    LT_CHECK(R[0].y + R[0].h <= 400 + 300);
+    LT_CHECK_INT(H.ui->nscr, 0);
+    h_close();
+    /* the terminal too (80x8 cells) */
+    reset_state();
+    h_open(80, 8, 1);
+    H.scene = scene_modal_tall;
+    s_open = 1;
+    frames(4);
+    wheel(40 * 8, 4 * 16, 20);
+    LT_CHECK(R[0].y + R[0].h > R[1].y + R[1].h);
+    key(LT_KEY_TAB);
+    frames(2);
+    LT_CHECK(R[0].y >= R[1].y && R[0].y + R[0].h <= R[1].y + R[1].h);
+    key(LT_KEY_ENTER);
+    LT_CHECK_INT(s_n[0], 1);
     h_close();
 }
 
@@ -1232,6 +1364,47 @@ LT_TEST(test_scroll_area)
     wheel(R[0].x + 30, R[0].y + 20, -3);
     click_rect(R[1]);
     LT_CHECK_INT(s_n[5], 1);
+    h_close();
+}
+
+/* Tab through a scroll area: the focused widget is scrolled into view, both ways */
+static void scene_scroll_focus(lt_ui *ui)
+{
+    int w = -1, i;
+    lt_ui_layout_row(ui, 1, &w, 100);
+    if (lt_ui_scroll_begin(ui, "sc")) {
+        R[0] = lt_ui_scroll_view(ui);
+        for (i = 0; i < 12; i++) {
+            char b[24];
+            lt_snprintf(b, sizeof(b), "Row %d", i);
+            lt_ui_layout_row(ui, 1, &w, 0);
+            (void)lt_ui_button(ui, b);
+            if (lt_ui_last_focused(ui)) { R[1] = lt_ui_last_rect(ui); }
+        }
+        lt_ui_scroll_end(ui);
+    }
+}
+
+LT_TEST(test_tab_scrolls_focus_into_view)
+{
+    int i;
+    reset_state();
+    h_open(400, 300, 0);
+    H.scene = scene_scroll_focus;
+    frames(3);
+    for (i = 0; i < 12; i++) {
+        key(LT_KEY_TAB);
+        frame();                                  /* the scroll lands one frame later */
+        LT_CHECK(R[1].y >= R[0].y && R[1].y + R[1].h <= R[0].y + R[0].h);
+    }
+    for (i = 0; i < 11; i++) {
+        key_ex(LT_KEY_TAB, LT_MOD_SHIFT);
+        frame();
+        LT_CHECK(R[1].y >= R[0].y && R[1].y + R[1].h <= R[0].y + R[0].h);
+    }
+    /* the wheel still scrolls away from the focused widget */
+    wheel(R[0].x + 30, R[0].y + 20, -50);
+    LT_CHECK(R[1].y + R[1].h <= R[0].y);
     h_close();
 }
 
@@ -2125,6 +2298,65 @@ LT_TEST(test_backend_select)
     }
 }
 
+/* highlighted menu rows and selected tree rows stay readable in every theme (4.0 allows for
+ * anti-aliasing; light theme had white primary text on a pale blue selection, 1.4:1) */
+static double t_lin(int v) { double c = v / 255.0; return c <= 0.03928 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4); }
+static double t_lum(lt_u32 c)
+{
+    return 0.2126 * t_lin((int)((c >> 16) & 255)) + 0.7152 * t_lin((int)((c >> 8) & 255)) + 0.0722 * t_lin((int)(c & 255));
+}
+static double best_contrast(lt_rect r, lt_u32 bg)
+{
+    int x, y;
+    double best = 1.0, lb = t_lum(bg) + 0.05;
+    for (y = r.y; y < r.y + r.h; y++) {
+        for (x = r.x; x < r.x + r.w; x++) {
+            double l = t_lum(px(x, y)) + 0.05, c = l > lb ? l / lb : lb / l;
+            if (c > best) { best = c; }
+        }
+    }
+    return best;
+}
+
+static void scene_sel_rows(lt_ui *ui)
+{
+    static const char *const items[] = { "Alpha", "Beta" };
+    int w = -1;
+    scene_menu(ui);
+    lt_ui_layout_set_rect(ui, lt_rect_make(250, 250, 200, 24));
+    lt_ui_tree_node(ui, "Selected node", 0, LT_UI_TREE_LEAF | LT_UI_TREE_SELECTED);
+    R[8] = lt_ui_last_rect(ui);
+    lt_ui_layout_set_rect(ui, lt_rect_make(250, 300, 200, 80));
+    lt_ui_layout_row(ui, 1, &w, 0);
+    lt_ui_listbox(ui, "lb", &s_sel, items, 2);
+    R[9] = lt_ui_last_rect(ui);
+}
+
+LT_TEST(test_selection_text_readable_in_all_themes)
+{
+    static const char *names[] = { "dark", "light", "midnight", "carbon", "synthwave", "solarized",
+                                   "nord", "dracula", "highcontrast" };
+    size_t i;
+    for (i = 0; i < LT_COUNTOF(names); i++) {
+        lt_theme t;
+        lt_rect hr;
+        LT_CHECK(lt_theme_preset(&t, names[i]) == 0);
+        reset_state();
+        h_open(500, 400, 0);
+        H.scene = scene_sel_rows;
+        lt_ui_set_theme(H.ui, &t);
+        frames(2);
+        click_rect(R[9]);                                  /* focus the list: row 0 selected */
+        key_ex('f', LT_MOD_ALT);                           /* File open, New highlighted */
+        frames(2);
+        hr = lt_rect_inset(R[1], 4, 3);
+        if (best_contrast(hr, px(hr.x, hr.y + hr.h / 2)) < 4.0) { printf("menu row in %s\n", names[i]); LT_CHECK(0); }
+        hr = lt_rect_inset(R[8], 4, 3);
+        if (best_contrast(hr, t.selected & 0xFFFFFFUL) < 4.0) { printf("tree row in %s %.2f\n", names[i], best_contrast(hr, t.selected & 0xFFFFFFUL)); LT_CHECK(0); }
+        h_close();
+    }
+}
+
 LT_TEST(test_widgets_in_all_themes)
 {
     static const char *names[] = { "dark", "light", "midnight", "carbon", "synthwave", "solarized",
@@ -2161,11 +2393,14 @@ int main(void)
     LT_RUN(test_tab_bar);
     LT_RUN(test_shell_widgets);
     LT_RUN(test_menus);
+    LT_RUN(test_menu_taller_than_window_scrolls);
     LT_RUN(test_context_menu);
     LT_RUN(test_modal);
+    LT_RUN(test_modal_taller_than_window_scrolls);
     LT_RUN(test_msgbox);
     LT_RUN(test_windows);
     LT_RUN(test_scroll_area);
+    LT_RUN(test_tab_scrolls_focus_into_view);
     LT_RUN(test_splitter);
     LT_RUN(test_layout);
     LT_RUN(test_grid_selection);
@@ -2185,6 +2420,7 @@ int main(void)
     LT_RUN(test_fuzz_gallery);
     LT_RUN(test_backend_select);
     LT_RUN(test_widgets_in_all_themes);
+    LT_RUN(test_selection_text_readable_in_all_themes);
     LT_RUN(test_gallery_render);
     gallery_free(&GAL);
     LT_TEST_MAIN_END

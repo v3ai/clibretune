@@ -510,7 +510,7 @@ static void project_page(lt_app *app)
     lt_ui_label_ex(ui, "ECU signature", t->muted, LT_UI_ALIGN_LEFT);
     lt_ui_label_ex(ui, c->signature != NULL ? c->signature : "", t->text, LT_UI_ALIGN_LEFT);
     lt_ui_layout_space(ui, 8);
-    caption(ui, "Behaviour");
+    caption(ui, "Behavior");
     lt_ui_layout_row(ui, 1, &w1, 0);
     b = c->settings.auto_load_tune ? 1 : 0;
     if (lt_ui_checkbox(ui, "Load the tune when the project opens", &b)) { c->settings.auto_load_tune = b ? LT_TRUE : LT_FALSE; ch = 1; }

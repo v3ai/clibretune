@@ -1363,7 +1363,8 @@ int lt_app_open_target(lt_app *app, const char *target, const char *label)
     if (lt_ini_find_curve(ini, target) != NULL) { return lt_app_curve_editor_open(app, target); }
     if (lt_ini_find_dialog(ini, target) != NULL) {
         const lt_ini_dialog *d = lt_ini_find_dialog(ini, target);
-        if (label != NULL && label[0] != '\0' && d->title != NULL && strcmp(d->title, target) == 0) {
+        if (label != NULL && label[0] != '\0' &&
+            (d->title == NULL || d->title[0] == '\0' || strcmp(d->title, target) == 0)) {
             char t[96];
             size_t i, k = 0;
             for (i = 0; label[i] != '\0' && k + 1 < sizeof(t); i++) { if (label[i] != '&') { t[k++] = label[i]; } }

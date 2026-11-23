@@ -393,6 +393,41 @@ lt_color ui_dim(lt_ui *ui, lt_color c)
     return ui->disabled ? lt_color_mix(c, ui->theme.bg_app, 150) : c;
 }
 
+/* WCAG relative luminance and contrast ratio of two opaque colours */
+static double lum_ch(int v)
+{
+    double c = (double)v / 255.0;
+    return c <= 0.03928 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4);
+}
+
+static double lum_of(lt_color c)
+{
+    return 0.2126 * lum_ch(LT_COLOR_R(c)) + 0.7152 * lum_ch(LT_COLOR_G(c)) + 0.0722 * lum_ch(LT_COLOR_B(c));
+}
+
+static double contrast_of(lt_color a, lt_color b)
+{
+    double la = lum_of(a) + 0.05, lb = lum_of(b) + 0.05;
+    return la > lb ? la / lb : lb / la;
+}
+
+/* text colour on a highlight: the preferred one when it reads (4.5:1), otherwise the better of
+ * alt and black/white (light themes pair a pale selection with white primary text) */
+lt_color ui_text_on(lt_color preferred, lt_color alt, lt_color bg)
+{
+    lt_color best = preferred, cand[3];
+    double cb = contrast_of(preferred, bg);
+    int i;
+    if (cb >= 4.5) { return preferred; }
+    cand[0] = alt; cand[1] = LT_RGBA(16, 16, 16, 255); cand[2] = LT_RGBA(255, 255, 255, 255);
+    for (i = 0; i < 3; i++) {
+        double c = contrast_of(cand[i], bg);
+        if (c >= 4.5 && i == 0) { return alt; }
+        if (c > cb) { cb = c; best = cand[i]; }
+    }
+    return best;
+}
+
 void ui_request(lt_ui *ui) { ui->extra = 2; }
 
 void ui_animate(lt_ui *ui, int ms)
@@ -1040,6 +1075,7 @@ static void row_start(lt_ui *ui, ui_layout *L)
         }
         L->row_h = LT_MAX(avail, ui->theme.row_h);
         if (ui->cell) { L->row_h = LT_MAX(16, L->row_h / 16 * 16); }
+        if (L->row_h > ui->theme.row_h) { L->fill_slack += L->row_h - ui->theme.row_h; }
     }
     L->x = L->body.x + L->indent;
     L->col = 0;
@@ -1181,11 +1217,36 @@ int ui_over(lt_ui *ui, lt_rect r)
     return lt_rect_contains(c, ui->mx, ui->my) && ui_layer_ok(ui);
 }
 
+/* scroll every enclosing scroll area (innermost first) so that r is visible */
+static void ui_reveal(lt_ui *ui, lt_rect r)
+{
+    int k;
+    for (k = ui->nscr - 1; k >= 0; k--) {
+        ui_scroll *S = &ui->scr[k];
+        int dx = 0, dy = 0;
+        if (r.h > S->inner.h || r.y < S->inner.y) { dy = r.y - S->inner.y; }
+        else if (r.y + r.h > S->inner.y + S->inner.h) { dy = r.y + r.h - (S->inner.y + S->inner.h); }
+        if (r.w > S->inner.w || r.x < S->inner.x) { dx = r.x - S->inner.x; }
+        else if (r.x + r.w > S->inner.x + S->inner.w) { dx = r.x + r.w - (S->inner.x + S->inner.w); }
+        if (S->sx + dx < 0) { dx = -S->sx; }
+        if (S->sy + dy < 0) { dy = -S->sy; }
+        if (dx != 0 || dy != 0) {
+            S->sx += dx; S->sy += dy;
+            r.x -= dx; r.y -= dy;
+            ui_request(ui);
+        }
+    }
+}
+
 void ui_set_last(lt_ui *ui, lt_u32 id, lt_rect r)
 {
     ui->last_id = id;
     ui->last_rect = r;
     ui->last_hover = (ui->hover == id || ui->active == id) ? 1 : 0;
+    if (id != 0 && id == ui->focus_reveal && id == ui->focus) {
+        ui->focus_reveal = 0;
+        ui_reveal(ui, r);
+    }
 }
 
 void ui_focusable(lt_ui *ui, lt_u32 id, int kind)
@@ -1196,6 +1257,7 @@ void ui_focusable(lt_ui *ui, lt_u32 id, int kind)
     if (ui->first_focusable == 0) { ui->first_focusable = id; }
     if (ui->focus_req > 0 && (ui->focus_req_kind == 0 || ui->focus_req_kind == kind)) {
         ui->focus = id;
+        ui->focus_reveal = id;
         ui->focus_req = 0;
         ui->kbd_nav = 1;
         ui->focus_kind = kind;
@@ -1207,7 +1269,7 @@ void ui_focusable(lt_ui *ui, lt_u32 id, int kind)
         if (ui_key_take(ui, LT_KEY_TAB, &shift) && !(shift & (LT_MOD_CTRL | LT_MOD_ALT))) {
             ui->kbd_nav = 1;
             if (shift & LT_MOD_SHIFT) {
-                if (ui->prev_focusable != 0) { ui->focus = ui->prev_focusable; }
+                if (ui->prev_focusable != 0) { ui->focus = ui->focus_reveal = ui->prev_focusable; }
                 else { ui->wrap_back = 1; }
             } else {
                 ui->focus_req = 1;
@@ -1248,7 +1310,7 @@ int ui_interact(lt_ui *ui, lt_u32 id, lt_rect r, int flags)
         ui->press_claimed = 1;
         res |= UI_PRESS | UI_ACTIVE;
         if (ui->dbl) { res |= UI_DBLCLICK; }
-        if (flags & UI_FOCUSABLE) { ui->focus = id; ui->kbd_nav = 0; }
+        if (flags & UI_FOCUSABLE) { ui->focus = id; ui->kbd_nav = 0; ui->focus_reveal = 0; }
         if (ui->mreleased & (1 << LT_MB_LEFT)) {
             res |= UI_CLICK | UI_RELEASE;
             res &= ~UI_ACTIVE;
@@ -1578,17 +1640,17 @@ void lt_ui_end(lt_ui *ui)
     {
         int mods = 0;
         if (ui->focus_req > 0 && ui->first_focusable != 0) {
-            ui->focus = ui->first_focusable;
+            ui->focus = ui->focus_reveal = ui->first_focusable;
             ui->focus_req = 0;
             ui->kbd_nav = 1;
             ui->focus_seen = 1;
         } else if (ui->wrap_back && ui->last_focusable != 0) {
-            ui->focus = ui->last_focusable;
+            ui->focus = ui->focus_reveal = ui->last_focusable;
             ui->kbd_nav = 1;
             ui->focus_seen = 1;
         } else if (ui->focus == 0 && ui_key_take(ui, LT_KEY_TAB, &mods) &&
                    !(mods & (LT_MOD_CTRL | LT_MOD_ALT))) {
-            ui->focus = (mods & LT_MOD_SHIFT) ? ui->last_focusable : ui->first_focusable;
+            ui->focus = ui->focus_reveal = (mods & LT_MOD_SHIFT) ? ui->last_focusable : ui->first_focusable;
             ui->kbd_nav = 1;
             ui->focus_seen = 1;
         }

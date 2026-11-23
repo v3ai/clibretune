@@ -162,6 +162,73 @@ LT_TEST(menu_open)
     LT_CHECK(strstr(g_txt, "\xE2\x95\xB0") != NULL);               /* bottom-left corner */
 }
 
+/* a File menu taller than the terminal scrolls inside its frame: no row is drawn over the
+ * bottom edge */
+LT_TEST(scrolled_menu_keeps_its_frame)
+{
+    char l[1024];
+    render(80, 24, NULL, "alt+f", NULL, 1, NULL);
+    line_of(23, l, sizeof(l));
+    LT_CHECK(strncmp(l, "+-----", 6) == 0);
+    LT_CHECK(strstr(l, "CSV") == NULL);
+}
+
+/* Edit > Reset Tune to Defaults asks first: Esc keeps the tune, Enter resets */
+LT_TEST(reset_defaults_asks_first)
+{
+    render(100, 30, NULL, "alt+e,end,enter", NULL, 0, NULL);
+    LT_CHECK(strstr(g_txt, "Reset Tune to Defaults") != NULL);
+    LT_CHECK(strstr(g_txt, "pages to defaults") == NULL);
+    render(100, 30, NULL, "alt+e,end,enter,esc", NULL, 0, NULL);
+    LT_CHECK(strstr(g_txt, "pages to defaults") == NULL);
+    render(100, 30, NULL, "alt+e,end,enter,enter", NULL, 0, NULL);
+    LT_CHECK(strstr(g_txt, "pages to defaults") != NULL);
+}
+
+/* the Tools menu shows the logging shortcut the user bound, not a fixed Ctrl+L */
+LT_TEST(menu_shows_rebound_log_shortcut)
+{
+    char *old = lt_plat_getenv("LIBRETUNE_CONFIG_DIR");
+    const char *hk = "tools.log=Ctrl+Alt+G\n";
+    (void)lt_plat_mkdirs("build/test_ttyshot_hk");
+    LT_CHECK(lt_file_write("build/test_ttyshot_hk/hotkeys.conf", hk, strlen(hk)) == 0);
+    lt_plat_setenv("LIBRETUNE_CONFIG_DIR", "build/test_ttyshot_hk");
+    render(80, 30, NULL, "alt+t", NULL, 0, NULL);
+    lt_plat_setenv("LIBRETUNE_CONFIG_DIR", old != NULL ? old : "");
+    lt_free(old);
+    LT_CHECK(strstr(g_txt, "Data Logging") != NULL);
+    LT_CHECK(strstr(g_txt, "Ctrl+Alt+G") != NULL);
+    LT_CHECK(strstr(g_txt, "Ctrl+L ") == NULL);
+}
+
+/* the ECU definition's own Help menu joins LibreTune's Help instead of a second "Help" title */
+LT_TEST(one_help_menu)
+{
+    char l[1024];
+    const char *a, *b;
+    render(200, 40, NULL, "alt+h", NULL, 0, NULL);
+    line_of(0, l, sizeof(l));
+    a = strstr(l, "Help");
+    LT_CHECK(a != NULL);
+    b = a != NULL ? strstr(a + 4, "Help") : NULL;
+    LT_CHECK(b == NULL);
+    LT_CHECK(strstr(g_txt, "About LibreTune") != NULL);
+    LT_CHECK(strstr(g_txt, "rusEFI Help") != NULL);
+}
+
+/* keyboard only: Ctrl+K, type, Enter opens the first match of the filtered sidebar */
+LT_TEST(sidebar_search_enter_opens_first_match)
+{
+    char l[1024];
+    render(100, 30, NULL, "ctrl+k,text:inject,enter", NULL, 0, NULL);
+    line_of(1, l, sizeof(l));
+    LT_CHECK(strstr(l, "Injection configuration") != NULL);
+    render(100, 30, NULL, "ctrl+k,text:zzzq,enter", NULL, 0, NULL);
+    LT_CHECK(strstr(g_txt, "Nothing in the sidebar matches") != NULL);
+    render(100, 30, NULL, "ctrl+k,text:zzzq", NULL, 0, NULL);
+    LT_CHECK(strstr(g_txt, "No menu entry matches") != NULL);     /* an empty tree says why */
+}
+
 LT_TEST(ve_table_and_selection)
 {
     char l[1024];
@@ -355,6 +422,11 @@ int main(void)
     LT_RUN(main_view_80x24);
     LT_RUN(main_view_120x40_256);
     LT_RUN(menu_open);
+    LT_RUN(scrolled_menu_keeps_its_frame);
+    LT_RUN(reset_defaults_asks_first);
+    LT_RUN(menu_shows_rebound_log_shortcut);
+    LT_RUN(one_help_menu);
+    LT_RUN(sidebar_search_enter_opens_first_match);
     LT_RUN(ve_table_and_selection);
     LT_RUN(ve_table_16_colors_ascii);
     LT_RUN(dialog_frame);

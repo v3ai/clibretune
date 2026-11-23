@@ -7,8 +7,9 @@
 #include "../src/app/app.h"
 #include "../src/app/dialogs.h"
 #include "../src/app/feat.h"
-#include <string.h>
+#include "../src/gui/ui_priv.h"
 #include <stdlib.h>
+#include <string.h>
 
 static int shot(lt_app *app, const char *name)
 {
@@ -131,10 +132,57 @@ LT_TEST(firmware_flash_blocks_quit)
     lt_plat_clock_virtual(0);
 }
 
+/* A dialog declared with an empty title ("dialog = injectorConfig, \"\"") opened from the menu
+ * is titled with the menu label, not its internal name */
+LT_TEST(untitled_dialog_uses_menu_label)
+{
+    char buf[512];
+    lt_app *app = lt_app_new();
+    lt_app_tab *t;
+    LT_CHECK(lt_app_start_demo(app, lt_app_find_demo_ini(buf, sizeof(buf))) == 0);
+    LT_CHECK(lt_app_open_target(app, "injectorConfig", "&Injection configuration") == 0);
+    t = lt_app_tab_active(app);
+    LT_CHECK(t != NULL && strcmp(t->title, "Injection configuration") == 0);
+    lt_app_free(app);
+}
+
+/* A field caption too long for a narrow window is elided; hovering it shows the whole caption
+ * (and the help icon sits after the "...", not on top of it). */
+LT_TEST(elided_field_caption_has_tooltip)
+{
+    char buf[512];
+    lt_app *app = lt_app_new();
+    double t = 1000.0;
+    int x, y, found = 0;
+    lt_event ev;
+    LT_CHECK(lt_app_start_demo(app, lt_app_find_demo_ini(buf, sizeof(buf))) == 0);
+    LT_CHECK(lt_app_open_target(app, "fuelClosedLoopDialog", "fuelClosedLoopDialog") == 0);
+    LT_CHECK(lt_app_screenshot(app, "build/test_dialogs_caption.ppm", 800, 600, 2) == 0);
+    for (y = 130; y < 240 && !found; y += 8) {      /* the caption column of the middle panel */
+        for (x = 280; x < 800 && !found; x += 12) {
+            int k;
+            memset(&ev, 0, sizeof(ev));
+            ev.type = LT_EV_MOUSE_MOVE; ev.x = x; ev.y = y;
+            lt_ui_input(app->ui, &ev);
+            for (k = 0; k < 3; k++) {
+                lt_ui_begin(app->ui, &app->gfx, t);
+                lt_app_frame(app);
+                lt_ui_end(app->ui);
+                t += 400.0;
+            }
+            if (strcmp(app->ui->tip_text, "CAN BOX AFR Trim range ADD MAX (+) (lambda)") == 0) { found = 1; }
+        }
+    }
+    LT_CHECK(found);
+    lt_app_free(app);
+}
+
 int main(void)
 {
     LT_RUN(firmware_flash_blocks_quit);
     LT_RUN(ini_dialogs_render);
+    LT_RUN(elided_field_caption_has_tooltip);
+    LT_RUN(untitled_dialog_uses_menu_label);
     LT_RUN(modals_and_log_viewer);
     LT_TEST_MAIN_END
 }

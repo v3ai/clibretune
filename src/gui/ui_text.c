@@ -369,6 +369,7 @@ int ui_edit_widget(lt_ui *ui, lt_u32 id, lt_rect r, char *buf, size_t cap, int f
     {
         int tx, ty, th = ui_text_box_h(ui), dy = (r.h - th) / 2;
         int scroll = (focused && e->id == id) ? e->scroll : 0;
+        lt_rect selr = lt_rect_make(0, 0, 0, 0);
         if (ui->cell) { dy = (dy / 16) * 16; }
         if (focused && e->id == id) {
             int cx = ui_prefix_w(ui, show, e->cursor);
@@ -383,10 +384,16 @@ int ui_edit_widget(lt_ui *ui, lt_u32 id, lt_rect r, char *buf, size_t cap, int f
         ty = r.y + dy;
         if (focused && e->id == id && sel_hi(e) > sel_lo(e)) {
             int a = ui_prefix_w(ui, show, sel_lo(e)), b = ui_prefix_w(ui, show, sel_hi(e));
-            lt_ui_draw_fill(ui, lt_rect_make(tx + a, ty + (ui->cell ? 0 : 1), b - a, th - (ui->cell ? 0 : lt_ui_px(ui, 2))),
-                            ui->cell ? t->primary_active : t->selected);
+            selr = lt_rect_make(tx + a, ty + (ui->cell ? 0 : 1), b - a, th - (ui->cell ? 0 : lt_ui_px(ui, 2)));
+            lt_ui_draw_fill(ui, selr, ui->cell ? t->primary_active : t->selected);
         }
         lt_ui_draw_text(ui, tx, ty, show, ui->disabled ? t->disabled : t->text);
+        if (selr.w > 0 && !ui->cell && ui_text_on(t->text, t->primary_text, t->selected) != t->text) {
+            /* the selected run again, readable on the highlight (yellow / pale selections) */
+            lt_ui_clip_push(ui, selr);
+            lt_ui_draw_text(ui, tx, ty, show, ui_text_on(t->text, t->primary_text, t->selected));
+            lt_ui_clip_pop(ui);
+        }
         if (focused && e->id == id) {
             double ph = fmod(ui->now - e->blink0, 1000.0);
             if (ph < 0.0) { ph = 0.0; }

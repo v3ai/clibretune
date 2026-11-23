@@ -480,7 +480,7 @@ void lt_ui_grid_header(lt_ui *ui, int kind, int index, const char *text)
         lt_ui_draw_vline(ui, hr.x + hr.w - 1, hr.y, hr.y + hr.h - 1, t->table_grid);
         lt_ui_draw_hline(ui, hr.x, hr.x + hr.w - 1, hr.y + hr.h - 1, t->table_grid);
     }
-    ui_text_in(ui, hr, text, sel ? t->primary_text : t->text2, 1);
+    ui_text_in(ui, hr, text, sel ? ui_text_on(t->primary_text, t->text, bg) : t->text2, 1);
     lt_ui_clip_pop(ui);
 }
 
