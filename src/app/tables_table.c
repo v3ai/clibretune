@@ -86,13 +86,16 @@ static void tbl_digits(lt_app *app, tbl_tab *st)
 /* the unit preference changed: convert the open edits, the revert copy and the limits */
 static void tbl_units_sync(lt_app *app, tbl_tab *st)
 {
-    lt_uconv zold = st->v.zu;
+    lt_uconv zold = st->v.zu, w0, w1;
     size_t i;
     if (!st->loaded || !lt_tblview_units_sync(&st->v)) { return; }
     for (i = 0; i < st->orig_n; i++) {
         lt_uconv w = zold;
         st->orig[i] = lt_uconv_retarget(&w, st->orig[i]);
     }
+    /* the step amount is in display units too: +1 AFR becomes +0.068 lambda, not +1 lambda */
+    w0 = zold; w1 = zold;
+    st->step = fabs(lt_uconv_retarget(&w1, st->step) - lt_uconv_retarget(&w0, 0.0));
     tbl_digits(app, st);
     lt_tblview_z_range(&st->v, app->ini, &st->lo, &st->hi);
 }
@@ -968,8 +971,8 @@ static void tbl_toolbar(lt_app *app, lt_app_tab *tab, tbl_tab *st)
 #define TB_SEP() do { tb_item(&it[n], LT_VK_SEP, 0, NULL, NULL, NULL); ids[n] = -1; n++; } while (0)
 #define TB_GAP() do { tb_item(&it[n], LT_VK_SPACER, 0, NULL, NULL, NULL); ids[n] = -1; n++; } while (0)
     TB_ADD(TB_EQ, LT_ICON_EQUAL, cell ? "Set=" : NULL, "=", "Set selected cells to their average (=)");
-    TB_ADD(TB_UP, LT_ICON_PLUS, cell ? "+" : NULL, ">", "Increase by 1 (+ or >); q = small step");
-    TB_ADD(TB_DOWN, LT_ICON_MINUS, cell ? "-" : NULL, "<", "Decrease by 1 (- or <); w = small step");
+    TB_ADD(TB_UP, LT_ICON_PLUS, cell ? "+" : NULL, ">", "Increase by the step amount (+ or >); q = small step");
+    TB_ADD(TB_DOWN, LT_ICON_MINUS, cell ? "-" : NULL, "<", "Decrease by the step amount (- or <); w = small step");
     TB_SEP();
     TB_ADD(TB_SCALE, LT_ICON_X, cell ? "Scale" : NULL, "*", "Multiply or add an amount (*)");
     TB_ADD(TB_INTERP, LT_ICON_TRENDING_UP, cell ? "Interp" : NULL, "/",
@@ -1030,8 +1033,8 @@ static void tbl_toolbar(lt_app *app, lt_app_tab *tab, tbl_tab *st)
     if (hit < 0) { return; }
     switch (ids[hit]) {
     case TB_EQ: tbl_op(app, tab, st, OP_EQUAL, 0); break;
-    case TB_UP: tbl_op(app, tab, st, OP_ADD, 1.0); break;
-    case TB_DOWN: tbl_op(app, tab, st, OP_ADD, -1.0); break;
+    case TB_UP: tbl_op(app, tab, st, OP_ADD, st->step); break;
+    case TB_DOWN: tbl_op(app, tab, st, OP_ADD, -st->step); break;
     case TB_SCALE: st->scale_open = 1; break;
     case TB_INTERP: tbl_op(app, tab, st, OP_INTERP, 0); break;
     case TB_SMOOTH: tbl_op(app, tab, st, OP_SMOOTH, 0); break;
@@ -1640,8 +1643,11 @@ static void tbl_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
         tab->data = st;
         st->shading = 1; st->ybottom = app->settings.prefs.y_bottom ? 1 : 0; lt_t3d_init(&st->t3);
         st->rebin_interp = 1; st->scale_val = 1.05; st->cur_r = st->cur_c = 0;
-        st->step = 1.0; st->step_mult = 5.0; st->step_pct = 5.0;
+        st->step_mult = 5.0; st->step_pct = 5.0;
         tbl_load(app, tab, st);
+        /* one native unit (1 AFR, 1 degree, 1 %) in the unit shown */
+        st->step = st->loaded ? fabs(lt_uconv_to_disp(&st->v.zu, 1.0) - lt_uconv_to_disp(&st->v.zu, 0.0)) : 1.0;
+        if (st->step <= 0.0) { st->step = 1.0; }
         st->lambda_on = st->is_afr && !lt_ui_cell_mode(ui);
         tbl_preview_env(st);
     }

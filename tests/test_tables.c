@@ -358,6 +358,50 @@ LT_TEST(table_tab_closed_mid_frame)
     lt_app_free(app);
 }
 
+static double afr_raw(lt_app *app, size_t i)
+{
+    static double v[4096];
+    lt_pagesrc ps = lt_app_pages(app);
+    const lt_ini_const *c = lt_ini_find_const(app->ini, "lambdaTable");
+    v[i] = -999.0;
+    if (c != NULL) { (void)lt_ini_const_get_array(app->ini, c, &ps, v, 4096); }
+    return v[i];
+}
+
+/* The +/- step follows the unit shown: on an AFR table shown in lambda it is one AFR in lambda
+ * (about 0.07), not 1.0 lambda, which pinned every cell at the upper limit */
+LT_TEST(table_step_in_lambda)
+{
+    char buf[512];
+    lt_app *app = lt_app_new();
+    size_t k;
+    int i;
+    double before;
+    LT_CHECK(lt_app_find_demo_ini(buf, sizeof(buf)) != NULL);
+    LT_CHECK(lt_app_start_demo(app, buf) == 0);
+    app->settings.afr_unit = 1;
+    LT_CHECK(lt_app_table_editor_open(app, "afrTableTbl") == 0);
+    lt_app_screenshot(app, "build/lt_test_tables9.ppm", 1100, 800, 3);
+    click(app, 500, 300, LT_MB_LEFT);
+    press(app, LT_KEY_HOME, LT_MOD_CTRL);
+    k = 31 * 32;                                       /* display (0,0) = data (rows-1, 0) */
+    before = afr_raw(app, k);
+    press(app, '+', 0);
+    LT_CHECK(afr_raw(app, k) > before + 0.5 && afr_raw(app, k) < before + 1.5);
+    /* opened in AFR, switched to lambda: the step is converted with the cells */
+    press(app, 'z', LT_MOD_CTRL);
+    LT_CHECK_NEAR(afr_raw(app, k), before, 1e-9);
+    app->settings.afr_unit = 0;
+    for (i = 0; i < 3; i++) { frame(app); }
+    press(app, '+', 0);
+    LT_CHECK_NEAR(afr_raw(app, k), before + 1.0, 0.051);
+    app->settings.afr_unit = 1;
+    for (i = 0; i < 3; i++) { frame(app); }
+    press(app, '-', 0);
+    LT_CHECK(afr_raw(app, k) > before - 0.15 && afr_raw(app, k) < before + 0.15);
+    lt_app_free(app);
+}
+
 int main(void)
 {
     LT_RUN(table_selection_keys);
@@ -368,5 +412,6 @@ int main(void)
     LT_RUN(table_paste_leaves_other_cells);
     LT_RUN(table_revert_after_many_edits);
     LT_RUN(table_tab_closed_mid_frame);
+    LT_RUN(table_step_in_lambda);
     LT_TEST_MAIN_END
 }
