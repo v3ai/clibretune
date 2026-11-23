@@ -115,8 +115,8 @@ static void dd_remove(dyno_dlg *s, int i)
 static void chart_draw(lt_gfx *g, lt_rect r, void *user)
 {
     const dyno_dlg *s = (const dyno_dlg *)user;
-    double rpm0, rpm1, vmax, pl, pt, pw, ph, v, x, y;
-    int i, k;
+    double rpm0, rpm1, vmax, pl, pt, pw, ph, v, x, y, vstep = 50.0;
+    int i, k, nl;
     lt_font *f = lt_font_get(LT_FONT_SANS);
     char b[48];
     lt_gfx_fill_rect(g, r, s->c_bg);
@@ -127,7 +127,10 @@ static void chart_draw(lt_gfx *g, lt_rect r, void *user)
     ph = (double)r.h - pt - (double)lt_gfx_px(g, 30);
     if (pw < 40.0 || ph < 40.0) { return; }
     /* grid and labels */
-    for (v = rpm0; v <= rpm1 + 0.1; v += 500.0) {
+    /* counted loops: adding a step to a huge value from a hostile file does not change it */
+    nl = (int)LT_MIN((rpm1 - rpm0) / 500.0 + 0.5, 400.0);
+    for (i = 0; i <= nl; i++) {
+        v = rpm0 + 500.0 * (double)i;
         x = (double)r.x + pl + (v - rpm0) / (rpm1 - rpm0) * pw;
         lt_gfx_line(g, x, (double)r.y + pt, x, (double)r.y + pt + ph, 1.0, s->c_grid);
         if (fmod(v - rpm0, 1000.0) < 1.0) {
@@ -136,7 +139,10 @@ static void chart_draw(lt_gfx *g, lt_rect r, void *user)
                            (int)((double)r.y + pt + ph + lt_gfx_fpx(g, 14.0)), b, s->c_text);
         }
     }
-    for (v = 0.0; v <= vmax + 0.1; v += 50.0) {
+    while (vmax / vstep > 40.0) { vstep *= 2.0; }   /* at most ~40 lines for absurd values */
+    nl = (int)(vmax / vstep + 0.5);
+    for (i = 0; i <= nl; i++) {
+        v = vstep * (double)i;
         y = (double)r.y + pt + ph - v / vmax * ph;
         lt_gfx_line(g, (double)r.x + pl, y, (double)r.x + pl + pw, y, 1.0, s->c_grid);
         lt_snprintf(b, sizeof(b), "%.0f", v);

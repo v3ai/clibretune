@@ -397,6 +397,27 @@ LT_TEST(dyno_dialog_with_runs)
     LT_CHECK(lt_plat_setenv("LT_DYNO_TAB", "") == 0);
 }
 
+/* a run with absurd values: the chart grid stepped 50 at a time up to 1e23 (never finished) */
+LT_TEST(dyno_hostile_values)
+{
+    static const char csv[] = "RPM,HP,Torque\n2000,60,150\n3000,99999999999999999999999,inf\n"
+                              "4000,nan,1e309\n5000,120,160\n";
+    lt_dyno_run run;
+    lt_app *app;
+    LT_CHECK(lt_file_write("build/lt_test_dyno_hostile.csv", csv, sizeof(csv) - 1) == 0);
+    LT_CHECK(lt_dyno_from_csv("build/lt_test_dyno_hostile.csv", "H", &run) == 0);
+    LT_CHECK(run.n == 4);
+    LT_CHECK(run.data[1].has_hp && !run.data[1].has_tq);
+    LT_CHECK(!run.data[2].has_hp && !run.data[2].has_tq);
+    lt_dyno_run_free(&run);
+    LT_CHECK(lt_plat_setenv("LT_DYNO_RUNS", "build/lt_test_dyno_hostile.csv") == 0);
+    app = demo_app();
+    LT_CHECK(lt_app_dialog_push(app, "dyno", "", "Dyno Overlay") != NULL);
+    lt_app_screenshot(app, "build/lt_test_dyno3.ppm", 800, 600, 3);
+    lt_app_free(app);
+    LT_CHECK(lt_plat_setenv("LT_DYNO_RUNS", "") == 0);
+}
+
 /* ---- G-82 ---- */
 LT_TEST(actions_logic)
 {
@@ -590,6 +611,7 @@ int main(void)
     LT_RUN(perf_dialog_renders);
     LT_RUN(dyno_chart_range);
     LT_RUN(dyno_dialog_with_runs);
+    LT_RUN(dyno_hostile_values);
     LT_RUN(actions_logic);
     LT_RUN(actions_record_save_play);
     LT_RUN(actions_record_constants);

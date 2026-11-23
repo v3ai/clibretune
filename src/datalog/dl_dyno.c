@@ -172,7 +172,8 @@ static lt_bool get_cell(char **f, size_t nf, long col, double *out)
         return LT_FALSE;
     }
     lt_strlcpy(tmp, f[col], sizeof tmp);
-    return lt_parse_double(lt_str_trim(tmp), out);
+    /* "inf", "nan" and overflowing numbers are no measurement */
+    return lt_parse_double(lt_str_trim(tmp), out) && *out == *out && *out - *out == 0.0;
 }
 
 int lt_dyno_from_csv(const char *path, const char *name, lt_dyno_run *out)
