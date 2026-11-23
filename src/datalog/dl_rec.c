@@ -22,6 +22,7 @@ struct lt_recorder {
     char    *dir;         /* directory of the streaming file, or NULL */
     lt_bool  have_start, have_last;
     double   start_ms, last_ms, last_ts;
+    double   due_ms;      /* when the next sample is due (rate limiter) */
     long     rows, malformed;
     double  *tt;          /* ring: LT_REC_TAIL timestamps */
     double  *tv;          /* ring: LT_REC_TAIL * n_ch values */
@@ -150,7 +151,7 @@ static void reset_timeline(lt_recorder *r)
 {
     r->have_start = LT_FALSE;
     r->have_last = LT_FALSE;
-    r->start_ms = r->last_ms = r->last_ts = 0.0;
+    r->start_ms = r->last_ms = r->last_ts = r->due_ms = 0.0;
     r->rows = 0;
     r->tail_len = 0;
     r->tail_head = 0;
@@ -233,7 +234,7 @@ static void tail_push(lt_recorder *r, double ts, const double *values)
 
 int lt_rec_record_at(lt_recorder *r, double now_ms, const double *values, int n)
 {
-    double ts;
+    double ts, period = 1000.0 / r->hz;
     if (!r->recording) {
         return 0;
     }
@@ -241,7 +242,7 @@ int lt_rec_record_at(lt_recorder *r, double now_ms, const double *values, int n)
         r->malformed++;
         return LT_EINVAL;
     }
-    if (r->have_last && now_ms - r->last_ms < 1000.0 / r->hz - 1e-6) {
+    if (r->have_last && now_ms < r->due_ms - 1e-6) {
         return 0;
     }
     if (!r->have_start) {
@@ -266,6 +267,9 @@ int lt_rec_record_at(lt_recorder *r, double now_ms, const double *values, int n)
         }
     }
     tail_push(r, ts, values);
+    /* the next sample is due one period after this one was due, not after it arrived: frames
+     * that come at another rate (17 Hz for 10 Hz) still give the chosen rate on average */
+    r->due_ms = r->have_last && now_ms - r->due_ms < period ? r->due_ms + period : now_ms + period;
     r->rows++;
     r->last_ts = ts;
     r->last_ms = now_ms;

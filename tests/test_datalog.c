@@ -742,6 +742,18 @@ LT_TEST(recorder_rate_clamp)
         ok += lt_rec_record_at(r, 1.0 * i, v, 2);
     }
     LT_CHECK_INT(ok, 8);   /* t = 0,5,...,35 */
+    /* frames every 60 ms, 10 Hz chosen: 10 samples a second on average (not one every 120 ms) */
+    lt_rec_start(r, NULL);
+    lt_rec_set_sample_rate(r, 10.0);
+    ok = 0;
+    for (i = 0; i < 500; i++) {
+        ok += lt_rec_record_at(r, 60.0 * i, v, 2);
+    }
+    LT_CHECK(ok >= 298 && ok <= 301);   /* 30 s */
+    /* a gap (ECU busy) does not cause a burst afterwards */
+    ok = lt_rec_record_at(r, 60.0 * 500 + 5000.0, v, 2);
+    ok += lt_rec_record_at(r, 60.0 * 501 + 5000.0, v, 2);
+    LT_CHECK_INT(ok, 1);
     lt_rec_free(r);
 }
 
