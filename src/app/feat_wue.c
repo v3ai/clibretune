@@ -256,6 +256,7 @@ static void wue_replay(lt_app *app, wue_tab *st, const char *path)
         lt_log_free(&log);
         return;
     }
+    (void)lt_log_use_channel_names(&log, app->ini);      /* TunerStudio logs: labels as names */
     {
         unsigned char en[WUE_MAX_FLT];
         size_t nf = app->ini->wue_analyze.n_filters < WUE_MAX_FLT ? app->ini->wue_analyze.n_filters : WUE_MAX_FLT;

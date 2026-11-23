@@ -1550,6 +1550,48 @@ static void fake_rt_set(lt_ini_rt *rt, size_t idx, double v)
     if (idx < 8) g_set_vals[idx] = v;
 }
 
+/* a TunerStudio log names its columns by the [Datalog] labels */
+LT_TEST(log_labels_to_channels)
+{
+    lt_ini ini;
+    lt_ini_channel c[4];
+    lt_ini_channel *chs[4];
+    lt_ini_dl_entry ents[4];
+    static const char *const ch_names[4] = { "rpm", "coolant", "AFRValue", "map" };
+    static const char *const labels[4] = { "RPM", "CLT", "Air/Fuel Ratio", "MAP" };
+    static const char *const cols[6] = { "RPM", "CLT", "Air/Fuel Ratio", "map", "MAP", "Other" };
+    lt_log l;
+    double row[6];
+    int i;
+    memset(&ini, 0, sizeof ini);
+    memset(c, 0, sizeof c);
+    memset(ents, 0, sizeof ents);
+    lt_map_init(&ini.channel_idx, LT_FALSE);
+    for (i = 0; i < 4; i++) {
+        c[i].name = (char *)ch_names[i]; c[i].index = (size_t)i;
+        chs[i] = &c[i];
+        lt_map_put(&ini.channel_idx, ch_names[i], &c[i]);
+        ents[i].channel = (char *)ch_names[i]; ents[i].label = (char *)labels[i]; ents[i].enabled = LT_TRUE;
+    }
+    ini.channels = chs; ini.n_channels = 4;
+    ini.dl_entries = ents; ini.n_dl_entries = 4;
+    lt_log_init(&l);
+    lt_log_set_channels(&l, cols, NULL, 6);
+    for (i = 0; i < 6; i++) { row[i] = (double)i; }
+    lt_log_append(&l, 0.0, row);
+    LT_CHECK_INT(lt_log_use_channel_names(&l, &ini), 3);
+    LT_CHECK_STR(l.names[0], "rpm");
+    LT_CHECK_STR(l.names[1], "coolant");
+    LT_CHECK_STR(l.names[2], "AFRValue");
+    LT_CHECK_STR(l.names[3], "map");
+    LT_CHECK_STR(l.names[4], "MAP");      /* its channel is a column already */
+    LT_CHECK_STR(l.names[5], "Other");
+    LT_CHECK_INT(lt_log_use_channel_names(&l, &ini), 0);
+    LT_CHECK_INT(lt_log_use_channel_names(&l, NULL), 0);
+    lt_log_free(&l);
+    lt_map_free(&ini.channel_idx);
+}
+
 LT_TEST(ini_glue)
 {
     lt_ini ini;
@@ -1682,6 +1724,7 @@ int main(void)
     LT_RUN(math_compile_and_order);
     LT_RUN(math_persistence);
     LT_RUN(math_apply_to_log);
+    LT_RUN(log_labels_to_channels);
     LT_RUN(ini_glue);
     LT_TEST_MAIN_END
 }

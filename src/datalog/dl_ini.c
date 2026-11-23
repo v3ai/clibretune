@@ -127,6 +127,34 @@ size_t lt_datalog_channels_from_ini(const lt_ini *ini, char ***names, char ***un
     return n;
 }
 
+int lt_log_use_channel_names(lt_log *log, const lt_ini *ini)
+{
+    int c, n = 0;
+    size_t i;
+    if (!log || !ini) {
+        return 0;
+    }
+    for (c = 0; c < log->n_ch; c++) {
+        const char *nm = log->names[c];
+        if (!nm || find_ch(ini, nm)) {
+            continue;
+        }
+        for (i = 0; i < ini->n_dl_entries; i++) {
+            const lt_ini_dl_entry *e = &ini->dl_entries[i];
+            if (!e->label || !e->channel || strcmp(e->label, nm) != 0 || !find_ch(ini, e->channel)) {
+                continue;
+            }
+            if (lt_log_channel_index(log, e->channel) < 0) {
+                lt_free(log->names[c]);
+                log->names[c] = lt_strdup(e->channel);
+                n++;
+            }
+            break;
+        }
+    }
+    return n;
+}
+
 void lt_player_apply_to_rt(const lt_player *p, const lt_ini *ini, lt_ini_rt *rt)
 {
     const double *row = lt_player_row(p);

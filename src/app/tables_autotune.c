@@ -516,6 +516,7 @@ static void at_replay(lt_app *app, at_tab *st, const char *path)
         lt_log_free(&log);
         return;
     }
+    (void)lt_log_use_channel_names(&log, app->ini);      /* TunerStudio logs: labels as names */
     lt_replay_config_default(&cfg);
     cfg.settings = st->set;
     cfg.authority = st->auth;

@@ -249,6 +249,7 @@ static void trim_replay(lt_app *app, trim_tab *st, const char *path)
         lt_log_free(&log);
         return;
     }
+    (void)lt_log_use_channel_names(&log, app->ini);      /* TunerStudio logs: labels as names */
     if (st->mode == 1 && (size_t)st->chan_sel[st->cyl] < st->nlam) { chan = st->lam[st->chan_sel[st->cyl]]; }
     lt_strlcpy(ch.afr, chan, sizeof(ch.afr));
     ch.afr_is_lambda = is_lambda_name(chan) ? LT_TRUE : LT_FALSE;

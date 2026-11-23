@@ -135,6 +135,12 @@ int  lt_mlg_close(lt_mlg_writer *w);                                     /* flus
  * `enabled`): fills arrays of malloc'd strings (free with lt_strv_free). Returns
  * count. If the INI has no [Datalog] section all computed+raw channels are used. */
 size_t lt_datalog_channels_from_ini(const lt_ini *ini, char ***names, char ***units);
+/* Columns of a log written by TunerStudio or MegaLogViewer are named by the [Datalog] labels
+ * ("RPM", "CLT", "Air/Fuel Ratio"), LibreTune's by the channel names: rename the columns named
+ * by a label to that entry's channel ("rpm", "coolant", "AFRValue") so that code looking up
+ * channels by name finds them.  Channel names stay; a label is not used when its channel is a
+ * column already.  Returns the number of columns renamed. */
+int    lt_log_use_channel_names(lt_log *log, const lt_ini *ini);
 void   lt_strv_free(char **v, size_t n);
 
 /* ====================================================================== */
