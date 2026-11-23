@@ -441,6 +441,41 @@ LT_TEST(app_import_ts)
     lt_app_free(app);
 }
 
+/* a TunerStudio project whose INI is missing: the wizard offers the definition bundled with
+ * LibreTune for the tune's signature, and Import Project (Enter) uses it */
+LT_TEST(app_import_ts_bundled_ini)
+{
+    lt_app *app;
+    char root[160], cfg[200], defs[160], *dst;
+    sandbox("impb");
+    unique_name(defs, sizeof(defs), "build/test_prefs_defs_");
+    (void)lt_plat_mkdirs(defs);
+    LT_CHECK(lt_plat_setenv("LIBRETUNE_DEFINITIONS", defs) == 0);     /* an empty INI library */
+    unique_name(root, sizeof(root), "build/test_prefs_tsnoini_");
+    lt_snprintf(cfg, sizeof(cfg), "%s/projectCfg", root);
+    (void)lt_plat_mkdirs(cfg);
+    dst = lt_path_join(root, "CurrentTune.msq");
+    LT_CHECK(lt_plat_copy_file("tests/fixtures/project/ts_proj/CurrentTune.msq", dst) == 0);
+    lt_free(dst);
+    dst = lt_path_join(cfg, "project.properties");
+    LT_CHECK(lt_plat_copy_file("tests/fixtures/project/ts_proj/projectCfg/project.properties", dst) == 0);
+    lt_free(dst);
+    app = lt_app_new();
+    LT_CHECK(lt_app_dialog_push(app, "ts_import", root, "Import TS Project") != NULL);
+    lt_plat_setenv("LT_SHOT_TEXT", "build/test_prefs_tsnoini.txt");
+    lt_plat_setenv("LT_SHOT_KEYS", "enter");
+    (void)lt_app_screenshot(app, "", 120, 40, 3);
+    lt_plat_setenv("LT_SHOT_TEXT", "");
+    lt_plat_setenv("LT_SHOT_KEYS", "");
+    (void)lt_app_service(app);                     /* the import runs from the tick */
+    LT_CHECK(app->has_project && app->ini != NULL && app->ini->signature != NULL);
+    if (app->ini != NULL && app->ini->signature != NULL) {
+        LT_CHECK_STR(app->ini->signature, "speeduino 202501");
+    }
+    LT_CHECK(lt_plat_setenv("LIBRETUNE_DEFINITIONS", "") == 0);
+    lt_app_free(app);
+}
+
 LT_TEST(app_new_tune)
 {
     lt_app *app;
@@ -523,6 +558,7 @@ int main(void)
     LT_RUN(app_session_restore);
     LT_RUN(app_prefs_persist);
     LT_RUN(app_import_ts);
+    LT_RUN(app_import_ts_bundled_ini);
     LT_RUN(app_new_tune);
     LT_RUN(app_settings_search);
     LT_RUN(error_report);

@@ -631,6 +631,7 @@ static void sig_close(lt_app *app, lt_app_dialog *d)
 typedef struct wiz_state {
     int step;                        /* 0 scan, 1 choose, 2 failed */
     lt_ecuport *ports; int n_ports, n_hidden;   /* USB ports first (ports_logic.h) */
+    int show_all;                    /* also the built-in serial ports */
     lt_ecuport_scan *scan;           /* stepped from the UI loop, never blocks */
     char port[128], sig[128], note[480], why[96], name[64], err[200];
     long baud;
@@ -705,7 +706,7 @@ static void wiz_scan_start(lt_app *app, wiz_state *w)
 {
     lt_free(w->ports);
     lt_ecuport_scan_free(w->scan);
-    w->n_ports = lt_ecuport_list(0, lt_feat_devices_mem(app), &w->ports, &w->n_hidden);
+    w->n_ports = lt_ecuport_list(w->show_all, lt_feat_devices_mem(app), &w->ports, &w->n_hidden);
     w->scan = lt_ecuport_scan_new(w->ports, w->n_ports);
     w->step = 0;
 }
@@ -803,6 +804,11 @@ static void wiz_draw(lt_app *app, lt_app_dialog *d)
         } else if (w->step == 2) {
             lt_ui_heading(ui, w->why[0] != '\0' ? w->why : "No ECU detected");
             lt_ui_label_wrap(ui, w->note, t->text2);
+            if (w->n_hidden > 0 || w->show_all) {   /* the note may say to tick this */
+                if (lt_ui_checkbox(ui, "Show all ports (also built-in serial ports)", &w->show_all)) {
+                    wiz_scan_start(app, w);
+                }
+            }
             lt_ui_label_wrap(ui, "You can also connect manually from the connection dialog.", t->muted);
             w2[0] = -1; w2[1] = -1;
             lt_ui_layout_row(ui, 2, w2, 0);
@@ -888,9 +894,15 @@ static void wiz_close(lt_app *app, lt_app_dialog *d)
     d->data = NULL;
 }
 
+static void sw_wizard(lt_app *app, const char *arg)
+{
+    LT_UNUSED(arg);
+    (void)lt_app_dialog_push(app, "connect_wizard", "", "Connect ECU");
+}
+
 static void act_wizard(lt_app *app)
 {
-    (void)lt_app_dialog_push(app, "connect_wizard", "", "Connect ECU");
+    lt_feat_guard_switch(app, sw_wizard, "");    /* the wizard opens a new project */
 }
 
 /* ------------------------------------------------------------------ */

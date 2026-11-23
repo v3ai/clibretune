@@ -448,6 +448,29 @@ LT_TEST(demo_per_family)
 
 /* lt_feat_sync_connect_auto: connect (demo answering with a bundled signature), identify, pick
  * the definition, create the project; again: the same project is opened */
+/* a release binary without demo.ini beside it: "Try the demo" runs on a bundled definition
+ * instead of asking for an INI file the user does not have */
+LT_TEST(demo_without_demo_ini)
+{
+    lt_app *app;
+    char buf[512];
+    const char *path;
+    use_test_dirs();
+    app = lt_app_new();
+    lt_free(app->config_dir);
+    app->config_dir = fresh("cfg");
+    path = lt_app_bundled_demo_ini(app, buf, sizeof(buf));
+    LT_CHECK(path != NULL && lt_file_exists(path));
+    LT_CHECK(path != NULL && lt_app_start_demo(app, path) == 0);
+    LT_CHECK(app->ini != NULL && app->conn == LT_APP_DEMO);
+    LT_CHECK(app->ini != NULL && app->ini->signature != NULL &&
+             strstr(app->ini->signature, "proteus_f4") != NULL);
+    lt_free(app->config_dir);
+    app->config_dir = NULL;            /* nowhere to write it: no path */
+    LT_CHECK(lt_app_bundled_demo_ini(app, buf, sizeof(buf)) == NULL);
+    lt_app_free(app);
+}
+
 LT_TEST(connect_auto_flow)
 {
     lt_app *app;
@@ -608,6 +631,7 @@ int main(void)
     LT_RUN(materialise_and_repo_first);
     LT_RUN(usb_drive);
     LT_RUN(demo_per_family);
+    LT_RUN(demo_without_demo_ini);
     LT_RUN(connect_auto_flow);
     LT_RUN(mismatch_switches_automatically);
     LT_RUN(dialogs_draw);

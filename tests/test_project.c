@@ -274,6 +274,17 @@ LT_TEST(project_lifecycle)
     LT_CHECK(strstr(lt_err_get(), "already exists") != NULL);
     LT_CHECK(lt_project_create("x", FIX "nonexistent.ini", "s", d, &q) == LT_ENOENT);
     LT_CHECK(lt_project_create("", FIX "mini.ini", "s", d, &q) == LT_EINVAL);
+    /* white space around the name is not part of it; only white space is no name */
+    LT_CHECK(lt_project_create("   ", FIX "mini.ini", "s", d, &q) == LT_EINVAL);
+    LT_CHECK(lt_project_create(" \t", FIX "mini.ini", "s", d, &q) == LT_EINVAL);
+    LT_CHECK(lt_project_create("  Spaced  ", FIX "mini.ini", "s", d, &q) == 0);
+    x = lt_path_join(d, "Spaced");
+    LT_CHECK_STR(q.path, x);
+    LT_CHECK_STR(q.cfg.name, "Spaced");
+    lt_free(x);
+    lt_project_free(&q);
+    lt_proj_rmtree(x = lt_path_join(d, "Spaced"));
+    lt_free(x);
     LT_CHECK(lt_project_create("..", FIX "mini.ini", "s", d, &q) == 0);
     LT_CHECK(strstr(q.path, "__") != NULL);
     lt_project_free(&q);

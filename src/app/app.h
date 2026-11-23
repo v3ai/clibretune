@@ -229,9 +229,12 @@ int  lt_app_load_tune(lt_app *app, const char *path);
 /* same with a tune already in memory (ownership taken, also on error); label is shown in the toast */
 int  lt_app_load_tune_mem(lt_app *app, lt_tune *t, const char *label);
 int  lt_app_reset_defaults(lt_app *app);
-/* demo mode: ini_path may be NULL = search the bundled demo.ini */
+/* demo mode: ini_path may be NULL = demo.ini beside the program, else a bundled definition */
 int  lt_app_start_demo(lt_app *app, const char *ini_path);
 const char *lt_app_find_demo_ini(char *buf, size_t cap);
+/* no demo.ini beside the program (a release binary on its own): one of the bundled definitions
+ * (a rusEFI Proteus when there is one) written to <config>/demo.ini; NULL when none */
+const char *lt_app_bundled_demo_ini(lt_app *app, char *buf, size_t cap);
 
 /* ---- pages / editing ---- */
 lt_pagesrc lt_app_pages(lt_app *app);

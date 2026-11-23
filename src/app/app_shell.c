@@ -257,6 +257,13 @@ static char *dir_of(const char *path)
     return d;
 }
 
+/* what may replace the open project, run through lt_feat_guard_switch (asks first when changes
+ * would be lost) */
+static void sw_open(lt_app *app, const char *dir) { (void)lt_app_open_project(app, dir); }
+static void sw_import(lt_app *app, const char *path) { lt_feat_import_ts_wizard(app, path); }
+static void sw_demo(lt_app *app, const char *arg) { LT_UNUSED(arg); (void)lt_app_start_demo(app, NULL); }
+static void sw_new(lt_app *app, const char *arg) { LT_UNUSED(arg); (void)lt_app_new_project_dialog(app); }
+
 static void file_dialog_frame(lt_app *app)
 {
     int res;
@@ -280,8 +287,8 @@ static void file_dialog_frame(lt_app *app)
     case LT_APP_FD_IMPORT_TS:
     case LT_APP_FD_OPEN_PROJECT: {
         char *d = dir_of(app->fd.path);
-        if (app->fd_purpose == LT_APP_FD_IMPORT_TS) { lt_feat_import_ts_wizard(app, app->fd.path); }
-        else { lt_app_open_project(app, d); }
+        if (app->fd_purpose == LT_APP_FD_IMPORT_TS) { lt_feat_guard_switch(app, sw_import, app->fd.path); }
+        else { lt_feat_guard_switch(app, sw_open, d); }
         lt_free(d);
         break;
     }
@@ -330,7 +337,9 @@ static void menu_file(lt_app *app)
     int i, online = (app->conn == LT_APP_ONLINE || app->conn == LT_APP_DEMO);
     int has = app->ini != NULL;
     char lab[600];
-    if (lt_ui_menu_item(ui, lt_tr("&New Project..."), lt_hk_text(app, "file.new"), 0)) { lt_app_new_project_dialog(app); }
+    if (lt_ui_menu_item(ui, lt_tr("&New Project..."), lt_hk_text(app, "file.new"), 0)) {
+        lt_feat_guard_switch(app, sw_new, "");
+    }
     if (lt_ui_menu_item(ui, lt_tr("&Open Project..."), NULL, 0)) {
         lt_app_file_dialog(app, LT_APP_FD_OPEN_PROJECT, LT_UI_FILE_OPEN,
                            app->settings.last_project[0] ? NULL : NULL, "project.json",
@@ -340,7 +349,7 @@ static void menu_file(lt_app *app)
         for (i = 0; i < app->settings.n_recent; i++) {
             lt_snprintf(lab, sizeof(lab), "%s", lt_path_base(app->settings.recent[i]));
             lt_ui_push_id_int(ui, i);
-            if (lt_ui_menu_item(ui, lab, NULL, 0)) { lt_app_open_project(app, app->settings.recent[i]); }
+            if (lt_ui_menu_item(ui, lab, NULL, 0)) { lt_feat_guard_switch(app, sw_open, app->settings.recent[i]); }
             lt_ui_pop_id(ui);
         }
         lt_ui_submenu_end(ui);
@@ -348,7 +357,7 @@ static void menu_file(lt_app *app)
     if (lt_ui_menu_item(ui, lt_tr("&Import TunerStudio Project..."), NULL, 0)) {
         lt_app_file_dialog(app, LT_APP_FD_IMPORT_TS, LT_UI_FILE_OPEN, NULL, "", "All files|*");
     }
-    if (lt_ui_menu_item(ui, lt_tr("Demo mode (simulated ECU)"), NULL, 0)) { lt_app_start_demo(app, NULL); }
+    if (lt_ui_menu_item(ui, lt_tr("Demo mode (simulated ECU)"), NULL, 0)) { lt_feat_guard_switch(app, sw_demo, ""); }
     if (has) {
         if (lt_ui_menu_item(ui, lt_tr("&Close Project"), NULL, 0)) {
             lt_feat_guard_close_project(app);
@@ -925,7 +934,7 @@ static void shortcuts(lt_app *app)
     lt_ui *ui = app->ui;
     int i;
     if (lt_hk_pressed(app, "file.quit")) { lt_app_request_quit(app); }
-    if (lt_hk_pressed(app, "file.new")) { lt_app_new_project_dialog(app); }
+    if (lt_hk_pressed(app, "file.new")) { lt_feat_guard_switch(app, sw_new, ""); }
     if (lt_hk_pressed(app, "view.sidebar")) { app->settings.sidebar_on = !app->settings.sidebar_on; }
     lt_ext_shortcuts(app);
     if (app->ini == NULL) { return; }
@@ -985,6 +994,9 @@ static void app_dialogs(lt_app *app)
         for (k = 0; k < app->n_dlg_kinds; k++) {
             if (strcmp(app->dlg_kinds[k].kind, d->kind) == 0) { app->dlg_kinds[k].draw(app, d); break; }
         }
+        /* the dialog opened a project (Create, Switch, Demo...): that closed and freed every
+         * dialog, d included; the rest are drawn next frame */
+        if (i >= app->n_dialogs || app->dialogs[i] != d) { break; }
         if (!d->open) {
             int j;
             if (k < app->n_dlg_kinds && app->dlg_kinds[k].close != NULL) { app->dlg_kinds[k].close(app, d); }
@@ -1059,6 +1071,11 @@ void lt_app_frame(lt_app *app)
 /* window + main loop                                                  */
 static void init_surface(lt_app *app, int w, int h)
 {
+    /* a second screenshot of the same app (tests) replaces the first one's surface */
+    lt_ui_destroy(app->ui);
+    app->ui = NULL;
+    lt_cells_free(&app->cells);
+    lt_canvas_free(&app->canvas);
     if (app->cell_mode) {
         lt_cells_init(&app->cells, w, h);
         lt_gfx_init_cells(&app->gfx, &app->cells);

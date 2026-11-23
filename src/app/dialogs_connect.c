@@ -142,7 +142,21 @@ static void connect_draw(lt_app *app, lt_app_dialog *d)
             char port[128];
             lt_strlcpy(port, s->ports[s->sel].info.name, sizeof(port));
             s->err[0] = '\0';
-            if (lt_app_connect_serial(app, port, atol(bauds[s->baud_sel])) == 0) {
+            if (app->ini == NULL) {
+                /* no definition yet (start screen): identify the ECU, pick its definition and
+                 * open or create its project, like the Connect ECU wizard */
+                int rc = lt_feat_sync_connect_auto(app, port, atol(bauds[s->baud_sel]),
+                                                   s->found && strcmp(s->found_port, port) == 0 ? s->found_sig : NULL,
+                                                   NULL);
+                if (app->ini != NULL) { return; }  /* a project opened and closed this dialog */
+                if (rc == LT_ENOENT) {
+                    open = 0;                        /* the wizard asks for the definition */
+                } else {
+                    lt_strlcpy(s->err_title, "The ECU did not answer", sizeof(s->err_title));
+                    lt_snprintf(s->err, sizeof(s->err), "%s: %s. Check power and firmware, or use Find my "
+                                "ECU to try every speed.", port, lt_err_get());
+                }
+            } else if (lt_app_connect_serial(app, port, atol(bauds[s->baud_sel])) == 0) {
                 open = 0;
             } else if (lt_serial_last_error() != LT_SERIAL_EOK) {
                 lt_strlcpy(s->err_title, "Cannot open the port", sizeof(s->err_title));
@@ -201,9 +215,23 @@ static void connect_draw(lt_app *app, lt_app_dialog *d)
         if (lt_ui_button(ui, lt_tr("TCP connect"))) {
             char tmp[140];
             lt_snprintf(tmp, sizeof(tmp), "tcp:%s", s->host);
-            if (lt_app_connect_serial(app, tmp, 0) == 0) { open = 0; }
+            if (app->ini == NULL) {
+                lt_strlcpy(s->err_title, "No ECU definition yet", sizeof(s->err_title));
+                lt_strlcpy(s->err, "A TCP connection cannot identify the ECU by itself: set up the project "
+                                   "with its definition first (File > New Project...), then connect.",
+                           sizeof(s->err));
+            } else if (lt_app_connect_serial(app, tmp, 0) == 0) {
+                open = 0;
+            }
         }
-        if (lt_ui_button(ui, lt_tr("Demo (simulator)"))) { if (lt_app_connect_demo(app) == 0) { open = 0; } }
+        if (lt_ui_button(ui, lt_tr("Demo (simulator)"))) {
+            if (app->ini == NULL) {
+                /* nothing loaded: the demo definition opens (and closes this dialog) */
+                if (lt_app_start_demo(app, NULL) == 0 || app->ini != NULL) { return; }
+            } else if (lt_app_connect_demo(app) == 0) {
+                open = 0;
+            }
+        }
         lt_ui_separator(ui);
         lt_ui_layout_row(ui, 1, &w1, 0);
         lt_ui_label_ex(ui, lt_app_conn_label(app), t->text2, LT_UI_ALIGN_LEFT);

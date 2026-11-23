@@ -204,6 +204,75 @@ LT_TEST(ignore_keeps_project_tune)
     lt_app_free(app);
 }
 
+/* ---------------------------------------------------------------- dialogs in the terminal UI */
+static char g_txt[32000];
+
+/* render app in cell mode (120x40), feeding keys (LT_SHOT_KEYS syntax) first; text in g_txt */
+static void tty(lt_app *app, const char *keys)
+{
+    size_t n = 0;
+    char *d;
+    lt_plat_setenv("LT_SHOT_TEXT", "build/test_sync_tty.txt");
+    lt_plat_setenv("LT_SHOT_KEYS", keys != NULL ? keys : "");
+    (void)lt_app_screenshot(app, "", 120, 40, 3);
+    lt_plat_setenv("LT_SHOT_TEXT", "");
+    lt_plat_setenv("LT_SHOT_KEYS", "");
+    d = lt_file_read("build/test_sync_tty.txt", &n);
+    g_txt[0] = '\0';
+    if (d == NULL) { return; }
+    if (n >= sizeof(g_txt)) { n = sizeof(g_txt) - 1; }
+    memcpy(g_txt, d, n);
+    g_txt[n] = '\0';
+    lt_free(d);
+}
+
+/* "click:col/row" on the middle of label in g_txt (columns count UTF-8 characters); 0 not found */
+static int click_on(const char *label, char *out, size_t cap)
+{
+    const char *hit = strstr(g_txt, label), *p;
+    int row = 0, col = 0;
+    if (hit == NULL) { return 0; }
+    for (p = g_txt; p < hit; p++) {
+        if (*p == '\n') { row++; col = 0; }
+        else if (((unsigned char)*p & 0xC0) != 0x80) { col++; }
+    }
+    lt_snprintf(out, cap, "click:%d/%d", col + (int)strlen(label) / 2, row);
+    return 1;
+}
+
+/* the connection dialog reached from the start screen (nothing loaded): Demo starts the demo and
+ * TCP says what is missing, instead of "No ECU definition loaded" on every button */
+LT_TEST(connect_dialog_without_definition)
+{
+    lt_app *app = lt_app_new();
+    char k[64];
+    LT_CHECK(lt_app_dialog_push(app, "connect", "", "ECU Connection") != NULL);
+    tty(app, NULL);
+    LT_CHECK(click_on("TCP connect", k, sizeof(k)));
+    tty(app, k);
+    LT_CHECK(strstr(g_txt, "No ECU definition yet") != NULL);
+    LT_CHECK(n_dialogs_of(app, "connect") == 1 && app->ini == NULL);
+    LT_CHECK(click_on("Demo (simulator)", k, sizeof(k)));
+    tty(app, k);
+    LT_CHECK(app->ini != NULL && app->conn == LT_APP_DEMO);
+    LT_CHECK(n_dialogs_of(app, "connect") == 0);
+    lt_app_free(app);
+}
+
+/* the wizard's "nothing found" note may say "tick Show all ports": the box is there to tick */
+LT_TEST(wizard_offers_show_all_ports)
+{
+    lt_app *app = lt_app_new();
+    int i;
+    g_txt[0] = '\0';
+    LT_CHECK(lt_app_dialog_push(app, "connect_wizard", "", "Connect ECU") != NULL);
+    for (i = 0; i < 20 && strstr(g_txt, "Scan again") == NULL; i++) { tty(app, NULL); }
+    if (strstr(g_txt, "Show all ports to") != NULL || strstr(g_txt, "ports are hidden") != NULL) {
+        LT_CHECK(strstr(g_txt, "Show all ports (also") != NULL);
+    }
+    lt_app_free(app);
+}
+
 int main(void)
 {
     LT_RUN(signature_match);
@@ -212,5 +281,7 @@ int main(void)
     LT_RUN(connect_tune_choice);
     LT_RUN(use_ecu_replaces_project);
     LT_RUN(ignore_keeps_project_tune);
+    LT_RUN(connect_dialog_without_definition);
+    LT_RUN(wizard_offers_show_all_ports);
     LT_TEST_MAIN_END
 }

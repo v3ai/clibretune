@@ -41,7 +41,8 @@ Linux (x86-64, ARM64), Windows and macOS (universal) are attached to each releas
 
     libretune [--backend NAME] [--demo] [--ini FILE] [--project DIR]
 
-- `--demo --ini tests/fixtures/ini/demo.ini` starts the simulated ECU, no hardware needed.
+- `--demo` starts the simulated ECU, no hardware needed (with `tests/fixtures/ini/demo.ini` when it is
+  found, else a bundled rusEFI Proteus definition; `--ini FILE` picks another).
 - Backends (`LT_BACKEND` or `--backend`): `auto`, `x11` (Linux/BSD), `cocoa` (macOS), `win32` (Windows),
   `web` and `tty` (everywhere). `x11`, `cocoa` and `win32` are native windows; `auto` picks them first.
   - `web` serves the UI on 127.0.0.1 and prints a tokenised URL (`LT_NO_BROWSER=1` to not open a browser).
