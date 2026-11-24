@@ -1757,7 +1757,8 @@ static void rt_command(lt_proto *p, lt_buf *cmd, size_t *want, lt_bool *burst)
         if (memchr(b->p, '%', b->n)) {
             lt_cmd_build(cmd, b->p, b->n, 0, 0, (lt_u32)w, NULL, 0, cmd_le(p));
         } else {
-            lt_buf_append(cmd, b->p, b->n);
+            /* a fixed command still has escapes: MegaSquirt's "r\x00\x07\x00\x00\x01\x98" */
+            lt_cmd_parse_string(b->p, b->n, cmd);
         }
     }
 }

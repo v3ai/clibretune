@@ -1886,6 +1886,55 @@ LT_TEST(big_endian_page_identifier_sent_as_written)
     lt_ini_free(ini);
 }
 
+/* a fixed ochGetCommand with escapes (MegaSquirt over CAN) goes out decoded */
+LT_TEST(och_command_escapes_decoded)
+{
+    static const char txt[] =
+        "[MegaTune]\n signature = \"MS3 Format 0238.003\"\n"
+        "[TunerStudio]\n queryCommand = \"Q\"\n"
+        "[Constants]\n endianness = big\n messageEnvelopeFormat = msEnvelope_1.0\n nPages = 1\n"
+        " pageSize = 64\n pageReadCommand = \"r%2i%2o%2c\"\n"
+        "[OutputChannels]\n ochGetCommand = \"r\\x00\\x07\\x00\\x00\\x00\\x10\"\n ochBlockSize = 16\n";
+    static const lt_u8 want[7] = { 'r', 0x00, 0x07, 0x00, 0x00, 0x00, 0x10 };
+    fclk clk;
+    fdev d;
+    lt_ini *ini = lt_ini_load_string(txt, strlen(txt), NULL, NULL);
+    lt_proto_io io;
+    lt_proto *p;
+    lt_proto_clock ck;
+    lt_buf b;
+
+    if (!ini) {
+        LT_CHECK(0);
+        return;
+    }
+    clk.t = 0;
+    fd_init(&d, &clk);
+    d.order = LT_ENV_BIG;
+    lt_strlcpy(d.sig, ini->signature, sizeof(d.sig));
+    memset(&io, 0, sizeof(io));
+    io.ud = &d;
+    io.read = fd_read;
+    io.write = fd_write;
+    io.clear_input = fd_clear;
+    p = lt_proto_new(&io, ini, NULL);
+    ck.ud = &clk;
+    ck.now_ms = f_now;
+    ck.sleep_ms = f_sleep;
+    lt_proto_set_clock(p, &ck);
+    LT_CHECK(lt_proto_connect(p) == 0);
+    LT_CHECK(lt_proto_choose_runtime(p, NULL) == LT_RT_KIND_OCH);
+    d.stall = 1;
+    lt_buf_init(&b);
+    LT_CHECK(lt_proto_get_realtime(p, &b) != 0);
+    LT_CHECK(d.nplog >= 2 && d.plog[d.nplog - 1].len == 7 &&
+             memcmp(d.plog[d.nplog - 1].data, want, 7) == 0);
+    lt_buf_free(&b);
+    lt_proto_free(p);
+    fd_free(&d);
+    lt_ini_free(ini);
+}
+
 int main(void)
 {
     LT_RUN(connect_modern_speeduino_le);
@@ -1921,6 +1970,7 @@ int main(void)
     LT_RUN(permissive_crc_config);
     LT_RUN(real_demo_ini_command_encoding);
     LT_RUN(big_endian_page_identifier_sent_as_written);
+    LT_RUN(och_command_escapes_decoded);
     LT_RUN(discovery_cases);
     LT_RUN(io_from_stream_adapter_shape);
     LT_TEST_MAIN_END
