@@ -367,6 +367,17 @@ static LT_INLINE void put_px_at(lt_gfx *g, const lt_rect *vc, int x, int y, lt_c
     put_px(g->canvas->px + (size_t)y * (size_t)g->canvas->pitch + (size_t)x, col, ca, cov);
 }
 
+/* w pixels of value v, eight per step (compilers turn the step into wide stores) */
+static void fill_px(lt_u32 *p, int w, lt_u32 v)
+{
+    int i;
+    for (i = 0; i + 8 <= w; i += 8) {
+        p[i] = v; p[i + 1] = v; p[i + 2] = v; p[i + 3] = v;
+        p[i + 4] = v; p[i + 5] = v; p[i + 6] = v; p[i + 7] = v;
+    }
+    for (; i < w; i++) { p[i] = v; }
+}
+
 /* pixel span primitive: horizontal run with constant coverage          */
 static void put_span(lt_gfx *g, int x, int y, int w, lt_color col, int cov)
 {
@@ -385,8 +396,7 @@ static void put_span(lt_gfx *g, int x, int y, int w, lt_color col, int cov)
     if (a <= 0) { return; }
     p = c->px + (size_t)y * (size_t)c->pitch + x;
     if (a >= 255) {
-        lt_u32 v = (col | OPAQUE_MASK) & LT_U32_MASK;
-        for (i = 0; i < w; i++) { p[i] = v; }
+        fill_px(p, w, (col | OPAQUE_MASK) & LT_U32_MASK);
         return;
     }
     ia = 255U - (lt_u32)a;
