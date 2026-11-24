@@ -402,7 +402,21 @@ static void put_span(lt_gfx *g, int x, int y, int w, lt_color col, int cov)
     ia = 255U - (lt_u32)a;
     srb = (col & LANES) * (lt_u32)a;
     sg = ((col >> 8) & 0xFFU) * (lt_u32)a;
-    for (i = 0; i < w; i++) { p[i] = blend_lanes(p[i], srb, sg, ia); }
+    /* under a translucent span there are mostly runs of one colour (panels, backgrounds): such
+     * a run is blended once and filled; elsewhere 32 pixels at a time */
+    i = 0;
+    while (i < w) {
+        lt_u32 d = p[i];
+        int e = i + 1;
+        while (e < w && p[e] == d) { e++; }
+        if (e - i < 8) {
+            e = LT_MIN(w, i + 32);
+            for (; i < e; i++) { p[i] = blend_lanes(p[i], srb, sg, ia); }
+        } else {
+            fill_px(p + i, e - i, blend_lanes(d, srb, sg, ia));
+            i = e;
+        }
+    }
 }
 
 /* Composite a premultiplied-ARGB layer (alpha in the top byte, colour already multiplied by it)

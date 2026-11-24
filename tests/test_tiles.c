@@ -410,6 +410,19 @@ LT_TEST(test_blend_exact)
                        ref_div255(128 * a + ((i * 7) & 0xFF) * ia));
             if ((c.px[i] & 0xFFFFFFUL) != (want & 0xFFFFFFUL)) { bad++; }
         }
+        /* over runs of one colour (1 to 40 pixels long): the same result */
+        for (i = 0; i < 256; i++) {
+            int q = i / (1 + (i >> 4) % 12) + (i > 200 ? 3 : 0);
+            c.px[i] = LT_RGB((q * 13) & 0xFF, 255 - q, (q * 7) & 0xFF);
+        }
+        lt_gfx_fill_rect(&g, lt_rect_make(0, 0, 256, 1), col);
+        for (i = 0; i < 256 && a > 0; i++) {
+            int ia = 255 - a, q = i / (1 + (i >> 4) % 12) + (i > 200 ? 3 : 0);
+            lt_u32 want = a == 255 ? LT_RGB(17, 250, 128) :
+                LT_RGB(ref_div255(17 * a + ((q * 13) & 0xFF) * ia), ref_div255(250 * a + (255 - q) * ia),
+                       ref_div255(128 * a + ((q * 7) & 0xFF) * ia));
+            if ((c.px[i] & 0xFFFFFFUL) != (want & 0xFFFFFFUL)) { bad++; }
+        }
         /* coverage mask: alpha = a * coverage */
         for (i = 0; i < 256; i++) { c.px[i] = LT_RGB(i, 255 - i, (i * 7) & 0xFF); }
         lt_gfx_blit_mask(&g, 0, 0, cov, 256, 1, 256, col, NULL);
