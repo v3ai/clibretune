@@ -74,6 +74,15 @@ REWRITES = [
      "3. **Undo** (Ctrl+Z) writes the table back as it was before the last Send to ECU\n"
      "4. **Burn** to make changes permanent in ECU flash; File > Save Tune keeps them in the"
      " project\n"),
+    ("features/table-editing/shortcuts", r"\| Escape \| Clear selection \|\n",
+     "| Escape | Cancel the value being typed; otherwise keep only the cursor cell selected |\n"),
+    ("features/table-editing/2d-tables", r"### Single Cell Edit\n1\. Select a cell\n2\. Type a number\n"
+     r"3\. Press Enter\n",
+     "### Single Cell Edit\n1. Select a cell\n2. Type a number\n3. Press Enter (or click another"
+     " cell)\n\nEsc while typing cancels that edit and the cell keeps its value. Esc otherwise"
+     " only reduces the selection to the cursor cell: it never changes values. To go back to the"
+     " values the table had when it was opened use **Revert** in the toolbar (whole table) or"
+     " **Reset to original** in the right-click menu (selected cells).\n"),
     ("features/autotune/usage-guide", r"This sends changes to ECU RAM\. They take effect immediately\.\n",
      "This sends changes to ECU RAM. They take effect immediately. **Undo** (Ctrl+Z) writes the\n"
      "table back as it was before the last Send to ECU.\n"),

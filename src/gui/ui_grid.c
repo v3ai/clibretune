@@ -586,6 +586,9 @@ int lt_ui_grid_end(lt_ui *ui)
         fl = ui_edit_widget(ui, eid, lt_rect_inset(cr, 0, 0), G->edit_buf, sizeof(G->edit_buf),
                             LT_UI_TEXT_NUMERIC | (G->edit_wants ? LT_UI_TEXT_SELECTALL : 0), 1);
         if (fl & LT_UI_CANCEL) {
+            /* Esc cancels the cell edit only: an untouched field leaves the key queued, which
+             * would also reach the table's own Esc handling or close the enclosing dialog */
+            (void)ui_key_take(ui, LT_KEY_ESCAPE, NULL);
             G->edit = 0;
             G->flags_out |= LT_UI_GRID_EDIT_CANCEL;
             ui->focus = G->id;

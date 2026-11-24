@@ -32,11 +32,11 @@ typedef struct tbl_tab {
     unsigned long last_frames;
     int goto_live;
     int scale_open, scale_mode; double scale_val;
-    double *orig; size_t orig_n;  /* values at open: Esc reverts the selection to these */
+    double *orig; size_t orig_n;  /* values at open: "Reset to original" puts the selection back */
     double step, step_mult, step_pct;   /* user increments: amount, Ctrl multiplier, PageUp/Dn % */
     int step_open;
     int paste_open, paste_mode;
-    int prev_rdown, select_all;
+    int prev_rdown, select_all, collapse_sel;
     lt_rect grid_area;            /* viewport of the grid (right-click menu target) */
     int fd_load, fd_save;         /* waiting for a file dialog result */
     int resizable;
@@ -875,7 +875,9 @@ static void tbl_keys(lt_app *app, lt_app_tab *tab, tbl_tab *st)
     }
     if (lt_ui_key_pressed(ui, 'r', LT_MOD_CTRL)) { tbl_op(app, tab, st, OP_FILL_R, 0); }
     if (lt_ui_key_pressed(ui, 'd', LT_MOD_CTRL)) { tbl_op(app, tab, st, OP_FILL_D, 0); }
-    if (lt_ui_key_pressed(ui, LT_KEY_ESCAPE, 0)) { tbl_op(app, tab, st, OP_RESTORE, 0); }
+    /* Esc while typing cancels the edit (the grid takes it); otherwise it drops the selection back
+     * to the cursor cell. Reverting values is never on Esc: toolbar Revert / Reset to original. */
+    if (lt_ui_key_pressed(ui, LT_KEY_ESCAPE, 0)) { st->collapse_sel = 1; lt_ui_request_redraw(ui); }
     if (lt_ui_key_pressed(ui, LT_KEY_DELETE, 0) || lt_ui_key_pressed(ui, LT_KEY_BACKSPACE, 0)) {
         tbl_op(app, tab, st, OP_CLEAR, 0);
     }
@@ -1391,6 +1393,12 @@ static void tbl_grid(lt_app *app, lt_app_tab *tab, tbl_tab *st, int vh)
             lt_ui_grid_select(ui, 0, 0, rows - 1, cols - 1);
             st->select_all = 0;
         }
+        if (st->collapse_sel) {
+            int gr = 0, gc = 0;
+            lt_ui_grid_cursor(ui, &gr, &gc);
+            lt_ui_grid_set_cursor(ui, gr, gc);
+            st->collapse_sel = 0;
+        }
         if (st->pick_pending) {
             int pr = st->ybottom ? rows - 1 - st->pick_r : st->pick_r;
             if (pr >= 0 && pr < rows && st->pick_c >= 0 && st->pick_c < cols) {
@@ -1561,7 +1569,7 @@ static void tbl_context(lt_app *app, lt_app_tab *tab, tbl_tab *st, lt_rect area)
 {
     lt_ui *ui = app->ui;
     if (!lt_ui_context_begin(ui, "tbl_ctx", area)) { return; }
-    if (lt_ui_menu_item(ui, "Reset to original", "Esc", 0)) { tbl_op(app, tab, st, OP_RESTORE, 0); }
+    if (lt_ui_menu_item(ui, "Reset to original", NULL, 0)) { tbl_op(app, tab, st, OP_RESTORE, 0); }
     lt_ui_menu_separator(ui);
     if (lt_ui_menu_item(ui, "Set equal (average)", "=", 0)) { tbl_op(app, tab, st, OP_EQUAL, 0); }
     if (lt_ui_menu_item(ui, "Set value...", NULL, 0)) { st->scale_open = 1; st->scale_mode = 2; }

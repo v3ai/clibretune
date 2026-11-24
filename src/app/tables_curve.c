@@ -21,12 +21,12 @@ typedef struct crv_tab {
     int frame;
     double live_x, live_y;
     int live_ok;
-    double *ox, *oz; size_t on;    /* X / Y values at open (Esc reverts the selection to them) */
+    double *ox, *oz; size_t on;    /* X / Y values at open ("Reset to original" restores them) */
     unsigned char *selr; size_t selr_cap;   /* per row: bit0 X cell selected, bit1 Y cell selected */
     int cur_r, cur_c;
     int range_mode;                /* 0 auto, 1 fit data, 2 full constant limits */
     int move_x;                    /* drag also moves points horizontally */
-    int select_all;
+    int select_all, collapse_sel;
     lt_rect list_area;
     int scale_open, scale_mode; double scale_val;
     /* X-Y log plot */
@@ -609,7 +609,8 @@ static void crv_keys(lt_app *app, lt_app_tab *tab, crv_tab *st)
     }
     if (lt_ui_key_pressed(ui, 'c', LT_MOD_CTRL)) { crv_copy(app, st); }
     if (lt_ui_key_pressed(ui, 'v', LT_MOD_CTRL)) { crv_paste(app, tab, st); }
-    if (lt_ui_key_pressed(ui, LT_KEY_ESCAPE, 0)) { crv_op(app, tab, st, C_RESTORE, 0); }
+    /* like the table: Esc drops the selection to the cursor cell (an edit in progress takes Esc) */
+    if (lt_ui_key_pressed(ui, LT_KEY_ESCAPE, 0)) { st->collapse_sel = 1; lt_ui_request_redraw(ui); }
     if (lt_ui_key_pressed(ui, LT_KEY_DELETE, 0) || lt_ui_key_pressed(ui, LT_KEY_BACKSPACE, 0)) {
         crv_op(app, tab, st, C_CLEAR, 0);
     }
@@ -695,7 +696,7 @@ static void crv_context(lt_app *app, lt_app_tab *tab, crv_tab *st, lt_rect area)
 {
     lt_ui *ui = app->ui;
     if (!lt_ui_context_begin(ui, "crv_ctx", area)) { return; }
-    if (lt_ui_menu_item(ui, "Reset to original", "Esc", 0)) { crv_op(app, tab, st, C_RESTORE, 0); }
+    if (lt_ui_menu_item(ui, "Reset to original", NULL, 0)) { crv_op(app, tab, st, C_RESTORE, 0); }
     lt_ui_menu_separator(ui);
     if (lt_ui_menu_item(ui, "Set equal (average)", "=", 0)) { crv_op(app, tab, st, C_EQUAL, 0); }
     if (lt_ui_menu_item(ui, "Set value...", NULL, 0)) { st->scale_open = 1; st->scale_mode = 2; }
@@ -887,6 +888,11 @@ static void crv_draw(lt_app *app, lt_app_tab *tab, lt_rect rr)
             if (st->select_all) {
                 lt_ui_grid_select(ui, 0, 0, (int)st->v.cols - 1, 1);
                 st->select_all = 0;
+            }
+            if (st->collapse_sel) {
+                lt_ui_grid_cursor(ui, &cr, &cc);
+                lt_ui_grid_set_cursor(ui, cr, cc);
+                st->collapse_sel = 0;
             }
             memset(st->selr, 0, st->selr_cap);
             for (r = 0; r < (int)st->v.cols; r++) {

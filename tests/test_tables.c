@@ -148,8 +148,11 @@ LT_TEST(table_selection_keys)
     LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 1), b + 1.0, 0.051);
     LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 2, 1), c + 1.0, 0.051);
     LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 2), d, 1e-9);
-    /* Escape reverts the selection to the values at open */
+    /* Escape keeps the values (no revert); Ctrl+Z takes the step back */
     press(app, LT_KEY_ESCAPE, 0);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 0), a + 1.0, 0.051);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 2, 1), c + 1.0, 0.051);
+    press(app, 'z', LT_MOD_CTRL);
     LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 0), a, 1e-9);
     LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 2, 1), c, 1e-9);
     /* Ctrl+A selects everything */
@@ -159,7 +162,7 @@ LT_TEST(table_selection_keys)
     press(app, '-', 0);
     LT_CHECK_NEAR(cell0(app, "veTableTbl", 0, cols - 1), e - 1.0, 0.051);
     LT_CHECK_NEAR(cell0(app, "veTableTbl", rows / 2, cols / 2), f - 1.0, 0.051);
-    press(app, LT_KEY_ESCAPE, 0);
+    press(app, 'z', LT_MOD_CTRL);
     LT_CHECK_NEAR(cell0(app, "veTableTbl", 0, cols - 1), e, 1e-9);
     /* Delete clears the cursor cell to zero */
     press(app, LT_KEY_HOME, LT_MOD_CTRL);
@@ -455,6 +458,113 @@ LT_TEST(table_step_in_lambda)
     lt_app_free(app);
 }
 
+/* one key as a keyboard delivers it: key down and its text in the same frame, then key up */
+static void type_real(lt_app *app, const char *s)
+{
+    lt_event ev;
+    for (; *s != '\0'; s++) {
+        memset(&ev, 0, sizeof(ev));
+        ev.type = LT_EV_KEY_DOWN; ev.key = (unsigned char)*s;
+        lt_ui_input(app->ui, &ev);
+        memset(&ev, 0, sizeof(ev));
+        ev.type = LT_EV_TEXT; ev.text[0] = *s;
+        lt_ui_input(app->ui, &ev);
+        frame(app);
+        memset(&ev, 0, sizeof(ev));
+        ev.type = LT_EV_KEY_UP; ev.key = (unsigned char)*s;
+        lt_ui_input(app->ui, &ev);
+        frame(app);
+    }
+}
+
+/* demo app with the VE table open at 1100 x 800, the grid focused and the cursor on display
+ * (0,0) = data (rows-1, 0) */
+static lt_app *ve_open(size_t *rows, size_t *cols)
+{
+    char buf[512];
+    lt_app *app = lt_app_new();
+    lt_pagesrc ps;
+    lt_tblview v;
+    *rows = *cols = 0;
+    if (lt_app_find_demo_ini(buf, sizeof(buf)) == NULL || lt_app_start_demo(app, buf) != 0 ||
+        lt_app_table_editor_open(app, "veTableTbl") != 0) { return app; }
+    lt_app_screenshot(app, "build/lt_test_tables10.ppm", 1100, 800, 3);
+    ps = lt_app_pages(app);
+    lt_tblview_init(&v);
+    if (lt_tblview_load_table(&v, app->ini, lt_ini_find_table(app->ini, "veTableTbl"), &ps) == 0) {
+        *rows = v.rows; *cols = v.cols;
+    }
+    lt_tblview_free(&v);
+    click(app, 500, 300, LT_MB_LEFT);
+    press(app, LT_KEY_HOME, LT_MOD_CTRL);
+    return app;
+}
+
+/* Esc while typing cancels only that edit; Esc otherwise collapses the selection to the cursor
+ * cell and never reverts values */
+LT_TEST(table_esc_cancels_edit)
+{
+    static double before[2048], after[2048];
+    size_t rows, cols, n;
+    double a, b, c;
+    lt_app *app = ve_open(&rows, &cols);
+    LT_CHECK(rows > 2 && cols > 3);
+    if (rows <= 2 || cols <= 3) { lt_app_free(app); return; }
+    n = table_snap(app, "veTableTbl", before, 2048);
+    LT_CHECK(n == rows * cols);
+    type_real(app, "12");
+    LT_CHECK(lt_ui_text_focused(app->ui));
+    press(app, LT_KEY_ESCAPE, 0);
+    LT_CHECK(!lt_ui_text_focused(app->ui));
+    LT_CHECK(table_snap(app, "veTableTbl", after, 2048) == n);
+    LT_CHECK(memcmp(before, after, n * sizeof(double)) == 0);
+    LT_CHECK(!app->modified);
+    /* an edit started with F2 (text untouched) is cancelled the same way */
+    press(app, LT_KEY_F2, 0);
+    LT_CHECK(lt_ui_text_focused(app->ui));
+    press(app, LT_KEY_ESCAPE, 0);
+    LT_CHECK(!lt_ui_text_focused(app->ui));
+    LT_CHECK(table_snap(app, "veTableTbl", after, 2048) == n);
+    LT_CHECK(memcmp(before, after, n * sizeof(double)) == 0);
+    /* three cells selected, +, Esc: the values stay and only the cursor cell remains selected */
+    a = cell0(app, "veTableTbl", rows - 1, 0);
+    b = cell0(app, "veTableTbl", rows - 1, 1);
+    c = cell0(app, "veTableTbl", rows - 1, 2);
+    press(app, LT_KEY_RIGHT, LT_MOD_SHIFT);
+    press(app, LT_KEY_RIGHT, LT_MOD_SHIFT);
+    press(app, '+', 0);
+    press(app, LT_KEY_ESCAPE, 0);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 0), a + 1.0, 0.051);
+    press(app, '+', 0);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 0), a + 1.0, 0.051);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 1), b + 1.0, 0.051);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 2), c + 2.0, 0.051);
+    lt_app_free(app);
+}
+
+/* curve list: Esc cancels a typed value and keeps stepped values (reverting is the context
+ * menu's Reset to original) */
+LT_TEST(curve_esc_keeps_values)
+{
+    char buf[512];
+    lt_app *app = lt_app_new();
+    double y0;
+    LT_CHECK(lt_app_find_demo_ini(buf, sizeof(buf)) != NULL);
+    LT_CHECK(lt_app_start_demo(app, buf) == 0);
+    LT_CHECK(lt_app_curve_editor_open(app, "cltFuelCorrCurve") == 0);
+    lt_app_screenshot(app, "build/lt_test_tables11.ppm", 1600, 1000, 3);
+    y0 = curve_val(app, "cltFuelCorrCurve", 0, 0);
+    click(app, 1224, 192, LT_MB_LEFT);               /* first row, Y column */
+    type_real(app, "2");
+    press(app, LT_KEY_ESCAPE, 0);
+    LT_CHECK_NEAR(curve_val(app, "cltFuelCorrCurve", 0, 0), y0, 1e-9);
+    press(app, 'q', 0);
+    LT_CHECK(curve_val(app, "cltFuelCorrCurve", 0, 0) > y0);
+    press(app, LT_KEY_ESCAPE, 0);
+    LT_CHECK(curve_val(app, "cltFuelCorrCurve", 0, 0) > y0);
+    lt_app_free(app);
+}
+
 int main(void)
 {
     LT_RUN(autotune_send_undo);
@@ -467,5 +577,7 @@ int main(void)
     LT_RUN(table_revert_after_many_edits);
     LT_RUN(table_tab_closed_mid_frame);
     LT_RUN(table_step_in_lambda);
+    LT_RUN(table_esc_cancels_edit);
+    LT_RUN(curve_esc_keeps_values);
     LT_TEST_MAIN_END
 }
