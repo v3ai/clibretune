@@ -26,10 +26,14 @@
 #   tools/fetch_ini_corpus.sh                         (puts them in build/ini_corpus/megasquirt/)
 #   tools/ini_corpus_check.sh build/ini_corpus/megasquirt
 #   build/clibretune --demo --ini "build/ini_corpus/megasquirt/MS3 Format 0238.003.ini"
-# MS2-Extra, MS3 and MegaSquirt-II 2.x INIs connect, read, show live data and burn in demo
-# mode. MS1 / MS1-Extra INIs only open: their single-byte "%o" write commands, pageActivate
-# and whole-page "V" reads are not spoken by the protocol layer. dfi.ini and
-# test_megatune.ini include a colors24b.ini that is not in that collection (PARSE ERROR).
+# Every MegaSquirt INI there (MS3, MS2-Extra, MegaSquirt-II 2.x, and the MegaSquirt-I family:
+# B&G 2.x/3.x, MSnS, MS1-Extra / MSnS-extra, "MSExtra format hr_*", MS_ECU, MSnEDIS, dual-table,
+# dbrul, JimStim) connects, reads, shows live data, writes and burns in demo mode. Limits: a
+# write past offset 255 of dbrul.ini's 408-byte page is refused (its "W%o%v" has a one-byte
+# offset); MegaTune-era MS1 INIs take SPEED_DENSITY etc. from #set lines they do not contain
+# (no load axis on the VE table until added) and their table(x, "*.inc") files are not in the
+# collection (coolant / MAT / MAP read 0). dfi.ini and test_megatune.ini include a
+# colors24b.ini that is not in that collection (PARSE ERROR).
 set -e
 cd "$(dirname "$0")/.."
 

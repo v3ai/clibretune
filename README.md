@@ -139,6 +139,16 @@ close, you choose a file or search online as before. New Project lists the bundl
 family and release with a search box. `CLIBRETUNE_DEFINITIONS` moves the INI library,
 `CLIBRETUNE_VOLUMES` (`;`-separated) replaces the removable drives that are scanned.
 
+MegaSquirt INIs are not bundled (no redistribution grant); open the one that came with the firmware.
+The protocol layer speaks every MegaSquirt dialect in them: MS3, MS2 / MS2-Extra and MegaSquirt-II
+2.x, and the MegaSquirt-I family (B&G 2.x / 3.x, MSnS, MS1-Extra / MSnS-extra and its "MSExtra format"
+variants), whose page select (`pageActivate`, "P\001"), whole-page reads ("V"), one-byte value writes
+("W%o%v") and the numeric signature (`signature = 20`) were added for it. B&G and MSnS boards run at
+9600 baud. MegaTune-era MS1 INIs leave choices such as `SPEED_DENSITY` to a settings file (`#set`);
+an INI that has no `[SettingGroups]` gets none of them, so add the `#set` lines at its top (without
+`SPEED_DENSITY` or `ALPHA_N` set, `megasquirt-I.ini`'s VE table has no load axis). Their
+`table(x, "thermfactor.inc")` lookup files are needed for coolant, MAT and MAP readings.
+
 ## Keyboard shortcuts
 
 Ctrl+N new project, Ctrl+O load tune, Ctrl+S save, Ctrl+Shift+S save as, Ctrl+B burn,

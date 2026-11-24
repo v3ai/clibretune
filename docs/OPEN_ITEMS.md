@@ -20,7 +20,7 @@ version, clibretune commit) in the release notes.
 | Interrupted flash | Pull the USB cable mid-write | The app reports it clearly; the board is recoverable from the BOOT button |
 | Tuning, rusEFI/FOME | Connect, sync choice, edit while running, burn, power-cycle, reconnect | Values persist; no false "tune differs" prompt afterwards |
 | Tuning, Speeduino | Same, on a Mega 2560 and on a Teensy/STM32 board | Same |
-| Tuning, MegaSquirt | Same, on MS2/Extra and MS3 | Same |
+| Tuning, MegaSquirt | Same, on MS2/Extra and MS3, and on an MS1 (B&G 2.x/3.x at 9600 baud) and an MS1-Extra board: page select, whole-page reads and one-byte writes were only tested against the simulator | Same |
 | Link faults | Unplug mid-burn and mid-log on each family | No corrupted project tune; the user is told the ECU may hold a partial burn |
 | AutoTune / WUE / Trim | One real session each with a wideband | Proposed changes are sane; applied values burn correctly |
 | UI speed on real desktops | Run with `LT_PERF=1` on Linux X11 and Xwayland (HiDPI and 1080p), Windows and macOS; the MIT-SHM zero-copy path, the Win32 DIB-section path and the Cocoa partial redraw were only tested against a mock X server, wine and a compile check | Frame times match `tools/bench_ui.sh`; no stale areas after resize, scale change or moving between monitors |
