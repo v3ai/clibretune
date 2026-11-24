@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include "app.h"
 #include "app_ext.h"
 #include "feat.h"
@@ -1434,15 +1435,17 @@ static void canvas_acquire(lt_app *app, render_state *rs)
 }
 
 /* LT_PERF=1: per-second frame statistics on stderr (frame = draw + present: avg, 95th
- * percentile and max; draw and present averages; bytes handed to the backend per second); in
- * screenshot mode one summary line at the end. LT_PERF_SKIP=N leaves the first N frames out
- * (warm-up: caches, layout). */
+ * percentile and max; draw and present averages; bytes handed to the backend per second; the
+ * processor time of the frame, avg and 95th percentile, which a busy machine inflates far less
+ * than the wall clock); in screenshot mode one summary line at the end. LT_PERF_SKIP=N leaves
+ * the first N frames out (warm-up: caches, layout). */
 typedef struct perf_stats {
     int on, init, skip;
     double t0, draw_sum, draw_max, pres_sum;
     double bytes;
     long frames;
     double *ft;                 /* frame times of this period (for the percentile) */
+    double *ct;                 /* processor time of the same frames */
     long ft_cap;
 } perf_stats;
 static perf_stats g_perf;
@@ -1456,32 +1459,36 @@ static int perf_cmp(const void *a, const void *b)
 static void perf_report(perf_stats *p, double now)
 {
     if (p->frames > 0) {
-        double span = now - p->t0, sum = 0.0, p95, mx;
+        double span = now - p->t0, sum = 0.0, csum = 0.0, p95, mx;
         long i, k;
         if (span < 1.0) { span = 1.0; }
         qsort(p->ft, (size_t)p->frames, sizeof(double), perf_cmp);
-        for (i = 0; i < p->frames; i++) { sum += p->ft[i]; }
+        qsort(p->ct, (size_t)p->frames, sizeof(double), perf_cmp);
+        for (i = 0; i < p->frames; i++) { sum += p->ft[i]; csum += p->ct[i]; }
         k = (p->frames * 95 + 99) / 100 - 1;
         if (k < 0) { k = 0; }
         p95 = p->ft[k];
         mx = p->ft[p->frames - 1];
         fprintf(stderr, "perf: %ld frames, frame avg %.3f p95 %.3f max %.3f ms, draw avg %.3f ms "
-                "max %.3f ms, present avg %.3f ms, %.2f MB/s presented\n", p->frames,
-                sum / (double)p->frames, p95, mx, p->draw_sum / (double)p->frames, p->draw_max,
-                p->pres_sum / (double)p->frames, p->bytes / (span / 1000.0) / 1048576.0);
+                "max %.3f ms, present avg %.3f ms, %.2f MB/s presented, cpu avg %.3f p95 %.3f ms\n",
+                p->frames, sum / (double)p->frames, p95, mx, p->draw_sum / (double)p->frames,
+                p->draw_max, p->pres_sum / (double)p->frames,
+                p->bytes / (span / 1000.0) / 1048576.0, csum / (double)p->frames, p->ct[k]);
     }
     p->t0 = now; p->draw_sum = 0.0; p->draw_max = 0.0; p->pres_sum = 0.0;
     p->bytes = 0.0; p->frames = 0;
 }
 
-static void perf_add(perf_stats *p, double draw, double pres, double pixels)
+static void perf_add(perf_stats *p, double draw, double pres, double pixels, double cpu)
 {
     if (p->skip > 0) { p->skip--; return; }
     if (p->frames >= p->ft_cap) {
         p->ft_cap = p->ft_cap < 256 ? 256 : p->ft_cap * 2;
         p->ft = (double *)lt_realloc(p->ft, (size_t)p->ft_cap * sizeof(double));
+        p->ct = (double *)lt_realloc(p->ct, (size_t)p->ft_cap * sizeof(double));
     }
     p->ft[p->frames] = draw + pres;
+    p->ct[p->frames] = cpu;
     p->draw_sum += draw; p->pres_sum += pres; p->bytes += pixels * 4.0;
     if (draw > p->draw_max) { p->draw_max = draw; }
     p->frames++;
@@ -1493,6 +1500,7 @@ static void run_frame(lt_app *app)
     render_state *rs = render_get(app);
     int retained = rs->retained && !app->cell_mode;
     double t0, t1, t2, tw, pixels = 0.0;
+    clock_t c0 = clock();
     if (!p->init) {
         char *e = lt_plat_getenv("LT_PERF");
         p->init = 1;
@@ -1548,7 +1556,8 @@ static void run_frame(lt_app *app)
         rs->verified++;
     }
     if (p->on) {
-        perf_add(p, t1 - t0, t2 - t1 + tw, pixels);
+        perf_add(p, t1 - t0, t2 - t1 + tw, pixels,
+                 (double)(clock() - c0) * 1000.0 / (double)CLOCKS_PER_SEC);
         if (!app->headless && t2 - p->t0 >= 1000.0) { perf_report(p, t2); }
     }
 }
