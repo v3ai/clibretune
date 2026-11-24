@@ -271,7 +271,8 @@ lt_rect lt_ui_layout_body(const lt_ui *ui);
 /* how wide the cells placed in the current container so far reach, from its left edge (device
  * px): more than lt_ui_layout_width means fixed-width cells stick out on the right */
 int     lt_ui_layout_used_w(const lt_ui *ui);
-/* nested column: the next cell becomes a container with its own layout */
+/* nested column: the next cell becomes a container with its own layout. In a row of default
+ * height (lt_ui_layout_row height 0) the row grows to the tallest column at column_end. */
 void    lt_ui_layout_column_begin(lt_ui *ui);
 void    lt_ui_layout_column_end(lt_ui *ui);
 

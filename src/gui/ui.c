@@ -1230,7 +1230,23 @@ void lt_ui_layout_column_begin(lt_ui *ui)
     ui_layout_push(ui, r);
 }
 
-void lt_ui_layout_column_end(lt_ui *ui) { ui_layout_pop(ui); }
+void lt_ui_layout_column_end(lt_ui *ui)
+{
+    const ui_layout *C;
+    ui_layout *P;
+    int h;
+    if (ui->nlay < 2) { return; }
+    C = &ui->lay[ui->nlay - 1];
+    P = &ui->lay[ui->nlay - 2];
+    ui_layout_pop(ui);
+    if (P->spec_h != 0) { return; }
+    /* a row of default height grows to its tallest column, so that what follows starts below
+     * it and a group or scroll area around it measures it */
+    h = C->max_y - P->row_y;
+    if (h > P->row_h) { P->row_h = h; }
+    if (C->max_y > P->max_y) { P->max_y = C->max_y; }
+    if (C->max_x > P->max_x) { P->max_x = C->max_x; }
+}
 
 /* ------------------------------------------------------------------ */
 /* hit testing, interaction, focus                                     */

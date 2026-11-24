@@ -1543,6 +1543,36 @@ LT_TEST(test_layout)
     lt_ui_layout_column_end(H.ui);
     LT_CHECK(r0.w == 200 && r1.y == r0.y + 20 + sp - sp + lt_ui_theme(H.ui)->spacing_y);
     lt_ui_end(H.ui);
+    /* columns in a row of default height: the row grows to the tallest one, so the next row
+     * starts below it and a group around them measures all of it */
+    lt_ui_begin(H.ui, &H.g, 2.0);
+    {
+        int k;
+        lt_ui_group_begin(H.ui, "cols", 0);
+        lt_ui_layout_row(H.ui, 2, (w[0] = -1, w[1] = -1, w), 0);
+        lt_ui_layout_column_begin(H.ui);
+        lt_ui_layout_row(H.ui, 1, NULL, 20);
+        for (k = 0; k < 5; k++) { r0 = lt_ui_layout_next(H.ui); }     /* the tall one */
+        lt_ui_layout_column_end(H.ui);
+        lt_ui_layout_column_begin(H.ui);
+        lt_ui_layout_row(H.ui, 1, NULL, 20);
+        r1 = lt_ui_layout_next(H.ui);
+        lt_ui_layout_column_end(H.ui);
+        lt_ui_layout_row(H.ui, 1, NULL, 0);
+        rr = lt_ui_layout_next(H.ui);
+        LT_CHECK(rr.y >= r0.y + r0.h && r1.y < r0.y);
+        lt_ui_group_end(H.ui);
+    }
+    lt_ui_end(H.ui);
+    lt_ui_begin(H.ui, &H.g, 3.0);           /* the next frame the group is as tall as all that */
+    lt_ui_group_begin(H.ui, "cols", 0);
+    lt_ui_layout_row(H.ui, 1, NULL, 0);
+    (void)lt_ui_layout_next(H.ui);
+    lt_ui_group_end(H.ui);
+    lt_ui_layout_row(H.ui, 1, NULL, 0);
+    r3 = lt_ui_layout_next(H.ui);
+    LT_CHECK(r3.y > rr.y + rr.h);
+    lt_ui_end(H.ui);
     h_close();
 }
 
