@@ -51,12 +51,34 @@ int lt_ext_pred_online(lt_app *app)
     return app->conn == LT_APP_ONLINE || app->conn == LT_APP_DEMO;
 }
 
+/* feature menu entries that the shell's own menus cover: File > Connect opens the Connect ECU
+ * wizard whenever there is no saved port to connect to */
+static const struct { int menu; const char *label; } shell_covers[] = {
+    { LT_EXT_MENU_FILE, "Connect ECU &Wizard..." }
+};
+
+static void drop_covered(lt_app_ext *reg)
+{
+    size_t c;
+    int i, j;
+    for (c = 0; c < LT_COUNTOF(shell_covers); c++) {
+        for (i = 0; i < reg->n_items; i++) {
+            if (reg->items[i].menu != shell_covers[c].menu ||
+                strcmp(reg->items[i].label, shell_covers[c].label) != 0) { continue; }
+            for (j = i; j + 1 < reg->n_items; j++) { reg->items[j] = reg->items[j + 1]; }
+            reg->n_items--;
+            i--;
+        }
+    }
+}
+
 lt_app_ext *lt_ext_new(lt_app *app)
 {
     lt_app_ext *reg = (lt_app_ext *)lt_calloc(1, sizeof(*reg));
     reg->app = app;
     app->ext = reg;
     lt_app_features_register(reg);
+    drop_covered(reg);
     return reg;
 }
 

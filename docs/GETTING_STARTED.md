@@ -45,7 +45,12 @@ their USB id: STM32 boards (rusEFI, FOME, epicEFI) as 0483:5740, Arduino Mega (S
 2341:0042 / 2341:0010, Teensy, and the usual USB-serial adapters (CH340, FTDI, CP210x, PL2303). Each
 port is asked at its likeliest baud rate first, and the window stays responsive while it searches
 (**Cancel scan** stops it). Built-in serial ports (`/dev/ttyS*`, COM1) are skipped unless you tick
-**Show all ports** in **File > Connect ECU...**.
+**Show all ports** in **File > Connection Settings...**.
+
+Once a project is set up, **File > Connect** (Ctrl+Shift+C, or the plug button) connects with the
+port and baud rate saved in the project. A project without a saved port, or no project at all, gets
+the Connect ECU wizard instead, which finds the ECU first. **File > Connection Settings...** picks
+the port, baud rate, a TCP/WiFi address or the simulator by hand.
 
 When something is in the way LibreTune says what to do:
 

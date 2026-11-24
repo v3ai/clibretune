@@ -301,7 +301,10 @@ void lt_app_register_dialogs(lt_app *app);
 int  lt_app_dialog_open(lt_app *app, const char *ini_dialog_name);
 int  lt_app_datalog_open(lt_app *app, int viewer);       /* 0 logger, 1 viewer */
 int  lt_app_special_open(lt_app *app, const char *id);   /* och-status, tooth-logger, composite-logger, console */
-int  lt_app_connect_dialog(lt_app *app);
+int  lt_app_connect_dialog(lt_app *app);    /* File > Connection Settings... */
+/* File > Connect (app_shell.c): the project's saved port; with no project or no saved port the
+ * Connect ECU wizard (on the start screen a plugged-in ECU used before opens its project) */
+void lt_app_connect(lt_app *app);
 int  lt_app_settings_dialog(lt_app *app);
 int  lt_app_basemap_wizard(lt_app *app);
 int  lt_app_restore_points_dialog(lt_app *app);

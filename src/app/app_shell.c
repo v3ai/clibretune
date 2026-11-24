@@ -39,6 +39,44 @@ static lt_bool icontains(const char *hay, const char *needle)
 }
 
 /* ------------------------------------------------------------------ */
+/* File > Connect: the project's saved port when it has one, otherwise the Connect ECU wizard
+ * (finds the ECU, picks its definition, opens or creates its project). On the start screen it
+ * is the "Connect to my ECU" button: an ECU used before opens its project and connects. */
+static void sw_wizard(lt_app *app, const char *arg)
+{
+    LT_UNUSED(arg);
+    (void)lt_app_dialog_push(app, "connect_wizard", "", "Connect ECU");
+}
+
+static const char *saved_port(const lt_app *app)
+{
+    const char *p = app->has_project ? app->project.cfg.conn.port : NULL;
+    return p != NULL && p[0] != '\0' ? p : NULL;
+}
+
+void lt_app_connect(lt_app *app)
+{
+    const char *port = saved_port(app);
+    if (app->conn == LT_APP_ONLINE || app->conn == LT_APP_DEMO) { return; }
+    if (app->ini == NULL) { lt_feat_devices_connect(app); return; }
+    if (port != NULL) {
+        long baud = app->project.cfg.conn.baud_rate > 0 ? (long)app->project.cfg.conn.baud_rate
+                                                         : (long)app->settings.baud;
+        /* the saved port is gone or silent: the settings list the ports there are now */
+        if (lt_app_connect_serial(app, port, baud) != 0) { (void)lt_app_connect_dialog(app); }
+        return;
+    }
+    lt_feat_guard_switch(app, sw_wizard, "");      /* the wizard may open another project */
+}
+
+/* tooltip of the toolbar's connect button (English: lt_hk_tip translates) */
+static const char *connect_tip(const lt_app *app)
+{
+    if (saved_port(app) != NULL) { return "Connect (saved port)"; }
+    return app->ini == NULL ? "Connect to my ECU" : "Connect: find the ECU (Connect ECU wizard)";
+}
+
+/* ------------------------------------------------------------------ */
 /* toolbar                                                             */
 static void app_toolbar(lt_app *app)
 {
@@ -79,9 +117,9 @@ static void app_toolbar(lt_app *app)
     lt_ui_toolbar_separator(ui);
     if (lt_ui_icon_button(ui, LT_UI_LUCIDE(online ? LT_ICON_UNPLUG : LT_ICON_PLUG_ZAP),
                           online ? lt_hk_tip(app, "Disconnect", "conn.disconnect") :
-                              lt_hk_tip(app, "Connect to ECU", "conn.connect"),
-                          has ? (online ? LT_UI_BTN_SELECTED : 0) : LT_UI_BTN_DISABLED) && has) {
-        if (online) { lt_feat_guard_disconnect(app); } else { lt_app_connect_dialog(app); }
+                              lt_hk_tip(app, connect_tip(app), "conn.connect"),
+                          online ? LT_UI_BTN_SELECTED : 0)) {
+        if (online) { lt_feat_guard_disconnect(app); } else { lt_app_connect(app); }
     }
     if (lt_ui_icon_button(ui, LT_UI_LUCIDE(LT_ICON_LAYOUT_DASHBOARD), lt_hk_tip(app, "Dashboard", "view.dashboard"), has ? 0 : LT_UI_BTN_DISABLED) && has) {
         lt_app_dashboard_tab_open(app);
@@ -364,12 +402,17 @@ static void menu_file(lt_app *app)
         }
     }
     lt_ui_menu_separator(ui);
+    if (lt_ui_menu_item(ui, lt_tr("&Connect"), lt_hk_text(app, "conn.connect"), online ? LT_UI_MENU_DISABLED : 0)) {
+        lt_app_connect(app);
+    }
+    if (lt_ui_menu_item(ui, lt_tr("Connection &Settings..."), lt_hk_text(app, "conn.settings"), 0)) {
+        (void)lt_app_connect_dialog(app);
+    }
+    if (has && lt_ui_menu_item(ui, lt_tr("Disconnect"), lt_hk_text(app, "conn.disconnect"), online ? 0 : LT_UI_MENU_DISABLED)) {
+        lt_feat_guard_disconnect(app);
+    }
+    lt_ui_menu_separator(ui);
     if (has) {
-        if (lt_ui_menu_item(ui, lt_tr("Connect ECU..."), lt_hk_text(app, "conn.connect"), 0)) { lt_app_connect_dialog(app); }
-        if (lt_ui_menu_item(ui, lt_tr("Disconnect"), lt_hk_text(app, "conn.disconnect"), online ? 0 : LT_UI_MENU_DISABLED)) {
-            lt_feat_guard_disconnect(app);
-        }
-        lt_ui_menu_separator(ui);
         if (lt_ui_menu_item(ui, lt_tr("&Load Tune..."), lt_hk_text(app, "file.load_tune"), 0)) {
             lt_app_file_dialog(app, LT_APP_FD_LOAD_TUNE, LT_UI_FILE_OPEN, NULL, "",
                                "Tune files|*.msq;*.xml|All files|*");
@@ -461,7 +504,6 @@ static void menu_tools(lt_app *app)
         if (lt_ui_menu_item(ui, lt_tr("Composite Logger"), NULL, 0)) { lt_app_special_open(app, "composite-logger"); }
     }
     lt_ui_menu_separator(ui);
-    if (lt_ui_menu_item(ui, lt_tr("ECU &Connection..."), lt_hk_text(app, "conn.connect"), 0)) { lt_app_connect_dialog(app); }
     if (lt_ui_menu_item(ui, lt_tr("&Settings..."), lt_hk_text(app, "app.settings"), 0)) { lt_app_settings_dialog(app); }
     lt_ext_menu_draw(app, LT_EXT_MENU_TOOLS, 1);
 }
@@ -1002,6 +1044,8 @@ static void shortcuts(lt_app *app)
     if (lt_hk_pressed(app, "file.new")) { lt_feat_guard_switch(app, sw_new, ""); }
     if (lt_hk_pressed(app, "view.sidebar")) { app->settings.sidebar_on = !app->settings.sidebar_on; }
     lt_ext_shortcuts(app);
+    if (lt_hk_pressed(app, "conn.connect")) { lt_app_connect(app); }
+    if (lt_hk_pressed(app, "conn.settings")) { (void)lt_app_connect_dialog(app); }
     if (app->ini == NULL) { return; }
     if (lt_hk_pressed(app, "file.load_tune")) {
         lt_app_file_dialog(app, LT_APP_FD_LOAD_TUNE, LT_UI_FILE_OPEN, NULL, "", "Tune files|*.msq;*.xml|All files|*");
@@ -1011,7 +1055,6 @@ static void shortcuts(lt_app *app)
         lt_app_file_dialog(app, LT_APP_FD_SAVE_TUNE, LT_UI_FILE_SAVE, NULL, "tune.msq", "Tune files|*.msq;*.xml|All files|*");
     }
     if (lt_hk_pressed(app, "file.burn") && lt_app_can_burn(app)) { app->burn_open = 1; }
-    if (lt_hk_pressed(app, "conn.connect")) { lt_app_connect_dialog(app); }
     if (lt_hk_pressed(app, "conn.disconnect")) { lt_feat_guard_disconnect(app); }
     if (lt_hk_pressed(app, "view.dashboard")) { lt_app_dashboard_tab_open(app); }
     if (lt_hk_pressed(app, "tools.log")) { lt_app_log_toggle(app); }
