@@ -224,6 +224,7 @@ void ini_free_contents(lt_ini *ini)
     if (p->page_sizes) lt_free(p->page_sizes);
     ini_free_cmdlist(&p->page_read_commands);
     ini_free_cmdlist(&p->page_chunk_write_commands);
+    ini_free_cmdlist(&p->page_value_write_commands);
     ini_free_cmdlist(&p->burn_commands);
     ini_free_cmdlist(&p->crc32_check_commands);
     ini_free_cmdlist(&p->page_activate_commands);
@@ -618,6 +619,7 @@ static void post_substitution(lt_ini *ini)
         subst_blob(&p->query_command, &ini->pc_variables);
         subst_list(&p->page_read_commands, &ini->pc_variables);
         subst_list(&p->page_chunk_write_commands, &ini->pc_variables);
+        subst_list(&p->page_value_write_commands, &ini->pc_variables);
         subst_list(&p->burn_commands, &ini->pc_variables);
         subst_list(&p->crc32_check_commands, &ini->pc_variables);
         subst_list(&p->page_activate_commands, &ini->pc_variables);

@@ -634,8 +634,10 @@ int ini_proto_key(lt_ini *ini, const char *key, const char *value)
         ini_strv_free(parts, n);
     } else if (is(key, "pageReadCommand")) {
         cmdlist_set(&p->page_read_commands, value);
-    } else if (is(key, "pageValueWrite") || is(key, "pageChunkWrite")) {
+    } else if (is(key, "pageChunkWrite")) {
         cmdlist_set(&p->page_chunk_write_commands, value);
+    } else if (is(key, "pageValueWrite")) {
+        cmdlist_set(&p->page_value_write_commands, value);
     } else if (is(key, "burnCommand")) {
         cmdlist_set(&p->burn_commands, value);
     } else if (is(key, "crc32CheckCommand")) {
@@ -1056,6 +1058,7 @@ static void dispatch(lt_ini *ini, ini_ctx *cx, ini_pstate *st, const char *line,
             {
                 char *d = ini_dequote(value);
                 ini->proto.burst_get_command = ini_blob_from_str(d);
+                ini->proto.burst_declared = LT_TRUE;
                 lt_free(d);
             }
         } else if (is(key, "ochGetCommand") || is(key, "ochBlockSize")) {

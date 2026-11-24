@@ -179,7 +179,8 @@ typedef struct lt_ini_protocol {
     unsigned long *page_sizes;             /* bytes */
     size_t       n_page_sizes;
     lt_ini_cmdlist page_read_commands;     /* "R%2i%2o%2c" etc, escapes left as text */
-    lt_ini_cmdlist page_chunk_write_commands;
+    lt_ini_cmdlist page_chunk_write_commands;  /* pageChunkWrite (a range per command) */
+    lt_ini_cmdlist page_value_write_commands;  /* pageValueWrite (MegaSquirt-1: "W%o%v") */
     lt_ini_cmdlist burn_commands;
     lt_ini_cmdlist crc32_check_commands;
     lt_ini_cmdlist page_activate_commands;
@@ -187,6 +188,7 @@ typedef struct lt_ini_protocol {
     unsigned long och_block_size;          /* 0 unknown */
     unsigned long max_unused_runtime_range;
     lt_ini_blob  burst_get_command;        /* default "A" */
+    lt_bool      burst_declared;           /* [BurstMode] getCommand was given */
     char        *retrieve_config_error;
     unsigned long page_activation_delay;   /* ms, default 500 */
     unsigned long blocking_factor;         /* default 256 */

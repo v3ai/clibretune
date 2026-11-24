@@ -657,6 +657,31 @@ LT_TEST(protocol_keys)
     lt_ini_free(ini);
 }
 
+/* MegaSquirt-1 family: value and chunk writes are separate lists; a declared burst command */
+LT_TEST(ms1_write_commands)
+{
+    lt_ini *ini = load_n("[Constants]\nnPages = 2\npageSize = 125, 95\n"
+                         "pageValueWrite = \"W%o%v\", \"J%o%v\"\n"
+                         "pageChunkWrite = \"\", \"\"\n"
+                         "pageActivate = \"P\\001\", \" \"\n", (const char *)NULL);
+    LT_CHECK_INT(ini->proto.page_value_write_commands.n, 2);
+    LT_CHECK_STR(ini->proto.page_value_write_commands.v[0].p, "W%o%v");
+    LT_CHECK_STR(ini->proto.page_value_write_commands.v[1].p, "J%o%v");
+    LT_CHECK_INT(ini->proto.page_chunk_write_commands.n, 2);
+    LT_CHECK_INT(ini->proto.page_chunk_write_commands.v[0].n, 0);
+    LT_CHECK_STR(ini->proto.page_activate_commands.v[0].p, "P\\001");   /* escapes stay text */
+    LT_CHECK_STR(ini->proto.page_activate_commands.v[1].p, " ");
+    LT_CHECK(!ini->proto.burst_declared);
+    LT_CHECK_STR(ini->proto.burst_get_command.p, "A");
+    lt_ini_free(ini);
+    ini = load_n("[Constants]\npageChunkWrite = \"X%o%c%v\"\npageValueWrite = \"W%o%v\"\n"
+                 "[BurstMode]\ngetCommand = \"a\\x00\\x06\"\n", (const char *)NULL);
+    LT_CHECK_STR(ini->proto.page_chunk_write_commands.v[0].p, "X%o%c%v");   /* order free */
+    LT_CHECK_STR(ini->proto.page_value_write_commands.v[0].p, "W%o%v");
+    LT_CHECK(ini->proto.burst_declared);
+    lt_ini_free(ini);
+}
+
 LT_TEST(tscanid_substitution)
 {
     lt_ini *ini = load_n(
@@ -1803,6 +1828,7 @@ int main(void)
     LT_RUN(define_lists_long);
     LT_RUN(includes);
     LT_RUN(protocol_keys);
+    LT_RUN(ms1_write_commands);
     LT_RUN(tscanid_substitution);
     LT_RUN(constant_lines);
     LT_RUN(last_offset_overlays);
