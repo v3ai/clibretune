@@ -98,10 +98,6 @@ Found in the November 2026 usability pass; each needs a product decision rather 
 
 - **Settings search** (Ctrl+K) only matches names in the sidebar tree. Index the field captions of
   every dialog and offer "Dialog > Field" results that open the dialog on that field.
-- **Menu conditions** (subMenu / groupMenu / groupChildMenu) are read as visibility then enable;
-  dialog fields were switched to TunerStudio's enable-then-visibility order. Doing the same for
-  menus changes which rusEFI items are greyed versus hidden (test_ini_parse `menus` encodes the
-  current order).
 - **Theme contrast**: several generated themes have warning, muted or border colours under WCAG
   AA (light: warning text 2.7:1, status bar muted text 2.2:1; nord, dracula, solarized similar).
   Selected text was fixed; the palette itself comes from tools/gen_themes.py.

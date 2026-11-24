@@ -359,12 +359,12 @@ Test: curve `warmup_analyzer_curve, "Warmup Enrichment"` with two `lineLabel`s -
 Key lowercased. 
 - `menu = "Title"` (split_ini_line; first part, quotes stripped; BOTH name and title = that text, e.g. `&Setup` keeps ampersand) appends a menu. `menuDialog = main` and unknown keys ignored.
 - `subMenu = ...` / `groupChildMenu = ...`: parts=split_ini_line(value). Let first=parts[0].trim. Three syntaxes:
-  1. first contains `"` (space-separated target+label): target = text before first quote (trimmed); label = text between first quote and next quote (or rest); conditions: parts.len()>=3 -> (vis=cond(parts[1]), en=cond(parts[2])); ==2 -> (none, cond(parts[1])).
-  2. parts.len()>=2 (comma form `target, "Label", ...`): target=first (quotes stripped), label=strip quotes(parts[1]); len>=4 -> (vis=cond(parts[2]), en=cond(parts[3])); len==3 -> (none, cond(parts[2])).
+  1. first contains `"` (space-separated target+label): target = text before first quote (trimmed); label = text between first quote and next quote (or rest); conditions from parts[1..] (see below).
+  2. parts.len()>=2 (comma form `target, "Label", ...`): target=first (quotes stripped), label=strip quotes(parts[1]); conditions from parts[2..].
   3. only target: label = target, no conditions.
-  `cond(s)`: strip `{`/`}` chars at both ends, trim; if empty or "0" or "1" -> none. (So `subMenu = x, "L", 0, {cond}` -> enable cond only; `{ 1 }, { uiMode == 0 || uiMode == 1 }` -> en = `uiMode == 0 || uiMode == 1`, vis none.)
+  Conditions (TunerStudio order, as for dialog fields): a bare number first (not braced; an old index placeholder) is skipped; then the first part is the ENABLE condition, a second one the VISIBILITY condition. `cond(s)`: strip `{`/`}` chars at both ends, trim; if empty or "0" or "1" -> none. (So `subMenu = x, "L", 0, {cond}` -> enable cond only; `{ 1 }, { uiMode == 0 || uiMode == 1 }` -> en none, vis = `uiMode == 0 || uiMode == 1`: rusEFI hides expert menus in its basic UI mode.)
   Empty target -> skipped. Item kind: target `std_separator` -> Separator; startswith `std_` -> Std; target in help_topics -> Help; target in tables or curves (by name only at this time) -> Table; else Dialog. Appended to the last menu; for `groupChildMenu`, appended to the `items` of the menu's LAST item if that is a SubMenu (else falls to menu level).
-- `groupMenu = "Label"[, vis/en conds]` (split_ini_line; conds: len>=3 -> (vis=cond(p1), en=cond(p2)); len==2 -> (none, cond(p1))) -> SubMenu item with empty items on the last menu.
+- `groupMenu = "Label"[, {en}[, {vis}]]` (split_ini_line; conditions from parts[1..] as above) -> SubMenu item with empty items on the last menu.
 - `std_separator` key -> Separator item.
 Post-pass `post_process_menu_items` (recursively through SubMenus): any `Dialog` item whose target is a help topic -> Help; whose target is a table name OR a table map_name OR a curve name -> Table (only Dialog items are retyped; visible/enabled set true).
 ```c

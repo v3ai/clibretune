@@ -115,6 +115,23 @@ static void menu_add(lt_ini *ini, lt_ini_menu_item *it, int group_child)
     m->items[m->n_items++] = it;
 }
 
+/* Conditions of a menu entry from p[from..n): the first is the enable condition (greyed when
+ * false), a second one the visibility condition, as the TunerStudio ECU definition reference
+ * describes for menu, subMenu, groupMenu and groupChildMenu ("add 1 expression for enable /
+ * disable and 2 if visible / invisible is desired"; the enable one stays as a placeholder).
+ * rusEFI relies on it: `{ 1 }, { uiMode == 0 || uiMode == 1 }` hides expert menus in the basic
+ * UI mode, `{isInjectionEnabled == 1}, { uiMode ... }` greys and hides. A bare number before
+ * the conditions (`"VE", 0, {cond}`, an old MegaTune index) is a placeholder and skipped. */
+static void menu_conds(char **p, size_t n, size_t from, char **en, char **vis)
+{
+    double d;
+    *en = NULL;
+    *vis = NULL;
+    if (from < n && !ini_is_braced(p[from]) && ini_parse_f64(p[from], &d)) from++;
+    if (from < n) *en = ini_cond(p[from]);
+    if (from + 1 < n) *vis = ini_cond(p[from + 1]);
+}
+
 static void handle_menu(lt_ini *ini, const char *lk, const char *value)
 {
     char **p;
@@ -137,21 +154,11 @@ static void handle_menu(lt_ini *ini, const char *lk, const char *value)
             target = lt_strndup(p[0], (size_t)(q1 - p[0]));
             lt_str_trim(target);
             label = q2 ? lt_strndup(q1 + 1, (size_t)(q2 - q1 - 1)) : ini_dequote(q1 + 1);
-            if (n >= 3) {
-                vis = ini_cond(p[1]);
-                en = ini_cond(p[2]);
-            } else if (n == 2) {
-                en = ini_cond(p[1]);
-            }
+            menu_conds(p, n, 1, &en, &vis);
         } else if (n >= 2) {
             target = ini_dequote(p[0]);
             label = ini_dequote(p[1]);
-            if (n >= 4) {
-                vis = ini_cond(p[2]);
-                en = ini_cond(p[3]);
-            } else if (n == 3) {
-                en = ini_cond(p[2]);
-            }
+            menu_conds(p, n, 2, &en, &vis);
         } else {
             target = ini_dequote(p[0]);
             label = lt_strdup(target);
@@ -169,12 +176,7 @@ static void handle_menu(lt_ini *ini, const char *lk, const char *value)
     } else if (strcmp(lk, "groupmenu") == 0) {
         char *vis = NULL, *en = NULL;
         n = ini_split(value, &p);
-        if (n >= 3) {
-            vis = ini_cond(p[1]);
-            en = ini_cond(p[2]);
-        } else if (n == 2) {
-            en = ini_cond(p[1]);
-        }
+        menu_conds(p, n, 1, &en, &vis);
         {
             char *label = ini_dequote(p[0]);
             menu_add(ini, item_new(LT_MENU_SUBMENU, label, NULL, vis, en), 0);
