@@ -5,6 +5,7 @@
 #include "sim.h"
 
 #include <string.h>
+#include "sim_cmd.h"
 #include "sim_logger.h"
 
 #define SIM_FRAME_TIMEOUT_MS 400.0
@@ -30,6 +31,7 @@ struct lt_ecusim {
     lt_u32 *page_ids;          /* NULL when no identifiers declared */
     size_t n_page_ids;
     lt_bool no_page_arg;       /* page commands carry no page ("R%2o%2c": FOME, one page) */
+    lt_simcmds *cmds;          /* the INI's commands, compiled (sim_cmd.h) */
     char *sig, *ver;
     lt_u8 query_cmd;
     lt_bool cmd_le, enveloped;
@@ -264,9 +266,9 @@ lt_ecusim *lt_ecusim_new(const lt_ini *ini)
             lt_free(s->sig);
             s->sig = lt_strdup(ini->signature);
         }
-        if (ini->version_info && ini->version_info[0]) {
-            lt_free(s->ver);
-            s->ver = lt_strdup(ini->version_info);
+        if (ini->signature && ini->signature[0]) {
+            lt_free(s->ver);       /* versionInfo is the command; its reply is the title text */
+            s->ver = lt_strdup(ini->signature);
         }
         if (ini->proto.query_command.n > 0) {
             s->query_cmd = (lt_u8)ini->proto.query_command.p[0];
@@ -297,19 +299,12 @@ lt_ecusim *lt_ecusim_new(const lt_ini *ini)
                 }
             }
         }
+        s->cmds = lt_simcmds_new(ini, np);
         if (ini->proto.n_page_identifiers > 0) {
             s->n_page_ids = ini->proto.n_page_identifiers;
             s->page_ids = (lt_u32 *)lt_calloc(s->n_page_ids, sizeof(lt_u32));
             for (i = 0; i < s->n_page_ids; i++) {
-                const lt_ini_blob *b = &ini->proto.page_identifiers[i];
-
-                if (b->n == 0) {
-                    s->page_ids[i] = (lt_u32)i;
-                } else if (b->n == 1) {
-                    s->page_ids[i] = (lt_u8)b->p[0];
-                } else {
-                    s->page_ids[i] = (lt_u32)((lt_u8)b->p[0]) | ((lt_u32)((lt_u8)b->p[1]) << 8);
-                }
+                s->page_ids[i] = lt_simcmds_page_id(ini, i);
             }
         }
         {
@@ -396,6 +391,7 @@ void lt_ecusim_free(lt_ecusim *s)
     }
     lt_free(s->pages);
     lt_free(s->page_ids);
+    lt_simcmds_free(s->cmds);
     lt_free(s->sig);
     lt_free(s->ver);
     lt_buf_free(&s->cmd);
@@ -479,6 +475,116 @@ static void put_window(lt_ecusim *s, lt_buf *out, size_t off, size_t len)
     }
 }
 
+/* realtime data: the whole block, or the window a command asks for */
+static void put_realtime(lt_ecusim *s, lt_buf *out, lt_bool env, lt_bool window, size_t off,
+                         size_t cnt)
+{
+    lt_sim_snapshot sn;
+
+    on_och_request(s);
+    auto_tick(s);
+    put_status(out, env, LT_RC_OK);
+    if (window) {
+        put_window(s, out, off, cnt);
+    } else if (s->och.len == 0) {
+        lt_simengine_snapshot(s->eng, &sn);
+        lt_buf_putc(out, sn.secl & 0xFF);
+    } else {
+        lt_buf_append(out, s->och.data, s->och.len);
+    }
+}
+
+static void put_crc(lt_ecusim *s, lt_buf *out, lt_bool env, int pg, size_t off, size_t cnt)
+{
+    lt_buf tmp;
+    lt_u32 crc;
+
+    lt_buf_init(&tmp);
+    mem_read(s, pg, off, cnt, &tmp);
+    crc = lt_proto_crc32(tmp.data, tmp.len);
+    lt_buf_free(&tmp);
+    put_status(out, env, LT_RC_OK);
+    lt_buf_putc(out, (int)((crc >> 24) & 0xFF));
+    lt_buf_putc(out, (int)((crc >> 16) & 0xFF));
+    lt_buf_putc(out, (int)((crc >> 8) & 0xFF));
+    lt_buf_putc(out, (int)(crc & 0xFF));
+}
+
+static void do_write(lt_ecusim *s, lt_buf *out, lt_bool env, int pg, size_t off,
+                     const lt_u8 *data, size_t n, lt_bool ok)
+{
+    int wrote = ok && pg >= 0 && mem_write(s, pg, off, data, n) == 0;
+
+    if (s->fault_write > 0 && --s->fault_write == 0) {
+        s->dropped = LT_TRUE;          /* written, but the link is gone before the ack */
+    }
+    if (env) {
+        lt_buf_putc(out, wrote ? LT_RC_OK : LT_RC_OUT_OF_RANGE);
+    }
+}
+
+static void do_burn(lt_ecusim *s, lt_buf *out, lt_bool env, int pg)
+{
+    if (pg >= 0) {
+        size_t len = s->pages[pg].size;
+        if (s->fault_burn > 0 && --s->fault_burn == 0) {
+            if (s->fault_torn) len /= 2;   /* power/link lost while the flash was written */
+            s->dropped = LT_TRUE;
+        }
+        memcpy(s->pages[pg].flash, s->pages[pg].ram, len);
+    }
+    if (env) {
+        lt_buf_putc(out, pg >= 0 ? LT_RC_OK_BURN : LT_RC_OUT_OF_RANGE);
+    }
+}
+
+/* a command the INI declares (sim_cmd.h) */
+static void exec_declared(lt_ecusim *s, const lt_simcmd_match *m, lt_bool env, lt_buf *out)
+{
+    int pg = m->page >= 0 && (size_t)m->page < s->n_pages ? m->page : -1;
+    size_t whole = pg >= 0 ? s->pages[pg].size : 0;
+
+    switch (m->kind) {
+    case LT_SIMCMD_QUERY:
+        put_status(out, env, LT_RC_OK);
+        lt_buf_puts(out, s->sig);
+        return;
+    case LT_SIMCMD_VERSION:
+        put_status(out, env, LT_RC_OK);
+        lt_buf_puts(out, s->ver);
+        return;
+    case LT_SIMCMD_OCH:
+    case LT_SIMCMD_BURST:
+        put_realtime(s, out, env, m->has_cnt, m->off, m->cnt);
+        return;
+    case LT_SIMCMD_READ:
+        if (pg < 0) {
+            put_status(out, env, LT_RC_OUT_OF_RANGE);
+            return;
+        }
+        put_status(out, env, LT_RC_OK);
+        mem_read(s, pg, m->off, m->has_cnt ? m->cnt : whole, out);
+        return;
+    case LT_SIMCMD_WRITE:
+        do_write(s, out, env, pg, m->off, m->data, m->ndata, LT_TRUE);
+        return;
+    case LT_SIMCMD_BURN:
+        do_burn(s, out, env, pg);
+        return;
+    case LT_SIMCMD_CRC:
+        if (pg < 0) {
+            put_status(out, env, LT_RC_OUT_OF_RANGE);
+            return;
+        }
+        /* "k%2i%2o%2c" names the range; MegaSquirt's "k%2i\x00\x00\x00\x04" means the page */
+        put_crc(s, out, env, pg, m->has_cnt ? m->off : 0, m->has_cnt ? m->cnt : whole);
+        return;
+    default:
+        put_status(out, env, LT_RC_UNKNOWN_CMD);
+        return;
+    }
+}
+
 static void respond(lt_ecusim *s, const lt_u8 *cmd, size_t n, lt_bool env, lt_buf *out)
 {
     lt_u8 c = cmd[0];
@@ -486,7 +592,12 @@ static void respond(lt_ecusim *s, const lt_u8 *cmd, size_t n, lt_bool env, lt_bu
     size_t off, cnt, at;
     lt_sim_snapshot sn;
     lt_buf lg_data;
+    lt_simcmd_match m;
 
+    if (lt_simcmds_match(s->cmds, cmd, n, LT_TRUE, &m) > 0) {
+        exec_declared(s, &m, env, out);
+        return;
+    }
     if (c == s->query_cmd) {
         put_status(out, env, LT_RC_OK);
         lt_buf_puts(out, s->sig);
@@ -502,15 +613,7 @@ static void respond(lt_ecusim *s, const lt_u8 *cmd, size_t n, lt_bool env, lt_bu
         lt_buf_puts(out, s->ver);
         return;
     case 'A':
-        on_och_request(s);
-        auto_tick(s);
-        put_status(out, env, LT_RC_OK);
-        if (s->och.len == 0) {
-            lt_simengine_snapshot(s->eng, &sn);
-            lt_buf_putc(out, sn.secl & 0xFF);
-        } else {
-            lt_buf_append(out, s->och.data, s->och.len);
-        }
+        put_realtime(s, out, env, LT_FALSE, 0, 0);
         return;
     case 'p':
     case 'R':
@@ -523,62 +626,27 @@ static void respond(lt_ecusim *s, const lt_u8 *cmd, size_t n, lt_bool env, lt_bu
         off = rd16(s, cmd + at);
         cnt = rd16(s, cmd + at + 2);
         if (c == 'k') {
-            lt_buf tmp;
-            lt_u32 crc;
-
-            lt_buf_init(&tmp);
-            mem_read(s, pg, off, cnt, &tmp);
-            crc = lt_proto_crc32(tmp.data, tmp.len);
-            lt_buf_free(&tmp);
-            put_status(out, env, LT_RC_OK);
-            lt_buf_putc(out, (int)((crc >> 24) & 0xFF));
-            lt_buf_putc(out, (int)((crc >> 16) & 0xFF));
-            lt_buf_putc(out, (int)((crc >> 8) & 0xFF));
-            lt_buf_putc(out, (int)(crc & 0xFF));
+            put_crc(s, out, env, pg, off, cnt);
         } else {
             put_status(out, env, LT_RC_OK);
             mem_read(s, pg, off, cnt, out);
         }
         return;
     case 'M':
-    case 'C': {
-        int wrote = 0;
-
+    case 'C':
         pg = cmd_page(s, cmd, n, &at);
+        off = cnt = 0;
         if (pg >= 0 && n >= at + 4) {
             off = rd16(s, cmd + at);
             cnt = rd16(s, cmd + at + 2);
-            if (n >= at + 4 + cnt) {
-                wrote = mem_write(s, pg, off, cmd + at + 4, cnt) == 0;
-            }
         }
-        if (s->fault_write > 0 && --s->fault_write == 0) {
-            s->dropped = LT_TRUE;          /* written, but the link is gone before the ack */
-        }
-        if (env) {
-            lt_buf_putc(out, wrote ? LT_RC_OK : LT_RC_OUT_OF_RANGE);
-        }
+        do_write(s, out, env, pg, off, cmd + LT_MIN(n, at + 4), cnt,
+                 pg >= 0 && n >= at + 4 + cnt);
         return;
-    }
     case 'b':
-    case 'B': {
-        int ok = 0;
-
-        pg = cmd_page(s, cmd, n, &at);
-        if (pg >= 0) {
-            size_t len = s->pages[pg].size;
-            if (s->fault_burn > 0 && --s->fault_burn == 0) {
-                if (s->fault_torn) len /= 2;   /* power/link lost while the flash was written */
-                s->dropped = LT_TRUE;
-            }
-            memcpy(s->pages[pg].flash, s->pages[pg].ram, len);
-            ok = 1;
-        }
-        if (env) {
-            lt_buf_putc(out, ok ? LT_RC_OK_BURN : LT_RC_OUT_OF_RANGE);
-        }
+    case 'B':
+        do_burn(s, out, env, cmd_page(s, cmd, n, &at));
         return;
-    }
     case 'O':
     case 'r':
         put_status(out, env, LT_RC_OK);
@@ -746,10 +814,20 @@ static void process(lt_ecusim *s)
                     used = s->order;
                 }
             }
-        } else if (is_cmd_byte(b[0])) {
-            total = plain_command_len(s, b, n);
-            if (total && n >= total) {
+        } else {
+            /* a command the INI declares takes as many bytes as its template; others (no
+             * INI, console, loggers) by their first byte */
+            lt_simcmd_match m;
+            int r = lt_simcmds_match(s->cmds, b, n, LT_FALSE, &m);
+
+            if (r > 0) {
+                total = m.len;
                 kind = TF_PLAIN;
+            } else if (r == 0 && is_cmd_byte(b[0])) {
+                total = plain_command_len(s, b, n);
+                if (total && n >= total) {
+                    kind = TF_PLAIN;
+                }
             }
         }
         if (kind == TF_NEED) {
