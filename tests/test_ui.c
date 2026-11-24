@@ -2209,6 +2209,45 @@ static void scene_long(lt_ui *ui)
     R[1] = lt_ui_last_rect(ui);
 }
 
+/* lt_ui_grid_scroll_to: the cells and the visible range follow at once, clamped to the content */
+static int g_scroll_x, g_scroll_y, g_scroll_got[2], g_scroll_r0, g_scroll_c0;
+static lt_rect g_scroll_cell;
+static void scene_grid_scroll(lt_ui *ui)
+{
+    int w = 300;
+    lt_ui_layout_row(ui, 1, &w, 24 + 5 * 20);
+    if (lt_ui_grid_begin(ui, "gs", 30, 20, 40, 20, 30, 24)) {
+        int r1, c1;
+        lt_ui_grid_scroll_to(ui, g_scroll_x, g_scroll_y);
+        lt_ui_scroll_get(ui, &g_scroll_got[0], &g_scroll_got[1]);
+        lt_ui_grid_visible(ui, &g_scroll_r0, &r1, &g_scroll_c0, &c1);
+        g_scroll_cell = lt_ui_grid_cell_rect(ui, 10, 4);
+        (void)lt_ui_grid_end(ui);
+    }
+}
+
+LT_TEST(grid_scroll_to)
+{
+    lt_rect a;
+    reset_state();
+    h_open(400, 300, 0);
+    H.scene = scene_grid_scroll;
+    g_scroll_x = 0; g_scroll_y = 0;
+    frames(2);
+    a = g_scroll_cell;
+    g_scroll_x = 80; g_scroll_y = 200;
+    frame();
+    LT_CHECK(g_scroll_got[0] == 80 && g_scroll_got[1] == 200);
+    LT_CHECK(g_scroll_r0 == 10 && g_scroll_c0 == 2);
+    LT_CHECK(g_scroll_cell.x == a.x - 80 && g_scroll_cell.y == a.y - 200);
+    frame();                                        /* kept by the scroll area */
+    LT_CHECK(g_scroll_got[0] == 80 && g_scroll_got[1] == 200);
+    g_scroll_x = 100000; g_scroll_y = -5;           /* clamped */
+    frame();
+    LT_CHECK(g_scroll_got[0] > 0 && g_scroll_got[0] <= 20 * 40 && g_scroll_got[1] == 0);
+    h_close();
+}
+
 static void scene_grid_zero(lt_ui *ui)
 {
     int w = 200;
@@ -2478,6 +2517,7 @@ int main(void)
     LT_RUN(test_scale_image_wrap);
     LT_RUN(test_fractional_scale);
     LT_RUN(test_review_fixes);
+    LT_RUN(grid_scroll_to);
     LT_RUN(test_fuzz_gallery);
     LT_RUN(test_backend_select);
     LT_RUN(test_widgets_in_all_themes);

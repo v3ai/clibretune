@@ -488,6 +488,10 @@ int     lt_ui_grid_sel_bounds(const lt_ui *ui, int *r0, int *c0, int *r1, int *c
 void    lt_ui_grid_select(lt_ui *ui, int r0, int c0, int r1, int c1); /* replaces selection */
 void    lt_ui_grid_set_cursor(lt_ui *ui, int r, int c);
 lt_bool lt_ui_grid_hover(const lt_ui *ui, int *r, int *c);
+/* scroll offset of the cells in px, clamped (between begin/end, before the cells are drawn:
+ * lt_ui_grid_visible and the cell rects follow); lt_ui_scroll_get reads it back. Lines up two
+ * grids that show the same rows. */
+void    lt_ui_grid_scroll_to(lt_ui *ui, int x, int y);
 /* inline editing */
 lt_bool lt_ui_grid_editing(const lt_ui *ui, int *r, int *c);
 const char *lt_ui_grid_edit_text(const lt_ui *ui);

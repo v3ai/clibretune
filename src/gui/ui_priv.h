@@ -139,6 +139,7 @@ typedef struct ui_grid {
     int serial, last_serial;
     int drag;
     int edit, edit_r, edit_c, edit_wants;
+    int edit_pend;              /* double click committed an edit: open the next one next frame */
     char edit_buf[64];
     int hov_r, hov_c;
     int flags_out;

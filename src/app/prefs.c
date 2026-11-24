@@ -23,6 +23,7 @@ void lt_prefs_defaults(lt_prefs *p)
     p->y_bottom = 1;
     p->trail_fade_sec = 8;
     p->trail_on = 1;
+    p->lambda_pane = 1;
     for (i = 0; i < LT_PREFS_HEAT_CTX; i++) {
         lt_strlcpy(p->heat_scheme[i], "tunerstudio", sizeof(p->heat_scheme[i]));
     }
@@ -134,6 +135,7 @@ void lt_prefs_from_props(lt_prefs *p, const lt_props *pr)
     if (!lt_prefs_parse_color(p->trail_color, NULL)) { p->trail_color[0] = '\0'; }
     get_int(pr, "trail_fade_sec", &p->trail_fade_sec, 0, 600);
     get_int(pr, "trail_on", &p->trail_on, 0, 1);
+    get_int(pr, "lambda_pane", &p->lambda_pane, 0, 1);
     for (i = 0; i < LT_PREFS_HEAT_CTX; i++) {
         lt_snprintf(key, sizeof(key), "heat%d", i);
         get_str(pr, key, p->heat_scheme[i], sizeof(p->heat_scheme[i]));
@@ -184,6 +186,7 @@ void lt_prefs_to_props(const lt_prefs *p, lt_props *pr)
     lt_props_set(pr, "trail_color", p->trail_color);
     lt_snprintf(num, sizeof(num), "%d", p->trail_fade_sec); lt_props_set(pr, "trail_fade_sec", num);
     lt_snprintf(num, sizeof(num), "%d", p->trail_on); lt_props_set(pr, "trail_on", num);
+    lt_snprintf(num, sizeof(num), "%d", p->lambda_pane); lt_props_set(pr, "lambda_pane", num);
     for (i = 0; i < LT_PREFS_HEAT_CTX; i++) {
         lt_snprintf(key, sizeof(key), "heat%d", i);
         lt_props_set(pr, key, p->heat_scheme[i]);

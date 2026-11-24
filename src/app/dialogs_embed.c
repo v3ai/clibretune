@@ -7,6 +7,7 @@
  */
 #include <string.h>
 #include <math.h>
+#include <stdlib.h>
 #include "dialogs_embed.h"
 #include "tables_priv.h"
 #include "view_kit.h"
@@ -23,7 +24,7 @@ typedef struct emb {
     int xdig, ydig, zdig;           /* digits: X axis, Y axis (tables), values */
     double lo, hi, xlo, xhi;        /* value / X limits (display units); hi <= lo = none */
     double px0, px1, py0, py1;      /* curve plot ranges */
-    int sel, drag, drag_moved, prev_down, hot, sync;
+    int sel, drag, drag_moved, prev_down, hot, sync, drag_y0;
     double live_x, live_y;
     int live_ok;
     unsigned char *gsel; size_t gsel_cap;   /* curve: per point bit0 X / bit1 Y; table: per cell */
@@ -349,18 +350,37 @@ static void plot_cb(lt_gfx *g, lt_rect r, void *user)
     }
 }
 
+/* write new values (a scratch copy of z, or of x when xaxis) through the shared path: only what
+ * changes, limited and rounded, one undo step; nothing changed = no undo, nothing modified */
+static void emb_apply(lt_app *app, emb *m, int xaxis, const double *nv)
+{
+    lt_tabs_lim lim;
+    if (xaxis) { lt_tabs_lim_init(&lim, m->xlo, m->xhi, m->xdig); }
+    else { lt_tabs_lim_init(&lim, m->lo, m->hi, m->zdig); }
+    if (lt_tabs_apply(&m->v, xaxis ? LT_TABS_X : LT_TABS_Z, nv, &lim) > 0) { emb_commit(app, m); }
+    lt_tabs_lim_report(app, &lim);
+}
+
+/* scratch copy of the values (z, or x when xaxis); free with lt_free */
+static double *emb_copy(const emb *m, int xaxis)
+{
+    size_t n = xaxis ? m->v.cols : m->v.rows * m->v.cols;
+    double *t = (double *)lt_calloc(n + 1, sizeof(double));
+    memcpy(t, xaxis ? m->v.x : m->v.z, n * sizeof(double));
+    return t;
+}
+
 static void crv_adjust(lt_app *app, emb *m, double d)
 {
     size_t i;
     int any = 0;
-    lt_tblview_push_undo(&m->v);
+    double *nz = emb_copy(m, 0);
     for (i = 0; i < m->v.cols; i++) {
-        if (m->gsel[i] & 2) { lt_tblview_set(&m->v, 0, i, clampz(m, m->v.z[i] + d)); any = 1; }
+        if (m->gsel[i] & 2) { nz[i] += d; any = 1; }
     }
-    if (!any && m->sel >= 0 && (size_t)m->sel < m->v.cols) {
-        lt_tblview_set(&m->v, 0, (size_t)m->sel, clampz(m, m->v.z[m->sel] + d));
-    }
-    emb_commit(app, m);
+    if (!any && m->sel >= 0 && (size_t)m->sel < m->v.cols) { nz[m->sel] += d; }
+    emb_apply(app, m, 0, nz);
+    lt_free(nz);
 }
 
 int lt_emb_curve(lt_app *app, lt_embeds *e, const lt_ini_curve *c, int enabled)
@@ -415,16 +435,19 @@ int lt_emb_curve(lt_app *app, lt_embeds *e, const lt_ini_curve *c, int enabled)
         }
         if (down && !m->prev_down && m->hot >= 0) {
             m->drag = m->hot; m->drag_moved = 0; m->sel = m->hot; m->sync = 1;
-            lt_tblview_push_undo(&m->v);
+            m->drag_y0 = mp.y;
         }
     }
     if (m->drag >= 0) {
         if (!down) {
             if (m->drag_moved) { emb_commit(app, m); }
             m->drag = -1;
+        } else if (!m->drag_moved && abs(mp.y - m->drag_y0) <= (cell ? 0 : lt_ui_px(ui, 2))) {
+            m->hot = m->drag;                   /* a click selects the point: no change, no undo */
         } else {
             double y0 = sy_of(m, m->py0), y1 = sy_of(m, m->py1);
             double ny = m->py0 + (y0 - mp.y) / (y0 - y1) * (m->py1 - m->py0);
+            if (!m->drag_moved) { lt_tblview_push_undo(&m->v); }
             lt_tblview_set(&m->v, 0, (size_t)m->drag, clampz(m, ny));
             m->drag_moved = 1;
             m->hot = m->drag;
@@ -496,13 +519,19 @@ int lt_emb_curve(lt_app *app, lt_embeds *e, const lt_ini_curve *c, int enabled)
                 /* the edited cell, not the cursor: Tab or a click-away has already moved that */
                 (void)lt_ui_grid_editing(ui, &er, &ec);
                 if (lt_parse_double(lt_ui_grid_edit_text(ui), &v) && er >= 0 && ec >= 0 && ec < (int)m->v.cols) {
-                    lt_tblview_push_undo(&m->v);
+                    double *nv = emb_copy(m, er == 0);
                     if (er == 0) {
-                        if (m->xhi > m->xlo) { v = v < m->xlo ? m->xlo : (v > m->xhi ? m->xhi : v); }
-                        v = lt_tbl_clamp_between(m->v.x, m->v.cols, (size_t)ec, v);
-                        lt_tblview_set_x(&m->v, (size_t)ec, lt_tabs_round(v, m->xdig));
-                    } else { lt_tblview_set(&m->v, 0, (size_t)ec, clampz(m, v)); }
-                    emb_commit(app, m);
+                        lt_tabs_lim xl;
+                        double inlim;
+                        lt_tabs_lim_init(&xl, m->xlo, m->xhi, m->xdig);
+                        inlim = lt_tabs_lim_fix(&xl, v);
+                        v = lt_tbl_clamp_between(m->v.x, m->v.cols, (size_t)ec, inlim);
+                        if (v != inlim) { lt_app_toast(app, 2, "The X axis must increase: kept at %g", v); }
+                        else { lt_tabs_lim_report(app, &xl); }
+                    }
+                    nv[ec] = v;
+                    emb_apply(app, m, er == 0, nv);
+                    lt_free(nv);
                 } else { lt_app_toast(app, 2, "Not a number"); }
             }
         }
@@ -518,9 +547,10 @@ int lt_emb_curve(lt_app *app, lt_embeds *e, const lt_ini_curve *c, int enabled)
     }
     hit = emb_toolbar(app, info, c->help, enabled, &val, 1, m->lo, m->hi, m->zdig, &vch);
     if (vch && enabled) {
-        lt_tblview_push_undo(&m->v);
-        lt_tblview_set(&m->v, 0, (size_t)m->sel, clampz(m, val));
-        emb_commit(app, m);
+        double *nz = emb_copy(m, 0);
+        nz[m->sel] = val;
+        emb_apply(app, m, 0, nz);
+        lt_free(nz);
     }
     switch (hit) {
     case TB_MINUS: crv_adjust(app, m, -step_of(m->zdig)); break;
@@ -540,11 +570,12 @@ int lt_emb_curve(lt_app *app, lt_embeds *e, const lt_ini_curve *c, int enabled)
 static void tbl_adjust(lt_app *app, emb *m, double d, int set, double val)
 {
     size_t k, n = m->v.rows * m->v.cols;
-    lt_tblview_push_undo(&m->v);
+    double *nz = emb_copy(m, 0);
     for (k = 0; k < n; k++) {
-        if (m->gsel[k]) { lt_tblview_set(&m->v, k / m->v.cols, k % m->v.cols, clampz(m, set ? val : m->v.z[k] + d)); }
+        if (m->gsel[k]) { nz[k] = set ? val : nz[k] + d; }
     }
-    emb_commit(app, m);
+    emb_apply(app, m, 0, nz);
+    lt_free(nz);
 }
 
 int lt_emb_table(lt_app *app, lt_embeds *e, const lt_ini_table *t, int enabled)

@@ -74,6 +74,50 @@ REWRITES = [
      "3. **Undo** (Ctrl+Z) writes the table back as it was before the last Send to ECU\n"
      "4. **Burn** to make changes permanent in ECU flash; File > Save Tune keeps them in the"
      " project\n"),
+    ("features/table-editing/shortcuts", r"\| Escape \| Clear selection \|\n",
+     "| Escape | Cancel the value being typed; otherwise keep only the cursor cell selected |\n"),
+    ("features/table-editing/shortcuts", r"\| Enter \| Edit selected cell \|\n.*?(?=\n## Clipboard)",
+     "| 0-9 or . | Start typing a value for the selected cells |\n"
+     "| Enter or F2 | Edit the cell, starting from its value |\n"
+     "| Delete or Backspace | Clear the selected cells |\n"
+     "| + or > | Increase value by step |\n"
+     "| - or < | Decrease value by step |\n"
+     "| q / w | Increase / decrease by a small step |\n"
+     "| Ctrl + (+/-) | Increase/decrease by the step times the multiplier |\n"
+     "| = | Set equal (average) |\n"
+     "| * | Scale by factor |\n"
+     "| / | Interpolate |\n"
+     "| S | Smooth selection |\n\n"
+     "While a value is being typed, `-` is part of the number. Without an edit open, `-`"
+     " steps the selection down (like TunerStudio): to type a negative value press Enter or F2"
+     " first, then type it (for example `-5`).\n"),
+    ("features/table-editing/2d-tables", r"### Single Cell Edit\n1\. Select a cell\n2\. Type a number\n"
+     r"3\. Press Enter\n",
+     "### Single Cell Edit\n1. Select a cell\n2. Type a number\n3. Press Enter (or click another"
+     " cell)\n\nEsc while typing cancels that edit and the cell keeps its value. Esc otherwise"
+     " only reduces the selection to the cursor cell: it never changes values. To go back to the"
+     " values the table had when it was opened use **Revert** in the toolbar (whole table) or"
+     " **Reset to original** in the right-click menu (selected cells).\n\n"
+     "A typed, pasted or calculated value outside the limits of the ECU definition is set to"
+     " the nearest allowed value and a message says so (\"Limited to 255 (allowed 0 - 255)\","
+     " or how many values were limited). An operation that changes nothing (for example"
+     " pasting the values a cell already has) adds no undo step and leaves the tune"
+     " unmodified.\n"),
+    ("features/table-editing/2d-tables", r"\| `S` \| Smooth \| Gaussian blur \|\n",
+     "| `S` | Smooth | Gaussian blur |\n\n"
+     "Every operation is also a toolbar button. When the window is too narrow for the whole"
+     " toolbar, the buttons that do not fit move into the **\u00bb** menu at its right end;"
+     " **Burn** and **3D** always stay on the bar.\n\n"
+     "A Target AFR table has a read-only **lambda preview** beside it: the same cells as lambda"
+     " for the fuel you pick (or as AFR when the table is shown in lambda), with live readouts."
+     " It scrolls with the table and shows its selection. Its **\u00bb** button collapses it to a"
+     " narrow strip, and the strip's button opens it again; LibreTune remembers the choice.\n"),
+    ("features/table-editing/2d-tables", r"- Hold \*\*Shift\*\* for 10x step\n",
+     "- `q` / `w`: small step; Ctrl with `+` / `-`: the step times the multiplier\n\n"
+     "The step is one unit of the ECU's own unit (1 AFR, 1 \u00b0C, 1 kPa) shown in the unit you"
+     " chose, so +1 AFR is about +0.07 on a table shown in lambda; when the ECU stores the value"
+     " in coarser steps (a pressure kept in 10 kPa steps) it is one of those. Curves step the"
+     " same way. Right-click > **Set increments...** changes the table's step.\n"),
     ("features/autotune/usage-guide", r"This sends changes to ECU RAM\. They take effect immediately\.\n",
      "This sends changes to ECU RAM. They take effect immediately. **Undo** (Ctrl+Z) writes the\n"
      "table back as it was before the last Send to ECU.\n"),

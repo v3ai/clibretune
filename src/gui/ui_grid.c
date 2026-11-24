@@ -178,6 +178,28 @@ lt_rect lt_ui_grid_cell_rect(const lt_ui *ui, int r, int c)
     return cell_rect(ui->grid, r, c);
 }
 
+void lt_ui_grid_scroll_to(lt_ui *ui, int x, int y)
+{
+    ui_grid *G = ui->grid;
+    ui_scroll *S;
+    int maxx, maxy;
+    if (G == NULL || !G->in_frame || ui->nscr == 0) { return; }
+    S = &ui->scr[ui->nscr - 1];
+    maxx = LT_MAX(0, G->cols * G->cw - S->inner.w);
+    maxy = LT_MAX(0, G->rows * G->chh - S->inner.h);
+    x = clampi(x, 0, maxx); y = clampi(y, 0, maxy);
+    if (x == S->sx && y == S->sy) { return; }
+    S->sx = x; S->sy = y;
+    G->sx = x; G->sy = y;
+    G->ox = S->inner.x - x;
+    G->oy = S->inner.y - y;
+    G->r0 = clampi(y / G->chh, 0, G->rows - 1);
+    G->r1 = clampi((y + S->inner.h - 1) / G->chh, 0, G->rows - 1);
+    G->c0 = clampi(x / G->cw, 0, G->cols - 1);
+    G->c1 = clampi((x + S->inner.w - 1) / G->cw, 0, G->cols - 1);
+    ui_request(ui);
+}
+
 void lt_ui_grid_visible(const lt_ui *ui, int *r0, int *r1, int *c0, int *c1)
 {
     const ui_grid *G = ui->grid;
@@ -268,6 +290,12 @@ lt_bool lt_ui_grid_begin(lt_ui *ui, const char *label, int rows, int cols, int c
     }
     G->cw = cell_w; G->chh = cell_h; G->rhw = row_header_w; G->chdr = col_header_h;
     G->flags_out = 0;
+    if (G->edit_pend) {
+        /* a double click on another cell committed the edit last frame (the caller read that
+         * edit's text then); now the double-clicked cell's edit opens */
+        G->edit_pend = 0;
+        if (!G->edit) { edit_start(ui, G, NULL); }
+    }
     r = ui_next(ui, 0);
     G->view = r;
     G->parent_clip = ui_clip_cur(ui);
@@ -336,6 +364,7 @@ lt_bool lt_ui_grid_begin(lt_ui *ui, const char *label, int rows, int cols, int c
         if (res & UI_PRESS) {
             int cr = clampi(mr, 0, rows - 1), cc = clampi(mc, 0, cols - 1);
             int ctrl = (ui->mods & LT_MOD_CTRL) != 0, shift = (ui->mods & LT_MOD_SHIFT) != 0;
+            int committed = G->edit;
             if (G->edit) { edit_commit(ui, G); }
             if (ctrl) {
                 G->mask[cr * cols + cc] = (lt_u8)!G->mask[cr * cols + cc];
@@ -352,7 +381,10 @@ lt_bool lt_ui_grid_begin(lt_ui *ui, const char *label, int rows, int cols, int c
             G->flags_out |= LT_UI_GRID_CLICKED;
             if (res & UI_DBLCLICK) {
                 G->flags_out |= LT_UI_GRID_ACTIVATED;
-                edit_start(ui, G, NULL);
+                /* the commit is reported this frame with its own cell and text: starting the new
+                 * edit now would overwrite both before the caller reads them */
+                if (committed) { G->edit_pend = 1; ui_request(ui); }
+                else { edit_start(ui, G, NULL); }
             }
         } else if ((res & UI_ACTIVE) && G->drag) {
             int cr = clampi(mr, 0, rows - 1), cc = clampi(mc, 0, cols - 1);
@@ -586,6 +618,9 @@ int lt_ui_grid_end(lt_ui *ui)
         fl = ui_edit_widget(ui, eid, lt_rect_inset(cr, 0, 0), G->edit_buf, sizeof(G->edit_buf),
                             LT_UI_TEXT_NUMERIC | (G->edit_wants ? LT_UI_TEXT_SELECTALL : 0), 1);
         if (fl & LT_UI_CANCEL) {
+            /* Esc cancels the cell edit only: an untouched field leaves the key queued, which
+             * would also reach the table's own Esc handling or close the enclosing dialog */
+            (void)ui_key_take(ui, LT_KEY_ESCAPE, NULL);
             G->edit = 0;
             G->flags_out |= LT_UI_GRID_EDIT_CANCEL;
             ui->focus = G->id;

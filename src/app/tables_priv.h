@@ -9,6 +9,9 @@
 #include "../autotune/autotune.h"
 #include "../basemap/basemap.h"
 
+/* the +/- step: one native unit of the constant (1 AFR, 1 degree C, 1 kPa), or one stored step
+ * when that is coarser (a "kPa" array kept in 10 kPa steps), in the unit shown; c may be NULL */
+double lt_tabs_unit_step(const lt_uconv *u, const lt_ini_const *c);
 /* fixed-point format with `digits` decimals (clamped 0..6) */
 void lt_tabs_fmt(char *buf, size_t cap, double v, int digits);
 /* heat colour of v within [lo,hi] using the configured scheme, blended with the table bg */
@@ -27,6 +30,29 @@ int  lt_tabs_parse_list(const char *s, double *out, int cap);
 lt_bool lt_tabs_live_index(lt_app *app, const char *channel, const double *bins, size_t n,
                            double *value, size_t *idx);
 
+
+/* ---- one edit operation on a table or curve: limits, rounding, no-op detection ----
+ * The operation computes new values into a scratch copy; lt_tabs_apply writes back only what
+ * really changes (an operation that changes nothing adds no undo step and marks nothing
+ * modified), clamping each changed value into the constant's limits and counting the clamped
+ * ones, and lt_tabs_lim_report says what was limited in one toast. */
+typedef struct lt_tabs_lim {
+    double lo, hi;              /* allowed range in display units (hi <= lo: none) */
+    int digits;                 /* values are rounded to this many decimals */
+    int n;                      /* values limited so far */
+    double last;                /* what the last limited value became */
+} lt_tabs_lim;
+void   lt_tabs_lim_init(lt_tabs_lim *l, double lo, double hi, int digits);
+/* clamp v into the range (counted when it was outside) and round it */
+double lt_tabs_lim_fix(lt_tabs_lim *l, double v);
+/* toast "Limited to 255 (allowed 0 - 255)" or "3 values limited (allowed 0 - 255)"; none if n == 0 */
+void   lt_tabs_lim_report(lt_app *app, const lt_tabs_lim *l);
+#define LT_TABS_Z 0             /* lt_tabs_apply targets */
+#define LT_TABS_X 1
+/* Write nv (rows*cols values for LT_TABS_Z, cols for LT_TABS_X) into the view: every value that
+ * differs from the current one goes through lim (NULL: written exactly, e.g. a restore), and one
+ * undo step is pushed before the first real change. Returns the number of values changed. */
+size_t lt_tabs_apply(lt_tblview *v, int what, const double *nv, lt_tabs_lim *lim);
 
 /* before a commit: warn (toast) when the largest pending cell change is large (logging alert) */
 int  lt_tabs_check_change(lt_app *app, const lt_tblview *v);
@@ -87,8 +113,21 @@ int  lt_tabs_io_save(const char *path, const char *xname, const char *yname, con
                      size_t cols, const double *y, size_t rows, const double *z);
 
 /* ---- lambda preview companion of an AFR table (tables_lambda.c, G-27) ----
- * Draws into the next layout cell: header, live lambda/AFR readouts, fuel blend combo, read-only grid */
-void lt_tabs_lambda_draw(lt_app *app, const lt_tblview *v, int ybottom);
+ * Keeps the preview's grid lined up with the table's: the table grid fills in its scroll offset,
+ * column width, row height and selection each frame; the preview scrolls to match, and the wheel
+ * over the preview asks the table grid to scroll (follow, fx, fy: next frame). */
+typedef struct lt_tabs_lsync {
+    int ok;                      /* the table grid filled the fields below this frame */
+    int msx, msy, mcw, mch;      /* table grid: scroll offset (px), cell width and height (100% px) */
+    int sel[4];                  /* table selection bounds r0, c0, r1, c1 (display rows), -1 = none */
+    int have, lx, ly;            /* the preview's offset after the last frame's sync */
+    int follow, fx, fy;          /* the table grid scrolls to (fx, fy) next frame */
+} lt_tabs_lsync;
+/* Draws into the next layout cell: title with a collapse button, live lambda/AFR readouts, fuel
+ * blend combo, read-only grid. sync may be NULL. Returns 1 when the collapse button was clicked. */
+int  lt_tabs_lambda_draw(lt_app *app, const lt_tblview *v, int ybottom, lt_tabs_lsync *sync);
+/* the collapsed preview: a narrow strip with a button that opens it again (returns 1 then) */
+int  lt_tabs_lambda_strip(lt_app *app);
 
 /* saved AFR delay model of the project (afr_delay_model.json); 0 when present (dlg_afrdelay.c) */
 int  lt_tabs_delay_model_load(lt_app *app, double *floor_ms, double *anchor_ms);

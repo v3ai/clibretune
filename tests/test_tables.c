@@ -148,8 +148,11 @@ LT_TEST(table_selection_keys)
     LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 1), b + 1.0, 0.051);
     LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 2, 1), c + 1.0, 0.051);
     LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 2), d, 1e-9);
-    /* Escape reverts the selection to the values at open */
+    /* Escape keeps the values (no revert); Ctrl+Z takes the step back */
     press(app, LT_KEY_ESCAPE, 0);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 0), a + 1.0, 0.051);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 2, 1), c + 1.0, 0.051);
+    press(app, 'z', LT_MOD_CTRL);
     LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 0), a, 1e-9);
     LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 2, 1), c, 1e-9);
     /* Ctrl+A selects everything */
@@ -159,7 +162,7 @@ LT_TEST(table_selection_keys)
     press(app, '-', 0);
     LT_CHECK_NEAR(cell0(app, "veTableTbl", 0, cols - 1), e - 1.0, 0.051);
     LT_CHECK_NEAR(cell0(app, "veTableTbl", rows / 2, cols / 2), f - 1.0, 0.051);
-    press(app, LT_KEY_ESCAPE, 0);
+    press(app, 'z', LT_MOD_CTRL);
     LT_CHECK_NEAR(cell0(app, "veTableTbl", 0, cols - 1), e, 1e-9);
     /* Delete clears the cursor cell to zero */
     press(app, LT_KEY_HOME, LT_MOD_CTRL);
@@ -455,6 +458,513 @@ LT_TEST(table_step_in_lambda)
     lt_app_free(app);
 }
 
+/* one key as a keyboard delivers it: key down and its text in the same frame, then key up */
+static void type_real(lt_app *app, const char *s)
+{
+    lt_event ev;
+    for (; *s != '\0'; s++) {
+        memset(&ev, 0, sizeof(ev));
+        ev.type = LT_EV_KEY_DOWN; ev.key = (unsigned char)*s;
+        lt_ui_input(app->ui, &ev);
+        memset(&ev, 0, sizeof(ev));
+        ev.type = LT_EV_TEXT; ev.text[0] = *s;
+        lt_ui_input(app->ui, &ev);
+        frame(app);
+        memset(&ev, 0, sizeof(ev));
+        ev.type = LT_EV_KEY_UP; ev.key = (unsigned char)*s;
+        lt_ui_input(app->ui, &ev);
+        frame(app);
+    }
+}
+
+/* demo app with a table open at 1100 x 800, the grid focused and the cursor on display
+ * (0,0) = data (rows-1, 0) */
+static lt_app *tbl_open(const char *name, size_t *rows, size_t *cols)
+{
+    char buf[512];
+    lt_app *app = lt_app_new();
+    lt_pagesrc ps;
+    lt_tblview v;
+    *rows = *cols = 0;
+    if (lt_app_find_demo_ini(buf, sizeof(buf)) == NULL || lt_app_start_demo(app, buf) != 0 ||
+        lt_app_table_editor_open(app, name) != 0) { return app; }
+    lt_app_screenshot(app, "build/lt_test_tables10.ppm", 1100, 800, 3);
+    ps = lt_app_pages(app);
+    lt_tblview_init(&v);
+    if (lt_tblview_load_table(&v, app->ini, lt_ini_find_table(app->ini, name), &ps) == 0) {
+        *rows = v.rows; *cols = v.cols;
+    }
+    lt_tblview_free(&v);
+    click(app, 500, 300, LT_MB_LEFT);
+    press(app, LT_KEY_HOME, LT_MOD_CTRL);
+    return app;
+}
+
+/* Esc while typing cancels only that edit; Esc otherwise collapses the selection to the cursor
+ * cell and never reverts values */
+LT_TEST(table_esc_cancels_edit)
+{
+    static double before[2048], after[2048];
+    size_t rows, cols, n;
+    double a, b, c;
+    lt_app *app = tbl_open("veTableTbl", &rows, &cols);
+    LT_CHECK(rows > 2 && cols > 3);
+    if (rows <= 2 || cols <= 3) { lt_app_free(app); return; }
+    n = table_snap(app, "veTableTbl", before, 2048);
+    LT_CHECK(n == rows * cols);
+    type_real(app, "12");
+    LT_CHECK(lt_ui_text_focused(app->ui));
+    press(app, LT_KEY_ESCAPE, 0);
+    LT_CHECK(!lt_ui_text_focused(app->ui));
+    LT_CHECK(table_snap(app, "veTableTbl", after, 2048) == n);
+    LT_CHECK(memcmp(before, after, n * sizeof(double)) == 0);
+    LT_CHECK(!app->modified);
+    /* an edit started with F2 (text untouched) is cancelled the same way */
+    press(app, LT_KEY_F2, 0);
+    LT_CHECK(lt_ui_text_focused(app->ui));
+    press(app, LT_KEY_ESCAPE, 0);
+    LT_CHECK(!lt_ui_text_focused(app->ui));
+    LT_CHECK(table_snap(app, "veTableTbl", after, 2048) == n);
+    LT_CHECK(memcmp(before, after, n * sizeof(double)) == 0);
+    /* three cells selected, +, Esc: the values stay and only the cursor cell remains selected */
+    a = cell0(app, "veTableTbl", rows - 1, 0);
+    b = cell0(app, "veTableTbl", rows - 1, 1);
+    c = cell0(app, "veTableTbl", rows - 1, 2);
+    press(app, LT_KEY_RIGHT, LT_MOD_SHIFT);
+    press(app, LT_KEY_RIGHT, LT_MOD_SHIFT);
+    press(app, '+', 0);
+    press(app, LT_KEY_ESCAPE, 0);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 0), a + 1.0, 0.051);
+    press(app, '+', 0);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 0), a + 1.0, 0.051);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 1), b + 1.0, 0.051);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 2), c + 2.0, 0.051);
+    lt_app_free(app);
+}
+
+/* curve list: Esc cancels a typed value and keeps stepped values (reverting is the context
+ * menu's Reset to original) */
+LT_TEST(curve_esc_keeps_values)
+{
+    char buf[512];
+    lt_app *app = lt_app_new();
+    double y0;
+    LT_CHECK(lt_app_find_demo_ini(buf, sizeof(buf)) != NULL);
+    LT_CHECK(lt_app_start_demo(app, buf) == 0);
+    LT_CHECK(lt_app_curve_editor_open(app, "cltFuelCorrCurve") == 0);
+    lt_app_screenshot(app, "build/lt_test_tables11.ppm", 1600, 1000, 3);
+    y0 = curve_val(app, "cltFuelCorrCurve", 0, 0);
+    click(app, 1224, 192, LT_MB_LEFT);               /* first row, Y column */
+    type_real(app, "2");
+    press(app, LT_KEY_ESCAPE, 0);
+    LT_CHECK_NEAR(curve_val(app, "cltFuelCorrCurve", 0, 0), y0, 1e-9);
+    press(app, 'q', 0);
+    LT_CHECK(curve_val(app, "cltFuelCorrCurve", 0, 0) > y0);
+    press(app, LT_KEY_ESCAPE, 0);
+    LT_CHECK(curve_val(app, "cltFuelCorrCurve", 0, 0) > y0);
+    lt_app_free(app);
+}
+
+/* '-' is text while a cell is being edited (F2 / Enter, then a negative number) and the step
+ * key otherwise; typing a digit starts an edit without the digit acting as a shortcut */
+LT_TEST(table_minus_while_editing)
+{
+    size_t rows, cols;
+    double a;
+    lt_app *app = tbl_open("ignitionTableTbl", &rows, &cols);
+    LT_CHECK(rows > 2 && cols > 2);
+    if (rows <= 2 || cols <= 2) { lt_app_free(app); return; }
+    a = cell0(app, "ignitionTableTbl", rows - 1, 0);
+    press(app, LT_KEY_F2, 0);
+    type_real(app, "-5.5");
+    press(app, LT_KEY_ENTER, 0);
+    LT_CHECK_NEAR(cell0(app, "ignitionTableTbl", rows - 1, 0), -5.5, 1e-9);
+    /* not editing: '-' steps down and does not open an edit */
+    type_real(app, "-");
+    LT_CHECK(!lt_ui_text_focused(app->ui));
+    LT_CHECK_NEAR(cell0(app, "ignitionTableTbl", rows - 1, 0), -6.5, 1e-9);
+    /* typed digits then '-' inside the edit: the text is "2-", not a number, nothing is stepped */
+    type_real(app, "2");
+    LT_CHECK(lt_ui_text_focused(app->ui));
+    type_real(app, "-");
+    LT_CHECK(lt_ui_text_focused(app->ui));
+    LT_CHECK_NEAR(cell0(app, "ignitionTableTbl", rows - 1, 0), -6.5, 1e-9);
+    press(app, LT_KEY_ESCAPE, 0);
+    /* Enter starts an edit with the value selected: '-' replaces it */
+    press(app, LT_KEY_ENTER, 0);
+    type_real(app, "-3");
+    press(app, LT_KEY_ENTER, 0);
+    LT_CHECK_NEAR(cell0(app, "ignitionTableTbl", rows - 1, 0), -3.0, 1e-9);
+    /* several keys in one frame (fast typing): '1', '-', '2' still edit text only */
+    {
+        lt_event ev;
+        const char *k = "1-2";
+        for (; *k != '\0'; k++) {
+            memset(&ev, 0, sizeof(ev));
+            ev.type = LT_EV_KEY_DOWN; ev.key = (unsigned char)*k;
+            lt_ui_input(app->ui, &ev);
+            memset(&ev, 0, sizeof(ev));
+            ev.type = LT_EV_TEXT; ev.text[0] = *k;
+            lt_ui_input(app->ui, &ev);
+        }
+        frame(app);
+        frame(app);
+    }
+    LT_CHECK(lt_ui_text_focused(app->ui));
+    LT_CHECK_NEAR(cell0(app, "ignitionTableTbl", rows - 1, 0), -3.0, 1e-9);
+    press(app, LT_KEY_ESCAPE, 0);
+    LT_CHECK_NEAR(cell0(app, "ignitionTableTbl", rows - 1, 0), -3.0, 1e-9);
+    /* '.' starts an edit too */
+    type_real(app, ".5");
+    press(app, LT_KEY_ENTER, 0);
+    LT_CHECK_NEAR(cell0(app, "ignitionTableTbl", rows - 1, 0), 0.5, 1e-9);
+    (void)a;
+    lt_app_free(app);
+}
+
+/* An operation that changes no cell adds no undo step and marks nothing modified */
+LT_TEST(table_noop_no_undo)
+{
+    size_t rows, cols;
+    double a;
+    lt_app *app = tbl_open("veTableTbl", &rows, &cols);
+    lt_app_tab *tab = lt_app_tab_find(app, "table", "veTableTbl");
+    LT_CHECK(rows > 2 && tab != NULL);
+    if (rows <= 2 || tab == NULL) { lt_app_free(app); return; }
+    a = cell0(app, "veTableTbl", rows - 1, 0);
+    LT_CHECK(!app->modified);
+    press(app, '=', 0);                            /* average of one cell */
+    press(app, '/', 0);                            /* interpolate one cell */
+    press(app, 'c', LT_MOD_CTRL);
+    press(app, 'v', LT_MOD_CTRL);                  /* paste the same value */
+    press(app, LT_KEY_F2, 0);
+    press(app, LT_KEY_ENTER, 0);                   /* commit the unchanged text */
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 0), a, 1e-9);
+    LT_CHECK(!app->modified);
+    LT_CHECK(!tab->dirty);
+    press(app, 'z', LT_MOD_CTRL);
+    LT_CHECK_STR(app->status, "Nothing to undo");
+    /* at the upper limit '+' changes nothing: the first Ctrl+Z undoes the typed value */
+    type_real(app, "9999");
+    press(app, LT_KEY_ENTER, 0);
+    LT_CHECK(cell0(app, "veTableTbl", rows - 1, 0) > a);
+    press(app, '+', 0);
+    press(app, 'z', LT_MOD_CTRL);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 0), a, 1e-9);
+    lt_app_free(app);
+}
+
+/* curve: an unchanged typed value adds no undo step, so Ctrl+Z still undoes the real edit */
+LT_TEST(curve_noop_no_undo)
+{
+    char buf[512];
+    lt_app *app = lt_app_new();
+    double y0;
+    LT_CHECK(lt_app_find_demo_ini(buf, sizeof(buf)) != NULL);
+    LT_CHECK(lt_app_start_demo(app, buf) == 0);
+    LT_CHECK(lt_app_curve_editor_open(app, "cltFuelCorrCurve") == 0);
+    lt_app_screenshot(app, "build/lt_test_tables12.ppm", 1600, 1000, 3);
+    y0 = curve_val(app, "cltFuelCorrCurve", 0, 0);
+    click(app, 1224, 192, LT_MB_LEFT);               /* first row, Y column */
+    press(app, LT_KEY_F2, 0);
+    press(app, LT_KEY_ENTER, 0);
+    LT_CHECK(!app->modified);
+    press(app, 'q', 0);
+    LT_CHECK(curve_val(app, "cltFuelCorrCurve", 0, 0) > y0);
+    press(app, LT_KEY_UP, 0);                        /* back onto the cell after Enter moved on */
+    press(app, LT_KEY_F2, 0);
+    press(app, LT_KEY_ENTER, 0);
+    press(app, '=', 0);
+    press(app, 'z', LT_MOD_CTRL);
+    LT_CHECK_NEAR(curve_val(app, "cltFuelCorrCurve", 0, 0), y0, 1e-9);
+    lt_app_free(app);
+}
+
+/* the compact curve editor inside an INI dialog: clicking a point or committing an unchanged value
+ * changes nothing and leaves nothing to undo */
+LT_TEST(embedded_curve_noop)
+{
+    char buf[512];
+    lt_app *app = lt_app_new();
+    LT_CHECK(lt_app_find_demo_ini(buf, sizeof(buf)) != NULL);
+    LT_CHECK(lt_app_start_demo(app, buf) == 0);
+    LT_CHECK(lt_app_dialog_open(app, "cltFuelCorrCurveDialog") == 0);
+    lt_app_screenshot(app, "build/lt_test_tables13.ppm", 1400, 900, 3);
+    click(app, 320, 367, LT_MB_LEFT);                /* first point of the plot */
+    click(app, 389, 527, LT_MB_LEFT);                /* its value cell */
+    press(app, LT_KEY_F2, 0);
+    press(app, LT_KEY_ENTER, 0);
+    LT_CHECK(!app->modified);
+    click(app, 1239, 566, LT_MB_LEFT);               /* Undo */
+    LT_CHECK_STR(app->status, "Nothing to undo");
+    lt_app_free(app);
+}
+
+/* a typed, stepped or pasted value outside the constant's limits is clamped and a toast says so,
+ * once per operation */
+LT_TEST(table_clamp_explained)
+{
+    size_t rows, cols;
+    double hi;
+    lt_app *app = tbl_open("veTableTbl", &rows, &cols);
+    LT_CHECK(rows > 2 && cols > 3);
+    if (rows <= 2 || cols <= 3) { lt_app_free(app); return; }
+    type_real(app, "9999");
+    press(app, LT_KEY_ENTER, 0);
+    hi = cell0(app, "veTableTbl", rows - 1, 0);
+    LT_CHECK_NEAR(hi, 650.0, 1e-9);
+    LT_CHECK_STR(app->status, "Limited to 650 (allowed 0 - 650)");
+    lt_app_set_status(app, "-");
+    press(app, LT_KEY_UP, 0);                       /* Enter moved the cursor down */
+    press(app, '+', 0);                             /* already at the limit */
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 0), 650.0, 1e-9);
+    LT_CHECK_STR(app->status, "Limited to 650 (allowed 0 - 650)");
+    /* three cells at once: one toast with the count */
+    press(app, LT_KEY_HOME, LT_MOD_CTRL);
+    press(app, LT_KEY_RIGHT, LT_MOD_SHIFT);
+    press(app, LT_KEY_RIGHT, LT_MOD_SHIFT);
+    press(app, LT_KEY_F2, 0);                       /* a negative value: F2 first */
+    type_real(app, "-7");
+    press(app, LT_KEY_ENTER, 0);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 2), 0.0, 1e-9);
+    LT_CHECK_STR(app->status, "3 values limited (allowed 0 - 650)");
+    /* pasted values are limited the same way */
+    lt_app_set_status(app, "-");
+    lt_ui_clipboard_set(app->ui, "700\n");
+    press(app, LT_KEY_HOME, LT_MOD_CTRL);
+    press(app, 'v', LT_MOD_CTRL);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 0), 650.0, 1e-9);
+    LT_CHECK_STR(app->status, "Limited to 650 (allowed 0 - 650)");
+    /* a value inside the limits says nothing */
+    lt_app_set_status(app, "-");
+    type_real(app, "649");
+    press(app, LT_KEY_ENTER, 0);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 0), 649.0, 1e-9);
+    LT_CHECK_STR(app->status, "-");
+    lt_app_free(app);
+}
+
+/* curve editor and the compact curve in an INI dialog explain a limited value too */
+LT_TEST(curve_clamp_explained)
+{
+    char buf[512];
+    lt_app *app = lt_app_new();
+    LT_CHECK(lt_app_find_demo_ini(buf, sizeof(buf)) != NULL);
+    LT_CHECK(lt_app_start_demo(app, buf) == 0);
+    LT_CHECK(lt_app_curve_editor_open(app, "cltFuelCorrCurve") == 0);
+    lt_app_screenshot(app, "build/lt_test_tables14.ppm", 1600, 1000, 3);
+    click(app, 1224, 192, LT_MB_LEFT);               /* first row, Y column */
+    type_real(app, "99");
+    press(app, LT_KEY_ENTER, 0);
+    LT_CHECK(strncmp(app->status, "Limited to ", 11) == 0);
+    LT_CHECK(curve_val(app, "cltFuelCorrCurve", 0, 0) < 99.0);
+    lt_app_set_status(app, "-");
+    LT_CHECK(lt_app_dialog_open(app, "cltFuelCorrCurveDialog") == 0);
+    lt_app_screenshot(app, "build/lt_test_tables15.ppm", 1400, 900, 3);
+    click(app, 453, 527, LT_MB_LEFT);                /* second point's value */
+    type_real(app, "99");
+    press(app, LT_KEY_ENTER, 0);
+    LT_CHECK(strncmp(app->status, "Limited to ", 11) == 0);
+    LT_CHECK(curve_val(app, "cltFuelCorrCurve", 0, 1) < 99.0);
+    lt_app_free(app);
+}
+
+static double raw_const(lt_app *app, const char *name, size_t i)
+{
+    static double v[256];
+    lt_pagesrc ps = lt_app_pages(app);
+    const lt_ini_const *c = lt_ini_find_const(app->ini, name);
+    if (i >= 256) { return -999.0; }
+    v[i] = -999.0;
+    if (c != NULL) { (void)lt_ini_const_get_array(app->ini, c, &ps, v, 256); }
+    return v[i];
+}
+
+/* curve +/- steps one native unit in the unit shown, like the table editor, or one stored step
+ * when that is coarser: +10 kPa (one stored step) when the pressure is shown in psi, not +1 psi
+ * (which did not change the stored value); +2 degrees C (one stored step) on an axis shown in F */
+LT_TEST(curve_step_display_units)
+{
+    char buf[512];
+    lt_app *app = lt_app_new();
+    double p0, t0;
+    int i;
+    LT_CHECK(lt_app_find_demo_ini(buf, sizeof(buf)) != NULL);
+    LT_CHECK(lt_app_start_demo(app, buf) == 0);
+    app->settings.press_unit = 1;
+    app->settings.temp_unit = 1;
+    LT_CHECK(lt_app_curve_editor_open(app, "minimumOilPressure") == 0);
+    lt_app_screenshot(app, "build/lt_test_tables16.ppm", 1600, 1000, 3);
+    for (i = 0; i < 3; i++) { frame(app); }
+    p0 = raw_const(app, "minimumOilPressureValues", 0);
+    click(app, 1224, 192, LT_MB_LEFT);               /* first row, Y column */
+    press(app, '+', 0);
+    LT_CHECK_NEAR(raw_const(app, "minimumOilPressureValues", 0), p0 + 10.0, 1e-6);
+    press(app, '-', 0);
+    LT_CHECK_NEAR(raw_const(app, "minimumOilPressureValues", 0), p0, 0.1);
+    LT_CHECK(lt_app_curve_editor_open(app, "cltFuelCorrCurve") == 0);
+    lt_app_screenshot(app, "build/lt_test_tables17.ppm", 1600, 1000, 3);
+    t0 = raw_const(app, "cltFuelCorrBins", 1);
+    click(app, 1146, 214, LT_MB_LEFT);               /* second row, X column */
+    press(app, '+', 0);
+    LT_CHECK_NEAR(raw_const(app, "cltFuelCorrBins", 1), t0 + 2.0, 1e-6);
+    lt_app_free(app);
+}
+
+/* double-clicking another cell while typing commits the typed value to the first cell, then
+ * edits the double-clicked one */
+LT_TEST(table_dblclick_while_editing)
+{
+    size_t rows, cols;
+    double b0;
+    lt_app *app = tbl_open("veTableTbl", &rows, &cols);
+    LT_CHECK(rows > 2 && cols > 2);
+    if (rows <= 2 || cols <= 2) { lt_app_free(app); return; }
+    b0 = cell0(app, "veTableTbl", rows - 2, 1);
+    type_real(app, "12");                              /* editing display (0,0) */
+    click(app, 438, 214, LT_MB_LEFT);                  /* display (1,1), twice: double click */
+    click(app, 438, 214, LT_MB_LEFT);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 0), 12.0, 1e-9);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 2, 1), b0, 1e-9);
+    LT_CHECK(lt_ui_text_focused(app->ui));
+    type_real(app, "13");
+    press(app, LT_KEY_ENTER, 0);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 2, 1), 13.0, 1e-9);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 0), 12.0, 1e-9);
+    /* the same while the first edit was opened by a double click */
+    click(app, 370, 192, LT_MB_LEFT);
+    click(app, 370, 192, LT_MB_LEFT);
+    LT_CHECK(lt_ui_text_focused(app->ui));
+    type_real(app, "21");
+    click(app, 438, 214, LT_MB_LEFT);
+    click(app, 438, 214, LT_MB_LEFT);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 0), 21.0, 1e-9);
+    LT_CHECK(lt_ui_text_focused(app->ui));
+    press(app, LT_KEY_ESCAPE, 0);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 2, 1), 13.0, 1e-9);
+    /* worst case: the click on the next cell is itself the second click of a double click (just
+     * across the border from the click that selected the cell being typed into), so the commit
+     * and the new edit happen in the same frame */
+    click(app, 370, 200, LT_MB_LEFT);                  /* display (0,0), near its bottom edge */
+    type_real(app, "33");
+    click(app, 370, 205, LT_MB_LEFT);                  /* display (1,0) */
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 0), 33.0, 1e-9);
+    LT_CHECK(lt_ui_text_focused(app->ui));
+    LT_CHECK(strcmp(app->status, "Not a number") != 0);
+    type_real(app, "34");
+    press(app, LT_KEY_ENTER, 0);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 2, 0), 34.0, 1e-9);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 0), 33.0, 1e-9);
+    lt_app_free(app);
+}
+
+/* pixels of the app canvas in r that differ between two snapshots */
+static int canvas_diff(const lt_canvas *a, const lt_u32 *b, int x0, int y0, int x1, int y1)
+{
+    int x, y, n = 0;
+    for (y = y0; y < y1; y++) {
+        for (x = x0; x < x1; x++) { n += a->px[y * a->pitch + x] != b[y * a->pitch + x]; }
+    }
+    return n;
+}
+
+/* at 800 px the toolbar does not fit: Burn and 3D stay on it, the rest are in the overflow
+ * menu at its right end, which works like the buttons */
+LT_TEST(table_toolbar_narrow)
+{
+    size_t rows, cols, npx;
+    lt_u32 *before;
+    char *clip;
+    lt_app *app = tbl_open("veTableTbl", &rows, &cols);
+    LT_CHECK(rows > 2 && cols > 2);
+    lt_app_screenshot(app, "build/lt_test_tables18.ppm", 800, 600, 3);
+    click(app, 370, 192, LT_MB_LEFT);
+    type_real(app, "60");
+    press(app, LT_KEY_ENTER, 0);
+    LT_CHECK(lt_app_can_burn(app));
+    click(app, 738, 137, LT_MB_LEFT);                  /* Burn */
+    LT_CHECK(!lt_app_can_burn(app));
+    /* 3D: the right of the grid turns into the 3D view */
+    frame(app);
+    npx = (size_t)app->canvas.pitch * (size_t)app->canvas.h;
+    before = (lt_u32 *)lt_calloc(npx, sizeof(lt_u32));
+    memcpy(before, app->canvas.px, npx * sizeof(lt_u32));
+    click(app, 679, 137, LT_MB_LEFT);                  /* 3D */
+    frame(app);
+    LT_CHECK(canvas_diff(&app->canvas, before, 600, 250, 780, 400) > 5000);
+    lt_free(before);
+    click(app, 679, 137, LT_MB_LEFT);
+    /* Copy from the overflow menu */
+    press(app, LT_KEY_UP, 0);
+    lt_ui_clipboard_set(app->ui, "");
+    click(app, 785, 137, LT_MB_LEFT);                  /* the overflow button */
+    frame(app);
+    LT_CHECK(lt_ui_popup_open(app->ui));
+    click(app, 628, 201, LT_MB_LEFT);                  /* "Copy" */
+    clip = lt_ui_clipboard_get(app->ui);
+    LT_CHECK(clip != NULL && strncmp(clip, "60", 2) == 0);
+    lt_free(clip);
+    LT_CHECK(!lt_ui_popup_open(app->ui));
+    lt_app_free(app);
+}
+
+static void wheel(lt_app *app, int x, int y, int amount)
+{
+    lt_event ev;
+    int i;
+    memset(&ev, 0, sizeof(ev));
+    ev.type = LT_EV_MOUSE_MOVE; ev.x = x; ev.y = y;
+    lt_ui_input(app->ui, &ev);
+    frame(app);
+    ev.type = LT_EV_WHEEL; ev.wheel = amount;
+    lt_ui_input(app->ui, &ev);
+    for (i = 0; i < 4; i++) { frame(app); }
+}
+
+static lt_u32 *canvas_copy(const lt_app *app)
+{
+    size_t npx = (size_t)app->canvas.pitch * (size_t)app->canvas.h;
+    lt_u32 *p = (lt_u32 *)lt_calloc(npx, sizeof(lt_u32));
+    memcpy(p, app->canvas.px, npx * sizeof(lt_u32));
+    return p;
+}
+
+/* the lambda preview beside an AFR table: labelled, scrolls with the table both ways, and
+ * collapses to a strip; open or collapsed is remembered (prefs lambda_pane) */
+LT_TEST(lambda_preview_pane)
+{
+    size_t rows, cols;
+    lt_u32 *top, *snap;
+    int i;
+    lt_app *app = tbl_open("afrTableTbl", &rows, &cols);
+    LT_CHECK(rows > 20);
+    app->settings.prefs.lambda_pane = 1;
+    for (i = 0; i < 3; i++) { frame(app); }
+    top = canvas_copy(app);
+    /* rows headers of the preview (x 770..820) and of the table (x 266..334) */
+    wheel(app, 500, 400, -2);                       /* scroll the table */
+    LT_CHECK(canvas_diff(&app->canvas, top, 266, 250, 334, 720) > 500);
+    LT_CHECK(canvas_diff(&app->canvas, top, 772, 250, 820, 720) > 500);
+    snap = canvas_copy(app);
+    wheel(app, 950, 500, -2);                       /* scroll the preview: the table follows */
+    LT_CHECK(canvas_diff(&app->canvas, snap, 772, 250, 820, 720) > 500);
+    LT_CHECK(canvas_diff(&app->canvas, snap, 266, 250, 334, 720) > 500);
+    lt_free(snap);
+    press(app, LT_KEY_HOME, LT_MOD_CTRL);           /* both back at the top */
+    for (i = 0; i < 3; i++) { frame(app); }
+    LT_CHECK(canvas_diff(&app->canvas, top, 266, 250, 334, 720) == 0);
+    LT_CHECK(canvas_diff(&app->canvas, top, 772, 250, 820, 720) == 0);
+    lt_free(top);
+    /* collapse with the button in the preview's title row, open again from the strip */
+    click(app, 1083, 170, LT_MB_LEFT);
+    frame(app);
+    LT_CHECK(app->settings.prefs.lambda_pane == 0);
+    click(app, 1081, 172, LT_MB_LEFT);
+    frame(app);
+    LT_CHECK(app->settings.prefs.lambda_pane == 1);
+    lt_app_free(app);
+}
+
 int main(void)
 {
     LT_RUN(autotune_send_undo);
@@ -467,5 +977,17 @@ int main(void)
     LT_RUN(table_revert_after_many_edits);
     LT_RUN(table_tab_closed_mid_frame);
     LT_RUN(table_step_in_lambda);
+    LT_RUN(table_esc_cancels_edit);
+    LT_RUN(curve_esc_keeps_values);
+    LT_RUN(table_minus_while_editing);
+    LT_RUN(table_noop_no_undo);
+    LT_RUN(curve_noop_no_undo);
+    LT_RUN(embedded_curve_noop);
+    LT_RUN(table_clamp_explained);
+    LT_RUN(curve_clamp_explained);
+    LT_RUN(curve_step_display_units);
+    LT_RUN(table_dblclick_while_editing);
+    LT_RUN(table_toolbar_narrow);
+    LT_RUN(lambda_preview_pane);
     LT_TEST_MAIN_END
 }

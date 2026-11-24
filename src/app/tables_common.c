@@ -17,6 +17,15 @@ void lt_tabs_fmt(char *buf, size_t cap, double v, int digits)
     lt_snprintf(buf, cap, f, v);
 }
 
+double lt_tabs_unit_step(const lt_uconv *u, const lt_ini_const *c)
+{
+    double native = 1.0, s;
+    /* a smaller step would be rounded away when it is stored and + would do nothing */
+    if (c != NULL && c->type <= LT_DT_S32 && fabs(c->scale) > native) { native = fabs(c->scale); }
+    s = fabs(lt_uconv_to_disp(u, native) - lt_uconv_to_disp(u, 0.0));
+    return s > 0.0 ? s : 1.0;
+}
+
 static int scheme_of(const char *n)
 {
     static const char *names[] = { "tunerstudio", "grayscale", "pastel", "thermal", "viridis",
@@ -127,6 +136,49 @@ int lt_app_autotune_open(lt_app *app)
 void lt_app_tables_service(lt_app *app)
 {
     lt_tabs_autotune_service(app);
+}
+
+void lt_tabs_lim_init(lt_tabs_lim *l, double lo, double hi, int digits)
+{
+    l->lo = lo; l->hi = hi; l->digits = digits; l->n = 0; l->last = 0.0;
+}
+
+double lt_tabs_lim_fix(lt_tabs_lim *l, double v)
+{
+    if (l->hi > l->lo && (v < l->lo || v > l->hi)) {
+        v = v < l->lo ? l->lo : l->hi;
+        l->n++;
+        l->last = lt_tabs_round(v, l->digits);
+    }
+    return lt_tabs_round(v, l->digits);
+}
+
+void lt_tabs_lim_report(lt_app *app, const lt_tabs_lim *l)
+{
+    char a[32], b[32], c[32];
+    if (l->n <= 0) { return; }
+    lt_fmt_double(a, sizeof(a), l->last, l->digits);
+    lt_fmt_double(b, sizeof(b), lt_tabs_round(l->lo, l->digits), l->digits);
+    lt_fmt_double(c, sizeof(c), lt_tabs_round(l->hi, l->digits), l->digits);
+    if (l->n == 1) { lt_app_toast(app, 2, "Limited to %s (allowed %s - %s)", a, b, c); }
+    else { lt_app_toast(app, 2, "%d values limited (allowed %s - %s)", l->n, b, c); }
+}
+
+size_t lt_tabs_apply(lt_tblview *v, int what, const double *nv, lt_tabs_lim *lim)
+{
+    size_t i, n = what == LT_TABS_X ? v->cols : v->rows * v->cols, changed = 0;
+    const double *cur = what == LT_TABS_X ? v->x : v->z;
+    if (cur == NULL || nv == NULL) { return 0; }
+    for (i = 0; i < n; i++) {
+        double w = nv[i];
+        if (w == cur[i]) { continue; }
+        if (lim != NULL) { w = lt_tabs_lim_fix(lim, w); }
+        if (w == cur[i]) { continue; }
+        if (changed++ == 0) { lt_tblview_push_undo(v); }
+        if (what == LT_TABS_X) { lt_tblview_set_x(v, i, w); }
+        else { lt_tblview_set(v, i / v->cols, i % v->cols, w); }
+    }
+    return changed;
 }
 
 int lt_tabs_check_change(lt_app *app, const lt_tblview *v)

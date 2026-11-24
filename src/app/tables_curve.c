@@ -4,6 +4,7 @@
  */
 #include <string.h>
 #include <math.h>
+#include <stdlib.h>
 #include "tables_priv.h"
 #include "view_kit.h"
 #include "feat_log.h"
@@ -17,16 +18,16 @@ typedef struct crv_tab {
     int xdig, ydig;
     double ylo, yhi, xlo, xhi;     /* constant limits */
     double px0, px1, py0, py1;     /* plot ranges */
-    int drag, drag_moved, prev_down;
+    int drag, drag_moved, prev_down, drag_x0, drag_y0;
     int frame;
     double live_x, live_y;
     int live_ok;
-    double *ox, *oz; size_t on;    /* X / Y values at open (Esc reverts the selection to them) */
+    double *ox, *oz; size_t on;    /* X / Y values at open ("Reset to original" restores them) */
     unsigned char *selr; size_t selr_cap;   /* per row: bit0 X cell selected, bit1 Y cell selected */
     int cur_r, cur_c;
     int range_mode;                /* 0 auto, 1 fit data, 2 full constant limits */
     int move_x;                    /* drag also moves points horizontally */
-    int select_all;
+    int select_all, collapse_sel;
     lt_rect list_area;
     int scale_open, scale_mode; double scale_val;
     /* X-Y log plot */
@@ -119,6 +120,7 @@ static void crv_commit(lt_app *app, lt_app_tab *tab, crv_tab *st)
     int n;
     (void)lt_tabs_check_change(app, &st->v);
     n = lt_tblview_commit(&st->v, app->ini, &dst);
+    lt_ui_request_redraw(app->ui);          /* key operations run after the list was drawn */
     if (n > 0) { lt_app_edited(app); tab->dirty = 1; }
     else if (n < 0) { lt_app_toast(app, 3, "Write failed: %s", lt_err_get()); }
 }
@@ -471,6 +473,14 @@ static int crv_target_x(const crv_tab *st)
     return any;
 }
 
+/* +/- step of the column the operations act on (lt_tabs_unit_step) */
+static double crv_step(const lt_app *app, const crv_tab *st)
+{
+    int x = crv_target_x(st);
+    const char *cn = x ? st->c->x_const : st->c->y_const;
+    return lt_tabs_unit_step(x ? &st->v.xu : &st->v.zu, cn != NULL ? lt_ini_find_const(app->ini, cn) : NULL);
+}
+
 static size_t crv_sel_cells(const crv_tab *st, int xcol, lt_tcell *out)
 {
     size_t i, n = 0;
@@ -483,13 +493,21 @@ static size_t crv_sel_cells(const crv_tab *st, int xcol, lt_tcell *out)
     return n;
 }
 
+/* write a scratch copy of the X or Y column back: only changed values, limited and rounded (a
+ * restore is exact); nothing changed = no undo step, nothing marked modified */
+static size_t crv_apply(crv_tab *st, int xcol, const double *nv, int exact, lt_tabs_lim *lim)
+{
+    lt_tabs_lim_init(lim, xcol ? st->xlo : st->ylo, xcol ? st->xhi : st->yhi, xcol ? st->xdig : st->ydig);
+    return lt_tabs_apply(&st->v, xcol ? LT_TABS_X : LT_TABS_Z, nv, exact ? NULL : lim);
+}
+
 static void crv_op(lt_app *app, lt_app_tab *tab, crv_tab *st, int op, double arg)
 {
-    size_t cols = st->v.cols, n, i, changed = 0;
+    size_t cols = st->v.cols, n, i;
     int xcol = crv_target_x(st);
     double *cur = xcol ? st->v.x : st->v.z, *tmp, lo = xcol ? st->xlo : st->ylo,
            hi = xcol ? st->xhi : st->yhi;
-    int dig = xcol ? st->xdig : st->ydig;
+    lt_tabs_lim lim;
     lt_tcell *sel = (lt_tcell *)lt_calloc(cols + 1, sizeof(lt_tcell));
     n = crv_sel_cells(st, xcol, sel);
     tmp = (double *)lt_calloc(cols + 1, sizeof(double));
@@ -498,7 +516,7 @@ static void crv_op(lt_app *app, lt_app_tab *tab, crv_tab *st, int op, double arg
     case C_EQUAL: {
         double sum = 0.0;
         for (i = 0; i < n; i++) { sum += cur[sel[i].x]; }
-        lt_tbl_set_equal(tmp, 1, cols, sel, n, lt_tabs_round(sum / (double)n, dig));
+        if (n > 0) { lt_tbl_set_equal(tmp, 1, cols, sel, n, sum / (double)n); }
         break; }
     case C_ADD: lt_tbl_offset(tmp, 1, cols, sel, n, arg); break;
     case C_SCALE: lt_tbl_scale(tmp, 1, cols, sel, n, arg); break;
@@ -511,21 +529,8 @@ static void crv_op(lt_app *app, lt_app_tab *tab, crv_tab *st, int op, double arg
         break;
     default: break;
     }
-    for (i = 0; i < n; i++) {
-        double v = tmp[sel[i].x];
-        if (hi > lo) { v = v < lo ? lo : (v > hi ? hi : v); }
-        v = lt_tabs_round(v, dig);
-        if (v != cur[sel[i].x]) { changed++; }
-        tmp[sel[i].x] = v;
-    }
-    if (changed > 0) {
-        lt_tblview_push_undo(&st->v);
-        for (i = 0; i < n; i++) {
-            if (xcol) { lt_tblview_set_x(&st->v, sel[i].x, tmp[sel[i].x]); }
-            else { lt_tblview_set(&st->v, 0, sel[i].x, tmp[sel[i].x]); }
-        }
-        crv_commit(app, tab, st);
-    }
+    if (crv_apply(st, xcol, tmp, op == C_RESTORE, &lim) > 0) { crv_commit(app, tab, st); }
+    lt_tabs_lim_report(app, &lim);
     lt_free(tmp);
     lt_free(sel);
 }
@@ -562,14 +567,20 @@ static void crv_paste(lt_app *app, lt_app_tab *tab, crv_tab *st)
 {
     char *txt = lt_ui_clipboard_get(app->ui);
     const char *p = txt;
-    size_t row = st->cur_r >= 0 ? (size_t)st->cur_r : 0, put = 0;
-    int c0 = st->cur_c > 0 ? 1 : 0, pushed = 0;
+    size_t row = st->cur_r >= 0 ? (size_t)st->cur_r : 0, put = 0, cols = st->v.cols, changed = 0, i;
+    int c0 = st->cur_c > 0 ? 1 : 0;
+    double *nx, *nz;
+    lt_tabs_lim lx, lz;
     if (txt == NULL || txt[0] == '\0') {
         lt_free(txt);
         lt_app_toast(app, 2, "Clipboard is empty");
         return;
     }
-    while (*p != '\0' && row < st->v.cols) {
+    nx = (double *)lt_calloc(cols + 1, sizeof(double));
+    nz = (double *)lt_calloc(cols + 1, sizeof(double));
+    memcpy(nx, st->v.x, cols * sizeof(double));
+    memcpy(nz, st->v.z, cols * sizeof(double));
+    while (*p != '\0' && row < cols) {
         char line[256];
         double vals[4];
         size_t k = 0;
@@ -579,16 +590,31 @@ static void crv_paste(lt_app *app, lt_app_tab *tab, crv_tab *st)
         line[k] = '\0';
         cnt = lt_tabs_parse_list(line, vals, 4);
         if (cnt <= 0) { continue; }
-        if (!pushed) { lt_tblview_push_undo(&st->v); pushed = 1; }
         for (j = 0; j < cnt && c0 + j < 2; j++) {
-            if (c0 + j == 0) { lt_tblview_set_x(&st->v, row, lt_tabs_round(vals[j], st->xdig)); }
-            else { lt_tblview_set(&st->v, 0, row, clampy(st, vals[j])); }
+            if (c0 + j == 0) { nx[row] = vals[j]; } else { nz[row] = vals[j]; }
         }
         row++; put++;
     }
     lt_free(txt);
-    if (pushed) { crv_commit(app, tab, st); }
+    /* X and Y together in one undo step, only the values that change */
+    lt_tabs_lim_init(&lx, st->xlo, st->xhi, st->xdig);
+    lt_tabs_lim_init(&lz, st->ylo, st->yhi, st->ydig);
+    for (i = 0; i < cols; i++) {
+        if (nx[i] != st->v.x[i]) { nx[i] = lt_tabs_lim_fix(&lx, nx[i]); }
+        if (nz[i] != st->v.z[i]) { nz[i] = lt_tabs_lim_fix(&lz, nz[i]); }
+        if (nx[i] != st->v.x[i] || nz[i] != st->v.z[i]) { changed++; }
+    }
+    if (changed > 0) {
+        lt_tblview_push_undo(&st->v);
+        for (i = 0; i < cols; i++) {
+            if (nx[i] != st->v.x[i]) { lt_tblview_set_x(&st->v, i, nx[i]); }
+            if (nz[i] != st->v.z[i]) { lt_tblview_set(&st->v, 0, i, nz[i]); }
+        }
+        crv_commit(app, tab, st);
+    }
+    lt_free(nx); lt_free(nz);
     lt_app_toast(app, 0, "Pasted %lu points", (unsigned long)put);
+    lt_tabs_lim_report(app, lz.n > 0 ? &lz : &lx);
 }
 
 static void crv_undo_redo(lt_app *app, lt_app_tab *tab, crv_tab *st, int redo)
@@ -596,33 +622,40 @@ static void crv_undo_redo(lt_app *app, lt_app_tab *tab, crv_tab *st, int redo)
     if (redo ? lt_tblview_redo(&st->v) : lt_tblview_undo(&st->v)) { crv_commit(app, tab, st); }
 }
 
+/* Runs after the value list: a digit typed this frame has opened the cell edit by now, so a
+ * '-' typed with it is text in that edit and not the step key. */
 static void crv_keys(lt_app *app, lt_app_tab *tab, crv_tab *st)
 {
     lt_ui *ui = app->ui;
-    double ss = 1.0;
-    int i;
+    double ss = 1.0, step;
+    int i, dig;
     if (lt_ui_text_focused(ui) || lt_ui_popup_open(ui) || st->drag >= 0) { return; }
-    for (i = 0; i < st->ydig && i < 2; i++) { ss /= 10.0; }
+    /* steps of the column the keys act on, like the table editor: one native unit in the unit
+     * shown (+1 kPa is 0.145 psi), the small step one or two display decimals */
+    step = crv_step(app, st);
+    dig = crv_target_x(st) ? st->xdig : st->ydig;
+    for (i = 0; i < dig && i < 2; i++) { ss /= 10.0; }
     if (lt_ui_key_pressed(ui, 'z', LT_MOD_CTRL)) { crv_undo_redo(app, tab, st, 0); }
     if (lt_ui_key_pressed(ui, 'y', LT_MOD_CTRL) || lt_ui_key_pressed(ui, 'z', LT_MOD_CTRL | LT_MOD_SHIFT)) {
         crv_undo_redo(app, tab, st, 1);
     }
     if (lt_ui_key_pressed(ui, 'c', LT_MOD_CTRL)) { crv_copy(app, st); }
     if (lt_ui_key_pressed(ui, 'v', LT_MOD_CTRL)) { crv_paste(app, tab, st); }
-    if (lt_ui_key_pressed(ui, LT_KEY_ESCAPE, 0)) { crv_op(app, tab, st, C_RESTORE, 0); }
+    /* like the table: Esc drops the selection to the cursor cell (an edit in progress takes Esc) */
+    if (lt_ui_key_pressed(ui, LT_KEY_ESCAPE, 0)) { st->collapse_sel = 1; lt_ui_request_redraw(ui); }
     if (lt_ui_key_pressed(ui, LT_KEY_DELETE, 0) || lt_ui_key_pressed(ui, LT_KEY_BACKSPACE, 0)) {
         crv_op(app, tab, st, C_CLEAR, 0);
     }
     if (lt_ui_key_pressed(ui, '=', 0)) { crv_op(app, tab, st, C_EQUAL, 0); }
     if (lt_ui_key_pressed(ui, '=', LT_MOD_SHIFT) || lt_tabs_key(ui, '+') || lt_tabs_key(ui, '>')) {
-        crv_op(app, tab, st, C_ADD, 1.0);
+        crv_op(app, tab, st, C_ADD, step);
     }
     if (lt_tabs_key(ui, '-') || lt_tabs_key(ui, '_') || lt_tabs_key(ui, '<') || lt_ui_key_pressed(ui, ',', 0)) {
-        crv_op(app, tab, st, C_ADD, -1.0);
+        crv_op(app, tab, st, C_ADD, -step);
     }
     if (lt_tabs_key(ui, 'q')) { crv_op(app, tab, st, C_ADD, ss); }
     if (lt_tabs_key(ui, 'w')) { crv_op(app, tab, st, C_ADD, -ss); }
-    if (lt_tabs_key(ui, '*')) { st->scale_open = 1; st->scale_mode = 0; }
+    if (lt_tabs_key(ui, '*')) { st->scale_open = 1; st->scale_mode = 0; lt_ui_request_redraw(ui); }
     if (lt_tabs_key(ui, '/') || lt_tabs_key(ui, 'h') || lt_tabs_key(ui, 'v')) { crv_op(app, tab, st, C_INTERP, 0); }
     if (lt_tabs_key(ui, 's')) { crv_op(app, tab, st, C_SMOOTH, 0); }
 }
@@ -634,28 +667,31 @@ enum { CB_UNDO, CB_REDO, CB_INTERP, CB_SMOOTH, CB_SCALE, CB_COPY, CB_PASTE, CB_R
 
 static void crv_toolbar_items(lt_app *app, crv_tab *st, lt_vk_item *it, int cell)
 {
-    static char rtip[96];
+    static char rtip[96], rname[40];
     int n = 0;
     memset(it, 0, (size_t)(CB_N + 4) * sizeof(*it));
-#define CB(cmd, ic, lbl, tp) do { it[n].kind = LT_VK_BTN; it[n].icon = (ic); \
-    it[n].label = cell ? (lbl) : NULL; it[n].tip = (tp); n++; LT_UNUSED(cmd); } while (0)
-    CB(CB_UNDO, LT_ICON_UNDO_2, "Undo", "Undo (Ctrl+Z)");
-    CB(CB_REDO, LT_ICON_REDO_2, "Redo", "Redo (Ctrl+Y)");
+    /* lbl: the label in cell mode; name: the entry in the overflow menu of a narrow bar */
+#define CB(cmd, ic, lbl, name, tp) do { it[n].kind = LT_VK_BTN; it[n].icon = (ic); \
+    it[n].label = cell ? (lbl) : NULL; it[n].menu = (name); it[n].tip = (tp); n++; LT_UNUSED(cmd); } while (0)
+    CB(CB_UNDO, LT_ICON_UNDO_2, "Undo", "Undo", "Undo (Ctrl+Z)");
+    CB(CB_REDO, LT_ICON_REDO_2, "Redo", "Redo", "Redo (Ctrl+Y)");
     it[n].kind = LT_VK_SEP; n++;
-    CB(CB_INTERP, LT_ICON_TRENDING_UP, "Interp", "Interpolate between the selection ends (/)");
-    CB(CB_SMOOTH, LT_ICON_SPARKLES, "Smooth", "Smooth the selected points (s)");
-    CB(CB_SCALE, LT_ICON_X, "Scale", "Multiply, add or set the selected values (*)");
-    CB(CB_COPY, LT_ICON_COPY, "Copy", "Copy the selected points (Ctrl+C)");
-    CB(CB_PASTE, LT_ICON_CLIPBOARD_PASTE, "Paste", "Paste at the cursor (Ctrl+V)");
+    CB(CB_INTERP, LT_ICON_TRENDING_UP, "Interp", "Interpolate", "Interpolate between the selection ends (/)");
+    CB(CB_SMOOTH, LT_ICON_SPARKLES, "Smooth", "Smooth", "Smooth the selected points (s)");
+    CB(CB_SCALE, LT_ICON_X, "Scale", "Scale...", "Multiply, add or set the selected values (*)");
+    CB(CB_COPY, LT_ICON_COPY, "Copy", "Copy", "Copy the selected points (Ctrl+C)");
+    CB(CB_PASTE, LT_ICON_CLIPBOARD_PASTE, "Paste", "Paste", "Paste at the cursor (Ctrl+V)");
     it[n].kind = LT_VK_SEP; n++;
     lt_snprintf(rtip, sizeof(rtip), "Y axis range: %s (click to change)", crv_range_names[st->range_mode]);
-    CB(CB_RANGE, LT_ICON_ARROW_UP_DOWN, "Range", rtip);
-    CB(CB_MOVEX, LT_ICON_MOVE_HORIZONTAL, "MoveX", "Dragging a point also moves it horizontally");
+    lt_snprintf(rname, sizeof(rname), "Y axis range: %s", crv_range_names[st->range_mode]);
+    CB(CB_RANGE, LT_ICON_ARROW_UP_DOWN, "Range", rname, rtip);
+    CB(CB_MOVEX, LT_ICON_MOVE_HORIZONTAL, "MoveX", "Drag moves points sideways", "Dragging a point also moves it horizontally");
     it[n - 1].on = st->move_x;
-    CB(CB_XY, LT_ICON_CIRCLE_DOT, "X-Y", "X-Y log plot: recorded points of the X channel against a chosen channel");
+    CB(CB_XY, LT_ICON_CIRCLE_DOT, "X-Y", "X-Y log plot", "X-Y log plot: recorded points of the X channel against a chosen channel");
     it[n - 1].on = st->xy_on;
     it[n].kind = LT_VK_SEP; n++;
-    CB(CB_BURN, LT_ICON_FLAME, "Burn", "Write the changes to ECU flash");
+    CB(CB_BURN, LT_ICON_FLAME, "Burn", "Burn", "Write the changes to ECU flash");
+    it[n - 1].pin = 1;                  /* stays on a narrow bar */
     it[n - 1].accent = 1;
     it[n - 1].disabled = lt_app_can_burn(app) ? 0 : 1;
     it[n].kind = LT_VK_END;
@@ -695,12 +731,12 @@ static void crv_context(lt_app *app, lt_app_tab *tab, crv_tab *st, lt_rect area)
 {
     lt_ui *ui = app->ui;
     if (!lt_ui_context_begin(ui, "crv_ctx", area)) { return; }
-    if (lt_ui_menu_item(ui, "Reset to original", "Esc", 0)) { crv_op(app, tab, st, C_RESTORE, 0); }
+    if (lt_ui_menu_item(ui, "Reset to original", NULL, 0)) { crv_op(app, tab, st, C_RESTORE, 0); }
     lt_ui_menu_separator(ui);
     if (lt_ui_menu_item(ui, "Set equal (average)", "=", 0)) { crv_op(app, tab, st, C_EQUAL, 0); }
     if (lt_ui_menu_item(ui, "Set value...", NULL, 0)) { st->scale_open = 1; st->scale_mode = 2; }
-    if (lt_ui_menu_item(ui, "Step up", "> or +", 0)) { crv_op(app, tab, st, C_ADD, 1.0); }
-    if (lt_ui_menu_item(ui, "Step down", "< or -", 0)) { crv_op(app, tab, st, C_ADD, -1.0); }
+    if (lt_ui_menu_item(ui, "Step up", "> or +", 0)) { crv_op(app, tab, st, C_ADD, crv_step(app, st)); }
+    if (lt_ui_menu_item(ui, "Step down", "< or -", 0)) { crv_op(app, tab, st, C_ADD, -crv_step(app, st)); }
     if (lt_ui_menu_item(ui, "Add amount...", NULL, 0)) { st->scale_open = 1; st->scale_mode = 1; }
     if (lt_ui_menu_item(ui, "Multiply by...", "*", 0)) { st->scale_open = 1; st->scale_mode = 0; }
     if (lt_ui_menu_item(ui, "Clear", "Del", 0)) { crv_op(app, tab, st, C_CLEAR, 0); }
@@ -775,7 +811,6 @@ static void crv_draw(lt_app *app, lt_app_tab *tab, lt_rect rr)
     if (st->xy_y[0] == '\0' && st->c->x_channel != NULL) { xy_default(app, st); }
     xy_sample(app, st);
     if (st->xy_on) { xy_collect(app, st); }
-    crv_keys(app, tab, st);
     /* header + toolbar */
     {
         lt_vk_item it[CB_N + 4];
@@ -832,16 +867,18 @@ static void crv_draw(lt_app *app, lt_app_tab *tab, lt_rect rr)
             if (d < best) { best = d; pc.hot = i; }
         }
         if (down && !st->prev_down && pc.hot >= 0 && !lt_ui_popup_open(ui)) {
-            st->drag = pc.hot; st->drag_moved = 0;
-            lt_tblview_push_undo(&st->v);
+            st->drag = pc.hot; st->drag_moved = 0; st->drag_x0 = m.x; st->drag_y0 = m.y;
         }
     }
     if (st->drag >= 0) {
         if (!down) {
             if (st->drag_moved) { crv_commit(app, tab, st); }
             st->drag = -1;
+        } else if (!st->drag_moved && abs(m.x - st->drag_x0) + abs(m.y - st->drag_y0) <= lt_ui_px(ui, 2)) {
+            pc.hot = st->drag;                  /* a click on a point: no change, no undo step */
         } else {
             double ny = st->py0 + (sy_of(&pc, st->py0) - m.y) / (sy_of(&pc, st->py0) - sy_of(&pc, st->py1)) * (st->py1 - st->py0);
+            if (!st->drag_moved) { lt_tblview_push_undo(&st->v); }
             lt_tblview_set(&st->v, 0, (size_t)st->drag, clampy(st, ny));
             if (st->move_x) {
                 double fx = (m.x - sx_of(&pc, st->px0)) / (sx_of(&pc, st->px1) - sx_of(&pc, st->px0));
@@ -888,6 +925,11 @@ static void crv_draw(lt_app *app, lt_app_tab *tab, lt_rect rr)
                 lt_ui_grid_select(ui, 0, 0, (int)st->v.cols - 1, 1);
                 st->select_all = 0;
             }
+            if (st->collapse_sel) {
+                lt_ui_grid_cursor(ui, &cr, &cc);
+                lt_ui_grid_set_cursor(ui, cr, cc);
+                st->collapse_sel = 0;
+            }
             memset(st->selr, 0, st->selr_cap);
             for (r = 0; r < (int)st->v.cols; r++) {
                 if (lt_ui_grid_selected(ui, r, 0)) { st->selr[r] |= 1; }
@@ -908,18 +950,28 @@ static void crv_draw(lt_app *app, lt_app_tab *tab, lt_rect rr)
                 /* the edited cell, not the cursor: Tab or a click-away has already moved that */
                 (void)lt_ui_grid_editing(ui, &er, &ec);
                 if (lt_parse_double(lt_ui_grid_edit_text(ui), &v) && er >= 0 && ec >= 0 && er < (int)st->v.cols) {
-                    lt_tblview_push_undo(&st->v);
+                    /* one value through the shared path: limited, rounded, no undo step when
+                     * it equals the stored value */
+                    double *nv = (double *)lt_calloc(st->v.cols + 1, sizeof(double));
+                    lt_tabs_lim lim;
+                    memcpy(nv, ec == 0 ? st->v.x : st->v.z, st->v.cols * sizeof(double));
                     if (ec == 0) {
-                        double typed;
-                        if (st->xhi > st->xlo) { v = v < st->xlo ? st->xlo : (v > st->xhi ? st->xhi : v); }
-                        typed = v;
-                        v = lt_tbl_clamp_between(st->v.x, st->v.cols, (size_t)er, v);
-                        if (v != typed) { lt_app_toast(app, 2, "The X axis must increase: kept at %g", v); }
-                        lt_tblview_set_x(&st->v, (size_t)er, lt_tabs_round(v, st->xdig));
-                    } else { lt_tblview_set(&st->v, 0, (size_t)er, clampy(st, v)); }
-                    crv_commit(app, tab, st);
+                        /* the X limits first, then between the neighbours (one toast) */
+                        lt_tabs_lim xl;
+                        double inlim;
+                        lt_tabs_lim_init(&xl, st->xlo, st->xhi, st->xdig);
+                        inlim = lt_tabs_lim_fix(&xl, v);
+                        v = lt_tbl_clamp_between(st->v.x, st->v.cols, (size_t)er, inlim);
+                        if (v != inlim) { lt_app_toast(app, 2, "The X axis must increase: kept at %g", v); }
+                        else { lt_tabs_lim_report(app, &xl); }
+                    }
+                    nv[er] = v;
+                    if (crv_apply(st, ec == 0, nv, 0, &lim) > 0) { crv_commit(app, tab, st); }
+                    lt_tabs_lim_report(app, &lim);
+                    lt_free(nv);
                 } else { lt_app_toast(app, 2, "Not a number"); }
             }
+            crv_keys(app, tab, st);
             crv_context(app, tab, st, st->list_area);
         }
     }

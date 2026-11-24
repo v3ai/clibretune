@@ -285,12 +285,68 @@ int lt_vk_toolbar(lt_ui *ui, const lt_vk_item *items, int h)
     return lt_vk_toolbar_in(ui, items, lt_ui_layout_next(ui));
 }
 
+/* name of an item in the overflow menu */
+static const char *item_menu_name(const lt_vk_item *it)
+{
+    if (it->menu != NULL && it->menu[0] != '\0') { return it->menu; }
+    if (it->label != NULL && it->label[0] != '\0') { return it->label; }
+    return it->tip != NULL ? it->tip : "?";
+}
+
+/* takes buttons off a row that is too narrow: unpinned ones from the right until the rest and
+ * the overflow button fit, then separators left without a button on one side. Returns the
+ * width of the items still shown. */
+static int vk_overflow(const lt_vk_item *items, int n, const int *wid, int gap, int avail,
+                       int total, unsigned char *hid)
+{
+    int i;
+    for (i = n - 1; i >= 0 && total > avail; i--) {
+        if (items[i].kind == LT_VK_BTN && !items[i].pin) { hid[i] = 1; total -= wid[i] + gap; }
+    }
+    for (i = 0; i < n; i++) {
+        int j, before = 0, after = 0;
+        if (items[i].kind != LT_VK_SEP) { continue; }
+        for (j = i - 1; j >= 0 && items[j].kind != LT_VK_SEP; j--) {
+            if (items[j].kind == LT_VK_BTN && !hid[j]) { before = 1; }
+        }
+        for (j = i + 1; j < n && items[j].kind != LT_VK_SEP; j++) {
+            if (items[j].kind == LT_VK_BTN && !hid[j]) { after = 1; }
+        }
+        if (!before || !after) { hid[i] = 1; total -= wid[i] + gap; }
+    }
+    return total;
+}
+
+/* the overflow menu: the buttons taken off the bar, a divider where the bar had one between two
+ * groups. Returns the index of the picked item or -1. */
+static int vk_more_menu(lt_ui *ui, const lt_vk_item *items, int n, const unsigned char *hid, lt_rect r)
+{
+    int i, shown = 0, group = 0, picked = -1;
+    if (!lt_ui_context_begin(ui, "menu", r)) { return -1; }
+    for (i = 0; i < n; i++) {
+        const lt_vk_item *it = &items[i];
+        int fl;
+        if (it->kind == LT_VK_SEP || it->kind == LT_VK_SPACER) { group = 1; continue; }
+        if (it->kind != LT_VK_BTN || !hid[i]) { continue; }
+        if (group && shown) { lt_ui_menu_separator(ui); }
+        group = 0; shown = 1;
+        fl = (it->disabled ? LT_UI_MENU_DISABLED : 0) | (it->on ? LT_UI_MENU_CHECKED : 0);
+        if (lt_ui_menu_item(ui, item_menu_name(it), it->key, fl)) { picked = i; }
+    }
+    lt_ui_context_end(ui);
+    return picked;
+}
+
 int lt_vk_toolbar_in(lt_ui *ui, const lt_vk_item *items, lt_rect row)
 {
     const lt_theme *t = lt_ui_theme(ui);
     int cell = lt_ui_cell_mode(ui), n = 0, i, x, clicked = -1, spare = 0, nspacer = 0;
     int wid[VK_MAX_ITEMS], total = 0, gap = cell ? 8 : lt_ui_px(ui, 2);
     int h = row.h, hmax = cell ? h : lt_ui_px(ui, 28);
+    int ow = 0, nhid = 0, hit = -1;
+    unsigned char hid[VK_MAX_ITEMS];
+    lt_rect mr;
+    static const char *const more = "\xc2\xbb";   /* the overflow button */
     while (n < VK_MAX_ITEMS && items[n].kind != LT_VK_END) { n++; }
     for (i = 0; i < n; i++) {
         if (items[i].kind == LT_VK_BTN) {
@@ -301,12 +357,22 @@ int lt_vk_toolbar_in(lt_ui *ui, const lt_vk_item *items, lt_rect row)
         } else if (items[i].kind == LT_VK_SEP) { wid[i] = cell ? 8 : lt_ui_px(ui, 13); }
         else { wid[i] = 0; nspacer++; }
         total += wid[i] + gap;
+        hid[i] = 0;
     }
-    spare = row.w - total;
+    if (total - gap > row.w) {
+        ow = cell ? lt_ui_text_width(ui, more) + 8 : lt_ui_px(ui, 28);
+        total = vk_overflow(items, n, wid, gap, row.w - ow, total, hid);
+        for (i = 0; i < n; i++) { nhid += items[i].kind == LT_VK_BTN && hid[i]; }
+        if (nhid == 0) { ow = 0; }
+    }
+    mr = lt_rect_make(row.x + row.w - ow, row.y + (cell ? 0 : (row.h - (h > hmax ? hmax : h)) / 2), ow,
+                      cell ? row.h : (h > hmax ? hmax : h));
+    spare = row.w - total - ow;
     if (spare < 0) { spare = 0; }
     x = row.x;
     for (i = 0; i < n; i++) {
         lt_rect r;
+        if (hid[i]) { continue; }
         if (items[i].kind == LT_VK_SPACER) { x += nspacer > 0 ? spare / nspacer : 0; continue; }
         r = lt_rect_make(x, row.y + (cell ? 0 : (row.h - (h > hmax ? hmax : h)) / 2), wid[i],
                          cell ? row.h : (h > hmax ? hmax : h));
@@ -328,6 +394,27 @@ int lt_vk_toolbar_in(lt_ui *ui, const lt_vk_item *items, lt_rect row)
             lt_ui_pop_id(ui);
         }
         x += wid[i] + gap;
+    }
+    if (nhid > 0) {
+        /* the overflow button at the right end: its menu goes first so that it, not the
+         * button (focused by the click that opened it), gets Enter and Space */
+        lt_ui_push_id(ui, "vk_more");
+        lt_ui_push_id_int(ui, row.y);
+        hit = vk_more_menu(ui, items, n, hid, mr);
+        if (hit >= 0) { clicked = hit; }
+        lt_ui_layout_set_rect(ui, mr);
+        if (cell) {
+            if (lt_ui_button_ex(ui, more, LT_UI_BTN_FLAT)) { lt_ui_context_open(ui, "menu", mr.x, mr.y + mr.h); }
+        } else {
+            lt_vk_item mo;
+            memset(&mo, 0, sizeof(mo));
+            mo.kind = LT_VK_BTN; mo.label = more;
+            if (lt_ui_button_ex(ui, "##vk", 0)) { lt_ui_context_open(ui, "menu", mr.x + mr.w, mr.y + mr.h); }
+            item_face(ui, &mo, mr);
+        }
+        lt_ui_tooltip(ui, "More tools that do not fit");
+        lt_ui_pop_id(ui);
+        lt_ui_pop_id(ui);
     }
     return clicked;
 }
