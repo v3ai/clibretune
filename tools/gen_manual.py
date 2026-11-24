@@ -362,7 +362,33 @@ REWRITES = [
      "table back as it was before the last Send to ECU.\n"),
 ] + manual_fixes.FIXES
 FORBIDDEN_RE = re.compile(r"Install and restart|pop-out icon|Pop out dashboards|popped out|"
-                          r"multi-monitor support|cryptographically signed", re.I)
+                          r"multi-monitor support|cryptographically signed|AppImage|\.deb\b|"
+                          r"\bdpkg\b|\.dmg\b|\.msi\b|setup\.exe|RUST_LOG|\bcargo\b|tauri|"
+                          r"crates/|libretune-app|\bnpm\b|WebView|plugin|auto-updat|"
+                          r"\.ltlog|Git-based|\bgit (repository|history)|keychain|"
+                          r"Welcome View|LibreTuneProjects", re.I)
+
+# The stock text mixes UK and US spelling; this program's text is US English.  Words only, so
+# file names, URLs and code keep their spelling (none of these words appears in one).
+US_SPELLING = [
+    (r"\bgrey(ed|s|ish)?\b", r"gray\1"), (r"\bGrey(ed|s)?\b", r"Gray\1"),
+    (r"\b([Cc])olour", r"\1olor"), (r"\b([Cc])entre(s|d)?\b", r"\1enter\2"),
+    (r"\b([Bb])ehaviour", r"\1ehavior"), (r"\b([Aa])nalys(e|ed|es|ing)\b", r"\1nalyz\2"),
+    (r"\b([Mm])odell(ing|ed)\b", r"\1odel\2"), (r"\b([Ff])uell(ing|ed)\b", r"\1uel\2"),
+    (r"\b([Cc])ancell(ed|ing)\b", r"\1ancel\2"), (r"\b([Ll])abell(ed|ing)\b", r"\1abel\2"),
+    (r"\b([Nn])eighbour", r"\1eighbor"), (r"\b([Ff])avour", r"\1avor"),
+    (r"\b([Ll])icence\b", r"\1icense"), (r"\b([Ll])itre", r"\1iter"),
+]
+_US_IZE = re.compile(r"\b(optim|initial|normal|custom|recogn|organ|synchron|minim|maxim|visual|"
+                     r"util|priorit|summar|serial|standard|real|author|categor|emphas|"
+                     r"special|final|stabil|equal)is(e|ed|es|ing|ation|ations)\b", re.I)
+
+
+def us_spell(text):
+    for pat, rep in US_SPELLING:
+        text = re.sub(pat, rep, text)
+    return _US_IZE.sub(lambda m: m.group(1) + ("IZ" if m.group(0).isupper() else "iz") + m.group(2),
+                       text)
 
 
 def rewrite(pid, text):
@@ -490,7 +516,7 @@ def main():
             continue
         seen.add(pid)
         text = open(os.path.join(base, pid + ".md"), encoding="utf-8").read().replace("\r", "")
-        text = brand(rewrite(pid, devendor(text)))
+        text = us_spell(brand(rewrite(pid, devendor(text))))
         assert not VENDOR_RE.search(text), "vendor name left in " + pid
         assert not FORBIDDEN_RE.search(text), "unsupported feature promised in " + pid
         lines = []
