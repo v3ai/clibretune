@@ -430,12 +430,18 @@ void lt_gfx_blit_premul(lt_gfx *g, int x, int y, const lt_canvas *src)
     for (yy = r.y; yy < r.y + r.h; yy++) {
         const lt_u32 *sp = src->px + (size_t)(yy - y) * (size_t)src->pitch + (size_t)(r.x - x);
         lt_u32 *dp = c->px + (size_t)yy * (size_t)c->pitch + (size_t)r.x;
+        /* layers are mostly opaque or empty runs: copy or skip a run at once */
         for (xx = 0; xx < r.w; xx++) {
             lt_u32 s = sp[xx];
             lt_u32 a = (s >> 24) & 0xFFU;
             if (a == 255U) {
-                dp[xx] = (s | 0xFF000000UL) & LT_U32_MASK;
-            } else if (a != 0U) {
+                int e = xx + 1;
+                while (e < r.w && ((sp[e] >> 24) & 0xFFU) == 255U) { e++; }
+                memcpy(dp + xx, sp + xx, (size_t)(e - xx) * sizeof(lt_u32));
+                xx = e - 1;
+            } else if (a == 0U) {
+                while (xx + 1 < r.w && ((sp[xx + 1] >> 24) & 0xFFU) == 0U) { xx++; }
+            } else {
                 /* source + destination * (255 - a) / 255 per channel, saturated at 255 */
                 lt_u32 d = dp[xx], ia = 255U - a, rb, gg, ov;
                 rb = (d & LANES) * ia + 0x00800080U;

@@ -439,6 +439,29 @@ LT_TEST(test_blend_exact)
                 if ((c.px[i] & 0xFFFFFFUL) != (want & 0xFFFFFFUL)) { bad++; }
             }
         }
+        /* runs of opaque, empty and translucent pixels (gauge layers), clipped at both ends */
+        for (a = 0; a < 4; a++) {
+            static const int runs[] = { 255, 255, 0, 0, 0, 90, 255, 0, 255, 255, 255, 1, 254, 0 };
+            lt_rect prev;
+            for (i = 0; i < 256; i++) {
+                lt_u32 al = (lt_u32)runs[(i / (a + 1)) % (int)LT_COUNTOF(runs)];
+                s.px[i] = (al << 24) | ((al * (lt_u32)i / 255U) << 16) | ((al / 3U) << 8) | (al / 2U);
+                c.px[i] = LT_RGB((i * 5) & 0xFF, 255 - i, i);
+            }
+            prev = lt_gfx_push_clip(&g, lt_rect_make(a, 0, 256 - 2 * a, 1));
+            lt_gfx_blit_premul(&g, 0, 0, &s);
+            lt_gfx_pop_clip(&g, prev);
+            for (i = 0; i < 256; i++) {
+                int al = (int)((s.px[i] >> 24) & 0xFF), ia = 255 - al;
+                int sr = (int)((s.px[i] >> 16) & 0xFF), sg = (int)((s.px[i] >> 8) & 0xFF);
+                int sb = (int)(s.px[i] & 0xFF);
+                int r = sr + ref_div255(((i * 5) & 0xFF) * ia), gg = sg + ref_div255((255 - i) * ia);
+                int b = sb + ref_div255(i * ia);
+                lt_u32 want = LT_RGB(r > 255 ? 255 : r, gg > 255 ? 255 : gg, b > 255 ? 255 : b);
+                if (i < a || i >= 256 - a) { want = LT_RGB((i * 5) & 0xFF, 255 - i, i); }
+                if ((c.px[i] & 0xFFFFFFUL) != (want & 0xFFFFFFUL)) { bad++; }
+            }
+        }
         lt_canvas_free(&s);
     }
     LT_CHECK(bad == 0);
