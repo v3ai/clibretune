@@ -580,7 +580,7 @@ static void ui_frame(lt_app *app)
     lt_ui_end(app->ui);
 }
 
-static void mouse(lt_app *app, int type, int x, int y)
+static void mouse(lt_app *app, lt_ev_type type, int x, int y)
 {
     lt_event ev;
     memset(&ev, 0, sizeof(ev));
