@@ -1035,6 +1035,14 @@ static void get_cmd(const lt_ini_cmdlist *l, int idx, const char *dflt, const ch
     }
 }
 
+static lt_bool cmd_le(const lt_proto *p)
+{
+    return (p->ini && p->ini->endian == LT_ENDIAN_LITTLE) ? LT_TRUE : LT_FALSE;
+}
+
+/* The page identifier as the value %2i encodes. A two-byte identifier ("\$tsCanId\x04") is
+ * sent as written, CAN id first: read it in the command byte order that %2i writes in, so a
+ * big-endian INI (MegaSquirt) gets 00 04 on the wire and not 04 00. */
 static lt_u32 page_id(const lt_proto *p, int idx)
 {
     const lt_ini_protocol *pr;
@@ -1045,7 +1053,8 @@ static lt_u32 page_id(const lt_proto *p, int idx)
             const lt_ini_blob *b = &pr->page_identifiers[idx];
 
             if (b->n >= 2) {
-                return lt_rd_le((const lt_u8 *)b->p, 2);
+                return cmd_le(p) ? lt_rd_le((const lt_u8 *)b->p, 2)
+                                 : lt_rd_be((const lt_u8 *)b->p, 2);
             }
             if (b->n == 1) {
                 return (lt_u8)b->p[0];
@@ -1053,11 +1062,6 @@ static lt_u32 page_id(const lt_proto *p, int idx)
         }
     }
     return (lt_u32)idx;
-}
-
-static lt_bool cmd_le(const lt_proto *p)
-{
-    return (p->ini && p->ini->endian == LT_ENDIAN_LITTLE) ? LT_TRUE : LT_FALSE;
 }
 
 static int build_page_cmd(lt_proto *p, const lt_ini_cmdlist *l, const char *dflt, int page,
