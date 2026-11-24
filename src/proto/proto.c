@@ -1748,9 +1748,8 @@ static void rt_command(lt_proto *p, lt_buf *cmd, size_t *want, lt_bool *burst)
         if (cmd->len == 0) {
             lt_buf_putc(cmd, 'A');
         }
-        if (!p->modern && cmd->len > 1) {
-            cmd->len = 1;
-        }
+        /* all of it, also on a legacy link: MegaSquirt-II 2.x waits for the CAN id and table
+         * of "a\x00\x06" and never answers a bare 'a' */
     } else {
         const lt_ini_blob *b = &p->ini->proto.och_get_command;
 
