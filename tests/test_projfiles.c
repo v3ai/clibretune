@@ -1,10 +1,12 @@
 /* test_projfiles.c - projects and files: recent projects stored as absolute paths (and the
- * migration of older relative entries), the command line (`libretune <folder>`).
+ * migration of older relative entries), the command line (`libretune <folder>`), project folder
+ * names that work on every OS.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 #include "lt_test.h"
 #include "../src/app/app.h"
 #include "../src/plat/plat.h"
+#include "../src/project/proj_priv.h"
 
 #define TMP "build/test_projfiles"
 #define DEMO "tests/fixtures/ini/demo.ini"
@@ -117,11 +119,53 @@ LT_TEST(recent_migrate)
     lt_free(dir); lt_free(abs); lt_free(gone); lt_free(path);
 }
 
+static void safe_is(const char *name, const char *want)
+{
+    char *r = lt_proj_safe_name(name, LT_TRUE);
+    LT_CHECK_STR(r, want);
+    lt_free(r);
+}
+
+LT_TEST(safe_names)
+{
+    lt_project p;
+    char *x;
+    safe_is("My Car", "My Car");
+    safe_is("a/b:c*d?", "a_b_c_d_");
+    safe_is("con", "con_");                     /* Windows device names, any case, on every OS */
+    safe_is("CON", "CON_");
+    safe_is("Nul", "Nul_");
+    safe_is("aux", "aux_");
+    safe_is("prn", "prn_");
+    safe_is("com1", "com1_");
+    safe_is("LPT9", "LPT9_");
+    safe_is("COM\xC2\xB9", "COM\xC2\xB9_");     /* COM with a superscript one */
+    safe_is("com0", "com0");                    /* not a device */
+    safe_is("COM10", "COM10");
+    safe_is("console", "console");
+    safe_is("con.txt", "con_txt");              /* the dot becomes '_': no extension is left */
+    safe_is("con   ", "con_");                  /* trailing spaces go first */
+    safe_is("Track day...", "Track day___");    /* dots are mapped, so none can trail */
+    safe_is("   ", "_");
+    safe_is("\xC3\x9C" "bung", "\xC3\x9C" "bung");      /* UTF-8 kept */
+    /* lt_project_create makes the folder from the safe name and keeps the name as typed */
+    x = lt_path_join(TMP, "safe/nul_");
+    (void)lt_proj_rmtree(x);
+    (void)lt_plat_mkdirs(TMP "/safe");
+    LT_CHECK(lt_project_create("nul", DEMO, "sig", TMP "/safe", &p) == 0);
+    LT_CHECK(lt_plat_is_dir(x));
+    LT_CHECK_STR(p.cfg.name, "nul");
+    lt_project_close(&p);
+    (void)lt_proj_rmtree(x);
+    lt_free(x);
+}
+
 int main(void)
 {
     (void)lt_plat_mkdirs(TMP);
     LT_RUN(args);
     LT_RUN(recent_abs);
     LT_RUN(recent_migrate);
+    LT_RUN(safe_names);
     LT_TEST_MAIN_END
 }
