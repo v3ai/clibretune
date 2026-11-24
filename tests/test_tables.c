@@ -858,6 +858,56 @@ LT_TEST(table_dblclick_while_editing)
     lt_app_free(app);
 }
 
+/* pixels of the app canvas in r that differ between two snapshots */
+static int canvas_diff(const lt_canvas *a, const lt_u32 *b, int x0, int y0, int x1, int y1)
+{
+    int x, y, n = 0;
+    for (y = y0; y < y1; y++) {
+        for (x = x0; x < x1; x++) { n += a->px[y * a->pitch + x] != b[y * a->pitch + x]; }
+    }
+    return n;
+}
+
+/* at 800 px the toolbar does not fit: Burn and 3D stay on it, the rest are in the overflow
+ * menu at its right end, which works like the buttons */
+LT_TEST(table_toolbar_narrow)
+{
+    size_t rows, cols, npx;
+    lt_u32 *before;
+    char *clip;
+    lt_app *app = tbl_open("veTableTbl", &rows, &cols);
+    LT_CHECK(rows > 2 && cols > 2);
+    lt_app_screenshot(app, "build/lt_test_tables18.ppm", 800, 600, 3);
+    click(app, 370, 192, LT_MB_LEFT);
+    type_real(app, "60");
+    press(app, LT_KEY_ENTER, 0);
+    LT_CHECK(lt_app_can_burn(app));
+    click(app, 738, 137, LT_MB_LEFT);                  /* Burn */
+    LT_CHECK(!lt_app_can_burn(app));
+    /* 3D: the right of the grid turns into the 3D view */
+    frame(app);
+    npx = (size_t)app->canvas.pitch * (size_t)app->canvas.h;
+    before = (lt_u32 *)lt_calloc(npx, sizeof(lt_u32));
+    memcpy(before, app->canvas.px, npx * sizeof(lt_u32));
+    click(app, 679, 137, LT_MB_LEFT);                  /* 3D */
+    frame(app);
+    LT_CHECK(canvas_diff(&app->canvas, before, 600, 250, 780, 400) > 5000);
+    lt_free(before);
+    click(app, 679, 137, LT_MB_LEFT);
+    /* Copy from the overflow menu */
+    press(app, LT_KEY_UP, 0);
+    lt_ui_clipboard_set(app->ui, "");
+    click(app, 785, 137, LT_MB_LEFT);                  /* the overflow button */
+    frame(app);
+    LT_CHECK(lt_ui_popup_open(app->ui));
+    click(app, 628, 201, LT_MB_LEFT);                  /* "Copy" */
+    clip = lt_ui_clipboard_get(app->ui);
+    LT_CHECK(clip != NULL && strncmp(clip, "60", 2) == 0);
+    lt_free(clip);
+    LT_CHECK(!lt_ui_popup_open(app->ui));
+    lt_app_free(app);
+}
+
 int main(void)
 {
     LT_RUN(autotune_send_undo);
@@ -880,5 +930,6 @@ int main(void)
     LT_RUN(curve_clamp_explained);
     LT_RUN(curve_step_display_units);
     LT_RUN(table_dblclick_while_editing);
+    LT_RUN(table_toolbar_narrow);
     LT_TEST_MAIN_END
 }

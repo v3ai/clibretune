@@ -56,9 +56,14 @@ typedef struct lt_vk_item {
     int disabled;
     int accent;             /* LT_UI_BTN_ACCENT look (burn) */
     lt_color fill;          /* custom solid fill (0 = toolkit look): green Start button etc. */
+    int pin;                /* stays on the bar when the row is too narrow (Burn) */
+    const char *menu;       /* name in the overflow menu (NULL: label, else tip) */
 } lt_vk_item;
 /* Lays the items out in one row of height h taken from the layout. In cell
  * mode every button is drawn as plain text (label, else key, else tip).
+ * When the row is too narrow, buttons that are not pinned are taken off the
+ * bar from the right and listed in a "\xc2\xbb" menu at its right end; picking
+ * one there counts as clicking it.
  * Returns the index of the clicked button, or -1. */
 int lt_vk_toolbar(lt_ui *ui, const lt_vk_item *items, int h);
 

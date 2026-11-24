@@ -112,7 +112,8 @@ connect and read it.
   `/` interpolate, `s` smooth, Ctrl+Z undo. `-` steps down, as in TunerStudio: for a negative
   value press F2 or Enter first, then type it (`-5`). Esc cancels a value you are typing (otherwise it only
   shrinks the selection to one cell); **Revert** in the toolbar goes back to the values the table
-  had when it was opened. Right-click for every other operation, including the 3D view.
+  had when it was opened. Right-click for every other operation, including the 3D view. In a
+  narrow window the toolbar buttons that do not fit are in the **»** menu at its right end.
 - **View > Dashboard** (Ctrl+D) shows gauges; the Designer button edits them.
 - **Help > Keyboard Shortcuts** lists everything; **Help > User Manual** is the full manual.
 

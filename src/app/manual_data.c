@@ -1359,6 +1359,8 @@ static const char *const mp_6_0[] = {
     "| `/` | Interpolate | Bilinear interpolation |",
     "| `S` | Smooth | Gaussian blur |",
     "",
+    "Every operation is also a toolbar button. When the window is too narrow for the whole toolbar, the buttons that do not fit move into the **\302\273** menu at its right end; **Burn** and **3D** always stay on the bar.",
+    "",
     "## Copy and Paste",
     "",
     "### Basic Copy/Paste",
@@ -1414,7 +1416,7 @@ static const char *const mp_6_0[] = {
     "",
 };
 static const lt_man_part mpp_6[] = {
-    { mp_6_0, 107 },
+    { mp_6_0, 109 },
 };
 
 static const char *const mp_7_0[] = {

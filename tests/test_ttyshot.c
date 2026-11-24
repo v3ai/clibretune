@@ -379,7 +379,8 @@ LT_TEST(sidebar_resize_keys)
  * in the same frame from a 0..0 range, NaN rows into an int (UBSan overflow in the text call) */
 LT_TEST(curve_xy_toggle)
 {
-    render(60, 30, "knockThresholdCurve", "shift+tab enter", NULL, 0, NULL);
+    /* at 60 columns X-Y is the last entry of the toolbar overflow menu, the last control */
+    render(60, 30, "knockThresholdCurve", "shift+tab enter end enter", NULL, 0, NULL);
     LT_CHECK(strstr(g_txt, "X-Y: Y") != NULL);
 }
 

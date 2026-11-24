@@ -667,28 +667,31 @@ enum { CB_UNDO, CB_REDO, CB_INTERP, CB_SMOOTH, CB_SCALE, CB_COPY, CB_PASTE, CB_R
 
 static void crv_toolbar_items(lt_app *app, crv_tab *st, lt_vk_item *it, int cell)
 {
-    static char rtip[96];
+    static char rtip[96], rname[40];
     int n = 0;
     memset(it, 0, (size_t)(CB_N + 4) * sizeof(*it));
-#define CB(cmd, ic, lbl, tp) do { it[n].kind = LT_VK_BTN; it[n].icon = (ic); \
-    it[n].label = cell ? (lbl) : NULL; it[n].tip = (tp); n++; LT_UNUSED(cmd); } while (0)
-    CB(CB_UNDO, LT_ICON_UNDO_2, "Undo", "Undo (Ctrl+Z)");
-    CB(CB_REDO, LT_ICON_REDO_2, "Redo", "Redo (Ctrl+Y)");
+    /* lbl: the label in cell mode; name: the entry in the overflow menu of a narrow bar */
+#define CB(cmd, ic, lbl, name, tp) do { it[n].kind = LT_VK_BTN; it[n].icon = (ic); \
+    it[n].label = cell ? (lbl) : NULL; it[n].menu = (name); it[n].tip = (tp); n++; LT_UNUSED(cmd); } while (0)
+    CB(CB_UNDO, LT_ICON_UNDO_2, "Undo", "Undo", "Undo (Ctrl+Z)");
+    CB(CB_REDO, LT_ICON_REDO_2, "Redo", "Redo", "Redo (Ctrl+Y)");
     it[n].kind = LT_VK_SEP; n++;
-    CB(CB_INTERP, LT_ICON_TRENDING_UP, "Interp", "Interpolate between the selection ends (/)");
-    CB(CB_SMOOTH, LT_ICON_SPARKLES, "Smooth", "Smooth the selected points (s)");
-    CB(CB_SCALE, LT_ICON_X, "Scale", "Multiply, add or set the selected values (*)");
-    CB(CB_COPY, LT_ICON_COPY, "Copy", "Copy the selected points (Ctrl+C)");
-    CB(CB_PASTE, LT_ICON_CLIPBOARD_PASTE, "Paste", "Paste at the cursor (Ctrl+V)");
+    CB(CB_INTERP, LT_ICON_TRENDING_UP, "Interp", "Interpolate", "Interpolate between the selection ends (/)");
+    CB(CB_SMOOTH, LT_ICON_SPARKLES, "Smooth", "Smooth", "Smooth the selected points (s)");
+    CB(CB_SCALE, LT_ICON_X, "Scale", "Scale...", "Multiply, add or set the selected values (*)");
+    CB(CB_COPY, LT_ICON_COPY, "Copy", "Copy", "Copy the selected points (Ctrl+C)");
+    CB(CB_PASTE, LT_ICON_CLIPBOARD_PASTE, "Paste", "Paste", "Paste at the cursor (Ctrl+V)");
     it[n].kind = LT_VK_SEP; n++;
     lt_snprintf(rtip, sizeof(rtip), "Y axis range: %s (click to change)", crv_range_names[st->range_mode]);
-    CB(CB_RANGE, LT_ICON_ARROW_UP_DOWN, "Range", rtip);
-    CB(CB_MOVEX, LT_ICON_MOVE_HORIZONTAL, "MoveX", "Dragging a point also moves it horizontally");
+    lt_snprintf(rname, sizeof(rname), "Y axis range: %s", crv_range_names[st->range_mode]);
+    CB(CB_RANGE, LT_ICON_ARROW_UP_DOWN, "Range", rname, rtip);
+    CB(CB_MOVEX, LT_ICON_MOVE_HORIZONTAL, "MoveX", "Drag moves points sideways", "Dragging a point also moves it horizontally");
     it[n - 1].on = st->move_x;
-    CB(CB_XY, LT_ICON_CIRCLE_DOT, "X-Y", "X-Y log plot: recorded points of the X channel against a chosen channel");
+    CB(CB_XY, LT_ICON_CIRCLE_DOT, "X-Y", "X-Y log plot", "X-Y log plot: recorded points of the X channel against a chosen channel");
     it[n - 1].on = st->xy_on;
     it[n].kind = LT_VK_SEP; n++;
-    CB(CB_BURN, LT_ICON_FLAME, "Burn", "Write the changes to ECU flash");
+    CB(CB_BURN, LT_ICON_FLAME, "Burn", "Burn", "Write the changes to ECU flash");
+    it[n - 1].pin = 1;                  /* stays on a narrow bar */
     it[n - 1].accent = 1;
     it[n - 1].disabled = lt_app_can_burn(app) ? 0 : 1;
     it[n].kind = LT_VK_END;

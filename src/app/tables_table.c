@@ -954,64 +954,69 @@ static void tbl_toolbar(lt_app *app, lt_app_tab *tab, tbl_tab *st)
     lt_vk_item it[40];
     int n = 0, hit, ids[40], cell = lt_ui_cell_mode(ui);
     /* ids[i] maps the item index to a TB_ command (-1 for separators) */
-#define TB_ADD(cmd, icon, label, key, tip) \
-    do { tb_item(&it[n], LT_VK_BTN, icon, label, key, tip); ids[n] = cmd; n++; } while (0)
+    /* abbr: the label in cell mode; name: the entry in the overflow menu */
+#define TB_ADD(cmd, icon, abbr, name, key, tip) \
+    do { tb_item(&it[n], LT_VK_BTN, icon, cell ? abbr : NULL, key, tip); it[n].menu = name; \
+         ids[n] = cmd; n++; } while (0)
 #define TB_SEP() do { tb_item(&it[n], LT_VK_SEP, 0, NULL, NULL, NULL); ids[n] = -1; n++; } while (0)
 #define TB_GAP() do { tb_item(&it[n], LT_VK_SPACER, 0, NULL, NULL, NULL); ids[n] = -1; n++; } while (0)
-    TB_ADD(TB_EQ, LT_ICON_EQUAL, cell ? "Set=" : NULL, "=", "Set selected cells to their average (=)");
-    TB_ADD(TB_UP, LT_ICON_PLUS, cell ? "+" : NULL, ">", "Increase by the step amount (+ or >); q = small step");
-    TB_ADD(TB_DOWN, LT_ICON_MINUS, cell ? "-" : NULL, "<", "Decrease by the step amount (- or <); w = small step");
+    TB_ADD(TB_EQ, LT_ICON_EQUAL, "Set=", "Set to average", "=", "Set selected cells to their average (=)");
+    TB_ADD(TB_UP, LT_ICON_PLUS, "+", "Step up", ">", "Increase by the step amount (+ or >); q = small step");
+    TB_ADD(TB_DOWN, LT_ICON_MINUS, "-", "Step down", "<", "Decrease by the step amount (- or <); w = small step");
     TB_SEP();
-    TB_ADD(TB_SCALE, LT_ICON_X, cell ? "Scale" : NULL, "*", "Multiply or add an amount (*)");
-    TB_ADD(TB_INTERP, LT_ICON_TRENDING_UP, cell ? "Interp" : NULL, "/",
+    TB_ADD(TB_SCALE, LT_ICON_X, "Scale", "Scale...", "*", "Multiply or add an amount (*)");
+    TB_ADD(TB_INTERP, LT_ICON_TRENDING_UP, "Interp", "Interpolate", "/",
            "Interpolate between selection corners (/); h/v = horizontal/vertical");
-    TB_ADD(TB_SMOOTH, LT_ICON_SPARKLES, cell ? "Smooth" : NULL, "s", "Smooth selected cells (s)");
-    TB_ADD(TB_FILLR, LT_ICON_CHEVRONS_RIGHT, cell ? "Fill>" : NULL, NULL, "Fill right from the first selected column (Ctrl+R)");
-    TB_ADD(TB_FILLD, LT_ICON_CHEVRONS_DOWN, cell ? "FillV" : NULL, NULL, "Fill down from the top selected row (Ctrl+D)");
-    TB_ADD(TB_REBIN, LT_ICON_GRID_3X3, cell ? "Rebin" : NULL, NULL, "Re-bin: set new axis values and resample");
-    if (st->resizable) { TB_ADD(TB_SIZE, LT_ICON_RULER, cell ? "Size" : NULL, NULL, "Set table size (columns x rows)"); }
-    if (gen_ok(st)) { TB_ADD(TB_GEN, LT_ICON_WAND_SPARKLES, cell ? "Gen" : NULL, NULL, "Generate this table from engine specs"); }
+    TB_ADD(TB_SMOOTH, LT_ICON_SPARKLES, "Smooth", "Smooth", "s", "Smooth selected cells (s)");
+    TB_ADD(TB_FILLR, LT_ICON_CHEVRONS_RIGHT, "Fill>", "Fill right", NULL, "Fill right from the first selected column (Ctrl+R)");
+    TB_ADD(TB_FILLD, LT_ICON_CHEVRONS_DOWN, "FillV", "Fill down", NULL, "Fill down from the top selected row (Ctrl+D)");
+    TB_ADD(TB_REBIN, LT_ICON_GRID_3X3, "Rebin", "Re-bin...", NULL, "Re-bin: set new axis values and resample");
+    if (st->resizable) { TB_ADD(TB_SIZE, LT_ICON_RULER, "Size", "Table size...", NULL, "Set table size (columns x rows)"); }
+    if (gen_ok(st)) { TB_ADD(TB_GEN, LT_ICON_WAND_SPARKLES, "Gen", "Generate from engine specs...", NULL, "Generate this table from engine specs"); }
     TB_SEP();
-    TB_ADD(TB_COPY, LT_ICON_COPY, cell ? "Copy" : NULL, NULL, "Copy selected cells (Ctrl+C), tab separated");
-    TB_ADD(TB_PASTE, LT_ICON_CLIPBOARD_PASTE, cell ? "Paste" : NULL, NULL, "Paste at the selection (Ctrl+V)");
-    TB_ADD(TB_UNDO, LT_ICON_UNDO_2, cell ? "Undo" : NULL, NULL, "Undo (Ctrl+Z)");
-    TB_ADD(TB_REDO, LT_ICON_REDO_2, cell ? "Redo" : NULL, NULL, "Redo (Ctrl+Y)");
-    TB_ADD(TB_LOAD, LT_ICON_FILE_UP, cell ? "Load" : NULL, NULL, "Load a TunerStudio .table file");
-    TB_ADD(TB_SAVE, LT_ICON_FILE_DOWN, cell ? "Save" : NULL, NULL, "Save this table as a TunerStudio .table file");
-    TB_ADD(TB_REVERT, LT_ICON_ROTATE_CCW, cell ? "Revert" : NULL, NULL, "Undo every edit made in this tab");
+    TB_ADD(TB_COPY, LT_ICON_COPY, "Copy", "Copy", NULL, "Copy selected cells (Ctrl+C), tab separated");
+    TB_ADD(TB_PASTE, LT_ICON_CLIPBOARD_PASTE, "Paste", "Paste", NULL, "Paste at the selection (Ctrl+V)");
+    TB_ADD(TB_UNDO, LT_ICON_UNDO_2, "Undo", "Undo", NULL, "Undo (Ctrl+Z)");
+    TB_ADD(TB_REDO, LT_ICON_REDO_2, "Redo", "Redo", NULL, "Redo (Ctrl+Y)");
+    TB_ADD(TB_LOAD, LT_ICON_FILE_UP, "Load", "Load .table file...", NULL, "Load a TunerStudio .table file");
+    TB_ADD(TB_SAVE, LT_ICON_FILE_DOWN, "Save", "Save .table file...", NULL, "Save this table as a TunerStudio .table file");
+    TB_ADD(TB_REVERT, LT_ICON_ROTATE_CCW, "Revert", "Revert to values at open", NULL, "Undo every edit made in this tab");
     TB_SEP();
-    TB_ADD(TB_LIVE, LT_ICON_MAP_PIN, cell ? "Live" : NULL, "g", "Jump to the live cell (g)");
-    TB_ADD(TB_FOLLOW, LT_ICON_CROSSHAIR, cell ? "Follow" : NULL, "f", "Follow the live ECU position (f)");
+    TB_ADD(TB_LIVE, LT_ICON_MAP_PIN, "Live", "Jump to live cell", "g", "Jump to the live cell (g)");
+    TB_ADD(TB_FOLLOW, LT_ICON_CROSSHAIR, "Follow", "Follow live position", "f", "Follow the live ECU position (f)");
     it[n - 1].on = st->follow;
-    TB_ADD(TB_TRAIL, LT_ICON_ROUTE, cell ? "Trail" : NULL, NULL,
+    TB_ADD(TB_TRAIL, LT_ICON_ROUTE, "Trail", "Live-cell trail", NULL,
            app->settings.prefs.trail_on ? "Live-cell trail: on (click to hide)" : "Live-cell trail: off (click to show)");
     it[n - 1].on = app->settings.prefs.trail_on;
     TB_GAP();
-    TB_ADD(TB_SHADE, LT_ICON_PALETTE, cell ? "Shade" : NULL, NULL, "Colour shading: show the value heat map");
+    TB_ADD(TB_SHADE, LT_ICON_PALETTE, "Shade", "Colour shading", NULL, "Colour shading: show the value heat map");
     it[n - 1].on = st->shading;
-    TB_ADD(TB_YBOT, LT_ICON_ARROW_UP_DOWN, cell ? "Y-bot" : NULL, NULL,
+    TB_ADD(TB_YBOT, LT_ICON_ARROW_UP_DOWN, "Y-bot", "Y axis zero at the bottom", NULL,
            st->ybottom ? "Y axis: zero at the bottom (click for zero at the top)"
                        : "Y axis: zero at the top (click for zero at the bottom)");
     it[n - 1].on = st->ybottom;
     if (st->is_afr) {
-        TB_ADD(TB_LAMBDA, LT_ICON_EQUAL, cell ? "Lambda" : NULL, NULL, "Lambda preview table next to the AFR table");
+        TB_ADD(TB_LAMBDA, LT_ICON_EQUAL, "Lambda", "Lambda preview", NULL, "Lambda preview table next to the AFR table");
         it[n - 1].on = st->lambda_on;
     }
-    TB_ADD(TB_3D, LT_ICON_BOX, cell ? "3D" : NULL, NULL, "Toggle the 3D view");
+    TB_ADD(TB_3D, LT_ICON_BOX, "3D", "3D view", NULL, "Toggle the 3D view");
     it[n - 1].on = st->show3d;
+    it[n - 1].pin = 1;
     if (st->show3d) {
         static const char *const sty[LT_T3D_STYLES] = { "Surface style: solid (click for wireframe)",
             "Surface style: wireframe (click for points)", "Surface style: points (click for solid)" };
         static const char *const cm[LT_T3D_MODES] = { "Colour: by value (click for by change)",
             "Colour: by change from the values at open (click for a single colour)",
             "Colour: single colour (click for by value)" };
-        TB_ADD(TB_STYLE3D, LT_ICON_BOXES, cell ? "Style" : NULL, NULL, sty[st->t3.style]);
-        TB_ADD(TB_COLOR3D, LT_ICON_LAYERS, cell ? "Color" : NULL, NULL, cm[st->t3.color_mode]);
-        TB_ADD(TB_RESET3D, LT_ICON_ROTATE_CW, cell ? "Reset3D" : NULL, "Home", "Reset the 3D camera (Home)");
+        TB_ADD(TB_STYLE3D, LT_ICON_BOXES, "Style", "3D surface style", NULL, sty[st->t3.style]);
+        TB_ADD(TB_COLOR3D, LT_ICON_LAYERS, "Color", "3D colouring", NULL, cm[st->t3.color_mode]);
+        TB_ADD(TB_RESET3D, LT_ICON_ROTATE_CW, "Reset3D", "Reset 3D camera", "Home", "Reset the 3D camera (Home)");
     }
     TB_SEP();
-    TB_ADD(TB_BURN, LT_ICON_FLAME, "Burn", NULL, "Write the changes to ECU flash");
+    TB_ADD(TB_BURN, LT_ICON_FLAME, "Burn", "Burn", NULL, "Write the changes to ECU flash");
+    it[n - 1].label = "Burn";
     it[n - 1].accent = 1;
+    it[n - 1].pin = 1;                  /* Burn and 3D stay on a narrow bar */
     it[n - 1].disabled = lt_app_can_burn(app) ? 0 : 1;
     tb_item(&it[n], LT_VK_END, 0, NULL, NULL, NULL);
 #undef TB_ADD

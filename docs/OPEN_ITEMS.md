@@ -109,11 +109,8 @@ Found in the November 2026 usability pass; each needs a product decision rather 
   and "burn", "write" and "flash" for writing to the ECU.
 - **Connect entries**: File > Connect ECU..., File > Connect ECU Wizard... and Tools > ECU
   Connection... overlap; keep one.
-- **Table editing**: Esc reverts the whole selection (users expect it to cancel only the edit),
-  "-" while typing decrements instead of starting a negative number, typed values outside the
-  limits are clamped silently, a no-op operation still adds an undo step, curve "+" steps by 1.0.
-- **Narrow windows**: below about 1100 px the table toolbar hides Burn and 3D, and two-column INI
-  panels overflow; a resizable sidebar and a one-column fallback would help.
+- **Narrow windows**: two-column INI panels overflow below about 1100 px; a one-column fallback
+  would help. (The table and curve toolbars move what does not fit into a "»" menu.)
 - **Broken project or INI**: an empty or invalid project.json only shows a status-bar line, and an
   INI with no menus opens silently with an empty sidebar; both deserve an error dialog with a way
   out (show folder, replace definition, remove from recents).
