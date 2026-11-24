@@ -924,7 +924,7 @@ int lt_tune_save_pc_variables(const lt_tune *t, const char *path, const char *si
     lt_buf_init(&b);
     lt_buf_puts(&b, "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n");
     lt_buf_puts(&b, "<msq xmlns=\"http://www.msefi.com/:msq\">\n");
-    lt_buf_printf(&b, "<bibliography author=\"LibreTune\" writeDate=\"%s\"/>\n", date);
+    lt_buf_printf(&b, "<bibliography author=\"clibretune\" writeDate=\"%s\"/>\n", date);
     lt_buf_puts(&b, "<versionInfo fileFormat=\"4.0\"");
     put_attr(&b, "signature", signature ? signature : "");
     lt_buf_puts(&b, "/>\n");

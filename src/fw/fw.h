@@ -246,7 +246,7 @@ void lt_fw_usb_close(lt_fw_usb *u);
 /* what to tell the user about a USB error code (udev rule, WinUSB/Zadig, ...) */
 const char *lt_fw_usb_hint(int code, int os_windows);
 extern const char lt_fw_udev_rule[];
-#define LT_FW_UDEV_FILE "50-libretune.rules"
+#define LT_FW_UDEV_FILE "50-clibretune.rules"
 
 /* ------------------------------------------------------------------ serial adapter (fw_serial.c) */
 typedef struct lt_fw_serial lt_fw_serial;

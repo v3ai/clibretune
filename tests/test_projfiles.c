@@ -1,5 +1,5 @@
 /* test_projfiles.c - projects and files: recent projects stored as absolute paths (and the
- * migration of older relative entries), the command line (`libretune <folder>`), project folder
+ * migration of older relative entries), the command line (`clibretune <folder>`), project folder
  * names that work on every OS, no half-created project when creating fails, the dialog for a
  * project that cannot be opened (project.json, the definition) or whose definition looks incomplete.
  * SPDX-License-Identifier: GPL-2.0-or-later
@@ -34,7 +34,7 @@ LT_TEST(args)
     char err[600];
     char *dir = make_project("args", "Proj");
     char *argv[6];
-    argv[0] = (char *)"libretune";
+    argv[0] = (char *)"clibretune";
     /* no arguments */
     LT_CHECK(lt_app_args_parse(1, argv, &a, err, sizeof(err)) == 0);
     LT_CHECK(a.project == NULL && !a.demo && !a.mcp);

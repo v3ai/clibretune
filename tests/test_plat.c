@@ -147,6 +147,40 @@ LT_TEST(test_dirs)
     }
 }
 
+/* settings, projects and env vars from before the rename to clibretune are still found */
+LT_TEST(test_old_names)
+{
+    char *v, *d;
+    lt_plat_setenv("CLIBRETUNE_PT_Y", "new");
+    lt_plat_setenv("LIBRETUNE_PT_Y", "old");
+    v = lt_plat_app_env("PT_Y");
+    LT_CHECK(v != NULL && strcmp(v, "new") == 0);
+    lt_free(v);
+    lt_plat_setenv("LIBRETUNE_PT_Z", "old");
+    v = lt_plat_app_env("PT_Z");
+    LT_CHECK(v != NULL && strcmp(v, "old") == 0);
+    lt_free(v);
+    v = lt_plat_app_env("PT_NONE");
+    LT_CHECK(v == NULL);
+    lt_free(v);
+
+    lt_plat_mkdirs("build/test_plat_names");
+    d = lt_plat_app_subdir("build/test_plat_names", "clibretune", "libretune");
+    LT_CHECK(strcmp(lt_path_base(d), "clibretune") == 0);   /* neither exists: the new name */
+    lt_free(d);
+    lt_plat_mkdirs("build/test_plat_names/libretune");
+    d = lt_plat_app_subdir("build/test_plat_names", "clibretune", "libretune");
+    LT_CHECK(strcmp(lt_path_base(d), "libretune") == 0);    /* only the old one: keep using it */
+    lt_free(d);
+    lt_plat_mkdirs("build/test_plat_names/clibretune");
+    d = lt_plat_app_subdir("build/test_plat_names", "clibretune", "libretune");
+    LT_CHECK(strcmp(lt_path_base(d), "clibretune") == 0);   /* both: the new one */
+    lt_free(d);
+    lt_plat_remove("build/test_plat_names/clibretune");
+    lt_plat_remove("build/test_plat_names/libretune");
+    lt_plat_remove("build/test_plat_names");
+}
+
 LT_TEST(test_tcp_echo)
 {
     lt_server *srv = lt_server_listen(0);
@@ -207,6 +241,7 @@ int main(void)
     LT_RUN(test_path_fold);
     LT_RUN(test_abspath);
     LT_RUN(test_dirs);
+    LT_RUN(test_old_names);
     LT_RUN(test_tcp_echo);
     LT_RUN(test_serial_list);
     lt_plat_remove(tmp_root);

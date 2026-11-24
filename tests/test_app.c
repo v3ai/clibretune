@@ -203,7 +203,7 @@ LT_TEST(ext_registry)
     LT_CHECK(n_pages >= 1);
     LT_CHECK(lt_ext_settings_title(app, 0) != NULL);
     LT_CHECK(n_help >= 2);
-    LT_CHECK(strcmp(lt_ext_menu_item_label(app, LT_EXT_MENU_HELP, n_help - 1), "&About LibreTune") == 0);
+    LT_CHECK(strcmp(lt_ext_menu_item_label(app, LT_EXT_MENU_HELP, n_help - 1), "&About clibretune") == 0);
     LT_CHECK(lt_ext_menu_item_label(app, LT_EXT_MENU_HELP, n_help) == NULL);
     /* a feature registers itself */
     lt_ext_add_target(app->ext, "std_unit_test_target", my_target);

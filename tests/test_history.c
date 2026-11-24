@@ -276,7 +276,7 @@ LT_TEST(restore_cleanup)
     size_t n = 0;
     int i;
     LT_CHECK(lt_app_find_demo_ini(ini, sizeof(ini)) != NULL);
-    LT_CHECK(lt_plat_setenv("LIBRETUNE_PROJECTS", "build/test_hist_proj") == 0);
+    LT_CHECK(lt_plat_setenv("CLIBRETUNE_PROJECTS", "build/test_hist_proj") == 0);
     LT_CHECK(lt_plat_mkdirs("build/test_hist_proj") == 0);
     unique_name(name, sizeof(name), "rp");
     LT_CHECK(lt_app_new_project(app, name, ini) == 0);
@@ -301,7 +301,7 @@ LT_TEST(app_history)
     size_t n;
     lt_snap_info *h = NULL;
     LT_CHECK(lt_app_find_demo_ini(ini, sizeof(ini)) != NULL);
-    LT_CHECK(lt_plat_setenv("LIBRETUNE_PROJECTS", "build/test_hist_proj") == 0);
+    LT_CHECK(lt_plat_setenv("CLIBRETUNE_PROJECTS", "build/test_hist_proj") == 0);
     LT_CHECK(lt_plat_mkdirs("build/test_hist_proj") == 0);
     unique_name(name, sizeof(name), "hist");
     LT_CHECK(lt_app_new_project(app, name, ini) == 0);
@@ -372,7 +372,7 @@ LT_TEST(restore_reloads_config)
     char ini[512], name[64], id1[9], id2[9], *dst, *txt;
     size_t len = 0;
     LT_CHECK(lt_app_find_demo_ini(ini, sizeof(ini)) != NULL);
-    LT_CHECK(lt_plat_setenv("LIBRETUNE_PROJECTS", "build/test_hist_proj") == 0);
+    LT_CHECK(lt_plat_setenv("CLIBRETUNE_PROJECTS", "build/test_hist_proj") == 0);
     LT_CHECK(lt_plat_mkdirs("build/test_hist_proj") == 0);
     unique_name(name, sizeof(name), "cfg");
     LT_CHECK(lt_app_new_project(app, name, ini) == 0);

@@ -687,7 +687,7 @@ LT_TEST(pc_variable_file)
     if (txt) {
         LT_CHECK(strstr(txt, "<versionInfo fileFormat=\"4.0\" signature=\"sig&lt;1&gt;\"/>") != NULL);
         LT_CHECK(strstr(txt, "<page number=\"-1\">\n<constant name=\"name\">\"hello\"</constant>\n<constant name=\"rpmhigh\">7000</constant>\n</page>") != NULL);
-        LT_CHECK(strstr(txt, "<bibliography author=\"LibreTune\" writeDate=\"") != NULL);
+        LT_CHECK(strstr(txt, "<bibliography author=\"clibretune\" writeDate=\"") != NULL);
         lt_free(txt);
     }
     LT_CHECK_INT(lt_tune_load_pc_variables(u, "build/lt_pcvars_test.msq"), 0);

@@ -30,7 +30,7 @@
 #include "../../../plat/plat.h"
 
 #define WB_EVQ_CAP 128
-#define WB_CLASS_NAME L"LibreTuneWindow"
+#define WB_CLASS_NAME L"clibretuneWindow"
 
 typedef struct wb_state {
     HWND hwnd;

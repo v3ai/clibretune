@@ -1,6 +1,6 @@
 /* feat_sync.c - what happens after the ECU link comes up (G-01, G-02, G-03):
  *   - signature mismatch dialog with matching INIs from the local INI library
- *   - project tune vs ECU tune choice (Use LibreTune / Ignore / Use ECU settings)
+ *   - project tune vs ECU tune choice (Use clibretune / Ignore / Use ECU settings)
  *   - Connect ECU wizard: scan, pick the INI by signature, name the project, connect
  *   - automatic definition choice (project/inidb.h): on connect, a signature that differs from
  *     the open definition is resolved against the ECU's USB drive, the INI library and the
@@ -355,7 +355,7 @@ static void tune_sync_draw(lt_app *app, lt_app_dialog *d)
     if (lt_ui_modal_begin(ui, "Difference Report", CH * 84, CV * 31, &open)) {
         lt_ui_layout_row(ui, 1, &w1, 0);
         lt_ui_label_wrap(ui,
-            "There are differences between the settings currently in LibreTune and the settings "
+            "There are differences between the settings currently in clibretune and the settings "
             "found in the ECU. Review the list, then choose which settings to keep.", t->text2);
         lt_sync_cmp_summary(st->cmp, sum, sizeof(sum));
         lt_ui_label_ex(ui, sum, t->warning, LT_UI_ALIGN_LEFT);
@@ -363,7 +363,7 @@ static void tune_sync_draw(lt_app *app, lt_app_dialog *d)
         lt_ui_layout_row(ui, 3, w3, 0);
         lt_ui_text_style(ui, (int)LT_FONT_SANS_SEMIBOLD, LT_UI_FS_BASE);
         lt_ui_label_ex(ui, "Setting", t->text, LT_UI_ALIGN_LEFT);
-        lt_ui_label_ex(ui, "Current LibreTune Settings", t->text, LT_UI_ALIGN_LEFT);
+        lt_ui_label_ex(ui, "Current clibretune Settings", t->text, LT_UI_ALIGN_LEFT);
         lt_ui_label_ex(ui, "Settings in ECU", t->text, LT_UI_ALIGN_LEFT);
         lt_ui_text_style_reset(ui);
         lt_ui_layout_row(ui, 1, &w1, CV * 14);
@@ -382,18 +382,18 @@ static void tune_sync_draw(lt_app *app, lt_app_dialog *d)
                 lt_ui_layout_row(ui, 1, &w1, 0);
                 lt_ui_label_wrap(ui,
                     "No named INI settings differ. Unused page bytes may still differ; Use "
-                    "LibreTune Settings will not invent those bytes.", t->muted);
+                    "clibretune Settings will not invent those bytes.", t->muted);
             }
             lt_ui_scroll_end(ui);
         }
         lt_ui_layout_row(ui, 1, &w1, 0);
         lt_ui_label_wrap(ui,
-            "Use LibreTune Settings writes the project tune to the ECU (burn to keep it). Use ECU "
+            "Use clibretune Settings writes the project tune to the ECU (burn to keep it). Use ECU "
             "Settings replaces the project tune with what the ECU holds; a restore point of the "
             "project tune is saved first.", t->muted);
         w3[0] = -1; w3[1] = -1; w3[2] = -1;
         lt_ui_layout_row(ui, 3, w3, 0);
-        if (lt_ui_button_ex(ui, "Use LibreTune Settings", LT_UI_BTN_PRIMARY)) { act = 1; }
+        if (lt_ui_button_ex(ui, "Use clibretune Settings", LT_UI_BTN_PRIMARY)) { act = 1; }
         if (lt_ui_button(ui, "Ignore")) { act = 2; }
         if (lt_ui_button(ui, "Use ECU Settings")) { act = 3; }
         lt_ui_modal_end(ui);
@@ -576,7 +576,7 @@ static void sig_draw(lt_app *app, lt_app_dialog *d)
             lt_ui_listbox_cb(ui, "inis", &s->sel, s->n_m, sig_item, s);
         } else {
             lt_ui_label_ex(ui, "No matching INI files in the INI library or among the definitions "
-                               "bundled with LibreTune.", t->muted, LT_UI_ALIGN_LEFT);
+                               "bundled with clibretune.", t->muted, LT_UI_ALIGN_LEFT);
         }
         if (s->note[0] != '\0') { lt_ui_label_wrap(ui, s->note, t->text2); }
         w3[0] = -1; w3[1] = -1; w3[2] = -1;
@@ -757,7 +757,7 @@ static void wiz_pick_line(lt_app *app, wiz_state *w)
     }
     if (w->pk.drive_compressed) {
         lt_ui_label_wrap(app->ui, "The ECU's USB drive only holds a compressed INI (rusefi.ini.7z), "
-                                  "which LibreTune cannot unpack.", t->muted);
+                                  "which clibretune cannot unpack.", t->muted);
     }
 }
 

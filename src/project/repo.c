@@ -33,7 +33,7 @@ static char *default_repo_dir(void)
     char *base = NULL, *r, *home, *t;
     lt_os os = lt_plat_os();
 
-    base = lt_plat_getenv("LIBRETUNE_DEFINITIONS");     /* explicit location (tests, portable use) */
+    base = lt_plat_app_env("DEFINITIONS");     /* explicit location (tests, portable use) */
     if (base != NULL && base[0] != '\0') { return base; }
     lt_free(base);
     base = NULL;
@@ -70,7 +70,7 @@ static char *default_repo_dir(void)
         lt_err_set("no data directory available");
         return NULL;
     }
-    t = lt_path_join(base, "LibreTune");
+    t = lt_plat_app_subdir(base, "clibretune", "LibreTune");
     r = lt_path_join(t, "definitions");
     lt_free(t);
     lt_free(base);

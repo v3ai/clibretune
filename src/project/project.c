@@ -163,7 +163,7 @@ int lt_proj_config_write(const lt_proj_config *c, const char *path)
 /* ---------------------------------------------------------------- */
 char *lt_projects_dir(void)
 {
-    char *env = lt_plat_getenv("LIBRETUNE_PROJECTS");
+    char *env = lt_plat_app_env("PROJECTS");
     char *home, *docs, *r;
     if (env != NULL && env[0] != '\0') return env;
     lt_free(env);
@@ -179,9 +179,9 @@ char *lt_projects_dir(void)
     }
     docs = lt_path_join(home, "Documents");
     if (lt_plat_is_dir(docs)) {
-        r = lt_path_join(docs, "LibreTuneProjects");
+        r = lt_plat_app_subdir(docs, "clibretune Projects", "LibreTuneProjects");
     } else {
-        r = lt_path_join(home, "LibreTuneProjects");
+        r = lt_plat_app_subdir(home, "clibretune Projects", "LibreTuneProjects");
     }
     lt_free(docs);
     lt_free(home);

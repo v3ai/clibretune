@@ -530,7 +530,7 @@ static void stage_pick(lt_app *app, lt_app_dialog *d, mig_dlg *s, int *open)
                                     : "Switch this project to another ECU definition. Tune values are kept "
                                       "by name; constants new in the INI use their defaults.", t->muted);
     lt_ui_layout_row(ui, 1, &w1, 0);
-    if (lt_inidb_count() > 0 && s->repo_ok) { lt_ui_radio(ui, "Bundled with LibreTune", &s->source, SRC_BUNDLED); }
+    if (lt_inidb_count() > 0 && s->repo_ok) { lt_ui_radio(ui, "Bundled with clibretune", &s->source, SRC_BUNDLED); }
     lt_ui_radio(ui, "From the INI library", &s->source, SRC_LIBRARY);
     lt_ui_radio(ui, "From an INI file", &s->source, SRC_FILE);
     if (s->source == SRC_BUNDLED) {

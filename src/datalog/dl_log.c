@@ -164,7 +164,7 @@ int lt_log_read(const char *path, lt_log *out)
     case LT_FMT_MLG: return lt_mlg_read(path, out);
     case LT_FMT_MSL: return lt_msl_read(path, out);
     default:
-        lt_err_set("not a log format LibreTune reads: %s", path ? path : "(null)");
+        lt_err_set("not a log format clibretune reads: %s", path ? path : "(null)");
         return LT_EINVAL;
     }
 }
@@ -176,7 +176,7 @@ int lt_log_write(const char *path, const lt_log *log)
     case LT_FMT_MLG: return lt_mlg_write(path, log, NULL);
     case LT_FMT_MSL: return lt_msl_write(path, log);
     default:
-        lt_err_set("not a log format LibreTune writes: %s", path ? path : "(null)");
+        lt_err_set("not a log format clibretune writes: %s", path ? path : "(null)");
         return LT_EINVAL;
     }
 }

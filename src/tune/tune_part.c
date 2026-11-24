@@ -25,7 +25,7 @@ static void copy_attrs(lt_tune_entry *dst, const lt_tune_entry *src)
 static lt_tune *part_new(const char *signature)
 {
     lt_tune *t = lt_tune_new(signature != NULL ? signature : "");
-    t->author = lt_strdup("LibreTune");
+    t->author = lt_strdup("clibretune");
     return t;
 }
 

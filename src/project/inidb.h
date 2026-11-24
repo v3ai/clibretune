@@ -15,7 +15,7 @@
  *   USB drive    lt_inidb_drive_find: rusEFI boards with an embedded INI drive (F7/H7 builds
  *                with EFI_USE_COMPRESSED_INI_MSD) show a volume "RUSEFI" holding the plain
  *                rusefi_<board>.ini; boards with the uncompressed image only hold
- *                rusefi.ini.7z (7-Zip/LZMA), which LibreTune cannot read and reports as such
+ *                rusefi.ini.7z (7-Zip/LZMA), which clibretune cannot read and reports as such
  *
  * Typical use (connect flow):
  *     lt_inidb_pick pk; char *path = NULL;
@@ -130,7 +130,7 @@ int  lt_inidb_resolve(const char *signature, const lt_ini_repo *repo, int flags,
 int  lt_inidb_pick_path(lt_ini_repo *repo, const lt_inidb_pick *p, char **path_out);
 
 /* ---- the ECU's USB drive (inidb_drive.c) ---- */
-/* Mounted volumes to look at: $LIBRETUNE_VOLUMES (';'-separated directories) when set, else
+/* Mounted volumes to look at: $CLIBRETUNE_VOLUMES (';'-separated directories) when set, else
  * lt_plat_volume_list. Looks at the top level of each for *.ini files whose signature equals
  * `signature` (lt_sig_normalize). 1 found (path filled), 0 not found. *compressed (may be NULL)
  * is set when a volume holds rusefi.ini.7z / rusefi.ini.zip but no plain INI. */

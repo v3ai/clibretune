@@ -254,8 +254,8 @@ LT_TEST(defaults)
     LT_CHECK_NEAR(in.relative_height, 0.05, 0);
     lt_dash_indicator_free(&in);
     d = lt_dash_new();
-    LT_CHECK_STR(d->author, "LibreTune");
-    LT_CHECK_STR(d->company, "LibreTune Project");
+    LT_CHECK_STR(d->author, "clibretune");
+    LT_CHECK_STR(d->company, "clibretune Project");
     LT_CHECK_STR(d->file_format, "3.0");
     LT_CHECK(d->cluster.anti_aliasing && !d->cluster.force_aspect);
     LT_CHECK(d->cluster.background_image_style == LT_BG_TILE);
@@ -601,7 +601,7 @@ LT_TEST(write_format)
     lt_dash_write(d, &b);
     LT_CHECK(strncmp(b.data, "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?>\n", 54) == 0);
     LT_CHECK(strstr(b.data, "<dsh xmlns=\"http://www.EFIAnalytics.com/:dsh\">") != NULL);
-    LT_CHECK(strstr(b.data, "    <bibliography author=\"LibreTune\" company=\"LibreTune Project\" "
+    LT_CHECK(strstr(b.data, "    <bibliography author=\"clibretune\" company=\"clibretune Project\" "
                             "writeDate=\"2025-01-02 03:04:05\"/>") != NULL);
     LT_CHECK(strstr(b.data, "<versionInfo fileFormat=\"3.0\"/>") != NULL);
     LT_CHECK(strstr(b.data, "forceAspect=\"true\" forceAspectWidth=\"16\" forceAspectHeight=\"16.5\"") != NULL);
@@ -906,8 +906,8 @@ static void check_template(lt_dash_file *d, size_t n)
     rt = roundtrip(d);
     LT_CHECK(rt != NULL && dash_eq(d, rt));
     lt_dash_free(rt);
-    LT_CHECK_STR(d->author, "LibreTune");
-    LT_CHECK_STR(d->company, "LibreTune Project");
+    LT_CHECK_STR(d->author, "clibretune");
+    LT_CHECK_STR(d->company, "clibretune Project");
     LT_CHECK_STR(d->file_format, "3.0");
     LT_CHECK(strlen(d->write_date) == 10);
     LT_CHECK(d->cluster.background_image_style == LT_BG_STRETCH);

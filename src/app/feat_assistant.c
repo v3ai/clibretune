@@ -8,7 +8,7 @@
  *   Settings -> Assistant   endpoint, model, API key (plaintext file, 0600; LT_AI_KEY overrides),
  *                           capability tier, risk acknowledgement, MCP server
  *   MCP                     read-only JSON-RPC tools on 127.0.0.1 (bearer token) or on stdio
- *                           (`libretune --mcp`)
+ *                           (`clibretune --mcp`)
  * Logic: src/agent (tools, proposals, chat), src/mcp, src/net/http.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
@@ -404,7 +404,7 @@ static void settings_page(lt_app *app)
     }
     lt_ui_layout_row(ui, 1, &w1, 0);
     lt_ui_label_wrap(ui, "HTTP: POST http://127.0.0.1:PORT/mcp with the header \"Authorization: Bearer "
-                     "TOKEN\". Without HTTP, run `libretune --mcp --project DIR` and speak JSON-RPC over "
+                     "TOKEN\". Without HTTP, run `clibretune --mcp --project DIR` and speak JSON-RPC over "
                      "stdin/stdout. Only the read tools are offered.", th->muted);
     if (reset_ack && c->ack) { c->ack = 0; }
     if (ch) { as_save(app, s); }

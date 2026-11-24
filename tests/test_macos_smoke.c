@@ -33,7 +33,7 @@ LT_TEST(cocoa_smoke)
     }
     LT_CHECK(strcmp(b->name, "cocoa") == 0);
     LT_CHECK(b->cell_mode == LT_FALSE);
-    if (b->open(b, "LibreTune smoke test", SMOKE_W, SMOKE_H) != 0) {
+    if (b->open(b, "clibretune smoke test", SMOKE_W, SMOKE_H) != 0) {
         printf("test_macos_smoke: cannot open a window (%s), skipped\n", lt_err_get());
         lt_backend_destroy(b);
         return;
@@ -88,12 +88,12 @@ LT_TEST(cocoa_smoke)
         (void)b->poll(b, &ev, 50);
     }
 
-    b->set_title(b, "LibreTune smoke test (renamed)");
+    b->set_title(b, "clibretune smoke test (renamed)");
     if (b->set_clipboard != NULL && b->get_clipboard != NULL) {
-        b->set_clipboard(b, "libretune \xC3\xA9 clip");
+        b->set_clipboard(b, "clibretune \xC3\xA9 clip");
         clip = b->get_clipboard(b);
         if (clip != NULL) {
-            LT_CHECK(strcmp(clip, "libretune \xC3\xA9 clip") == 0);
+            LT_CHECK(strcmp(clip, "clibretune \xC3\xA9 clip") == 0);
             lt_free(clip);
         }
     }

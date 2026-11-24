@@ -35,7 +35,7 @@ These are the 14 tunes listed in the upstream `index.json`. The upstream reposit
 `Generic/Speeduino base tune with wmi.msq`, which `index.json` does not list; it is not included.
 `index.json` is kept as published (it uses the id "12" twice; the program does not use the ids).
 
-## How LibreTune uses them
+## How clibretune uses them
 
 `tools/gen_basetunes.py` embeds the files unmodified (packed with a lossless LZ77 coder, about 75 KB,
 unpacked byte for byte at run time) into `src/tune/basetune_data.c`, which
@@ -47,8 +47,8 @@ came from.
 
 ## Non-commercial use
 
-CC BY-NC 4.0 does not allow commercial use. LibreTune is free software and is never sold; any
-binary or bundle that contains these tunes (every build of LibreTune embeds them) must not be sold
-or otherwise used primarily for commercial advantage. Anyone who wants to distribute LibreTune
+CC BY-NC 4.0 does not allow commercial use. clibretune is free software and is never sold; any
+binary or bundle that contains these tunes (every build of clibretune embeds them) must not be sold
+or otherwise used primarily for commercial advantage. Anyone who wants to distribute clibretune
 commercially must first regenerate `src/tune/basetune_data.c` without the tunes
 (`python3 tools/gen_basetunes.py --empty`) and leave this folder out.

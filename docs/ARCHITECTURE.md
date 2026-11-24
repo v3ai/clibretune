@@ -1,4 +1,4 @@
-# LibreTune-C architecture
+# clibretune-C architecture
 
 Strictly portable C89 (also valid C23), one binary, one thread, no runtime
 dependencies. This document fixes how the core modules fit together. The
@@ -395,5 +395,5 @@ box/block glyphs, 10x20 px per cell; convert with `tools/ppm2png.py`), `LT_SHOT_
 (plain text), `LT_SHOT_ANSI=out.ans` (the exact escape stream), `LT_SHOT_SIZE=COLSxROWS`,
 `LT_SHOT_COLORS=24|256|16|1`, `LT_SHOT_ASCII=1` / `LT_SHOT_BASIC=1`, `LT_SHOT_OPEN=target`,
 `LT_SHOT_KEYS="alt+f,down,enter,text:abc,click:10/3,wheel:20/10/-1,ctrl+comma"`:
-`LT_SHOT_TTY=a.ppm LT_SHOT_SIZE=120x40 build/libretune --demo`. Tests: `tests/test_tty.c`
+`LT_SHOT_TTY=a.ppm LT_SHOT_SIZE=120x40 build/clibretune --demo`. Tests: `tests/test_tty.c`
 (parsing, modes, diff output), `tests/test_ttyshot.c` (screens at 80x24 / 120x40 / 160x50).

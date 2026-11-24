@@ -4,7 +4,7 @@
  * read-only FAT volume labelled RUSEFI (SCSI inquiry "rusEFI" / "INI Drive"):
  *   - EFI_USE_COMPRESSED_INI_MSD (the F7/H7 default where the drive is enabled): the volume holds
  *     the plain generated INI (rusefi_<board>.ini) plus README and .url files - readable here;
- *   - the uncompressed image: the INI only as rusefi.ini.7z (7-Zip, LZMA), which LibreTune has no
+ *   - the uncompressed image: the INI only as rusefi.ini.7z (7-Zip, LZMA), which clibretune has no
  *     decoder for (older firmware used rusefi.ini.zip, deflate - no decoder either);
  *   - since 2026 the F4 boards build without the drive (EFI_EMBED_INI_MSD FALSE).
  * The OS mounts the volume; lt_plat_volume_list (per-OS file) lists the mounted volumes and this
@@ -73,7 +73,7 @@ static int scan_volume(const char *vol, const char *signature, char *path, size_
 
 int lt_inidb_drive_find(const char *signature, char *path, size_t cap, int *compressed)
 {
-    char *env = lt_plat_getenv("LIBRETUNE_VOLUMES");
+    char *env = lt_plat_app_env("VOLUMES");
     int comp = 0, found = 0;
     if (cap > 0) { path[0] = '\0'; }
     if (signature != NULL && signature[0] != '\0') {

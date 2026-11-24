@@ -132,7 +132,7 @@ static void gal_menus(lt_ui *ui, gallery *g)
             lt_ui_menu_end(ui);
         }
         if (lt_ui_menu_begin(ui, "&Help")) {
-            if (lt_ui_menu_item(ui, "About LibreTune", NULL, 0)) { g->about_open = 1; }
+            if (lt_ui_menu_item(ui, "About clibretune", NULL, 0)) { g->about_open = 1; }
             lt_ui_menu_end(ui);
         }
         lt_ui_menubar_end(ui);
@@ -479,8 +479,8 @@ static void gallery_frame(lt_ui *ui, gallery *g)
         if (res == 1) { lt_ui_toast(ui, 1, "Burn complete"); }
     }
     if (g->about_open) {
-        lt_ui_msgbox(ui, "about", "About LibreTune",
-                     "LibreTune - open source ECU tuning, In Universal C.", "OK", &g->about_open);
+        lt_ui_msgbox(ui, "about", "About clibretune",
+                     "clibretune - open source ECU tuning, In Universal C.", "OK", &g->about_open);
     }
     if (g->fd.open) {
         int res = lt_ui_file_dialog(ui, &g->fd, g->fd.mode == LT_UI_FILE_SAVE ? "Save tune" : "Open tune");

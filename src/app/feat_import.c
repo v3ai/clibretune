@@ -179,7 +179,7 @@ static void load_preview(tsi_dlg *s, const char *picked)
                     lt_snprintf(s->ini_note, sizeof(s->ini_note), "From the INI library: %s", e->name);
                     lt_free(path);
                 }
-            } else {                                        /* else one bundled with LibreTune */
+            } else {                                        /* else one bundled with clibretune */
                 lt_inidb_pick pk;
                 int q = lt_inidb_resolve(s->tune_sig, NULL, 0, &pk);
                 if (q != LT_INIDB_NONE && pk.src == LT_INIDB_SRC_BUNDLE) {
@@ -296,7 +296,7 @@ static void tsi_draw(lt_app *app, lt_app_dialog *d)
             }
             lt_ui_separator(ui);
             lt_ui_layout_row(ui, 1, &w1, 0);
-            lt_ui_label_wrap(ui, "The project will be imported to your LibreTune projects folder and "
+            lt_ui_label_wrap(ui, "The project will be imported to your clibretune projects folder and "
                                  "opened automatically.", t->muted);
         }
         w3[0] = -1; w3[1] = 140; w3[2] = 130; w3[3] = 90;

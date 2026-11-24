@@ -53,7 +53,7 @@ static void put_titles(lt_buf *b, const char *title)
     if (p == NULL || *p == '\0') {
         char ts[40];
         lt_plat_timestamp(ts, sizeof ts);
-        lt_buf_puts(b, "\"LibreTune datalog\"\n\"Capture Date: ");
+        lt_buf_puts(b, "\"clibretune datalog\"\n\"Capture Date: ");
         lt_buf_puts(b, ts);
         lt_buf_puts(b, "\"\n");
         return;

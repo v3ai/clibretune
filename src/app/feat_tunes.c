@@ -162,7 +162,7 @@ static void tune_draw(lt_app *app, lt_app_dialog *d)
         lt_ui_layout_row(ui, 1, &w1, 0);
         lt_ui_label_wrap(ui, s->project_mode
             ? "Tunes found in the project folder. Browse to load one from another project or folder."
-            : "Pick a tune file. LibreTune matches an ECU definition from the INI library by the "
+            : "Pick a tune file. clibretune matches an ECU definition from the INI library by the "
               "tune's signature and creates a project for it.", t->text2);
         lt_ui_layout_row(ui, 1, &w1, 100);
         if (s->n > 0) {

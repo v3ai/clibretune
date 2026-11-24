@@ -563,8 +563,8 @@ lt_dash_file *lt_dash_new(void)
     lt_dash_file *d = (lt_dash_file *)lt_calloc(1, sizeof(*d));
     char ts[32];
     cluster_init(&d->cluster);
-    d->author = lt_strdup("LibreTune");
-    d->company = lt_strdup("LibreTune Project");
+    d->author = lt_strdup("clibretune");
+    d->company = lt_strdup("clibretune Project");
     dash_now_str(ts, sizeof ts, LT_TRUE);
     d->write_date = lt_strdup(ts);
     d->file_format = lt_strdup("3.0");

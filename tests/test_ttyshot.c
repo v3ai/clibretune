@@ -188,20 +188,20 @@ LT_TEST(reset_defaults_asks_first)
 /* the Tools menu shows the logging shortcut the user bound, not a fixed Ctrl+L */
 LT_TEST(menu_shows_rebound_log_shortcut)
 {
-    char *old = lt_plat_getenv("LIBRETUNE_CONFIG_DIR");
+    char *old = lt_plat_getenv("CLIBRETUNE_CONFIG_DIR");
     const char *hk = "tools.log=Ctrl+Alt+G\n";
     (void)lt_plat_mkdirs("build/test_ttyshot_hk");
     LT_CHECK(lt_file_write("build/test_ttyshot_hk/hotkeys.conf", hk, strlen(hk)) == 0);
-    lt_plat_setenv("LIBRETUNE_CONFIG_DIR", "build/test_ttyshot_hk");
+    lt_plat_setenv("CLIBRETUNE_CONFIG_DIR", "build/test_ttyshot_hk");
     render(80, 30, NULL, "alt+t", NULL, 0, NULL);
-    lt_plat_setenv("LIBRETUNE_CONFIG_DIR", old != NULL ? old : "");
+    lt_plat_setenv("CLIBRETUNE_CONFIG_DIR", old != NULL ? old : "");
     lt_free(old);
     LT_CHECK(strstr(g_txt, "Data Logging") != NULL);
     LT_CHECK(strstr(g_txt, "Ctrl+Alt+G") != NULL);
     LT_CHECK(strstr(g_txt, "Ctrl+L ") == NULL);
 }
 
-/* the ECU definition's own Help menu joins LibreTune's Help instead of a second "Help" title */
+/* the ECU definition's own Help menu joins clibretune's Help instead of a second "Help" title */
 LT_TEST(one_help_menu)
 {
     char l[1024];
@@ -212,7 +212,7 @@ LT_TEST(one_help_menu)
     LT_CHECK(a != NULL);
     b = a != NULL ? strstr(a + 4, "Help") : NULL;
     LT_CHECK(b == NULL);
-    LT_CHECK(strstr(g_txt, "About LibreTune") != NULL);
+    LT_CHECK(strstr(g_txt, "About clibretune") != NULL);
     LT_CHECK(strstr(g_txt, "rusEFI Help") != NULL);
 }
 

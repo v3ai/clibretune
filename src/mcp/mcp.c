@@ -11,7 +11,7 @@
 #define MCP_MAX_CLIENTS 8
 
 static const char instructions[] =
-    "LibreTune's read-only tune inspection tools. All numeric analysis must come from these "
+    "clibretune's read-only tune inspection tools. All numeric analysis must come from these "
     "tools: never invent or compute tuning numbers yourself. You can NOT change the tune or "
     "burn to the ECU; no write tools are offered here. If a tool returns an object with an "
     "`error` field, report that reason instead of guessing.";
@@ -91,7 +91,7 @@ static lt_json *handle_one(const lt_json *req, lt_mcp_env_fn envf, void *ud)
         lt_json *r = lt_json_obj(), *caps = lt_json_obj(), *si = lt_json_obj();
         const char *pv = lt_json_get_str(params, "protocolVersion", MCP_VERSION);
         lt_json_obj_set(caps, "tools", lt_json_obj());
-        lt_json_obj_set(si, "name", lt_json_str("libretune"));
+        lt_json_obj_set(si, "name", lt_json_str("clibretune"));
         lt_json_obj_set(si, "version", lt_json_str("0.1.0"));
         lt_json_obj_set(r, "protocolVersion", lt_json_str(pv));
         lt_json_obj_set(r, "capabilities", caps);

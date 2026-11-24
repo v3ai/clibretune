@@ -1,4 +1,4 @@
-/* ui.h - LibreTune-C immediate-mode widget toolkit.
+/* ui.h - clibretune-C immediate-mode widget toolkit.
  *
  * Frame protocol (one frame per loop iteration, only when needed):
  *

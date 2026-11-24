@@ -34,7 +34,7 @@ static void sandbox(const char *tag)
     (void)lt_plat_mkdirs(cfg);
     (void)lt_plat_mkdirs(proj);
     LT_CHECK(lt_plat_setenv("XDG_CONFIG_HOME", cfg) == 0);
-    LT_CHECK(lt_plat_setenv("LIBRETUNE_PROJECTS", proj) == 0);
+    LT_CHECK(lt_plat_setenv("CLIBRETUNE_PROJECTS", proj) == 0);
 }
 
 /* ---- prefs ---- */
@@ -429,7 +429,7 @@ LT_TEST(app_import_ts)
     /* a missing INI replaced by another definition (new projects folder: the name is taken) */
     unique_name(proj, sizeof(proj), "build/test_prefs_proj2_");
     (void)lt_plat_mkdirs(proj);
-    LT_CHECK(lt_plat_setenv("LIBRETUNE_PROJECTS", proj) == 0);
+    LT_CHECK(lt_plat_setenv("CLIBRETUNE_PROJECTS", proj) == 0);
     LT_CHECK(lt_feat_import_ts_with_ini(app, "tests/fixtures/project/ts_proj",
                                         "tests/fixtures/ini/demo.ini") == 0);
     LT_CHECK(app->has_project && app->ini != NULL);
@@ -445,7 +445,7 @@ LT_TEST(app_import_ts)
 }
 
 /* a TunerStudio project whose INI is missing: the wizard offers the definition bundled with
- * LibreTune for the tune's signature, and Import Project (Enter) uses it */
+ * clibretune for the tune's signature, and Import Project (Enter) uses it */
 LT_TEST(app_import_ts_bundled_ini)
 {
     lt_app *app;
@@ -453,7 +453,7 @@ LT_TEST(app_import_ts_bundled_ini)
     sandbox("impb");
     unique_name(defs, sizeof(defs), "build/test_prefs_defs_");
     (void)lt_plat_mkdirs(defs);
-    LT_CHECK(lt_plat_setenv("LIBRETUNE_DEFINITIONS", defs) == 0);     /* an empty INI library */
+    LT_CHECK(lt_plat_setenv("CLIBRETUNE_DEFINITIONS", defs) == 0);     /* an empty INI library */
     unique_name(root, sizeof(root), "build/test_prefs_tsnoini_");
     lt_snprintf(cfg, sizeof(cfg), "%s/projectCfg", root);
     (void)lt_plat_mkdirs(cfg);
@@ -475,7 +475,7 @@ LT_TEST(app_import_ts_bundled_ini)
     if (app->ini != NULL && app->ini->signature != NULL) {
         LT_CHECK_STR(app->ini->signature, "speeduino 202501");
     }
-    LT_CHECK(lt_plat_setenv("LIBRETUNE_DEFINITIONS", "") == 0);
+    LT_CHECK(lt_plat_setenv("CLIBRETUNE_DEFINITIONS", "") == 0);
     lt_app_free(app);
 }
 
@@ -528,7 +528,7 @@ LT_TEST(error_report)
     LT_CHECK(strcmp(lt_feat_error_code_name(LT_PE_TIMEOUT), "timeout") == 0);
     LT_CHECK(strcmp(lt_feat_error_code_name(9999), "none") == 0);
     lt_feat_error_report("Connection Failed", "no answer", d, rep, sizeof(rep));
-    LT_CHECK(strstr(rep, "LibreTune Error Report") != NULL && strstr(rep, "Title: Connection Failed") != NULL &&
+    LT_CHECK(strstr(rep, "clibretune Error Report") != NULL && strstr(rep, "Title: Connection Failed") != NULL &&
              strstr(rep, "Message: no answer") != NULL && strstr(rep, "Details:") != NULL);
     lt_feat_error_report("T", "M", "", rep, sizeof(rep));
     LT_CHECK(strstr(rep, "Details:") == NULL);

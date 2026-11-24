@@ -241,7 +241,7 @@ int lt_hk_save(const lt_hk_set *s, const char *dir)
     int i, rc;
     if (dir == NULL) { return -1; }
     lt_snprintf(path, sizeof(path), "%s/hotkeys.conf", dir);
-    lt_strlcpy(buf, "# LibreTune keyboard shortcuts (edited in Settings > Keyboard Shortcuts)\n",
+    lt_strlcpy(buf, "# clibretune keyboard shortcuts (edited in Settings > Keyboard Shortcuts)\n",
                sizeof(buf));
     for (i = 0; i < s->n; i++) {
         lt_snprintf(line, sizeof(line), "%s=%s\n", s->ov[i].id,

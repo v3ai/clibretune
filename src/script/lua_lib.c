@@ -1221,7 +1221,7 @@ void lt_luai_openlibs(lt_lua *st)
         st->fn_inext = v;
     }
     set_field(st, g, "_G", lt_luai_tabv(g));
-    set_field(st, g, "_VERSION", lt_luai_strv(lt_luai_str_new(st, "Lua 5.4 (LibreTune subset)", 26)));
+    set_field(st, g, "_VERSION", lt_luai_strv(lt_luai_str_new(st, "Lua 5.4 (clibretune subset)", 27)));
 
     lib = lib_table(st, "string");
     t = lib.u.tab;

@@ -108,8 +108,8 @@ static void pe_draw(lt_app *app, lt_app_dialog *d)
         s = (pe_dlg *)lt_calloc(1, sizeof(*s));
         d->data = s;
         s->kind = LT_PROJERR_PROJECT;
-        lt_strlcpy(s->dir, "/home/me/LibreTune Projects/Miata", sizeof(s->dir));
-        lt_strlcpy(s->file, "/home/me/LibreTune Projects/Miata/project.json", sizeof(s->file));
+        lt_strlcpy(s->dir, "/home/me/clibretune Projects/Miata", sizeof(s->dir));
+        lt_strlcpy(s->file, "/home/me/clibretune Projects/Miata/project.json", sizeof(s->file));
         lt_strlcpy(s->msg, "The project settings file (project.json) is empty. It was probably cut off "
                    "when the disk filled up or the computer lost power.", sizeof(s->msg));
         s->listed = 1;

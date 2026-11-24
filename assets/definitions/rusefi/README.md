@@ -4,7 +4,7 @@ Upstream: https://github.com/rusefi/rusefi
 
 What: `rusefi_<board>.ini` from each `rusefi_bundle_<board>.zip` of the pinned releases (the `_autoupdate`, `_debug` and `_obfuscated` bundles are skipped; bundles whose INI is identical to another board's are listed under `same_as`).
 
-Licence: GPL-3.0 with the additional terms of the rusEFI `license.txt`. Copyright rusEFI LLC and contributors. A LibreTune binary containing these files is distributed under GPL-3.0 (see `../README.md`).
+Licence: GPL-3.0 with the additional terms of the rusEFI `license.txt`. Copyright rusEFI LLC and contributors. A clibretune binary containing these files is distributed under GPL-3.0 (see `../README.md`).
 
 Files are bundled unmodified; `sources.json` has the URL, commit, size and sha256 of each. Fetch them with `python3 tools/fetch_definitions.py --family rusefi`.
 

@@ -1,8 +1,8 @@
-# udev rules for LibreTune's firmware flasher: give the logged-in user access to ECU
-# bootloaders without running LibreTune as root.
+# udev rules for clibretune's firmware flasher: give the logged-in user access to ECU
+# bootloaders without running clibretune as root.
 #
 # Install:
-#   sudo cp 50-libretune.rules /etc/udev/rules.d/
+#   sudo cp 50-clibretune.rules /etc/udev/rules.d/
 #   sudo udevadm control --reload
 # then unplug and replug the device.
 #

@@ -23,7 +23,7 @@ Options:
   --mode M        gui | tty | files | mcp | mix (default mix: all of them; mcp = JSON-RPC lines
                   on stdin of --mcp instead of UI input)
   --timeout T     seconds per run (default 120)
-  --bin PATH      the sanitizer build (default build/monkey/libretune-asan; --build makes it)
+  --bin PATH      the sanitizer build (default build/monkey/clibretune-asan; --build makes it)
   --build         build the ASan+UBSan app first (like tools/ini_corpus_check.sh)
   --out DIR       results (default build/monkey/out)
   --no-leaks      ASAN_OPTIONS detect_leaks=0
@@ -418,7 +418,7 @@ def msq_seeds():
 
 
 def make_project(r, T, name, ini, files):
-    """a LibreTune project directory with (maybe) hostile files; returns its path"""
+    """a clibretune project directory with (maybe) hostile files; returns its path"""
     pd = os.path.join(T, "p", name)
     for sub in ("projectCfg", "datalogs", "dashboards"):
         os.makedirs(os.path.join(pd, sub), exist_ok=True)
@@ -642,12 +642,12 @@ def materialise(sc, T):
     base = {k: v for k, v in os.environ.items()
             if k in ("PATH", "LANG", "LC_ALL", "TERM", "USER", "LOGNAME", "TMPDIR")}
     base.update({
-        "HOME": os.path.join(T, "h"), "LIBRETUNE_CONFIG_DIR": os.path.join(T, "c"),
+        "HOME": os.path.join(T, "h"), "CLIBRETUNE_CONFIG_DIR": os.path.join(T, "c"),
         "XDG_CONFIG_HOME": os.path.join(T, "h", ".config"),
         "XDG_DATA_HOME": os.path.join(T, "h", ".local", "share"),
-        "LIBRETUNE_PROJECTS": os.path.join(T, "p"),
-        "LIBRETUNE_DEFINITIONS": os.path.join(T, "defs"),
-        "LIBRETUNE_VOLUMES": os.path.join(T, "files"),
+        "CLIBRETUNE_PROJECTS": os.path.join(T, "p"),
+        "CLIBRETUNE_DEFINITIONS": os.path.join(T, "defs"),
+        "CLIBRETUNE_VOLUMES": os.path.join(T, "files"),
         "LT_DOWNLOADS_DIR": os.path.join(T, "dl"),
         "LT_DEMO_INI": os.path.join(FIX, "ini", "demo.ini"),
         "PWD": os.path.join(T, "files"),
@@ -823,7 +823,7 @@ def cmd_repro(o, path):
     T = os.path.join(o["out"], "repro")
     res = run_one(sc, o["out"], o["bin"], o["timeout"], keep=True, T=T)
     args, env = materialise(sc, os.path.join(o["out"], "repro-show"))
-    shown = {k: v for k, v in env.items() if k.startswith("LT_") or k.startswith("LIBRETUNE")}
+    shown = {k: v for k, v in env.items() if k.startswith(("LT_", "CLIBRETUNE", "LIBRETUNE"))}
     print("argv: %s" % " ".join(args))
     for k in sorted(shown):
         print("%s=%s" % (k, shown[k]))
@@ -895,7 +895,7 @@ def build():
     env = dict(os.environ, CFLAGS=sanf, LDFLAGS=sanf)
     with open(os.path.join(d, "build.log"), "w") as lg:
         subprocess.check_call(["./build.sh", "app"], cwd=ROOT, env=env, stdout=lg, stderr=lg)
-        shutil.copy(os.path.join(ROOT, "build", "libretune"), os.path.join(d, "libretune-asan"))
+        shutil.copy(os.path.join(ROOT, "build", "clibretune"), os.path.join(d, "clibretune-asan"))
         subprocess.check_call(["./build.sh", "app"], cwd=ROOT, stdout=lg, stderr=lg)
     sh = ("set -e; . tools/target.sh; srcs=''; for s in $(lt_sources); do srcs=\"$srcs $s\"; done;"
           "${CC:-cc} -O2 $PLAT_CPPFLAGS -Isrc tools/ini_check_parse.c $srcs -o build/monkey/"
@@ -913,7 +913,7 @@ def build():
 def main(argv):
     global NO_LEAKS
     o = {"runs": 200, "jobs": 6, "seed": 1, "mode": "mix", "timeout": 120,
-         "bin": os.path.join(ROOT, "build", "monkey", "libretune-asan"),
+         "bin": os.path.join(ROOT, "build", "monkey", "clibretune-asan"),
          "out": os.path.join(ROOT, "build", "monkey", "out")}
     repro = minimize = None
     do_build = False

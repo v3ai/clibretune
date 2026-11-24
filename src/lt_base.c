@@ -15,7 +15,7 @@
 
 static void oom(void)
 {
-    fputs("libretune: out of memory\n", stderr);
+    fputs("clibretune: out of memory\n", stderr);
     abort();
 }
 
@@ -876,7 +876,7 @@ void lt_buf_reserve(lt_buf *b, size_t extra)
 {
     size_t need;
     if (!lt_add_size(b->len, extra, &need) || !lt_add_size(need, 1, &need)) {
-        fputs("libretune: buffer size overflow\n", stderr);
+        fputs("clibretune: buffer size overflow\n", stderr);
         abort();
     }
     if (need > b->cap) {
@@ -966,7 +966,7 @@ void *lt_vec_push(lt_vec *v)
     if (v->len == v->cap) {
         size_t nc = v->cap ? v->cap : 4, bytes;
         if (!lt_mul_size(nc, 2, &nc) || !lt_mul_size(nc, v->elem, &bytes)) {
-            fputs("libretune: vector size overflow\n", stderr);
+            fputs("clibretune: vector size overflow\n", stderr);
             abort();
         }
         v->data = lt_realloc(v->data, bytes);

@@ -10,6 +10,7 @@ sorted by byte value so lt_tr can binary-search them with strcmp.
 """
 import json
 import os
+import re
 import sys
 
 LANGS = [("en", "English"), ("pt-BR", "Português (Brasil)"), ("hu-HU", "Magyar")]
@@ -42,6 +43,22 @@ def cesc(s):
     return "".join(out)
 
 
+# This program is clibretune; the stock text calls it LibreTune.  Links to the original project
+# and the original's own source paths keep that name.
+_BRAND_KEEP = re.compile(r"RallyPat/LibreTune|libretune_core|libretune-app|crates/libretune[-\w]*")
+
+
+def brand(text):
+    keep = []
+
+    def hold(m):
+        keep.append(m.group(0))
+        return "\x00%d\x00" % (len(keep) - 1)
+    text = _BRAND_KEEP.sub(hold, text)
+    text = re.sub(r"(?<![A-Za-z_])(?:LibreTune|libretune)", "clibretune", text)
+    return re.sub("\x00(\\d+)\x00", lambda m: keep[int(m.group(1))], text)
+
+
 def main():
     base = sys.argv[1] if len(sys.argv) > 1 else \
         "ref/LibreTune/crates/libretune-app/src/i18n/locales"
@@ -55,7 +72,7 @@ def main():
             tr.update({f + "." + k: v for k, v in flat(json.load(open("%s/%s/%s.json" % (base, code, f))))})
         for k, en in en_flat.items():
             if k in tr and norm(tr[k]) != norm(en):
-                tabs[code][norm(en)] = norm(tr[k])
+                tabs[code][brand(norm(en))] = brand(norm(tr[k]))
     here = os.path.dirname(os.path.abspath(__file__))
     for line in open(os.path.join(here, "locales_extra.tsv"), encoding="utf-8"):
         line = line.rstrip("\n")

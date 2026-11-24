@@ -41,13 +41,13 @@ int lt_app_args_parse(int argc, char **argv, lt_app_args *a, char *err, size_t c
         }
     }
     if (folder != NULL) {
-        /* `libretune <folder>`: what a file manager or a desktop shortcut passes */
+        /* `clibretune <folder>`: what a file manager or a desktop shortcut passes */
         if (a->project != NULL) {
             lt_snprintf(err, cap, "'%s' and --project %s: give one project", folder, a->project);
             return 2;
         }
         if (!lt_app_is_project_dir(folder)) {
-            lt_snprintf(err, cap, "'%s' is not a LibreTune project folder (it has no project.json)",
+            lt_snprintf(err, cap, "'%s' is not a clibretune project folder (it has no project.json)",
                         folder);
             return 2;
         }

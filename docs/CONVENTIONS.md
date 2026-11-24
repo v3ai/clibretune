@@ -1,4 +1,4 @@
-# LibreTune-C coding conventions (MANDATORY for every source file)
+# clibretune-C coding conventions (MANDATORY for every source file)
 
 **The coding standard is [`UNIVERSAL_C.md`](UNIVERSAL_C.md) ("Universal C").** Read it in full;
 where this file and UNIVERSAL_C.md differ, UNIVERSAL_C.md wins. Everything below is only
@@ -120,7 +120,7 @@ build.bat                                                      # MSVC
 Windows builds use the console subsystem so `--help` prints; add `-mwindows` to `LDFLAGS` for a
 console-less release build. Object files and test binaries live in `build/obj-<target>-<hash>/`
 (one directory per compiler/flags combination, so different configurations never clobber each
-other); `build/libretune[.exe]` is the app.
+other); `build/clibretune[.exe]` is the app.
 
 ## Checking your work (THE gate)
 ```

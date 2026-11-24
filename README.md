@@ -1,6 +1,6 @@
-# LibreTune In Universal C
+# clibretune
 
-LibreTune is open-source ECU tuning software (INI-driven, rusEFI / Speeduino / MegaSquirt
+clibretune is [LibreTune](https://github.com/RallyPat/LibreTune) rewritten in portable C: open-source ECU tuning software (INI-driven, rusEFI / Speeduino / MegaSquirt
 style): table, curve and INI dialog editing, AutoTune, dashboards, data logging and
 playback, restore points, projects and a built-in ECU simulator for demo mode.
 It also covers the TunerStudio MS/Ultra extras: WUE Analyze and per-cylinder Trim Table Analyze,
@@ -22,10 +22,10 @@ warning-free with gcc and clang for `-std=c89` through `-std=c2x`.
 
 | OS | Command | Output |
 |---|---|---|
-| Linux / BSD | `./build.sh app` | `build/libretune` (x11 window) |
-| macOS | `./build.sh app` | `build/libretune` (cocoa window; links Cocoa/CoreGraphics) |
-| Windows, MSVC | `build.bat` (from a Developer Command Prompt) | `build\libretune.exe` |
-| Windows, MinGW | `TARGET=windows CC=x86_64-w64-mingw32-gcc ./build.sh app` | `build/libretune.exe` |
+| Linux / BSD | `./build.sh app` | `build/clibretune` (x11 window) |
+| macOS | `./build.sh app` | `build/clibretune` (cocoa window; links Cocoa/CoreGraphics) |
+| Windows, MSVC | `build.bat` (from a Developer Command Prompt) | `build\clibretune.exe` |
+| Windows, MinGW | `TARGET=windows CC=x86_64-w64-mingw32-gcc ./build.sh app` | `build/clibretune.exe` |
 
     ./build.sh test           # build and run all test programs
     STRICT=1 ./build.sh test  # -std=c89 plus the full Universal C warning set, as errors
@@ -42,7 +42,7 @@ pre-release. `LT_VERSION=x.y.z ./build.sh app` sets the version the binary repor
 
 ## Running
 
-    libretune [--backend NAME] [--demo] [--ini FILE] [--project DIR]
+    clibretune [--backend NAME] [--demo] [--ini FILE] [--project DIR]
 
 - `--demo` starts the simulated ECU, no hardware needed (with `tests/fixtures/ini/demo.ini` when it is
   found, else a bundled rusEFI Proteus definition; `--ini FILE` picks another).
@@ -51,7 +51,7 @@ pre-release. `LT_VERSION=x.y.z ./build.sh app` sets the version the binary repor
   - `web` serves the UI on 127.0.0.1 and prints a tokenised URL (`LT_NO_BROWSER=1` to not open a browser).
   - `tty` renders in a terminal.
   - `win32` (Windows) and `cocoa` (macOS) are the native window backends; `auto` picks them first on
-    their OS. On Windows `./build.sh app` (MinGW) or `build.bat` (MSVC) gives `build/libretune.exe`
+    their OS. On Windows `./build.sh app` (MinGW) or `build.bat` (MSVC) gives `build/clibretune.exe`
     (console subsystem; add `-mwindows` to `LDFLAGS` for a console-less release build).
 - Rendering: only the screen tiles that changed are redrawn, and X11 presents through shared memory
   (MIT-SHM, zero copy). If something looks wrong, `LT_RENDER=immediate` redraws every frame in full,
@@ -63,7 +63,7 @@ pre-release. `LT_VERSION=x.y.z ./build.sh app` sets the version the binary repor
   `LT_SCALE=150` (percent) / Settings > Appearance > UI scale, which shows what Auto picked. The window
   opens at 1280x800 logical px (min 1024x700) and its size/position/maximized state are remembered in
   `settings.conf` (`ui_scale=auto|<percent>`; the `scale` key of older builds is ignored).
-  Wrong size? `LT_SCALE_DEBUG=1 ./libretune` prints every source and the decision; `--version` and
+  Wrong size? `LT_SCALE_DEBUG=1 ./clibretune` prints every source and the decision; `--version` and
   Help > About show the build.
 
 ## Firmware update
@@ -105,9 +105,9 @@ Tools > Firmware Update flashes ECUs with no external tool:
   the console command `wbo_uart_flash`) and follows `wbo_uart_status` until it reports done or failed.
 - Linux needs access to the USB device: when permission is missing the screen shows the udev rule (all the
   ids the flasher uses: 0483:df11, 1d50:60ac, 16c0:0478) with *Copy rule* and *Save udev rule...* (writes it
-  to a file you pick, default `~/50-libretune.rules`) and the two commands to install it
+  to a file you pick, default `~/50-clibretune.rules`) and the two commands to install it
   (`sudo cp ... /etc/udev/rules.d/` and `sudo udevadm control --reload-rules && sudo udevadm trigger`);
-  LibreTune never runs sudo itself. Serial ports need the `dialout` (or `uucp`) group; the screen says so
+  clibretune never runs sudo itself. Serial ports need the `dialout` (or `uucp`) group; the screen says so
   when a port does not open. Windows needs the WinUSB driver on the USB bootloader device (Zadig, or a
   recent STM32CubeProgrammer's driver): see [docs/WINDOWS_USB.md](docs/WINDOWS_USB.md).
 - With `--demo` (or `LT_FW_SIM=1`) simulated bootloaders (DfuSe, OpenBLT on USB / UART / CAN, STK500v2,
@@ -136,8 +136,8 @@ chosen in this order: the INI on a rusEFI ECU's own USB drive, the local INI lib
 library. An exact signature switches silently with one notice; otherwise the nearest build of the same
 board (or Speeduino release) is used with a warning and a "Find Exact INI..." action; with nothing
 close, you choose a file or search online as before. New Project lists the bundled definitions by
-family and release with a search box. `LIBRETUNE_DEFINITIONS` moves the INI library,
-`LIBRETUNE_VOLUMES` (`;`-separated) replaces the removable drives that are scanned.
+family and release with a search box. `CLIBRETUNE_DEFINITIONS` moves the INI library,
+`CLIBRETUNE_VOLUMES` (`;`-separated) replaces the removable drives that are scanned.
 
 ## Keyboard shortcuts
 
@@ -166,6 +166,13 @@ Ctrl+R/D fill, Ctrl+Z/Y undo/redo, `f` follow, `g` go to live cell. AutoTune: Sp
   (assisted browser flow instead), cloud AI providers (local OpenAI-compatible endpoints only),
   WASM plugins, `.ltlog` logs, pop-out windows.
 
+## Earlier name
+
+Releases before 0.1.1 were called LibreTune. Their settings folder (`~/.config/libretune`,
+`%APPDATA%\LibreTune`, `~/Library/Application Support/LibreTune`) and projects folder
+(`LibreTune Projects`) keep being used when no `clibretune` one exists, and the `LIBRETUNE_*`
+environment variables still work (`CLIBRETUNE_*` wins when both are set).
+
 ## License and credits
 
 GPL-2.0-or-later (see `LICENSE`). Based on the original LibreTune project
@@ -178,8 +185,8 @@ vector font uses Hershey fonts data.
 **Bundled ECU definitions and GPL-3.0.** The program embeds 167 unmodified ECU definition files
 (INI) so that a connected ECU gets the right definition offline: Speeduino (GPL-2.0-or-later),
 rusEFI and FOME (GPL-3.0 with the rusEFI additional terms) and miata-ecus (generated by rusEFI,
-GPL-3.0); sources, versions and commits are in `assets/definitions/README.md`. LibreTune's source
-stays GPL-2.0-or-later, but **a LibreTune binary that contains the GPL-3.0 files is distributed
+GPL-3.0); sources, versions and commits are in `assets/definitions/README.md`. clibretune's source
+stays GPL-2.0-or-later, but **a clibretune binary that contains the GPL-3.0 files is distributed
 under GPL-3.0** (which the "or later" permits). A build that must stay under GPL-2.0 can bundle the
 Speeduino files only (`python3 tools/gen_definitions.py --only speeduino`). MegaSquirt INIs are not
 bundled: they carry no redistribution grant.
@@ -189,7 +196,7 @@ https://github.com/speeduino/Tunes (commit 99b2a62e402144fa38c911f937b2b6571c8a7
 Speeduino project and contributors (the author of each tune is shown in the browser and listed in
 `assets/basetunes/speeduino/README.md`), licensed under Creative Commons Attribution-NonCommercial
 4.0 (CC BY-NC 4.0, `assets/basetunes/speeduino/LICENSE`), embedded unmodified by
-`tools/gen_basetunes.py` into `src/tune/basetune_data.c`. LibreTune is free software and is never
+`tools/gen_basetunes.py` into `src/tune/basetune_data.c`. clibretune is free software and is never
 sold; because the program bundle contains these non-commercial tunes, it must not be sold either. To
 distribute a build commercially, first regenerate the data without them
 (`python3 tools/gen_basetunes.py --empty`). Help > About lists all licences.

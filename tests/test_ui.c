@@ -902,7 +902,7 @@ LT_TEST(test_shell_widgets)
         LT_CHECK(ink > 20);
     }
     h_close();
-    /* stock themes: every name resolves; values are the LibreTune tokens */
+    /* stock themes: every name resolves; values are the clibretune tokens */
     for (i = 0; i < 9; i++) {
         LT_CHECK(lt_theme_preset(&t, names[i]) == 0);
         LT_CHECK(strcmp(t.name, names[i]) == 0);

@@ -1143,7 +1143,7 @@ static int x_open(lt_backend *be, const char *title, int w, int h) {
     x11 *x = (x11 *)be->impl;
     lt_buf b;
     lt_u8 tmp[4];
-    const char *cls = "libretune\0LibreTune";
+    const char *cls = "clibretune\0clibretune";
     if (!x || x->dead) return -1;
     if (x->win) return 0;
     if (w < 1) w = 1;
@@ -1173,7 +1173,7 @@ static int x_open(lt_backend *be, const char *title, int w, int h) {
     p32(x, &b, 0x10000UL);
     p32(x, &b, 0);
     req_end(x, &b);
-    set_title_impl(be, title ? title : "LibreTune");
+    set_title_impl(be, title ? title : "clibretune");
     change_prop(x, &b, 67, 31, 8, cls, 19);
     if (x->a_prot && x->a_del) {
         if (x->msb) lt_wr_be(tmp, 4, x->a_del); else lt_wr_le(tmp, 4, x->a_del);

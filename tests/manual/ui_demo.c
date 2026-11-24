@@ -8,7 +8,7 @@
  * Run:
  *   ./build/ui_demo                       auto backend (x11 / win32 / tty / web)
  *   LT_BACKEND=web LT_NO_BROWSER=1 ./build/ui_demo
- *        prints "LibreTune UI: http://127.0.0.1:PORT/?t=TOKEN" on stderr;
+ *        prints "clibretune UI: http://127.0.0.1:PORT/?t=TOKEN" on stderr;
  *        open it in a browser (or curl the URL, then /frame?since=0 with the
  *        cookie) -- see be_web.c for the protocol.
  *   LT_DEMO_FRAMES=N                      exit after N rendered frames
@@ -40,7 +40,7 @@ int main(void)
         fprintf(stderr, "ui_demo: no backend available (set LT_BACKEND=web|x11|tty)\n");
         return 1;
     }
-    if (be->open(be, "LibreTune UI gallery", w, h) != 0) {
+    if (be->open(be, "clibretune UI gallery", w, h) != 0) {
         fprintf(stderr, "ui_demo: cannot open backend '%s': %s\n", be->name, lt_err_get());
         lt_backend_destroy(be);
         return 1;

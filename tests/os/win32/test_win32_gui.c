@@ -14,7 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define W32T_CLASS L"LibreTuneWindow"
+#define W32T_CLASS L"clibretuneWindow"
 
 static int w32t_next(lt_backend *b, lt_event *ev, int want)
 {

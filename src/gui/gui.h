@@ -1,4 +1,4 @@
-/* gui.h - LibreTune-C graphics contract: pixel canvas, rasterizer, fonts,
+/* gui.h - clibretune-C graphics contract: pixel canvas, rasterizer, fonts,
  * input events and the platform backend interface.
  *
  * Architecture
@@ -231,7 +231,7 @@ void lt_gfx_cell_shadow(lt_gfx *g, lt_rect r, int dx, int dy);
  * text functions accept NULL and then use the bitmap font.
  *
  * Sizes are em heights in pixels (CSS font-size): 11..16 for UI text.
- * Stock LibreTune: Plex Sans 12px body, Plex Mono for numbers, SemiBold
+ * Stock clibretune: Plex Sans 12px body, Plex Mono for numbers, SemiBold
  * for headings.
  *
  * Vertical placement: lt_gfx_text_ex puts y at the TOP of the line box (the

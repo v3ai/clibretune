@@ -1,6 +1,6 @@
 # Getting started
 
-A short path from download to a running engine. LibreTune works with rusEFI, FOME, epicEFI,
+A short path from download to a running engine. clibretune works with rusEFI, FOME, epicEFI,
 Speeduino and MegaSquirt ECUs: anything described by a TunerStudio-style INI file.
 
 > Tuning can damage an engine. Change one thing at a time, watch the wideband and knock, and keep
@@ -8,22 +8,22 @@ Speeduino and MegaSquirt ECUs: anything described by a TunerStudio-style INI fil
 
 ## 1. The start screen
 
-With no project open LibreTune shows its start screen:
+With no project open clibretune shows its start screen:
 
 - **Connect to my ECU** finds the ECU, picks its definition (INI) and sets up a project in one go.
 - When an ECU is plugged in, a green strip names it ("rusEFI ECU is plugged in on /dev/ttyACM0").
   If this computer has talked to that ECU before, one click opens its project and connects.
 - **Recent projects** shows each project's ECU and when it was last opened; `x` takes one off the
   list (the folder stays on disk). Projects are remembered by their full path, so a project opened
-  as `./MyCar` from a terminal still opens from the list when LibreTune is started elsewhere.
+  as `./MyCar` from a terminal still opens from the list when clibretune is started elsewhere.
 - A project that cannot be opened says why in plain words: its folder is gone, its settings file
   (`project.json`) is missing, empty or damaged, or its ECU definition is missing or unreadable.
   **Show Folder** opens the folder, **Remove from Recent Projects** takes it off the list and, for a
-  definition problem, **Replace Definition...** picks one (bundled with LibreTune, from the INI library
+  definition problem, **Replace Definition...** picks one (bundled with clibretune, from the INI library
   or a file), puts it into the project and opens it. A definition that loads but looks incomplete (no
   menus and no dialogs, or settings that do not fit its pages) opens with a warning: replace it, or
   **Continue anyway** to look around (do not burn with it).
-- `libretune <project folder>` (or `--project <folder>`) opens a project straight away, for example
+- `clibretune <project folder>` (or `--project <folder>`) opens a project straight away, for example
   from a desktop shortcut or a file manager; the folder must hold the project's `project.json`.
 - **Try the demo**, **Start from a base tune**, **Import a TunerStudio project**, **Open a project
   folder** and **Set up a project manually** cover the other ways in.
@@ -32,7 +32,7 @@ With no project open LibreTune shows its start screen:
 
 ## 2. Try it without an ECU
 
-    libretune --demo
+    clibretune --demo
 
 Demo mode runs a simulated ECU inside the app (**Try the demo**, or File > Demo mode). Everything
 works: gauges move, tables highlight the live cell, AutoTune collects data and logs record. It is the
@@ -42,7 +42,7 @@ safest place to learn the editor.
 
 - **Linux**: your user needs access to the serial port. On most distributions:
   `sudo usermod -aG dialout $USER`, then log out and back in. For firmware flashing also install the
-  udev rule shipped with each release (`50-libretune.rules`; instructions are inside the file).
+  udev rule shipped with each release (`50-clibretune.rules`; instructions are inside the file).
 - **Windows**: ECUs with a USB serial port appear as `COMx`; no driver is needed for rusEFI and
   Speeduino on current Windows. Firmware flashing needs the WinUSB driver, see
   [WINDOWS_USB.md](WINDOWS_USB.md).
@@ -50,7 +50,7 @@ safest place to learn the editor.
   signed yet: right-click the app and choose Open the first time.
 
 Plug in the ECU's USB cable (a data cable: some cables only charge), switch the ignition on and press
-**Connect to my ECU**. LibreTune looks at USB serial ports first and recognises common ECU boards by
+**Connect to my ECU**. clibretune looks at USB serial ports first and recognises common ECU boards by
 their USB id: STM32 boards (rusEFI, FOME, epicEFI) as 0483:5740, Arduino Mega (Speeduino) as
 2341:0042 / 2341:0010, Teensy, and the usual USB-serial adapters (CH340, FTDI, CP210x, PL2303). Each
 port is asked at its likeliest baud rate first, and the window stays responsive while it searches
@@ -62,7 +62,7 @@ port and baud rate saved in the project. A project without a saved port, or no p
 the Connect ECU wizard instead, which finds the ECU first. **File > Connection Settings...** picks
 the port, baud rate, a TCP/WiFi address or the simulator by hand.
 
-When something is in the way LibreTune says what to do:
+When something is in the way clibretune says what to do:
 
 - *in use by another program*: close TunerStudio or a serial monitor, only one program can use a port;
 - *no permission* (Linux): it shows the command, e.g. `sudo usermod -aG dialout $USER`;
@@ -75,29 +75,29 @@ number (`devices.conf` in the configuration folder), so the next time the same b
 even under another port name. **File > New Project...** still sets up a project by hand: pick the
 INI from the built-in library or a file and choose the port.
 
-### ECU definitions come with LibreTune
+### ECU definitions come with clibretune
 
-You do not need to find or download an INI file. LibreTune carries 167 definitions: every Speeduino
+You do not need to find or download an INI file. clibretune carries 167 definitions: every Speeduino
 release since 2017, every board of the last three rusEFI releases, every FOME board of its latest
-release and the miata-ecus board. When an ECU answers, LibreTune reads its signature and picks the
+release and the miata-ecus board. When an ECU answers, clibretune reads its signature and picks the
 definition by itself:
 
 - **exact match**: used straight away; a short message says which one;
-- **close match** (a rusEFI nightly build, a newer Speeduino than this LibreTune knows): the
+- **close match** (a rusEFI nightly build, a newer Speeduino than this clibretune knows): the
   nearest build of the same board is used, with a warning that some settings may differ and a
   **Find Exact INI...** button that searches online;
 - **nothing fits** (MegaSquirt, other firmware): choose the INI file that came with the firmware or
   search online. MegaSquirt INIs are not bundled because their licence does not allow it.
 
 rusEFI F7/H7 boards also show a small USB drive with their own INI; when it is there and matches,
-LibreTune uses that one. A definition you add yourself (**Settings > ECU Definitions**) wins over the
+clibretune uses that one. A definition you add yourself (**Settings > ECU Definitions**) wins over the
 bundled one with the same signature.
 
-If the cable is pulled or the ECU resets, LibreTune reconnects by itself as soon as the same device
+If the cable is pulled or the ECU resets, clibretune reconnects by itself as soon as the same device
 is back (for up to 30 minutes, under any port name) and keeps your edits; the status bar says what it
 is waiting for.
 
-On connect LibreTune compares the tune in the project with the one in the ECU; when they differ it
+On connect clibretune compares the tune in the project with the one in the ECU; when they differ it
 asks which one to keep. If in doubt, use the ECU's settings, then **File > Save Tune** so the project
 has a copy.
 
@@ -137,7 +137,7 @@ connect and read it.
   had when it was opened. Right-click for every other operation, including the 3D view. In a
   narrow window the toolbar buttons that do not fit are in the **»** menu at its right end.
   A Target AFR table has a read-only **lambda preview** beside it that scrolls with it; collapse it
-  with its **»** button (LibreTune remembers) and open it again from the strip.
+  with its **»** button (clibretune remembers) and open it again from the strip.
 - **View > Dashboard** (Ctrl+D) shows gauges; the Designer button edits them. In the designer,
   double-click a gauge (or select it and press **Properties**) to set its title, channel, range and
   the warning and danger levels; **Save** keeps them in the dashboard file.
@@ -148,14 +148,14 @@ connect and read it.
 Edits go to the ECU's RAM immediately while connected, so you can try a change with the engine
 running. They are lost at power-off until you **burn** them: **File > Burn to ECU** (Ctrl+B), the
 flame button, or the **Burn** button next to "*N* unburned changes" in the status bar, which counts
-the settings that are only in the ECU's RAM. LibreTune checks the tune for pin conflicts before
+the settings that are only in the ECU's RAM. clibretune checks the tune for pin conflicts before
 burning.
 
 Quitting, closing the project (also by opening, creating or importing another one, or starting the
 demo) or disconnecting with unburned or unsaved changes asks first: **Burn and quit**, **Save and
 quit**, **Quit without saving** or **Cancel** (the same for close and disconnect).
 
-Save often (Ctrl+S). While a project has unsaved changes LibreTune also writes them every minute to
+Save often (Ctrl+S). While a project has unsaved changes clibretune also writes them every minute to
 `recovery/autosave.msq` in the project folder; if it was not closed normally (crash, power cut), the
 next time the project opens it offers to **Restore** that tune. Restore points (**File > Create
 Restore Point**) and **File > Tune History...** let you go back to any earlier tune.

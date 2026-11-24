@@ -1,4 +1,4 @@
-/* feat_online.c - Search for INI Online, assisted form (G-17).  LibreTune has no TLS stack, so it
+/* feat_online.c - Search for INI Online, assisted form (G-17).  clibretune has no TLS stack, so it
  * does not download anything itself: the dialog opens the project's INI source page in the
  * browser and watches the Downloads folder; a new *.ini that shows up is offered for import into
  * the INI library.  Reached from the signature-mismatch dialog ("Search Online") and from
@@ -155,7 +155,7 @@ static void online_draw(lt_app *app, lt_app_dialog *d)
     }
     if (lt_ui_modal_begin(ui, "Search for INI Online", 600, 470, &open)) {
         lt_ui_layout_row(ui, 1, &w1, 0);
-        lt_ui_label_wrap(ui, "LibreTune opens the project's INI page in your browser. Download the "
+        lt_ui_label_wrap(ui, "clibretune opens the project's INI page in your browser. Download the "
                              "file for your firmware there: it is picked up from your Downloads "
                              "folder and can be imported into the INI library.", t->text2);
         if (s->ecu_sig[0] != '\0') {

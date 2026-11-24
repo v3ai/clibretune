@@ -1,5 +1,5 @@
 /* dialogs_newproj.c - New project wizard.
- * The ECU definition comes from the definitions bundled with LibreTune (project/inidb.h: grouped by
+ * The ECU definition comes from the definitions bundled with clibretune (project/inidb.h: grouped by
  * family and release, with a search box), the local INI repository or an INI file.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
@@ -185,7 +185,7 @@ static void newproj_draw(lt_app *app, lt_app_dialog *d)
         lt_ui_text(ui, "dir", s->dir, sizeof(s->dir), 0);
         lt_ui_layout_row(ui, 1, &w1, 0);
         lt_ui_label_ex(ui, lt_tr("ECU definition"), t->text2, LT_UI_ALIGN_LEFT);
-        lt_ui_radio(ui, "Bundled with LibreTune", &s->source, SRC_BUNDLE);
+        lt_ui_radio(ui, "Bundled with clibretune", &s->source, SRC_BUNDLE);
         lt_ui_radio(ui, "From the local definition repository", &s->source, SRC_REPO);
         lt_ui_radio(ui, "From an INI file", &s->source, SRC_FILE);
         if (s->source == SRC_BUNDLE) {

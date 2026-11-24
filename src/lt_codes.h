@@ -1,4 +1,4 @@
-/* lt_codes.h - shared integer result codes for all LibreTune-C modules.
+/* lt_codes.h - shared integer result codes for all clibretune-C modules.
  *
  * Convention (docs/CONVENTIONS.md): functions that can fail return `int`,
  * 0 = success, negative = one of the codes below. A human-readable message is

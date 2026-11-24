@@ -215,7 +215,7 @@ char *lt_posix_xdg_config_dir(void)
         base = lt_path_join(h, ".config");
         lt_free(h);
     }
-    dir = lt_path_join(base, "libretune");
+    dir = lt_plat_app_subdir(base, "clibretune", "libretune");
     lt_free(base);
     lt_plat_mkdirs(dir);
     return dir;

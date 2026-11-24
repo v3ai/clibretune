@@ -8,7 +8,7 @@
  *   Attribution: Speeduino project and contributors, https://github.com/speeduino/Tunes
  *                (commit 99b2a62e402144fa38c911f937b2b6571c8a720a); author of each tune: the provider field below.
  *   Changes:     none: the files are stored packed (lossless LZ77) and unpack byte for byte.
- *   NonCommercial: a program or bundle containing this file must not be sold. LibreTune is free
+ *   NonCommercial: a program or bundle containing this file must not be sold. clibretune is free
  *                software and is never sold; to distribute it commercially, regenerate this file
  *                with `python3 tools/gen_basetunes.py --empty` first.
  *

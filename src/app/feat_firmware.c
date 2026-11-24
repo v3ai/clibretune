@@ -822,7 +822,7 @@ static void draw_udev(lt_app *app, fw_state *st)
                 st->udev_path[0] != '\0' ? st->udev_path : "$HOME/" LT_FW_UDEV_FILE);
     lt_ui_label_ex(ui, b, th->text, LT_UI_ALIGN_LEFT);
     lt_ui_label_ex(ui, "sudo udevadm control --reload-rules && sudo udevadm trigger", th->text, LT_UI_ALIGN_LEFT);
-    lt_ui_label_ex(ui, "then unplug and replug the board (LibreTune never runs sudo itself)", th->muted,
+    lt_ui_label_ex(ui, "then unplug and replug the board (clibretune never runs sudo itself)", th->muted,
                    LT_UI_ALIGN_LEFT);
 }
 
@@ -864,7 +864,7 @@ static void draw_hint(lt_app *app, fw_state *st)
             "(DTR/RTS pulse); the ECU connection is closed first when it uses the same port.";
         break;
     case LT_FW_HALFKAY:
-        t = "Press the program button on the Teensy: it shows up as Teensy HalfKay (16c0:0478). Linux: LibreTune "
+        t = "Press the program button on the Teensy: it shows up as Teensy HalfKay (16c0:0478). Linux: clibretune "
             "detaches the HID driver itself. Windows: HalfKay is a HID device and this flasher needs the WinUSB "
             "driver, so Teensy flashing does not work on Windows unless the driver is swapped (Zadig) - use PJRC's "
             "Teensy Loader there.";

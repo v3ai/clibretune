@@ -356,7 +356,7 @@ static void start_pixels(lt_app *app, lt_rect area)
     lt_rect lc, rc;
     lt_ui_draw_fill(ui, area, t->bg_app);
     y = area.y + LT_MAX(lt_ui_px(ui, 28), (area.h - lt_ui_px(ui, 720)) / 3);
-    lt_ui_draw_text_in_f(ui, lt_rect_make(area.x, y, area.w, lt_ui_px(ui, 44)), "LibreTune", t->text, 1,
+    lt_ui_draw_text_in_f(ui, lt_rect_make(area.x, y, area.w, lt_ui_px(ui, 44)), "clibretune", t->text, 1,
                          (int)LT_FONT_SANS_SEMIBOLD, 34);
     lt_ui_draw_text_in_f(ui, lt_rect_make(area.x, y + lt_ui_px(ui, 44), area.w, lt_ui_px(ui, 22)),
                          "Open-source ECU tuning for rusEFI, FOME, Speeduino and MegaSquirt", t->muted, 1,
@@ -376,7 +376,7 @@ static void start_pixels(lt_app *app, lt_rect area)
     small_caps(app, lt_rect_make(lc.x, y, lw, lt_ui_px(ui, 18)), "GET STARTED");
     y += lt_ui_px(ui, 26);
     if (card(app, lt_rect_make(lc.x, y, lw, lt_ui_px(ui, 100)), "connect", LT_ICON_PLUG_ZAP, "Connect to my ECU",
-             "Plug in the USB cable. LibreTune finds the ECU, picks its", "definition and sets up the project.", 1)) {
+             "Plug in the USB cable. clibretune finds the ECU, picks its", "definition and sets up the project.", 1)) {
         lt_feat_devices_connect(app);
     }
     y += lt_ui_px(ui, 100) + cgap + lt_ui_px(ui, 4);
@@ -429,7 +429,7 @@ static void start_cells(lt_app *app, lt_rect area)
     char buf[640], ecu[96];
     r = lt_rect_make(area.x + (area.w - cw) / 2, area.y + 16, cw, area.h - 16);
     lt_ui_draw_fill(ui, area, t->bg_app);
-    lt_ui_draw_text_in(ui, lt_rect_make(r.x, r.y, r.w, 16), "LibreTune", t->primary, 1);
+    lt_ui_draw_text_in(ui, lt_rect_make(r.x, r.y, r.w, 16), "clibretune", t->primary, 1);
     lt_ui_draw_text_in(ui, lt_rect_make(r.x, r.y + 16, r.w, 16), "Open-source ECU tuning", t->text2, 1);
     r.y += 48;
     r.h = area.y + area.h - r.y;

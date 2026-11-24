@@ -1,4 +1,4 @@
-/* lt.h - LibreTune-C portability layer and core utilities.
+/* lt.h - clibretune-C portability layer and core utilities.
  * Valid C89 .. C23. Only standard C headers. Follows docs/UNIVERSAL_C.md
  * (project prefix lt_/LT_ stands in for the standard's p_/P_).
  * This is the ONLY file that may test compiler/version macros.
@@ -22,7 +22,7 @@
 
 /* ---- hard platform assumptions ------------------------------------- */
 #if CHAR_BIT != 8
-#  error "LibreTune requires 8-bit bytes"
+#  error "clibretune requires 8-bit bytes"
 #endif
 
 /* ---- inline / restrict --------------------------------------------- */

@@ -365,7 +365,7 @@ LT_TEST(app_burn_interrupted)
     double v = 0.0;
     int nd;
     LT_CHECK(lt_app_find_demo_ini(buf, sizeof(buf)) != NULL);
-    LT_CHECK(lt_plat_setenv("LIBRETUNE_PROJECTS", DIR "/appproj") == 0);
+    LT_CHECK(lt_plat_setenv("CLIBRETUNE_PROJECTS", DIR "/appproj") == 0);
     LT_CHECK(lt_plat_mkdirs(DIR "/appproj") == 0);
     lt_snprintf(name, sizeof(name), "burn%lu", (unsigned long)lt_plat_now_ms());
     LT_CHECK(lt_app_new_project(app, name, buf) == 0);
@@ -424,7 +424,7 @@ LT_TEST(app_open_truncated_tune)
     lt_app *app = lt_app_new();
     int nd;
     LT_CHECK(lt_app_find_demo_ini(buf, sizeof(buf)) != NULL);
-    LT_CHECK(lt_plat_setenv("LIBRETUNE_PROJECTS", DIR "/appproj") == 0);
+    LT_CHECK(lt_plat_setenv("CLIBRETUNE_PROJECTS", DIR "/appproj") == 0);
     LT_CHECK(lt_plat_mkdirs(DIR "/appproj") == 0);
     lt_snprintf(name, sizeof(name), "trunc%lu", (unsigned long)lt_plat_now_ms());
     LT_CHECK(lt_app_new_project(app, name, buf) == 0);

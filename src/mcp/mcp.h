@@ -2,7 +2,7 @@
  *   lt_mcp_handle  JSON-RPC 2.0 dispatcher (initialize, ping, tools/list, tools/call)
  *   lt_mcp_server  opt-in HTTP transport on 127.0.0.1 (POST /mcp, bearer token, Host and
  *                  Origin pinned to loopback), polled once per frame
- *   lt_mcp_stdio   newline-delimited JSON-RPC on stdin/stdout (`libretune --mcp`)
+ *   lt_mcp_stdio   newline-delimited JSON-RPC on stdin/stdout (`clibretune --mcp`)
  * Only the read tools of src/agent are exposed; the propose_* tools are refused.
  * Values are in display units of the loaded definition.
  * SPDX-License-Identifier: GPL-2.0-or-later

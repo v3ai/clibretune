@@ -721,7 +721,7 @@ LT_TEST(mcp_jsonrpc)
     if (j != NULL) {
         res = lt_json_get(j, "result");
         LT_CHECK(res != NULL && lt_json_get(res, "capabilities") != NULL);
-        LT_CHECK_STR(lt_json_get_str(lt_json_get(res, "serverInfo"), "name", ""), "libretune");
+        LT_CHECK_STR(lt_json_get_str(lt_json_get(res, "serverInfo"), "name", ""), "clibretune");
         LT_CHECK(lt_json_get_num(j, "id", 0) == 1.0);
         lt_json_free(j);
     }

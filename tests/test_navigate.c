@@ -22,7 +22,7 @@ static void sandbox(const char *tag)
     lt_snprintf(cfg, sizeof(cfg), "build/test_navigate_%s_%s_%lu", tag, ts, (unsigned long)lt_plat_now_ms());
     (void)lt_plat_mkdirs(cfg);
     LT_CHECK(lt_plat_setenv("XDG_CONFIG_HOME", cfg) == 0);
-    LT_CHECK(lt_plat_setenv("LIBRETUNE_CONFIG_DIR", "") == 0);
+    LT_CHECK(lt_plat_setenv("CLIBRETUNE_CONFIG_DIR", "") == 0);
 }
 
 static int has_dialog(const lt_app *app, const char *kind)

@@ -133,7 +133,7 @@
         <div><dt>web</dt><dd>Serves the UI to your browser on 127.0.0.1 behind a tokenised URL.</dd></div>
         <div><dt>tty</dt><dd>The whole application in a terminal, including one over SSH.</dd></div>
       </dl>
-      <pre><code>libretune --backend tty --demo --ini demo.ini</code></pre>
+      <pre><code>clibretune --backend tty --demo --ini demo.ini</code></pre>
     </div>
     <a class="shot pf-shot zoom" href="img/terminal.webp" data-cap="The terminal backend">
       <img src="img/terminal.webp" loading="lazy" width="2400" height="1600" alt="The same dashboard rendered as text in a terminal, with large digit readouts and bar graphs">
@@ -177,29 +177,29 @@
       <thead><tr><th>Platform</th><th>Architecture</th><th class="hide-sm">File</th><th class="num-col">Size</th><th><span class="sr">Link</span></th></tr></thead>
       <tbody>
         <tr data-os="windows">
-          <td><b>Windows</b></td><td>x86-64</td><td class="hide-sm"><code>libretune-windows-x86_64-gui.exe</code></td>
-          <td class="num-col" data-size="libretune-windows-x86_64-gui.exe">2.9 MB</td>
-          <td class="go"><a class="btn btn-dark" href="https://github.com/v3ai/clibretune/releases/latest/download/libretune-windows-x86_64-gui.exe">Download</a></td>
+          <td><b>Windows</b></td><td>x86-64</td><td class="hide-sm"><code>clibretune-windows-x86_64-gui.exe</code></td>
+          <td class="num-col" data-size="clibretune-windows-x86_64-gui.exe">2.9 MB</td>
+          <td class="go"><a class="btn btn-dark" href="https://github.com/v3ai/clibretune/releases/latest/download/clibretune-windows-x86_64-gui.exe">Download</a></td>
         </tr>
         <tr data-os="mac">
-          <td><b>macOS</b></td><td>Apple Silicon + Intel</td><td class="hide-sm"><code>libretune-macos-universal</code></td>
-          <td class="num-col" data-size="libretune-macos-universal">5.1 MB</td>
-          <td class="go"><a class="btn btn-dark" href="https://github.com/v3ai/clibretune/releases/latest/download/libretune-macos-universal">Download</a></td>
+          <td><b>macOS</b></td><td>Apple Silicon + Intel</td><td class="hide-sm"><code>clibretune-macos-universal</code></td>
+          <td class="num-col" data-size="clibretune-macos-universal">5.1 MB</td>
+          <td class="go"><a class="btn btn-dark" href="https://github.com/v3ai/clibretune/releases/latest/download/clibretune-macos-universal">Download</a></td>
         </tr>
         <tr data-os="linux">
-          <td><b>Linux</b></td><td>x86-64</td><td class="hide-sm"><code>libretune-linux-x86_64</code></td>
-          <td class="num-col" data-size="libretune-linux-x86_64">2.9 MB</td>
-          <td class="go"><a class="btn btn-dark" href="https://github.com/v3ai/clibretune/releases/latest/download/libretune-linux-x86_64">Download</a></td>
+          <td><b>Linux</b></td><td>x86-64</td><td class="hide-sm"><code>clibretune-linux-x86_64</code></td>
+          <td class="num-col" data-size="clibretune-linux-x86_64">2.9 MB</td>
+          <td class="go"><a class="btn btn-dark" href="https://github.com/v3ai/clibretune/releases/latest/download/clibretune-linux-x86_64">Download</a></td>
         </tr>
         <tr data-os="linux-arm">
-          <td><b>Linux</b></td><td>ARM64 / Raspberry Pi</td><td class="hide-sm"><code>libretune-linux-aarch64</code></td>
-          <td class="num-col" data-size="libretune-linux-aarch64">2.9 MB</td>
-          <td class="go"><a class="btn btn-dark" href="https://github.com/v3ai/clibretune/releases/latest/download/libretune-linux-aarch64">Download</a></td>
+          <td><b>Linux</b></td><td>ARM64 / Raspberry Pi</td><td class="hide-sm"><code>clibretune-linux-aarch64</code></td>
+          <td class="num-col" data-size="clibretune-linux-aarch64">2.9 MB</td>
+          <td class="go"><a class="btn btn-dark" href="https://github.com/v3ai/clibretune/releases/latest/download/clibretune-linux-aarch64">Download</a></td>
         </tr>
       </tbody>
     </table>
     <p class="small">Also on the release:
-      <a href="https://github.com/v3ai/clibretune/releases/latest/download/libretune-windows-x86_64.exe">Windows console build</a>,
+      <a href="https://github.com/v3ai/clibretune/releases/latest/download/clibretune-windows-x86_64.exe">Windows console build</a>,
       <a href="https://github.com/v3ai/clibretune/releases/latest/download/SHA256SUMS">SHA256SUMS</a>.
       Every push to main also builds a <a href="https://github.com/v3ai/clibretune/releases/tag/nightly">nightly</a>.</p>
 
@@ -208,13 +208,13 @@
         <h3>No ECU on the bench?</h3>
         <p>Grab <a href="https://github.com/v3ai/clibretune/releases/latest/download/demo.ini">demo.ini</a>
           and start the simulator. Everything on this page works in demo mode.</p>
-<pre><code>chmod +x libretune-linux-x86_64
-./libretune-linux-x86_64 --demo --ini demo.ini</code></pre>
+<pre><code>chmod +x clibretune-linux-x86_64
+./clibretune-linux-x86_64 --demo --ini demo.ini</code></pre>
       </div>
       <div>
         <h3>First launch</h3>
         <p><b>macOS</b> blocks binaries that aren't notarized. Run this once:</p>
-        <pre><code>xattr -dr com.apple.quarantine libretune-macos-universal</code></pre>
+        <pre><code>xattr -dr com.apple.quarantine clibretune-macos-universal</code></pre>
         <p><b>Windows</b> SmartScreen may warn about an unsigned download. Click <i>More info</i>, then <i>Run anyway</i>.</p>
       </div>
     </div>

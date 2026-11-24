@@ -95,7 +95,7 @@ LT_TEST(connect_tune_choice)
     double v = 0.0;
     long nb;
     LT_CHECK(lt_app_find_demo_ini(buf, sizeof(buf)) != NULL);
-    LT_CHECK(lt_plat_setenv("LIBRETUNE_PROJECTS", "build/test_sync_proj") == 0);
+    LT_CHECK(lt_plat_setenv("CLIBRETUNE_PROJECTS", "build/test_sync_proj") == 0);
     LT_CHECK(lt_plat_mkdirs("build/test_sync_proj") == 0);
     lt_snprintf(tune, sizeof(tune), "sync%lu", (unsigned long)lt_plat_now_ms());
     LT_CHECK(lt_app_new_project(app, tune, buf) == 0);
@@ -120,7 +120,7 @@ LT_TEST(connect_tune_choice)
     LT_CHECK(n_dialogs_of(app, "sig_mismatch") == 0);
     cmp = lt_sync_compare(app->ini, app->tune, app->mem);
     LT_CHECK(cmp != NULL && !lt_sync_cmp_identical(cmp) && cmp->diff->n >= 1);
-    /* "Use LibreTune Settings": the ECU image takes the project bytes */
+    /* "Use clibretune Settings": the ECU image takes the project bytes */
     nb = lt_sync_apply_project(cmp, app->mem);
     LT_CHECK(nb > 0);
     LT_CHECK(lt_proto_write_dirty(app->proto, app->mem) >= 0);
@@ -168,7 +168,7 @@ LT_TEST(ignore_keeps_project_tune)
     int pass;
     LT_CHECK(lt_app_find_demo_ini(buf, sizeof(buf)) != NULL);
     LT_CHECK(lt_app_start_demo(app, buf) == 0);
-    LT_CHECK(lt_plat_setenv("LIBRETUNE_PROJECTS", "build/test_ignore_proj") == 0);
+    LT_CHECK(lt_plat_setenv("CLIBRETUNE_PROJECTS", "build/test_ignore_proj") == 0);
     LT_CHECK(lt_plat_mkdirs("build/test_ignore_proj") == 0);
     lt_plat_timestamp(stamp, sizeof(stamp));
     for (i = 0; stamp[i] != '\0'; i++) { if (stamp[i] < '0' || stamp[i] > '9') { stamp[i] = '_'; } }

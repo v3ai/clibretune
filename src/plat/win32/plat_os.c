@@ -50,7 +50,7 @@ static char *config_dir_os(void)
     char *base = lt_plat_getenv("APPDATA");
     char *dir;
     if (base == NULL) base = lt_strdup(".");
-    dir = lt_path_join(base, "LibreTune");
+    dir = lt_plat_app_subdir(base, "clibretune", "LibreTune");
     lt_free(base);
     lt_plat_mkdirs(dir);
     return dir;

@@ -1055,7 +1055,7 @@ static void project_json_problem(lt_app *app, const char *dir)
         file = dir;
     } else if (!lt_file_exists(f) || lt_plat_is_dir(f)) {
         lt_snprintf(msg, sizeof(msg), "This folder has no project settings file (project.json): it is "
-                    "not a LibreTune project, or the file was deleted.");
+                    "not a clibretune project, or the file was deleted.");
     } else {
         text = lt_file_read(f, &len);
         for (i = 0; text != NULL && i < len && (text[i] == ' ' || text[i] == '\t' || text[i] == '\r' ||
@@ -1084,7 +1084,7 @@ static void project_ini_problem(lt_app *app, const lt_project *p)
     lt_strlcpy(why, lt_err_get(), sizeof(why));
     if (!lt_file_exists(f)) {
         lt_snprintf(msg, sizeof(msg), "The project's ECU definition (projectCfg/definition.ini) is "
-                    "missing, so LibreTune does not know how the settings are laid out.");
+                    "missing, so clibretune does not know how the settings are laid out.");
     } else {
         lt_snprintf(msg, sizeof(msg), "The project's ECU definition (projectCfg/definition.ini) cannot "
                     "be read: %s", why[0] != '\0' ? why : "it is not a valid INI file.");
@@ -1281,7 +1281,7 @@ int lt_app_reset_defaults(lt_app *app)
 const char *lt_app_find_demo_ini(char *buf, size_t cap)
 {
     static const char *cand[] = { "tests/fixtures/ini/demo.ini", "../tests/fixtures/ini/demo.ini",
-                                  "demo.ini", "../share/libretune/demo.ini" };
+                                  "demo.ini", "../share/clibretune/demo.ini" };
     char *env = lt_plat_getenv("LT_DEMO_INI");
     char *exe;
     size_t i;

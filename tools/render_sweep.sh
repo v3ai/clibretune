@@ -11,7 +11,7 @@
 # With --base BIN the final screenshot is also compared byte for byte with what BIN (an earlier
 # build, e.g. one with immediate rendering) produces for the same screen.
 # Options:
-#   --bin PATH      app binary (default build/libretune)
+#   --bin PATH      app binary (default build/clibretune)
 #   --base PATH     reference binary for the screenshot comparison (default: none)
 #   --sizes LIST    "WxH@PCT ..." (default "1600x1000@100 3200x2000@200")
 #   --jobs N        parallel runs (default: CPUs)
@@ -38,7 +38,7 @@ if [ "${1:-}" = --worker ]; then
     scrpt=$(awk -v w="$w" -v h="$h" 'BEGIN { for (i = 1; i <= 6; i++) printf "m:%d/%d ", w * i / 7, h * i / 7 }')
     st=OK
     set +e
-    env HOME="$PWD/$wd/home" LIBRETUNE_CONFIG_DIR="$PWD/$wd/cfg" LIBRETUNE_PROJECTS="$PWD/$wd/proj" \
+    env HOME="$PWD/$wd/home" CLIBRETUNE_CONFIG_DIR="$PWD/$wd/cfg" CLIBRETUNE_PROJECTS="$PWD/$wd/proj" \
         LT_RENDER_VERIFY=1 LT_SCALE="$pct" LT_SCREENSHOT="$wd/new.ppm" LT_SHOT_SIZE="$wh" \
         LT_SHOT_FRAMES=6 LT_SHOT_OPEN="$open" LT_TABLE_VIEW="$view" LT_SHOT_SCRIPT="$scrpt" \
         timeout -k 5 300 "$bin" --demo > "$wd/log.txt" 2>&1
@@ -50,7 +50,7 @@ if [ "${1:-}" = --worker ]; then
     fi
     if [ $st = OK ] && [ "$base" != - ]; then
         rm -rf "$wd/cfg" "$wd/home" "$wd/proj" && mkdir -p "$wd/home" "$wd/cfg" "$wd/proj"
-        env HOME="$PWD/$wd/home" LIBRETUNE_CONFIG_DIR="$PWD/$wd/cfg" LIBRETUNE_PROJECTS="$PWD/$wd/proj" \
+        env HOME="$PWD/$wd/home" CLIBRETUNE_CONFIG_DIR="$PWD/$wd/cfg" CLIBRETUNE_PROJECTS="$PWD/$wd/proj" \
             LT_SCALE="$pct" LT_SCREENSHOT="$wd/base.ppm" LT_SHOT_SIZE="$wh" \
             LT_SHOT_FRAMES=6 LT_SHOT_OPEN="$open" LT_TABLE_VIEW="$view" LT_SHOT_SCRIPT="$scrpt" \
             timeout -k 5 300 "$base" --demo > "$wd/base_log.txt" 2>&1 || true
@@ -65,7 +65,7 @@ if [ "${1:-}" = --worker ]; then
     exit 0
 fi
 
-BIN=build/libretune
+BIN=build/clibretune
 BASE=-
 SIZES="1600x1000@100 3200x2000@200"
 JOBS=$( (nproc || sysctl -n hw.ncpu) 2>/dev/null || echo 1)

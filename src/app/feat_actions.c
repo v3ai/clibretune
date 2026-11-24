@@ -14,7 +14,7 @@
 
 #define FD_ACT_IMPORT (LT_APP_FD_USER0 + 72)
 #define FD_ACT_EXPORT (LT_APP_FD_USER0 + 73)
-#define ACT_FILTERS "LibreTune Action|*.ltaction|All Files|*"
+#define ACT_FILTERS "clibretune Action|*.ltaction|All Files|*"
 #define ACT_EXT ".ltaction"
 
 typedef struct act_entry { char *file; lt_action_set set; } act_entry;
@@ -164,7 +164,7 @@ static void rec_start(lt_app *app, act_state *s)
     char **tags = NULL;
     size_t nt, i;
     if (s->name[0] == '\0') { say(s, 1, "%s", "Please enter a name for the action set"); return; }
-    id = lt_arec_start(&s->rec, s->name, s->desc, "LibreTune");
+    id = lt_arec_start(&s->rec, s->name, s->desc, "clibretune");
     lt_free(id);
     nt = lt_actx_split_list(s->tags, &tags);
     for (i = 0; i < nt; i++) { (void)lt_arec_add_tag(&s->rec, tags[i]); lt_free(tags[i]); }

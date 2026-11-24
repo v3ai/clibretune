@@ -2,7 +2,7 @@
  * that reboot the ECU, after a firmware update (other features call lt_app_reconnect_request),
  * and auto-connect when a project opens.  Port selection and retry budget follow the original
  * useReconnectHandler: the last good port if it is listed, else the only listed port.
- * Replug: when the link was lost, LibreTune keeps watching (30 minutes) for the same USB device
+ * Replug: when the link was lost, clibretune keeps watching (30 minutes) for the same USB device
  * (USB id + serial number, so a new port name is fine) and connects as soon as it is back.
  * Unsaved edits of a project without a saved tune are saved first: otherwise the ECU's values
  * would replace them on connect.
@@ -49,7 +49,7 @@ static void on_link_lost(lt_app *app)
         st->present = 1;            /* until the port list says otherwise */
         st->tries = 0;
         st->watch_until = lt_plat_now_ms() + WATCH_MS;
-        lt_app_toast(app, 2, "Lost the connection to the ECU. LibreTune reconnects as soon as it is back; "
+        lt_app_toast(app, 2, "Lost the connection to the ECU. clibretune reconnects as soon as it is back; "
                              "your changes are kept.");
     }
 }
@@ -90,7 +90,7 @@ static void watch_tick(lt_app *app, rc_state *st)
     if (i < 0) {
         if (st->present) {
             st->present = 0;
-            lt_app_set_status(app, "ECU unplugged - plug it back in and LibreTune reconnects");
+            lt_app_set_status(app, "ECU unplugged - plug it back in and clibretune reconnects");
         }
         return;
     }
@@ -159,7 +159,7 @@ static void tick(lt_app *app)
         }
     } else if (act == 2) {
         if (st->watch) {
-            lt_app_set_status(app, "Waiting for the ECU - plug it back in and LibreTune reconnects");
+            lt_app_set_status(app, "Waiting for the ECU - plug it back in and clibretune reconnects");
         } else {
             lt_app_toast(app, 2, "Automatic reconnect failed - open Connection and connect when the ECU is ready.");
         }

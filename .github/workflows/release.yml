@@ -41,13 +41,13 @@ jobs:
         run: |
           ./build.sh test
           ./build.sh app
-          ./build/libretune --version
+          ./build/clibretune --version
           mkdir -p dist
-          cp build/libretune dist/libretune-linux-x86_64
+          cp build/clibretune dist/clibretune-linux-x86_64
       - uses: actions/upload-artifact@v4
         with:
-          name: libretune-linux-x86_64
-          path: dist/libretune-linux-x86_64
+          name: clibretune-linux-x86_64
+          path: dist/clibretune-linux-x86_64
 
   linux-aarch64:
     runs-on: ubuntu-24.04-arm
@@ -57,13 +57,13 @@ jobs:
         run: |
           ./build.sh test
           ./build.sh app
-          ./build/libretune --version
+          ./build/clibretune --version
           mkdir -p dist
-          cp build/libretune dist/libretune-linux-aarch64
+          cp build/clibretune dist/clibretune-linux-aarch64
       - uses: actions/upload-artifact@v4
         with:
-          name: libretune-linux-aarch64
-          path: dist/libretune-linux-aarch64
+          name: clibretune-linux-aarch64
+          path: dist/clibretune-linux-aarch64
 
   windows-x86_64:
     runs-on: windows-latest
@@ -83,16 +83,16 @@ jobs:
           mkdir -p dist
           # Console build: --help/--version print to the terminal.
           LDFLAGS="-static" ./build.sh app
-          ./build/libretune.exe --version
-          cp build/libretune.exe dist/libretune-windows-x86_64.exe
+          ./build/clibretune.exe --version
+          cp build/clibretune.exe dist/clibretune-windows-x86_64.exe
           # GUI-subsystem build: no console window when double-clicked.
           rm -rf build/obj-*
           LDFLAGS="-static -mwindows" ./build.sh app
-          cp build/libretune.exe dist/libretune-windows-x86_64-gui.exe
-          ./build/libretune.exe --version || true
+          cp build/clibretune.exe dist/clibretune-windows-x86_64-gui.exe
+          ./build/clibretune.exe --version || true
       - uses: actions/upload-artifact@v4
         with:
-          name: libretune-windows-x86_64
+          name: clibretune-windows-x86_64
           path: dist/*.exe
 
   macos-universal:
@@ -105,19 +105,19 @@ jobs:
         run: |
           mkdir -p dist
           CFLAGS="-O2 -arch x86_64" LDFLAGS="-arch x86_64" ./build.sh app
-          cp build/libretune build/libretune-x86_64
+          cp build/clibretune build/clibretune-x86_64
           CFLAGS="-O2 -arch arm64" LDFLAGS="-arch arm64" ./build.sh app
-          cp build/libretune build/libretune-arm64
-          lipo -create -output dist/libretune-macos-universal \
-            build/libretune-x86_64 build/libretune-arm64
-          codesign -s - --force dist/libretune-macos-universal
-          lipo -info dist/libretune-macos-universal
-          chmod +x dist/libretune-macos-universal
-          ./dist/libretune-macos-universal --version
+          cp build/clibretune build/clibretune-arm64
+          lipo -create -output dist/clibretune-macos-universal \
+            build/clibretune-x86_64 build/clibretune-arm64
+          codesign -s - --force dist/clibretune-macos-universal
+          lipo -info dist/clibretune-macos-universal
+          chmod +x dist/clibretune-macos-universal
+          ./dist/clibretune-macos-universal --version
       - uses: actions/upload-artifact@v4
         with:
-          name: libretune-macos-universal
-          path: dist/libretune-macos-universal
+          name: clibretune-macos-universal
+          path: dist/clibretune-macos-universal
 
   publish:
     needs: [linux-x86_64, linux-aarch64, windows-x86_64, macos-universal]
@@ -131,8 +131,8 @@ jobs:
       - name: Collect files and checksums
         run: |
           cp tests/fixtures/ini/demo.ini dist/demo.ini
-          cp packaging/linux/50-libretune.rules dist/50-libretune.rules
-          chmod +x dist/libretune-linux-* dist/libretune-macos-universal
+          cp packaging/linux/50-clibretune.rules dist/50-clibretune.rules
+          chmod +x dist/clibretune-linux-* dist/clibretune-macos-universal
           cd dist
           sha256sum * > SHA256SUMS
           ls -l
@@ -143,7 +143,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${GITHUB_REF_NAME}" dist/* \
-            --title "LibreTune In Universal C ${GITHUB_REF_NAME}" \
+            --title "clibretune ${GITHUB_REF_NAME}" \
             --notes-file .github/release-notes.md \
             --generate-notes
 
@@ -156,7 +156,7 @@ jobs:
           gh release create "v${VERSION}" dist/* \
             --target "${GITHUB_SHA}" \
             --latest \
-            --title "LibreTune In Universal C v${VERSION}" \
+            --title "clibretune v${VERSION}" \
             --notes-file .github/release-notes.md \
             --generate-notes
 

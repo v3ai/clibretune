@@ -55,7 +55,7 @@ const char *lt_app_pc_pending(lt_app *app);
 
 /* ---- project INI settings (feat_iniext.c, reload in app.c) ---- */
 /* Symbols a project chose ([SettingGroups]), stored TunerStudio style in
- * <project>/projectCfg/project.properties as ecuSettings=A|B|C, plus the symbols LibreTune
+ * <project>/projectCfg/project.properties as ecuSettings=A|B|C, plus the symbols clibretune
  * manages for the project (ltManagedSettings=...). */
 typedef struct lt_proj_symbols {
     char **on; size_t n_on;             /* symbols set */

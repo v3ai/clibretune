@@ -31,12 +31,12 @@ static char *fresh(const char *name)
 static void use_test_dirs(void)
 {
     char *d = fresh("defs");
-    LT_CHECK(lt_plat_setenv("LIBRETUNE_DEFINITIONS", d) == 0);
+    LT_CHECK(lt_plat_setenv("CLIBRETUNE_DEFINITIONS", d) == 0);
     lt_free(d);
     d = fresh("projects");
-    LT_CHECK(lt_plat_setenv("LIBRETUNE_PROJECTS", d) == 0);
+    LT_CHECK(lt_plat_setenv("CLIBRETUNE_PROJECTS", d) == 0);
     lt_free(d);
-    LT_CHECK(lt_plat_setenv("LIBRETUNE_VOLUMES", "") == 0);     /* no real USB drives */
+    LT_CHECK(lt_plat_setenv("CLIBRETUNE_VOLUMES", "") == 0);     /* no real USB drives */
 }
 
 static const lt_inidb_def *find_def(const char *family, const char *board, const char *version)
@@ -347,13 +347,13 @@ LT_TEST(usb_drive)
     lt_free(txt);
 
     lt_snprintf(env, sizeof(env), "%s;%s", empty, vol7);
-    LT_CHECK(lt_plat_setenv("LIBRETUNE_VOLUMES", env) == 0);
+    LT_CHECK(lt_plat_setenv("CLIBRETUNE_VOLUMES", env) == 0);
     LT_CHECK(lt_inidb_drive_find(d->signature, path, sizeof(path), &comp) == 0 && comp == 1);
     LT_CHECK(lt_inidb_resolve(d->signature, NULL, LT_INIDB_USE_DRIVE, &pk) == LT_INIDB_EXACT);
     LT_CHECK(pk.src == LT_INIDB_SRC_BUNDLE && pk.drive_compressed == 1);
 
     lt_snprintf(env, sizeof(env), "%s;%s;%s", empty, vol7, vol);
-    LT_CHECK(lt_plat_setenv("LIBRETUNE_VOLUMES", env) == 0);
+    LT_CHECK(lt_plat_setenv("CLIBRETUNE_VOLUMES", env) == 0);
     LT_CHECK(lt_inidb_drive_find(d->signature, path, sizeof(path), &comp) == 1 && comp == 0);
     LT_CHECK(strstr(path, "rusefi_proteus_f7.ini") != NULL);
     LT_CHECK(lt_inidb_drive_find("rusEFI master.2026.08.13.proteus_f4.357168325", path,
@@ -370,7 +370,7 @@ LT_TEST(usb_drive)
     LT_CHECK(r.n == 1 && strstr(r.e[0].source, "rusefi_proteus_f7.ini") != NULL);
     lt_ini_repo_close(&r);
     lt_free(got);
-    LT_CHECK(lt_plat_setenv("LIBRETUNE_VOLUMES", "") == 0);
+    LT_CHECK(lt_plat_setenv("CLIBRETUNE_VOLUMES", "") == 0);
     LT_CHECK(lt_inidb_drive_find(d->signature, path, sizeof(path), &comp) == 0 && comp == 0);
     lt_free(vol); lt_free(vol7); lt_free(empty); lt_free(repo_dir);
 }

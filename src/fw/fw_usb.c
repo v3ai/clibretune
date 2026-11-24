@@ -7,7 +7,7 @@
 
 const char lt_fw_udev_rule[] =
     "# /etc/udev/rules.d/" LT_FW_UDEV_FILE "\n"
-    "# LibreTune firmware update: STM32 ROM bootloader (DFU), OpenBLT, Teensy HalfKay\n"
+    "# clibretune firmware update: STM32 ROM bootloader (DFU), OpenBLT, Teensy HalfKay\n"
     "SUBSYSTEM==\"usb\", ATTRS{idVendor}==\"0483\", ATTRS{idProduct}==\"df11\", MODE=\"0660\", TAG+=\"uaccess\"\n"
     "SUBSYSTEM==\"usb\", ATTRS{idVendor}==\"1d50\", ATTRS{idProduct}==\"60ac\", MODE=\"0660\", TAG+=\"uaccess\"\n"
     "SUBSYSTEM==\"usb\", ATTRS{idVendor}==\"16c0\", ATTRS{idProduct}==\"0478\", MODE=\"0660\", TAG+=\"uaccess\"\n";

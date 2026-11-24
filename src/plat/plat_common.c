@@ -175,16 +175,43 @@ void lt_plat_free_list(char **names, int n)
     lt_free(names);
 }
 
+char *lt_plat_app_env(const char *suffix)
+{
+    char name[64];
+    char *v;
+    lt_snprintf(name, sizeof(name), "CLIBRETUNE_%s", suffix);
+    v = lt_plat_getenv(name);
+    if (v == NULL) {
+        lt_snprintf(name, sizeof(name), "LIBRETUNE_%s", suffix);
+        v = lt_plat_getenv(name);
+    }
+    return v;
+}
+
+char *lt_plat_app_subdir(const char *base, const char *name, const char *old_name)
+{
+    char *dir = lt_path_join(base, name);
+    if (!lt_plat_is_dir(dir)) {
+        char *old = lt_path_join(base, old_name);
+        if (lt_plat_is_dir(old)) {
+            lt_free(dir);
+            return old;
+        }
+        lt_free(old);
+    }
+    return dir;
+}
+
 char *lt_plat_projects_dir(void)
 {
     char *h = lt_plat_home_dir();
     char *dir;
     if (lt_plat_os() == LT_OS_WINDOWS) {
         char *docs = lt_path_join(h, "Documents");
-        dir = lt_path_join(docs, "LibreTune Projects");
+        dir = lt_plat_app_subdir(docs, "clibretune Projects", "LibreTune Projects");
         lt_free(docs);
     } else {
-        dir = lt_path_join(h, "LibreTune Projects");
+        dir = lt_plat_app_subdir(h, "clibretune Projects", "LibreTune Projects");
     }
     lt_free(h);
     return dir;
@@ -208,7 +235,7 @@ int lt_stream_read_full(lt_stream *s, void *buf, int n, int timeout_ms)
 
 char *lt_plat_config_override(void)
 {
-    char *d = lt_plat_getenv("LIBRETUNE_CONFIG_DIR");
+    char *d = lt_plat_app_env("CONFIG_DIR");
     if (d != NULL && d[0] == '\0') {
         lt_free(d);
         d = NULL;

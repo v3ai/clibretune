@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""fetch_definitions.py - download the ECU definitions (INI files) that LibreTune bundles.
+"""fetch_definitions.py - download the ECU definitions (INI files) that clibretune bundles.
 
     python3 tools/fetch_definitions.py              fetch what assets/definitions/*/sources.json
                                                     lists into build/definitions/ (sha256 checked)
@@ -33,7 +33,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ASSETS = os.path.join(ROOT, "assets", "definitions")
 CACHE = os.path.join(ROOT, "build", "definitions")
 API = "https://api.github.com"
-UA = "libretune-fetch-definitions"
+UA = "clibretune-fetch-definitions"
 
 # ---- what is bundled (pinned) ------------------------------------------------------------
 SPEEDUINO = {

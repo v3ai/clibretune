@@ -58,7 +58,7 @@ const char   *lt_log_filter_all(void);
 /* ADDITIVE: set l->header (copied, may be NULL) */
 void lt_log_set_header(lt_log *l, const char *header);
 /* Dispatch by extension only (content is never sniffed). Errors: LT_EINVAL for
- * other extensions ("not a log format LibreTune reads"), LT_EDATA with a
+ * other extensions ("not a log format clibretune reads"), LT_EDATA with a
  * message for corrupt files. */
 int lt_log_read(const char *path, lt_log *out);
 int lt_log_write(const char *path, const lt_log *log);    /* CSV or MLG by extension */
@@ -78,7 +78,7 @@ int lt_csv_parse(const char *text, size_t len, lt_log *out);
  * (a marker at the time of the preceding row). */
 
 /* ---- MSL (MegaLogViewer / TunerStudio ASCII log) ----
- * Layout written:   "title line"            (log->header lines, else "LibreTune datalog" +
+ * Layout written:   "title line"            (log->header lines, else "clibretune datalog" +
  *                   "Capture Date: ...")    the capture date)
  *                   Time<TAB>ch1<TAB>...     channel names
  *                   s<TAB>unit1<TAB>...      units line
@@ -136,7 +136,7 @@ int  lt_mlg_close(lt_mlg_writer *w);                                     /* flus
  * count. If the INI has no [Datalog] section all computed+raw channels are used. */
 size_t lt_datalog_channels_from_ini(const lt_ini *ini, char ***names, char ***units);
 /* Columns of a log written by TunerStudio or MegaLogViewer are named by the [Datalog] labels
- * ("RPM", "CLT", "Air/Fuel Ratio"), LibreTune's by the channel names: rename the columns named
+ * ("RPM", "CLT", "Air/Fuel Ratio"), clibretune's by the channel names: rename the columns named
  * by a label to that entry's channel ("rpm", "coolant", "AFRValue") so that code looking up
  * channels by name finds them.  Channel names stay; a label is not used when its channel is a
  * column already.  Returns the number of columns renamed. */

@@ -28,7 +28,7 @@ static char *config_dir_os(void)
 {
     char *h = lt_posix_home_dir();
     char *base = lt_path_join(h, "Library/Application Support");
-    char *dir = lt_path_join(base, "LibreTune");
+    char *dir = lt_plat_app_subdir(base, "clibretune", "LibreTune");
     lt_free(h);
     lt_free(base);
     lt_plat_mkdirs(dir);

@@ -167,7 +167,7 @@ char *lt_table_file_write(const char *x_name, const char *y_name, const double *
     lt_buf_init(&b);
     lt_buf_puts(&b, "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?>\n");
     lt_buf_puts(&b, "<tableData xmlns=\"http://www.EFIAnalytics.com/:table\">\n");
-    lt_buf_printf(&b, "    <bibliography author=\"LibreTune\" company=\"LibreTune, open source\" "
+    lt_buf_printf(&b, "    <bibliography author=\"clibretune\" company=\"clibretune, open source\" "
                       "writeDate=\"epoch %lu UTC\"/>\n", (unsigned long)time(NULL));
     lt_buf_puts(&b, "    <versionInfo fileFormat=\"1.0\"/>\n");
     lt_buf_printf(&b, "    <table cols=\"%lu\" rows=\"%lu\">\n", (unsigned long)nx, (unsigned long)ny);

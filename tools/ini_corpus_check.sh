@@ -14,11 +14,11 @@
 #   --jobs N        parallel app runs (default: CPUs)
 #   --targets N     at most N menu targets per INI (default: all)
 #   --timeout S     per app run (default 180)
-#   --no-build      reuse build/ini_check/libretune-asan and ini_check_parse
+#   --no-build      reuse build/ini_check/clibretune-asan and ini_check_parse
 #   --no-app        parse/timing only
 # Output: build/ini_check/results.txt (one line per run: STATUS seconds ini target),
 #         build/ini_check/parse.txt, logs of failures in build/ini_check/logs/.
-# The ASan build goes to its own object directory; build/libretune is rebuilt normally after.
+# The ASan build goes to its own object directory; build/clibretune is rebuilt normally after.
 set -e
 cd "$(dirname "$0")/.."
 
@@ -33,13 +33,13 @@ if [ "${1:-}" = --worker ]; then
     t0=$(date +%s)
     set +e
     if [ "$tg" = - ]; then
-        env HOME="$PWD/$wd/home" LIBRETUNE_CONFIG_DIR="$PWD/$wd/cfg" LIBRETUNE_PROJECTS="$PWD/$wd/proj" \
+        env HOME="$PWD/$wd/home" CLIBRETUNE_CONFIG_DIR="$PWD/$wd/cfg" CLIBRETUNE_PROJECTS="$PWD/$wd/proj" \
             LT_SCREENSHOT="$wd/x.ppm" LT_SHOT_FRAMES="${LT_SHOT_FRAMES:-4}" \
-            timeout -k 5 "$to" "$D/libretune-asan" --demo --ini "$ini" > "$log" 2>&1
+            timeout -k 5 "$to" "$D/clibretune-asan" --demo --ini "$ini" > "$log" 2>&1
     else
-        env HOME="$PWD/$wd/home" LIBRETUNE_CONFIG_DIR="$PWD/$wd/cfg" LIBRETUNE_PROJECTS="$PWD/$wd/proj" \
+        env HOME="$PWD/$wd/home" CLIBRETUNE_CONFIG_DIR="$PWD/$wd/cfg" CLIBRETUNE_PROJECTS="$PWD/$wd/proj" \
             LT_SCREENSHOT="$wd/x.ppm" LT_SHOT_FRAMES="${LT_SHOT_FRAMES:-4}" LT_SHOT_OPEN="$tg" \
-            timeout -k 5 "$to" "$D/libretune-asan" --demo --ini "$ini" > "$log" 2>&1
+            timeout -k 5 "$to" "$D/clibretune-asan" --demo --ini "$ini" > "$log" 2>&1
     fi
     rc=$?
     set -e
@@ -89,7 +89,7 @@ if [ "$BUILD" = 1 ]; then
         SANF="-O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -fno-sanitize-recover=all"
         CFLAGS="$SANF" LDFLAGS="$SANF" ./build.sh app > "$D/build.log" 2>&1 ||
             { tail -n 30 "$D/build.log"; exit 1; }
-        cp build/libretune "$D/libretune-asan"
+        cp build/clibretune "$D/clibretune-asan"
         ./build.sh app >> "$D/build.log" 2>&1 || { tail -n 30 "$D/build.log"; exit 1; }
     fi
 fi

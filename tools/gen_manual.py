@@ -6,7 +6,7 @@ Usage: tools/gen_manual.py [docs_src_dir] > src/app/manual_data.c
 
 The developer-oriented parts (technical/, changelog, contributing, migration notes, MCP /
 AI assistant) are left out, and so is what this port does not have: pop-out dashboard windows
-and the self-updater (REWRITES below replace those passages with what LibreTune here does).  Every page is a list of lines (a Markdown source line longer than
+and the self-updater (REWRITES below replace those passages with what clibretune here does).  Every page is a list of lines (a Markdown source line longer than
 ~300 characters is wrapped at a space: paragraphs are re-flowed by the viewer anyway), kept in
 parts of at most PART lines so no single object passes 32767 bytes, and no literal passes 509
 characters.  Characters the embedded fonts do not have are replaced by ASCII.
@@ -55,7 +55,7 @@ RELEASES = "https://github.com/v3ai/clibretune/releases"
 REWRITES = [
     ("getting-started/installation", r"## Updating\n.*?(?=## Building from Source)",
      "## Updating\n\n"
-     "LibreTune does not download or install updates by itself. **Help \u2192 Check for Updates**"
+     "clibretune does not download or install updates by itself. **Help \u2192 Check for Updates**"
      " shows the version and build you are running and opens the releases page (" + RELEASES +
      ") in your web browser. Download a newer build from there and install it the same way as"
      " the first one.\n\n"),
@@ -65,7 +65,7 @@ REWRITES = [
     ("features/dashboards/using", r"## Multi-Monitor\n.*?(?=## Performance)",
      "## Multi-Monitor\n\n"
      "Dashboards are tabs of the main window; there are no separate pop-out windows. For a"
-     " second monitor, move the LibreTune window there and use **Full screen (F11)** on the"
+     " second monitor, move the clibretune window there and use **Full screen (F11)** on the"
      " dashboard.\n\n"),
     ("introduction", r",\s*keyboard navigation,\s*and multi-monitor support\.",
      " and keyboard navigation."),
@@ -111,7 +111,7 @@ REWRITES = [
      "A Target AFR table has a read-only **lambda preview** beside it: the same cells as lambda"
      " for the fuel you pick (or as AFR when the table is shown in lambda), with live readouts."
      " It scrolls with the table and shows its selection. Its **\u00bb** button collapses it to a"
-     " narrow strip, and the strip's button opens it again; LibreTune remembers the choice.\n"),
+     " narrow strip, and the strip's button opens it again; clibretune remembers the choice.\n"),
     ("features/table-editing/2d-tables", r"- Hold \*\*Shift\*\* for 10x step\n",
      "- `q` / `w`: small step; Ctrl with `+` / `-`: the step times the multiplier\n\n"
      "The step is one unit of the ECU's own unit (1 AFR, 1 \u00b0C, 1 kPa) shown in the unit you"
@@ -133,6 +133,22 @@ def rewrite(pid, text):
         text, n = re.subn(pat, lambda m: rep, text, flags=re.S)
         assert n > 0, "rewrite did not match in " + pid + ": " + pat
     return text
+
+
+# This program is clibretune; the stock text calls it LibreTune.  Links to the original project
+# and the original's own source paths keep that name.
+_BRAND_KEEP = re.compile(r"RallyPat/LibreTune|libretune_core|libretune-app|crates/libretune[-\w]*")
+
+
+def brand(text):
+    keep = []
+
+    def hold(m):
+        keep.append(m.group(0))
+        return "\x00%d\x00" % (len(keep) - 1)
+    text = _BRAND_KEEP.sub(hold, text)
+    text = re.sub(r"(?<![A-Za-z_])(?:LibreTune|libretune)", "clibretune", text)
+    return re.sub("\x00(\\d+)\x00", lambda m: keep[int(m.group(1))], text)
 
 
 def devendor(text):
@@ -235,7 +251,7 @@ def main():
             continue
         seen.add(pid)
         text = open(os.path.join(base, pid + ".md"), encoding="utf-8").read().replace("\r", "")
-        text = rewrite(pid, devendor(text))
+        text = brand(rewrite(pid, devendor(text)))
         assert not VENDOR_RE.search(text), "vendor name left in " + pid
         assert not FORBIDDEN_RE.search(text), "unsupported feature promised in " + pid
         lines = []
@@ -261,7 +277,7 @@ def main():
             continue
         seen.add(pid)
         w('    { "%s", "%s", "%s", %d, mpp_%d, (int)(sizeof(mpp_%d) / sizeof(mpp_%d[0])) },\n'
-          % (cesc(pid), cesc(clean(title)), cesc(section), depth, n, n, n))
+          % (cesc(pid), cesc(clean(brand(title))), cesc(brand(section)), depth, n, n, n))
         count += 1
     w("};\n")
     w("const int lt_man_count = %d;\n" % count)

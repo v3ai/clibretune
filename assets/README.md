@@ -26,5 +26,5 @@ symbols) by `tools/gen_embed.py`; glyph ids and kerning are unchanged. The OFL r
 license text to travel with the fonts and forbids reusing the reserved name "Plex" for
 modified fonts; the embedded subsets are private data and are not distributed as font files.
 
-The Speeduino base tunes are CC BY-NC 4.0 (non-commercial): every build embeds them, so a LibreTune
+The Speeduino base tunes are CC BY-NC 4.0 (non-commercial): every build embeds them, so a clibretune
 bundle must not be sold unless `src/tune/basetune_data.c` is regenerated with `--empty` first.

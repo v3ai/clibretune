@@ -390,7 +390,7 @@ LT_TEST(project_config_validation)
 LT_TEST(projects_dir_env)
 {
     char *p;
-    lt_plat_setenv("LIBRETUNE_PROJECTS", "build/test_tmp/pd_env");
+    lt_plat_setenv("CLIBRETUNE_PROJECTS", "build/test_tmp/pd_env");
     p = lt_projects_dir();
     LT_CHECK(p != NULL);
     if (p) LT_CHECK_STR(p, "build/test_tmp/pd_env");
@@ -398,7 +398,7 @@ LT_TEST(projects_dir_env)
     {
         lt_project pr;
         char *base = fresh("envproj");
-        lt_plat_setenv("LIBRETUNE_PROJECTS", base);
+        lt_plat_setenv("CLIBRETUNE_PROJECTS", base);
         LT_CHECK(lt_project_create("Env", FIX "mini.ini", "s", NULL, &pr) == 0);
         LT_CHECK(strncmp(pr.path, base, strlen(base)) == 0);
         lt_project_free(&pr);

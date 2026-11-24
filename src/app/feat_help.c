@@ -42,7 +42,7 @@ static void about_definitions(lt_ui *ui)
     if (gpl3 > 0) {
         credit(ui, "This build is GPL-3.0", "Because it contains GPL-3.0 definition files, this "
                "program as a whole is distributed under the GNU General Public License, version 3; "
-               "LibreTune's own source code remains available under version 2 or later.");
+               "clibretune's own source code remains available under version 2 or later.");
     }
 }
 
@@ -52,7 +52,7 @@ static void about_credits(lt_ui *ui)
     const char *prov[16];
     char buf[700], who[300];
     size_t i, n;
-    credit(ui, "LibreTune", "Free software under the GNU General Public License, version 2 or later (LICENSE). "
+    credit(ui, "clibretune", "Free software under the GNU General Public License, version 2 or later (LICENSE). "
            "Based on the original LibreTune project, https://github.com/RallyPat/LibreTune.");
     credit(ui, "Fonts", "IBM Plex Sans and IBM Plex Mono, Copyright 2017 IBM Corp., SIL Open Font License 1.1 "
            "(assets/fonts/OFL.txt). The 8x16 terminal font is derived from GNU Unifont (GPL-2.0-or-later "
@@ -72,7 +72,7 @@ static void about_credits(lt_ui *ui)
                 "(commit %.10s), by the " LT_BASETUNE_AUTHORS "; tune authors: %s. They are NOT under the GPL: "
                 "they are licensed under " LT_BASETUNE_LICENSE " (Creative Commons Attribution-NonCommercial "
                 "4.0 International, " LT_BASETUNE_LICENSE_URL "), embedded unmodified, provided as is without "
-                "warranty. Non-commercial: LibreTune is never sold, and no bundle containing these tunes may be "
+                "warranty. Non-commercial: clibretune is never sold, and no bundle containing these tunes may be "
                 "sold.", lt_basetune_source, lt_basetune_commit, who);
     credit(ui, "Speeduino base tunes", buf);
 }
@@ -83,10 +83,10 @@ static void about_draw(lt_app *app, lt_app_dialog *d)
     const lt_theme *t = lt_ui_theme(ui);
     char msg[320];
     int w[2], w1 = -1;
-    if (lt_ui_modal_begin(ui, "About LibreTune", 680, 560, &d->open)) {
+    if (lt_ui_modal_begin(ui, "About clibretune", 680, 560, &d->open)) {
         lt_ui_layout_row(ui, 1, &w1, 0);
         lt_ui_text_style(ui, (int)LT_FONT_SANS_SEMIBOLD, LT_UI_FS_LG);
-        lt_ui_label_ex(ui, "LibreTune " LT_APP_VERSION, t->text, LT_UI_ALIGN_LEFT);
+        lt_ui_label_ex(ui, "clibretune " LT_APP_VERSION, t->text, LT_UI_ALIGN_LEFT);
         lt_ui_text_style_reset(ui);
         lt_ui_layout_row(ui, 1, &w1, 0);
         lt_snprintf(msg, sizeof(msg), "Open source ECU tuning software, in Universal C.  Build: %s (" __DATE__
@@ -145,7 +145,7 @@ static void updates_draw(lt_app *app, lt_app_dialog *d)
         w[0] = 160; w[1] = -1;
         lt_ui_layout_row(ui, 2, w, 0);
         lt_ui_label_ex(ui, lt_tr("Version:"), t->text2, LT_UI_ALIGN_LEFT);
-        lt_ui_label(ui, "LibreTune " LT_APP_VERSION);
+        lt_ui_label(ui, "clibretune " LT_APP_VERSION);
         lt_ui_layout_row(ui, 2, w, 0);
         lt_ui_label_ex(ui, lt_tr("Build:"), t->text2, LT_UI_ALIGN_LEFT);
         lt_snprintf(b, sizeof(b), "%s (" __DATE__ ")", lt_app_build_id());
@@ -156,7 +156,7 @@ static void updates_draw(lt_app *app, lt_app_dialog *d)
         lt_ui_layout_row(ui, 1, &w1, 0);
         lt_ui_label(ui, "");
         lt_ui_layout_row(ui, 1, &w1, 0);
-        lt_ui_label_wrap(ui, lt_tr("LibreTune does not update itself. New versions are published on the releases "
+        lt_ui_label_wrap(ui, lt_tr("clibretune does not update itself. New versions are published on the releases "
                                    "page: compare the version there with the one above, then download and install "
                                    "the new build the usual way for your system."), t->text);
         lt_ui_layout_row(ui, 1, &w1, 0);
@@ -200,5 +200,5 @@ void lt_feat_help_register(lt_app_ext *reg)
     lt_ext_add_dialog_kind(reg, &dk);
     lt_ext_add_menu_item(reg, LT_EXT_MENU_HELP, "Keyboard &Shortcuts", NULL, act_keys, NULL);
     lt_ext_add_menu_item(reg, LT_EXT_MENU_HELP, "Check for &Updates...", NULL, act_updates, NULL);
-    lt_ext_add_menu_item(reg, LT_EXT_MENU_HELP, "&About LibreTune", NULL, act_about, NULL);
+    lt_ext_add_menu_item(reg, LT_EXT_MENU_HELP, "&About clibretune", NULL, act_about, NULL);
 }

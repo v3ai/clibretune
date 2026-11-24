@@ -9,7 +9,7 @@
 # changing values); interaction cases replay a scripted input sequence (LT_SHOT_SCRIPT, one frame
 # per step: hover sweeps, typing into a table, scrolling a list, switching tabs, opening dialogs).
 # Options:
-#   --bin PATH        app binary (default build/libretune)
+#   --bin PATH        app binary (default build/clibretune)
 #   --frames N        measured frames per steady case (default 60)
 #   --sizes LIST      "WxH@PCT ..." (default "1600x1000@100 3200x2000@200 3840x2160@200 3840x2160@150")
 #   --cases LIST      subset of: dashboard realtime ve_table ve_3d autotune datalog curve
@@ -21,7 +21,7 @@
 set -e
 cd "$(dirname "$0")/.."
 
-BIN=build/libretune
+BIN=build/clibretune
 FRAMES=60
 SIZES="1600x1000@100 3200x2000@200 3840x2160@200 3840x2160@150"
 CASES="dashboard realtime ve_table ve_3d autotune datalog curve hover_sidebar hover_table type_table scroll_list switch_tabs open_dialog"
@@ -109,7 +109,7 @@ run_case() {
         hover_*|type_*|scroll_*|switch_*|open_*) scr=$(script_for "$name" "$pct"); frames=12 ;;
     esac
     log=$W/log.txt
-    env HOME="$W/home" LIBRETUNE_CONFIG_DIR="$W/cfg" LIBRETUNE_PROJECTS="$W/proj" \
+    env HOME="$W/home" CLIBRETUNE_CONFIG_DIR="$W/cfg" CLIBRETUNE_PROJECTS="$W/proj" \
         LT_PERF=1 LT_PERF_SKIP=$skip LT_SHOT_SLEEP="$SLEEP" LT_SCALE="$pct" \
         LT_SCREENSHOT="$W/x.ppm" LT_SHOT_SIZE="$wh" LT_SHOT_FRAMES=$frames \
         LT_SHOT_OPEN="$open" LT_TABLE_VIEW="$view" LT_SHOT_SCRIPT="$scr" \

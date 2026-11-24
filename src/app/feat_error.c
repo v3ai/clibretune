@@ -71,7 +71,7 @@ void lt_feat_error_report(const char *title, const char *msg, const char *det, c
 {
     char stamp[32];
     lt_plat_timestamp(stamp, sizeof(stamp));
-    lt_snprintf(out, cap, "LibreTune Error Report\n========================\nTitle: %s\n"
+    lt_snprintf(out, cap, "clibretune Error Report\n========================\nTitle: %s\n"
                 "Message: %s\n%s%s========================\nDate: %s\nPlatform: %s\nVersion: %s\n",
                 title, msg, det[0] != '\0' ? "\nDetails:\n" : "", det, stamp, lt_plat_os_name(),
                 LT_APP_VERSION);

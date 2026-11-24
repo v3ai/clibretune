@@ -509,7 +509,7 @@ static void menu_tools(lt_app *app)
     lt_ext_menu_draw(app, LT_EXT_MENU_TOOLS, 1);
 }
 
-/* an ECU menu titled Help goes into LibreTune's own Help menu rather than a second "Help" */
+/* an ECU menu titled Help goes into clibretune's own Help menu rather than a second "Help" */
 static lt_bool ini_menu_is_help(const char *title)
 {
     char lab[160];
@@ -1517,7 +1517,7 @@ void lt_app_frame(lt_app *app)
     }
     shortcuts(app);
     app_dialogs(app);
-    lt_snprintf(title, sizeof(title), "LibreTune%s%s",
+    lt_snprintf(title, sizeof(title), "clibretune%s%s",
                 app->has_project ? " - " : "", app->has_project ? app->project.cfg.name : "");
     if (strcmp(title, app->title) != 0) {
         lt_strlcpy(app->title, title, sizeof(app->title));
@@ -1658,7 +1658,7 @@ int lt_app_open_window(lt_app *app, const char *backend, int w, int h)
     }
     lt_free(dbg);
     lt_free(e);
-    if (be->open(be, "LibreTune", w, h) != 0) {
+    if (be->open(be, "clibretune", w, h) != 0) {
         lt_err_set("cannot open backend '%s': %s", be->name, lt_err_get());
         lt_backend_destroy(be);
         app->backend = NULL;

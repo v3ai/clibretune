@@ -782,7 +782,7 @@ static void lc_build_menu(lc_state *s)
     (void)add(sub, lc_sel_of("addItemWithTitle:action:keyEquivalent:"),
               lc_nsstring("Close Window"), lc_sel_of("performClose:"), lc_nsstring("w"));
     (void)add(sub, lc_sel_of("addItemWithTitle:action:keyEquivalent:"),
-              lc_nsstring("Quit LibreTune"), lc_sel_of("terminate:"), lc_nsstring("q"));
+              lc_nsstring("Quit clibretune"), lc_sel_of("terminate:"), lc_nsstring("q"));
     lc_send_void_id(item, "setSubmenu:", sub);
     lc_send_void_id(s->app, "setMainMenu:", menu);
     lc_send_void0(sub, "release");

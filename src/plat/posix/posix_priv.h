@@ -20,7 +20,7 @@ double lt_posix_clamp_time(double t);
 /* user's home directory; malloc'd, never NULL */
 char *lt_posix_home_dir(void);
 
-/* $XDG_CONFIG_HOME/libretune or ~/.config/libretune (created); malloc'd */
+/* $XDG_CONFIG_HOME/clibretune or ~/.config/clibretune (created); malloc'd */
 char *lt_posix_xdg_config_dir(void);
 
 /* run "cmd url" detached with stdio redirected to /dev/null; 0 ok */

@@ -1,8 +1,8 @@
 ref/
 build/
 *.o
-/libretune
-/libretune.com
+/clibretune
+/clibretune.com
 /test_*
 .toolchain/
 __pycache__/

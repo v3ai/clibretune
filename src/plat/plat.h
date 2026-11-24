@@ -59,10 +59,10 @@ void  lt_plat_fault_write_limit(long bytes);
  * malloc'd array of malloc'd strings, sorted ascii; free with lt_plat_free_list */
 int   lt_plat_list_dir(const char *path, char ***names);
 void  lt_plat_free_list(char **names, int n);
-/* user config dir (e.g. ~/.config/libretune, %APPDATA%\LibreTune,
- * ~/Library/Application Support/LibreTune); malloc'd, created if missing */
+/* user config dir (e.g. ~/.config/clibretune, %APPDATA%\clibretune,
+ * ~/Library/Application Support/clibretune); malloc'd, created if missing */
 char *lt_plat_config_dir(void);
-/* LIBRETUNE_CONFIG_DIR, when set and non-empty, replaces the per-OS config dir on every
+/* CLIBRETUNE_CONFIG_DIR, when set and non-empty, replaces the per-OS config dir on every
  * platform (portable installs, tests). Returns a malloc'd, created dir or NULL if unset;
  * each lt_plat_config_dir implementation checks it first. */
 char *lt_plat_config_override(void);
@@ -75,9 +75,13 @@ char *lt_plat_abspath(const char *path);
 /* LT_TRUE when two lt_plat_abspath results name the same path the way the running OS compares
  * names: byte for byte on POSIX, ignoring ASCII case on Windows. */
 lt_bool lt_plat_path_same(const char *a, const char *b);
-/* user documents dir for projects (e.g. ~/LibreTune Projects); malloc'd */
+/* user documents dir for projects (e.g. ~/clibretune Projects); malloc'd */
 char *lt_plat_projects_dir(void);
 char *lt_plat_getenv(const char *name);    /* malloc'd copy or NULL */
+/* CLIBRETUNE_<suffix>, else the LIBRETUNE_<suffix> of releases before the rename; malloc'd or NULL */
+char *lt_plat_app_env(const char *suffix);
+/* base/name, or base/old_name when only that one exists (a folder made before the rename) */
+char *lt_plat_app_subdir(const char *base, const char *name, const char *old_name);
 /* set an environment variable for this process (value copied); 0 ok */
 int   lt_plat_setenv(const char *name, const char *value);
 /* user home directory (never NULL; falls back to "."); malloc'd */

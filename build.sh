@@ -17,7 +17,7 @@
 # Cross examples:
 #   TARGET=windows CC=x86_64-w64-mingw32-gcc ./build.sh test
 #   CC=s390x-linux-gnu-gcc LDFLAGS=-static RUNNER=qemu-s390x ./build.sh test
-# Output: build/libretune[.exe]; per-configuration objects in build/obj-*/.
+# Output: build/clibretune[.exe]; per-configuration objects in build/obj-*/.
 set -e
 cd "$(dirname "$0")"
 . tools/target.sh
@@ -42,7 +42,7 @@ LIBS="$TARGET_LIBS"
 
 target=${1:-app}
 if [ "$target" = clean ]; then
-    rm -rf build/obj-* build/libretune build/libretune.exe
+    rm -rf build/obj-* build/clibretune build/clibretune.exe
     exit 0
 fi
 if [ "$target" = list ]; then
@@ -111,7 +111,7 @@ wait
 
 case $target in
     app)
-        echo "LD build/libretune$EXE"
+        echo "LD build/clibretune$EXE"
         mkdir -p build
         # main.c is compiled here on every build, so it carries the build id (git commit)
         BUILD_ID=$(git rev-parse --short HEAD 2>/dev/null || echo dev)
@@ -119,8 +119,8 @@ case $target in
             BUILD_ID="$BUILD_ID+local"
         fi
         $CC $CFLAGS "-DLT_BUILD_ID=\"$BUILD_ID\"" -Isrc src/main.c $OBJS \
-            -o "build/libretune$EXE.$$.tmp" $LDFLAGS $LIBS
-        mv -f "build/libretune$EXE.$$.tmp" "build/libretune$EXE"
+            -o "build/clibretune$EXE.$$.tmp" $LDFLAGS $LIBS
+        mv -f "build/clibretune$EXE.$$.tmp" "build/clibretune$EXE"
         ;;
     test)
         tests=""
@@ -168,7 +168,7 @@ case $target in
             # relative paths work for native and wine-run binaries alike
             tdir="$OBJDIR/test/env-$name"
             rm -rf "$tdir" && mkdir -p "$tdir/home" "$tdir/projects"
-            tenv="env LIBRETUNE_CONFIG_DIR=$tdir/config LIBRETUNE_PROJECTS=$tdir/projects"
+            tenv="env CLIBRETUNE_CONFIG_DIR=$tdir/config CLIBRETUNE_PROJECTS=$tdir/projects"
             if [ "$TARGET" != windows ]; then
                 tenv="$tenv HOME=$PWD/$tdir/home XDG_CONFIG_HOME=$PWD/$tdir/home/.config"
             fi

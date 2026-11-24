@@ -180,7 +180,7 @@ void lt_usb_udev_hint(char *buf, size_t cap, const char *path, int have_ids,
     lt_snprintf(buf, cap,
                 "no permission to open %s: add a udev rule such as "
                 "SUBSYSTEM==\"usb\"%s, MODE=\"0666\", TAG+=\"uaccess\" "
-                "in /etc/udev/rules.d/50-libretune.rules, then run "
+                "in /etc/udev/rules.d/50-clibretune.rules, then run "
                 "'sudo udevadm control --reload' and replug the device",
                 path != NULL ? path : "the USB device", ids);
 }

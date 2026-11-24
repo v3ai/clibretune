@@ -109,7 +109,7 @@ LT_TEST(test_scene)
     LT_CHECK(P(&cv, 540, 200) == 0x141820UL);        /* hole in center (even-odd) */
 
     /* text */
-    lt_gfx_text(&g, 10, 380, "Hello, LibreTune 123 \xC2\xB0 \xE2\x94\x80\xE2\x94\x82", LT_RGB(255, 255, 255), 1);
+    lt_gfx_text(&g, 10, 380, "Hello, clibretune 123 \xC2\xB0 \xE2\x94\x80\xE2\x94\x82", LT_RGB(255, 255, 255), 1);
     lt_gfx_text(&g, 10, 400, "RPM 3500", LT_RGB(120, 255, 120), 2);
     lt_gfx_text(&g, 10, 440, "AFR 14.7", LT_RGB(255, 200, 100), 3);
     LT_CHECK(lt_gfx_text_width("abc", 2) == 48 && lt_gfx_text_height(3) == 48);

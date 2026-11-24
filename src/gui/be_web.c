@@ -55,7 +55,7 @@
 
 /* The client page, as string chunks (each literal < 509 chars). */
 static const char *const web_page_chunks[] = {
-    "<!DOCTYPE html><html><head><meta charset='utf-8'><title>LibreTune</title>\n",
+    "<!DOCTYPE html><html><head><meta charset='utf-8'><title>clibretune</title>\n",
     "<style>html,body{margin:0;height:100%;overflow:hidden;background:#202020}canvas{display:block;outline:none}</style>\n",
     "</head><body><canvas id='c' tabindex='0'></canvas><script>\n",
     "var cv=document.getElementById('c'),cx=cv.getContext('2d'),seq=0,q=[],busy=false,rsT=0;\n",
@@ -696,7 +696,7 @@ static int web_open(lt_backend *b, const char *title, int width, int height)
     const char *const *p;
 
     if (w == NULL) return -1;
-    lt_strlcpy(w->title, title != NULL ? title : "LibreTune", sizeof(w->title));
+    lt_strlcpy(w->title, title != NULL ? title : "clibretune", sizeof(w->title));
     w->w = width > 0 ? width : 1024;
     w->h = height > 0 ? height : 768;
     lt_buf_clear(&w->page);
@@ -717,7 +717,7 @@ static int web_open(lt_backend *b, const char *title, int width, int height)
         return -1;
     }
     lt_snprintf(url, sizeof(url), "http://127.0.0.1:%d/?t=%s", w->port, w->auth_key);
-    fprintf(stderr, "LibreTune UI: %s\n", url);
+    fprintf(stderr, "clibretune UI: %s\n", url);
     nb = lt_plat_getenv("LT_NO_BROWSER");
     if (nb == NULL) lt_plat_open_url(url);
     lt_free(nb);
@@ -814,7 +814,7 @@ lt_backend *lt_backend_web_create(int port)
 
     w->req_port = port;
     lt_buf_init(&w->page);
-    lt_strlcpy(w->title, "LibreTune", sizeof(w->title));
+    lt_strlcpy(w->title, "clibretune", sizeof(w->title));
     b->name = "web";
     b->cell_mode = LT_FALSE;
     b->open = web_open;

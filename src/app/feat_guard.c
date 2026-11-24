@@ -73,7 +73,7 @@ static void update_unburned(lt_app *app, guard_state *g)
     if (!lt_ecu_mem_fully_loaded(app->mem)) { return; }
     g->hash = mem_hash(app->mem);
     if (!lt_app_can_burn(app)) {
-        /* nothing pending: the ECU's flash holds what LibreTune shows */
+        /* nothing pending: the ECU's flash holds what clibretune shows */
         if (g->base == NULL || g->hash != g->base_hash) {
             lt_tune_free(g->base);
             g->base = lt_tune_clone(app->tune);
@@ -324,12 +324,12 @@ static void overlay(lt_app *app)
             if (when[0] >= 'A' && when[0] <= 'Z') { when[0] = (char)(when[0] - 'A' + 'a'); }
         }
         if (age[0] != '\0') {
-            lt_snprintf(msg, sizeof(msg), "LibreTune did not close normally last time. It autosaved this project's "
+            lt_snprintf(msg, sizeof(msg), "clibretune did not close normally last time. It autosaved this project's "
                         "tune %s, with changes that were never saved%s.\n\nRestore that tune? Nothing is "
                         "final until you save it.", when,
                         app->conn == LT_APP_ONLINE ? " (restoring sends them to the ECU)" : "");
         } else {
-            lt_snprintf(msg, sizeof(msg), "LibreTune did not close normally last time and autosaved this project's "
+            lt_snprintf(msg, sizeof(msg), "clibretune did not close normally last time and autosaved this project's "
                         "tune with changes that were never saved%s.\n\nRestore that tune?",
                         app->conn == LT_APP_ONLINE ? " (restoring sends them to the ECU)" : "");
         }

@@ -8,7 +8,7 @@ alone. Each item says what is needed and how to tell it is finished.
 All firmware flashing so far has run only against the simulated bootloaders in `src/fw/fw_sim.c`;
 ECU communication has run against the built-in simulator and recorded fixtures. Before calling a
 release stable, run this matrix on real boards and record the results (OS, board, firmware
-version, LibreTune commit) in the release notes.
+version, clibretune commit) in the release notes.
 
 | Area | What to do | Done when |
 |---|---|---|
@@ -36,7 +36,7 @@ Unsigned binaries trigger Gatekeeper (macOS) and SmartScreen (Windows) warnings.
   secrets. Ship it inside an `.app` bundle (or a signed .zip/.dmg) so notarization can be stapled.
 - **Windows**: an Authenticode certificate. Free options for open-source projects exist (for
   example SignPath Foundation); otherwise an OV certificate or Azure Trusted Signing. Sign
-  `libretune.exe` with `signtool` in the release job.
+  `clibretune.exe` with `signtool` in the release job.
 - **Linux**: optionally publish SHA256SUMS signed with a project GPG key.
 
 Done when: the release workflow signs every tagged build and a fresh machine opens it without a
@@ -46,7 +46,7 @@ warning.
 
 Tag a `v0.x` beta, announce it where rusEFI, Speeduino and MegaSquirt users meet, and add GitHub
 issue templates (bug report asks for OS, ECU, firmware, INI signature, and attaches the
-`libretune.log` and a log file). Done when a handful of people have run it on real cars and their
+`clibretune.log` and a log file). Done when a handful of people have run it on real cars and their
 reports are triaged.
 
 ## 4. Features that need hardware or vendor information

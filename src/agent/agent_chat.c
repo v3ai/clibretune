@@ -11,7 +11,7 @@
 #define CHAT_TIMEOUT_MS 120000
 
 static const char sys_prompt[] =
-    "You are a tuning assistant inside LibreTune, an ECU tuning application. All numeric "
+    "You are a tuning assistant inside clibretune, an ECU tuning application. All numeric "
     "analysis must come from the tools: never invent or compute tuning numbers yourself. "
     "Call list_tables first to discover table names, then read what you need. You can only "
     "PROPOSE changes with the propose_* tools; the user reviews and applies them, and "

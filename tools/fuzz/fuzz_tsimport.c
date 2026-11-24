@@ -1,7 +1,7 @@
 /* fuzz_tsimport.c - TunerStudio project import. The input is split at "\n#~#~\n" into
  * projectCfg/project.properties, projectCfg/mainController.ini, CurrentTune.msq and
  * projectCfg/pcVariableValues.msq of a scratch TS project; then the import preview and the
- * import itself run against it (a new LibreTune project is created and removed again). */
+ * import itself run against it (a new clibretune project is created and removed again). */
 #include "fuzz_common.h"
 #include "project/project.h"
 #include "app/files_logic.h"

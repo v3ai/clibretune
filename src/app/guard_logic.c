@@ -43,7 +43,7 @@ int lt_guard_question(int what, int unburned, int unsaved, lt_guard_q *q)
     } else if (unburned != 0) {
         lt_strlcpy(q->title, "Burn your changes?", sizeof(q->title));
         lt_snprintf(q->msg, sizeof(q->msg), "%s%s", ram,
-                    what == LT_GUARD_DISCONNECT ? "\n\nLibreTune keeps them in your tune either way." : "");
+                    what == LT_GUARD_DISCONNECT ? "\n\nclibretune keeps them in your tune either way." : "");
     } else {
         lt_strlcpy(q->title, "Save your changes?", sizeof(q->title));
         lt_strlcpy(q->msg, "The tune has changes that are not saved in the project.", sizeof(q->msg));

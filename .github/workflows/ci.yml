@@ -45,7 +45,7 @@ jobs:
         run: |
           ./build.sh test
           ./build.sh app
-          ./build/libretune --version
+          ./build/clibretune --version
 
   macos:
     name: macos (cocoa backend)
@@ -61,7 +61,7 @@ jobs:
         run: |
           ./build.sh test
           ./build.sh app
-          ./build/libretune --version
+          ./build/clibretune --version
       - name: Cocoa smoke test
         env:
           CC: clang
@@ -82,7 +82,7 @@ jobs:
         run: build.bat
       - name: Run
         shell: cmd
-        run: build\libretune.exe --version
+        run: build\clibretune.exe --version
 
   windows-mingw:
     name: windows / MinGW (msys2)
@@ -103,4 +103,4 @@ jobs:
         run: |
           ./build.sh test
           ./build.sh app
-          ./build/libretune.exe --version
+          ./build/clibretune.exe --version

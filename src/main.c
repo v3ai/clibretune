@@ -1,5 +1,5 @@
-/* main.c - LibreTune entry point.
- * Usage: libretune [--backend NAME] [--demo] [--project DIR] [--ini FILE] [--help] [--version]
+/* main.c - clibretune entry point.
+ * Usage: clibretune [--backend NAME] [--demo] [--project DIR] [--ini FILE] [--help] [--version]
  *        [PROJECT_DIR]   (parsed by lt_app_args_parse, src/app/app_args.c)
  * Env: LT_BACKEND, LT_NO_BROWSER, LT_MAX_FRAMES=N (exit after N frames),
  *      LT_SCREENSHOT=out.ppm [LT_SHOT_SIZE=WxH LT_SHOT_FRAMES=N LT_SHOT_OPEN=target
@@ -22,8 +22,8 @@
 
 static void usage(void)
 {
-    puts("LibreTune " LT_APP_VERSION " - open source ECU tuning software\n"
-         "usage: libretune [options] [PROJECT_DIR]\n"
+    puts("clibretune " LT_APP_VERSION " - open source ECU tuning software\n"
+         "usage: clibretune [options] [PROJECT_DIR]\n"
          "  PROJECT_DIR      a project folder (with project.json): same as --project");
     puts("  --backend NAME   GUI backend: auto x11 win32 cocoa web tty\n"
          "  --demo           start in demo mode (simulated ECU)\n"
@@ -45,8 +45,8 @@ int main(int argc, char **argv)
 
     rc = lt_app_args_parse(argc, argv, &args, err, sizeof(err));
     if (rc == 1 && args.help) { usage(); return 0; }
-    if (rc == 1) { printf("libretune %s (build %s)\n", LT_APP_VERSION, LT_BUILD_ID); return 0; }
-    if (rc != 0) { fprintf(stderr, "libretune: %s\n", err); return 2; }
+    if (rc == 1) { printf("clibretune %s (build %s)\n", LT_APP_VERSION, LT_BUILD_ID); return 0; }
+    if (rc != 0) { fprintf(stderr, "clibretune: %s\n", err); return 2; }
     backend = args.backend; project = args.project; ini = args.ini;
     demo = args.demo; mcp = args.mcp;
     lt_app_set_build_id(LT_BUILD_ID);
@@ -64,7 +64,7 @@ int main(int argc, char **argv)
     if (shot == NULL && lt_app_shot_is_tty()) { shot = lt_strdup(""); }
     if (shot == NULL) {
         if (lt_app_open_window(app, backend, 1280, 800) != 0) {
-            fprintf(stderr, "libretune: %s\n", lt_err_get());
+            fprintf(stderr, "clibretune: %s\n", lt_err_get());
             lt_app_free(app);
             return 1;
         }
