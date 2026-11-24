@@ -16,6 +16,8 @@
 #   --sizes LIST    "WxH@PCT ..." (default "1600x1000@100 3200x2000@200")
 #   --jobs N        parallel runs (default: CPUs)
 #   --limit N       only the first N screens (quick check)
+#   --ini FILE      demo definition (default tests/fixtures/ini/demo.ini; its [Menu] targets are
+#                   the screens), e.g. the bundled rusEFI one the app writes to <config>/demo.ini
 # Output: one line per failure, then the totals; build/render_sweep/ keeps logs and images of
 # failures. Exit status 1 when anything failed.
 set -e
@@ -70,6 +72,7 @@ BASE=-
 SIZES="1600x1000@100 3200x2000@200"
 JOBS=$( (nproc || sysctl -n hw.ncpu) 2>/dev/null || echo 1)
 LIMIT=0
+INI=tests/fixtures/ini/demo.ini
 while [ $# -gt 0 ]; do
     case $1 in
         --bin) shift; BIN=$1 ;;
@@ -77,12 +80,17 @@ while [ $# -gt 0 ]; do
         --sizes) shift; SIZES=$1 ;;
         --jobs) shift; JOBS=$1 ;;
         --limit) shift; LIMIT=$1 ;;
+        --ini) shift; INI=$1 ;;
         -h|--help) sed -n '2,/^set -e/p' "$0" | sed '$d;s/^# \{0,1\}//'; exit 0 ;;
         *) echo "unknown option $1" >&2; exit 2 ;;
     esac
     shift
 done
 [ -x "$BIN" ] || { echo "no binary $BIN (./build.sh app)" >&2; exit 2; }
+[ -f "$INI" ] || { echo "no INI $INI" >&2; exit 2; }
+case $INI in /*) ;; *) INI=$PWD/$INI ;; esac
+LT_DEMO_INI=$INI
+export LT_DEMO_INI
 D=build/render_sweep
 rm -rf "$D" && mkdir -p "$D/run"
 
@@ -93,7 +101,7 @@ for s in $(lt_sources); do case $s in src/main.c) ;; *) srcs="$srcs $s" ;; esac;
 ${CC:-cc} -O1 $PLAT_CPPFLAGS -Isrc tools/ini_check_parse.c $srcs -o "$D/ini_check_parse" $TARGET_LIBS
 {
     echo -
-    "$D/ini_check_parse" tests/fixtures/ini/demo.ini | awk -F'\t' '$1 == "T" { print $3 }'
+    "$D/ini_check_parse" "$INI" | awk -F'\t' '$1 == "T" { print $3 }'
     grep -rhoE '\.kind = "[^"]+"' src/app | sed 's/.*"\(.*\)"/dlg:\1/' | sort -u
     echo 3d:veTableTbl
 } | awk '!seen[$0]++' > "$D/screens.txt"
