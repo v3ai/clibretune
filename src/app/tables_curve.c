@@ -473,6 +473,14 @@ static int crv_target_x(const crv_tab *st)
     return any;
 }
 
+/* +/- step of the column the operations act on (lt_tabs_unit_step) */
+static double crv_step(const lt_app *app, const crv_tab *st)
+{
+    int x = crv_target_x(st);
+    const char *cn = x ? st->c->x_const : st->c->y_const;
+    return lt_tabs_unit_step(x ? &st->v.xu : &st->v.zu, cn != NULL ? lt_ini_find_const(app->ini, cn) : NULL);
+}
+
 static size_t crv_sel_cells(const crv_tab *st, int xcol, lt_tcell *out)
 {
     size_t i, n = 0;
@@ -619,10 +627,14 @@ static void crv_undo_redo(lt_app *app, lt_app_tab *tab, crv_tab *st, int redo)
 static void crv_keys(lt_app *app, lt_app_tab *tab, crv_tab *st)
 {
     lt_ui *ui = app->ui;
-    double ss = 1.0;
-    int i;
+    double ss = 1.0, step;
+    int i, dig;
     if (lt_ui_text_focused(ui) || lt_ui_popup_open(ui) || st->drag >= 0) { return; }
-    for (i = 0; i < st->ydig && i < 2; i++) { ss /= 10.0; }
+    /* steps of the column the keys act on, like the table editor: one native unit in the unit
+     * shown (+1 kPa is 0.145 psi), the small step one or two display decimals */
+    step = crv_step(app, st);
+    dig = crv_target_x(st) ? st->xdig : st->ydig;
+    for (i = 0; i < dig && i < 2; i++) { ss /= 10.0; }
     if (lt_ui_key_pressed(ui, 'z', LT_MOD_CTRL)) { crv_undo_redo(app, tab, st, 0); }
     if (lt_ui_key_pressed(ui, 'y', LT_MOD_CTRL) || lt_ui_key_pressed(ui, 'z', LT_MOD_CTRL | LT_MOD_SHIFT)) {
         crv_undo_redo(app, tab, st, 1);
@@ -636,10 +648,10 @@ static void crv_keys(lt_app *app, lt_app_tab *tab, crv_tab *st)
     }
     if (lt_ui_key_pressed(ui, '=', 0)) { crv_op(app, tab, st, C_EQUAL, 0); }
     if (lt_ui_key_pressed(ui, '=', LT_MOD_SHIFT) || lt_tabs_key(ui, '+') || lt_tabs_key(ui, '>')) {
-        crv_op(app, tab, st, C_ADD, 1.0);
+        crv_op(app, tab, st, C_ADD, step);
     }
     if (lt_tabs_key(ui, '-') || lt_tabs_key(ui, '_') || lt_tabs_key(ui, '<') || lt_ui_key_pressed(ui, ',', 0)) {
-        crv_op(app, tab, st, C_ADD, -1.0);
+        crv_op(app, tab, st, C_ADD, -step);
     }
     if (lt_tabs_key(ui, 'q')) { crv_op(app, tab, st, C_ADD, ss); }
     if (lt_tabs_key(ui, 'w')) { crv_op(app, tab, st, C_ADD, -ss); }
@@ -720,8 +732,8 @@ static void crv_context(lt_app *app, lt_app_tab *tab, crv_tab *st, lt_rect area)
     lt_ui_menu_separator(ui);
     if (lt_ui_menu_item(ui, "Set equal (average)", "=", 0)) { crv_op(app, tab, st, C_EQUAL, 0); }
     if (lt_ui_menu_item(ui, "Set value...", NULL, 0)) { st->scale_open = 1; st->scale_mode = 2; }
-    if (lt_ui_menu_item(ui, "Step up", "> or +", 0)) { crv_op(app, tab, st, C_ADD, 1.0); }
-    if (lt_ui_menu_item(ui, "Step down", "< or -", 0)) { crv_op(app, tab, st, C_ADD, -1.0); }
+    if (lt_ui_menu_item(ui, "Step up", "> or +", 0)) { crv_op(app, tab, st, C_ADD, crv_step(app, st)); }
+    if (lt_ui_menu_item(ui, "Step down", "< or -", 0)) { crv_op(app, tab, st, C_ADD, -crv_step(app, st)); }
     if (lt_ui_menu_item(ui, "Add amount...", NULL, 0)) { st->scale_open = 1; st->scale_mode = 1; }
     if (lt_ui_menu_item(ui, "Multiply by...", "*", 0)) { st->scale_open = 1; st->scale_mode = 0; }
     if (lt_ui_menu_item(ui, "Clear", "Del", 0)) { crv_op(app, tab, st, C_CLEAR, 0); }

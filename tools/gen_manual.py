@@ -103,6 +103,12 @@ REWRITES = [
      " or how many values were limited). An operation that changes nothing (for example"
      " pasting the values a cell already has) adds no undo step and leaves the tune"
      " unmodified.\n"),
+    ("features/table-editing/2d-tables", r"- Hold \*\*Shift\*\* for 10x step\n",
+     "- `q` / `w`: small step; Ctrl with `+` / `-`: the step times the multiplier\n\n"
+     "The step is one unit of the ECU's own unit (1 AFR, 1 \u00b0C, 1 kPa) shown in the unit you"
+     " chose, so +1 AFR is about +0.07 on a table shown in lambda; when the ECU stores the value"
+     " in coarser steps (a pressure kept in 10 kPa steps) it is one of those. Curves step the"
+     " same way. Right-click > **Set increments...** changes the table's step.\n"),
     ("features/autotune/usage-guide", r"This sends changes to ECU RAM\. They take effect immediately\.\n",
      "This sends changes to ECU RAM. They take effect immediately. **Undo** (Ctrl+Z) writes the\n"
      "table back as it was before the last Send to ECU.\n"),

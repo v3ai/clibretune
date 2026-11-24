@@ -769,6 +769,48 @@ LT_TEST(curve_clamp_explained)
     lt_app_free(app);
 }
 
+static double raw_const(lt_app *app, const char *name, size_t i)
+{
+    static double v[256];
+    lt_pagesrc ps = lt_app_pages(app);
+    const lt_ini_const *c = lt_ini_find_const(app->ini, name);
+    if (i >= 256) { return -999.0; }
+    v[i] = -999.0;
+    if (c != NULL) { (void)lt_ini_const_get_array(app->ini, c, &ps, v, 256); }
+    return v[i];
+}
+
+/* curve +/- steps one native unit in the unit shown, like the table editor, or one stored step
+ * when that is coarser: +10 kPa (one stored step) when the pressure is shown in psi, not +1 psi
+ * (which did not change the stored value); +2 degrees C (one stored step) on an axis shown in F */
+LT_TEST(curve_step_display_units)
+{
+    char buf[512];
+    lt_app *app = lt_app_new();
+    double p0, t0;
+    int i;
+    LT_CHECK(lt_app_find_demo_ini(buf, sizeof(buf)) != NULL);
+    LT_CHECK(lt_app_start_demo(app, buf) == 0);
+    app->settings.press_unit = 1;
+    app->settings.temp_unit = 1;
+    LT_CHECK(lt_app_curve_editor_open(app, "minimumOilPressure") == 0);
+    lt_app_screenshot(app, "build/lt_test_tables16.ppm", 1600, 1000, 3);
+    for (i = 0; i < 3; i++) { frame(app); }
+    p0 = raw_const(app, "minimumOilPressureValues", 0);
+    click(app, 1224, 192, LT_MB_LEFT);               /* first row, Y column */
+    press(app, '+', 0);
+    LT_CHECK_NEAR(raw_const(app, "minimumOilPressureValues", 0), p0 + 10.0, 1e-6);
+    press(app, '-', 0);
+    LT_CHECK_NEAR(raw_const(app, "minimumOilPressureValues", 0), p0, 0.1);
+    LT_CHECK(lt_app_curve_editor_open(app, "cltFuelCorrCurve") == 0);
+    lt_app_screenshot(app, "build/lt_test_tables17.ppm", 1600, 1000, 3);
+    t0 = raw_const(app, "cltFuelCorrBins", 1);
+    click(app, 1146, 214, LT_MB_LEFT);               /* second row, X column */
+    press(app, '+', 0);
+    LT_CHECK_NEAR(raw_const(app, "cltFuelCorrBins", 1), t0 + 2.0, 1e-6);
+    lt_app_free(app);
+}
+
 int main(void)
 {
     LT_RUN(autotune_send_undo);
@@ -789,5 +831,6 @@ int main(void)
     LT_RUN(embedded_curve_noop);
     LT_RUN(table_clamp_explained);
     LT_RUN(curve_clamp_explained);
+    LT_RUN(curve_step_display_units);
     LT_TEST_MAIN_END
 }

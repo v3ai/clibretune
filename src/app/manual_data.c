@@ -1345,7 +1345,10 @@ static const char *const mp_6_0[] = {
     "### Increment/Decrement",
     "- `+` or `>`: Increase by step",
     "- `-` or `<`: Decrease by step",
-    "- Hold **Shift** for 10x step",
+    "- `q` / `w`: small step; Ctrl with `+` / `-`: the step times the multiplier",
+    "",
+    "The step is one unit of the ECU's own unit (1 AFR, 1 \302\260C, 1 kPa) shown in the unit you chose, so +1 AFR is about +0.07 on a table shown in lambda; when the ECU stores the value in coarser steps (a pressure kept in 10 kPa steps) it is one of those. Curves step the same way. Right-click > **Set",
+    "increments...** changes the table's step.",
     "",
     "### Bulk Operations",
     "",
@@ -1411,7 +1414,7 @@ static const char *const mp_6_0[] = {
     "",
 };
 static const lt_man_part mpp_6[] = {
-    { mp_6_0, 104 },
+    { mp_6_0, 107 },
 };
 
 static const char *const mp_7_0[] = {

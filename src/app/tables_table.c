@@ -1642,8 +1642,7 @@ static void tbl_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
         st->step_mult = 5.0; st->step_pct = 5.0;
         tbl_load(app, tab, st);
         /* one native unit (1 AFR, 1 degree, 1 %) in the unit shown */
-        st->step = st->loaded ? fabs(lt_uconv_to_disp(&st->v.zu, 1.0) - lt_uconv_to_disp(&st->v.zu, 0.0)) : 1.0;
-        if (st->step <= 0.0) { st->step = 1.0; }
+        st->step = st->loaded ? lt_tabs_unit_step(&st->v.zu, lt_ini_find_const(app->ini, st->t->z_const)) : 1.0;
         st->lambda_on = st->is_afr && !lt_ui_cell_mode(ui);
         tbl_preview_env(st);
     }

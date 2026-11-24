@@ -9,6 +9,9 @@
 #include "../autotune/autotune.h"
 #include "../basemap/basemap.h"
 
+/* the +/- step: one native unit of the constant (1 AFR, 1 degree C, 1 kPa), or one stored step
+ * when that is coarser (a "kPa" array kept in 10 kPa steps), in the unit shown; c may be NULL */
+double lt_tabs_unit_step(const lt_uconv *u, const lt_ini_const *c);
 /* fixed-point format with `digits` decimals (clamped 0..6) */
 void lt_tabs_fmt(char *buf, size_t cap, double v, int digits);
 /* heat colour of v within [lo,hi] using the configured scheme, blended with the table bg */

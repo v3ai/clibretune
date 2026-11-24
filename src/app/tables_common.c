@@ -17,6 +17,15 @@ void lt_tabs_fmt(char *buf, size_t cap, double v, int digits)
     lt_snprintf(buf, cap, f, v);
 }
 
+double lt_tabs_unit_step(const lt_uconv *u, const lt_ini_const *c)
+{
+    double native = 1.0, s;
+    /* a smaller step would be rounded away when it is stored and + would do nothing */
+    if (c != NULL && c->type <= LT_DT_S32 && fabs(c->scale) > native) { native = fabs(c->scale); }
+    s = fabs(lt_uconv_to_disp(u, native) - lt_uconv_to_disp(u, 0.0));
+    return s > 0.0 ? s : 1.0;
+}
+
 static int scheme_of(const char *n)
 {
     static const char *names[] = { "tunerstudio", "grayscale", "pastel", "thermal", "viridis",
