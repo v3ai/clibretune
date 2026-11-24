@@ -426,6 +426,7 @@ const lt_ini_cmd *lt_ini_find_command(const lt_ini *ini, const char *name)
 const lt_ini_ref_table *lt_ini_find_ref_table(const lt_ini *ini, const char *name)
 {
     size_t i;
+    if (ini == NULL || name == NULL) return NULL;           /* a dialog left open with no INI */
     for (i = 0; i < ini->n_ref_tables; i++)
         if (strcmp(ini->ref_tables[i]->name, name) == 0) return ini->ref_tables[i];
     return NULL;

@@ -322,6 +322,8 @@ LT_TEST(speeduino_reference_tables)
     int found_mazda = 0, found_vw = 0;
     if (!ini) return;
     LT_CHECK_INT(ini->n_ref_tables, 2);
+    LT_CHECK(lt_ini_find_ref_table(NULL, "std_ms2gentherm") == NULL);   /* no INI loaded */
+    LT_CHECK(lt_ini_find_ref_table(ini, NULL) == NULL);
     th = lt_ini_find_ref_table(ini, "std_ms2gentherm");
     afr = lt_ini_find_ref_table(ini, "std_ms2geno2");
     LT_CHECK(th != NULL && afr != NULL);
