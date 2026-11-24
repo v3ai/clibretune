@@ -902,6 +902,44 @@ static lt_bool fahrenheit(const char *u)
     return has_ci(u, "deg") && n <= 5;
 }
 
+/* MegaSquirt-1 raw sensor counts (8-bit ADC of 5 V): MPX4250 MAP sensor, GM thermistors
+ * against a 2490 ohm bias (beta 4088, 2786 ohm at 25 C), 0..30 V battery divider. */
+static double ms1_map_adc(double kpa)
+{
+    double a = (kpa / 250.0 - 0.04) * 255.0;
+    return a < 0.0 ? 0.0 : (a > 255.0 ? 255.0 : a);
+}
+
+static double ms1_therm_adc(double c)
+{
+    double r = 2786.0 * exp(4088.0 * (1.0 / (c + 273.15) - 1.0 / 298.15));
+    return 255.0 * r / (r + 2490.0);
+}
+
+static lt_bool ms1_adc_by_name(const char *n, const lt_sim_snapshot *s, double *out)
+{
+    if (!strcmp(n, "rpm100")) {
+        *out = s->rpm / 100.0;
+    } else if (!strcmp(n, "mapADC")) {
+        *out = ms1_map_adc(s->map_kpa);
+    } else if (!strcmp(n, "baroADC")) {
+        *out = ms1_map_adc(s->baro_kpa > 0 ? s->baro_kpa : 100.0);
+    } else if (!strcmp(n, "cltADC")) {
+        *out = ms1_therm_adc(s->coolant_c);
+    } else if (!strcmp(n, "matADC")) {
+        *out = ms1_therm_adc(s->iat_c);
+    } else if (!strcmp(n, "tpsADC")) {
+        *out = 20.0 + s->tps_percent * 2.1;
+    } else if (!strcmp(n, "batADC")) {
+        *out = s->battery_dv / 10.0 / 30.0 * 255.0;
+    } else if (!strcmp(n, "egoADC")) {
+        *out = s->afr < 14.7 ? 41.0 : 5.0;          /* narrowband: 0.8 V rich, 0.1 V lean */
+    } else {
+        return LT_FALSE;
+    }
+    return LT_TRUE;
+}
+
 static lt_bool scalar_by_name(const char *n, const lt_sim_snapshot *s, double *out)
 {
     if (!strcmp(n, "secl") || !strcmp(n, "seconds")) {
@@ -952,9 +990,16 @@ static lt_bool scalar_by_name(const char *n, const lt_sim_snapshot *s, double *o
 void lt_sim_encode_och(const lt_ini *ini, const lt_sim_snapshot *s, lt_u8 *block, size_t len)
 {
     size_t i;
+    lt_bool ms1 = LT_FALSE;
 
     if (!ini || !s || !block) {
         return;
+    }
+    /* a MegaSquirt-I block (raw "rpm100" byte): its sensors are raw ADC counts */
+    for (i = 0; i < ini->n_channels; i++) {
+        if (!ini->channels[i]->expression && !strcmp(ini->channels[i]->name, "rpm100")) {
+            ms1 = LT_TRUE;
+        }
     }
     for (i = 0; i < ini->n_channels; i++) {
         const lt_ini_channel *c = ini->channels[i];
@@ -980,7 +1025,7 @@ void lt_sim_encode_och(const lt_ini *ini, const lt_sim_snapshot *s, lt_u8 *block
                        c->bit_count, v);
             continue;
         }
-        if (!scalar_by_name(c->name, s, &phys)) {
+        if (!(ms1 && ms1_adc_by_name(c->name, s, &phys)) && !scalar_by_name(c->name, s, &phys)) {
             continue;
         }
         if (fahrenheit(c->units) && (!strcmp(c->name, "coolant") || !strcmp(c->name, "iat") ||

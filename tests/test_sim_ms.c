@@ -1,6 +1,7 @@
 /* test_sim_ms.c - demo mode with MegaSquirt definitions: lt_proto over the simulator, the way
  * the app's demo connects (connect, read every page, poll realtime data, edit, burn, power
- * cycle, reconnect), for the MS2/Extra, MS3 and MegaSquirt-II 2.x dialects.
+ * cycle, reconnect), for the MS2/Extra, MS3, MegaSquirt-II 2.x and MegaSquirt-I (B&G MSnS and
+ * MSnS-extra) dialects.
  *
  * The fixtures in tests/fixtures/sim/ms*_sim.ini are synthetic definitions using the same
  * command formats as the real INIs (which carry no redistribution grant and so are not in
@@ -15,6 +16,8 @@
 #define MS2X_INI "tests/fixtures/sim/ms2extra_sim.ini"
 #define MS3_INI "tests/fixtures/sim/ms3_sim.ini"
 #define MS2_INI "tests/fixtures/sim/ms2_sim.ini"
+#define MS1_INI "tests/fixtures/sim/ms1_sim.ini"
+#define MS1X_INI "tests/fixtures/sim/ms1extra_sim.ini"
 
 static double g_now;
 static double clk_now(void *ud)
@@ -220,6 +223,190 @@ LT_TEST(ms2_original_demo)
     ms_demo(MS2_INI, LT_FALSE, LT_RT_KIND_BURST);
 }
 
+static lt_bool flash_is_ram(lt_ecusim *sim, int page)
+{
+    size_t l1 = 0, l2 = 0;
+    const lt_u8 *f = lt_ecusim_flash(sim, page, &l1);
+    const lt_u8 *r = lt_ecusim_ram(sim, page, &l2);
+
+    return f != NULL && r != NULL && l1 == l2 && memcmp(f, r, l1) == 0;
+}
+
+/* MegaSquirt-I: connect, read every page, live data, edit (queued and blocking), burn, power
+ * cycle, reconnect. `table` / `tpage`: a table on another page than reqFuel. */
+static void ms1_demo(const char *path, const char *sig, lt_rt_kind rt_kind, const char *table,
+                     int tpage)
+{
+    lt_ini *ini = lt_ini_load_file(path, NULL);
+    lt_ecusim *sim;
+    lt_proto *p;
+    lt_ecu_mem *mem;
+    lt_ini_rt *rt;
+    lt_buf blk;
+    int i, rc;
+    double rpm = 0, map = 0, vbat = 0, rpm_max = 0, map_min = 1e9, map_max = -1;
+    size_t np;
+
+    LT_CHECK(ini != NULL);
+    if (ini == NULL) {
+        return;
+    }
+    np = ini->proto.n_page_sizes;
+    g_now = 10000.0;
+    sim = lt_ecusim_new(ini);
+    lt_ecusim_set_clock(sim, clk_now, NULL);
+    p = open_proto(ini, sim);
+
+    LT_CHECK(lt_proto_connect(p) == 0);
+    LT_CHECK_STR(lt_proto_signature(p), sig);
+    LT_CHECK(!lt_proto_signature_mismatch(p));
+    LT_CHECK(!lt_proto_is_modern(p));
+    LT_CHECK(lt_proto_choose_runtime(p, NULL) == rt_kind);
+
+    mem = lt_ecu_mem_from_ini(ini);
+    LT_CHECK(lt_proto_read_all(p, mem, LT_TRUE) == 0);
+    LT_CHECK(lt_ecu_mem_fully_loaded(mem));
+    pages_match_sim(ini, mem, sim);
+    LT_CHECK_NEAR(get_named(ini, mem, "veTable", 0),
+                  lt_sim_true_ve(get_named(ini, mem, "rpmBins", 0), get_named(ini, mem, "mapBins", 0)) *
+                  0.85, 1.0);
+    LT_CHECK(lt_sim_ve_table(ini) != NULL && strcmp(lt_sim_ve_table(ini)->name, "veTableTbl") == 0);
+
+    /* live data from the raw ADC counts */
+    rt = lt_ini_rt_new(ini);
+    lt_buf_init(&blk);
+    for (i = 0; i < 100; i++) {
+        g_now += 100.0;
+        lt_buf_clear(&blk);
+        rc = lt_proto_get_realtime(p, &blk);
+        LT_CHECK(rc == 0 && blk.len == ini->proto.och_block_size);
+        LT_CHECK(lt_ini_rt_update(rt, (const lt_u8 *)blk.data, blk.len) == 0);
+        LT_CHECK(lt_ini_rt_get(rt, "rpm", &rpm) && lt_ini_rt_get(rt, "map", &map));
+        rpm_max = rpm > rpm_max ? rpm : rpm_max;
+        map_min = map < map_min ? map : map_min;
+        map_max = map > map_max ? map : map_max;
+    }
+    LT_CHECK(rpm_max > 500.0 && rpm_max < 8000.0);
+    LT_CHECK(map_min >= 10.0 && map_max <= 105.0 && map_min < 95.0);
+    LT_CHECK(lt_ini_rt_get(rt, "batteryVoltage", &vbat) && vbat > 11.0 && vbat < 15.5);
+
+    /* queued writes, as the app edits */
+    set_named(ini, mem, "reqFuel", 0, 9.5);
+    set_named(ini, mem, table, 9, 33.0);
+    LT_CHECK(lt_proto_write_dirty_begin(p, mem) > 0);
+    lt_proto_async_finish(p);
+    LT_CHECK(lt_proto_write_pump(p) == 1);
+    pages_match_sim(ini, mem, sim);
+    LT_CHECK(!flash_is_ram(sim, tpage));       /* the last page written is not burned yet */
+    LT_CHECK(lt_proto_burn(p, -1, mem) == 0);
+    LT_CHECK(!lt_ecu_mem_has_pending_burn(mem));
+    for (i = 0; i < (int)np; i++) {
+        LT_CHECK(flash_is_ram(sim, i));
+    }
+
+    /* blocking writes: a whole range of the VE table, then burn */
+    set_named(ini, mem, "veTable", 0, 201.0);
+    set_named(ini, mem, "veTable", 1, 202.0);
+    set_named(ini, mem, "veTable", 2, 203.0);
+    LT_CHECK(lt_proto_write_dirty(p, mem) == 3);
+    pages_match_sim(ini, mem, sim);
+    LT_CHECK(lt_proto_burn(p, -1, mem) == 0);
+
+    /* power cycle, reconnect, read again */
+    lt_proto_free(p);
+    lt_ecu_mem_free(mem);
+    lt_ecusim_reboot(sim);
+    p = open_proto(ini, sim);
+    LT_CHECK(lt_proto_connect(p) == 0);
+    mem = lt_ecu_mem_from_ini(ini);
+    LT_CHECK(lt_proto_read_all(p, mem, LT_TRUE) == 0);
+    LT_CHECK_NEAR(get_named(ini, mem, "reqFuel", 0), 9.5, 1e-6);
+    LT_CHECK_NEAR(get_named(ini, mem, table, 9), 33.0, 0.4);
+    LT_CHECK_NEAR(get_named(ini, mem, "veTable", 2), 203.0, 1e-6);
+
+    lt_buf_free(&blk);
+    lt_ini_rt_free(rt);
+    lt_proto_free(p);
+    lt_ecu_mem_free(mem);
+    lt_ecusim_free(sim);
+    lt_ini_free(ini);
+}
+
+LT_TEST(ms1_bg_msns_demo)
+{
+    ms1_demo(MS1_INI, "30", LT_RT_KIND_BURST, "advTable", 1);
+}
+
+LT_TEST(ms1_extra_demo)
+{
+    ms1_demo(MS1X_INI, "MSnS-extra comms-sim ***********", LT_RT_KIND_OCH, "advTable", 2);
+}
+
+/* the bytes a real MSnS-extra sees: page selection, whole page reads, one-byte fields */
+LT_TEST(ms1extra_wire_format)
+{
+    lt_ini *ini = lt_ini_load_file(MS1X_INI, NULL);
+    lt_ecusim *sim;
+    lt_u8 r[256];
+    long n;
+    static const lt_u8 sel2[2] = { 'P', 0x02 };          /* page index 1 */
+    static const lt_u8 wr[3] = { 'W', 0x05, 0x99 };
+    static const lt_u8 x[6] = { 'X', 0x10, 0x03, 0x01, 0x02, 0x03 };
+
+    LT_CHECK(ini != NULL);
+    if (ini == NULL) {
+        return;
+    }
+    sim = lt_ecusim_new(ini);
+    lt_ecusim_write(sim, sel2, 2);                       /* silent */
+    LT_CHECK(lt_ecusim_bytes_to_read(sim) == 0);
+    lt_ecusim_write(sim, wr, 1);                         /* split: waits for the rest */
+    lt_ecusim_write(sim, wr + 1, 2);
+    lt_ecusim_write(sim, x, sizeof(x));
+    LT_CHECK(lt_ecusim_bytes_to_read(sim) == 0);
+    LT_CHECK(lt_ecusim_ram(sim, 1, NULL)[5] == 0x99 && lt_ecusim_ram(sim, 1, NULL)[0x11] == 2);
+    LT_CHECK(lt_ecusim_ram(sim, 0, NULL)[5] != 0x99 || lt_ecusim_ram(sim, 2, NULL)[5] != 0x99);
+    lt_ecusim_write(sim, (const lt_u8 *)"V", 1);         /* the selected page, whole */
+    n = lt_ecusim_read(sim, r, sizeof(r));
+    LT_CHECK(n == 200 && r[5] == 0x99 && r[0x12] == 3);
+    lt_ecusim_write(sim, (const lt_u8 *)"B", 1);         /* burns the selected page */
+    LT_CHECK(lt_ecusim_flash(sim, 1, NULL)[5] == 0x99);
+    LT_CHECK(lt_ecusim_flash(sim, 1, NULL)[0x10] == 1);
+    lt_ecusim_write(sim, (const lt_u8 *)"\x50\x00V", 3);  /* "P\000": page index 2 */
+    n = lt_ecusim_read(sim, r, sizeof(r));
+    LT_CHECK(n == 189);
+    lt_ecusim_write(sim, (const lt_u8 *)"R", 1);
+    n = lt_ecusim_read(sim, r, sizeof(r));
+    LT_CHECK(n == 38);
+    lt_ecusim_write(sim, (const lt_u8 *)"S", 1);
+    n = lt_ecusim_read(sim, r, sizeof(r));
+    LT_CHECK(n == 32 && memcmp(r, "MSnS-extra comms-sim", 20) == 0);
+    lt_ecusim_free(sim);
+    lt_ini_free(ini);
+
+    /* B&G: "Q" is one byte, "B" with no page selection burns every page */
+    ini = lt_ini_load_file(MS1_INI, NULL);
+    LT_CHECK(ini != NULL);
+    if (ini == NULL) {
+        return;
+    }
+    sim = lt_ecusim_new(ini);
+    lt_ecusim_write(sim, (const lt_u8 *)"Q", 1);
+    n = lt_ecusim_read(sim, r, sizeof(r));
+    LT_CHECK(n == 1 && r[0] == 30);
+    lt_ecusim_write(sim, (const lt_u8 *)"W\x07\x55J\x07\x66", 6);
+    lt_ecusim_write(sim, (const lt_u8 *)"B", 1);
+    LT_CHECK(lt_ecusim_flash(sim, 0, NULL)[7] == 0x55 && lt_ecusim_flash(sim, 1, NULL)[7] == 0x66);
+    lt_ecusim_write(sim, (const lt_u8 *)"I", 1);
+    n = lt_ecusim_read(sim, r, sizeof(r));
+    LT_CHECK(n == 95 && r[7] == 0x66);
+    lt_ecusim_write(sim, (const lt_u8 *)"A", 1);
+    n = lt_ecusim_read(sim, r, sizeof(r));
+    LT_CHECK(n == 22);
+    lt_ecusim_free(sim);
+    lt_ini_free(ini);
+}
+
 /* the bytes on the wire, as a real MS2/Extra would see them */
 LT_TEST(ms2extra_wire_format)
 {
@@ -262,5 +449,8 @@ int main(void)
     LT_RUN(ms3_demo);
     LT_RUN(ms2_original_demo);
     LT_RUN(ms2extra_wire_format);
+    LT_RUN(ms1_bg_msns_demo);
+    LT_RUN(ms1_extra_demo);
+    LT_RUN(ms1extra_wire_format);
     LT_TEST_MAIN_END
 }

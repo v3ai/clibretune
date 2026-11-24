@@ -258,6 +258,64 @@ LT_TEST(cmd_build_vectors)
     lt_buf_free(&b);
 }
 
+/* MegaSquirt-1 family command formats: octal escapes and one-byte %i / %o / %c fields */
+LT_TEST(cmd_ms1_vectors)
+{
+    lt_buf b;
+    static const lt_u8 data[3] = { 0xAA, 0xBB, 0xCC };
+    static const lt_u8 w1[] = { 'W', 0x5A, 0x42 };
+    static const lt_u8 x1[] = { 'X', 0x10, 0x03, 0xAA, 0xBB, 0xCC };
+    static const lt_u8 i1[] = { 'P', 0x07, 0x05, 0x07 };
+    const char *f;
+
+    lt_buf_init(&b);
+    lt_cmd_parse_string("P\\001", 5, &b);              /* msns-extra pageActivate */
+    LT_CHECK(b.len == 2 && bytes_of(&b)[0] == 'P' && bytes_of(&b)[1] == 0x01);
+    lt_buf_clear(&b);
+    lt_cmd_parse_string("P\\360", 5, &b);              /* MSExtra hr log page */
+    LT_CHECK(b.len == 2 && bytes_of(&b)[1] == 0xF0);
+    lt_buf_clear(&b);
+    lt_cmd_parse_string("P\\000", 5, &b);
+    LT_CHECK(b.len == 2 && bytes_of(&b)[1] == 0x00);
+    lt_buf_clear(&b);
+    lt_cmd_parse_string("\\7a", 3, &b);                 /* one digit, then a literal */
+    LT_CHECK(b.len == 2 && bytes_of(&b)[0] == 7 && bytes_of(&b)[1] == 'a');
+    lt_buf_clear(&b);
+    lt_cmd_parse_string("\\0\\x30", 6, &b);           /* "\0" before another escape */
+    LT_CHECK(b.len == 2 && bytes_of(&b)[0] == 0 && bytes_of(&b)[1] == 0x30);
+    lt_buf_clear(&b);
+    lt_cmd_parse_string("\\4000", 5, &b);              /* stops before overflowing a byte */
+    LT_CHECK(b.len == 3 && bytes_of(&b)[0] == 040 && bytes_of(&b)[1] == '0' &&
+             bytes_of(&b)[2] == '0');
+    lt_buf_clear(&b);
+    lt_cmd_parse_string("\\8", 2, &b);                  /* not octal: literal */
+    LT_CHECK(b.len == 2 && bytes_of(&b)[0] == '\\' && bytes_of(&b)[1] == '8');
+
+    f = "W%o%v";                                        /* pageValueWrite: offset, one byte */
+    build(&b, f, strlen(f), 0, 0x5A, 1, data + 0, 0, LT_FALSE);
+    LT_CHECK(b.len == 2 && bytes_of(&b)[0] == 'W' && bytes_of(&b)[1] == 0x5A);
+    {
+        static const lt_u8 v = 0x42;
+        build(&b, f, strlen(f), 0, 0x5A, 1, &v, 1, LT_FALSE);
+        LT_CHECK(b.len == sizeof(w1) && memcmp(b.data, w1, sizeof(w1)) == 0);
+        build(&b, f, strlen(f), 0, 0x5A, 1, &v, 1, LT_TRUE);     /* no byte order to apply */
+        LT_CHECK(b.len == sizeof(w1) && memcmp(b.data, w1, sizeof(w1)) == 0);
+    }
+    f = "X%o%c%v";                                      /* pageChunkWrite */
+    build(&b, f, strlen(f), 0, 0x10, 3, data, 3, LT_FALSE);
+    LT_CHECK(b.len == sizeof(x1) && memcmp(b.data, x1, sizeof(x1)) == 0);
+    f = "P%i%2i";
+    build(&b, f, strlen(f), 0x0507, 0, 0, NULL, 0, LT_FALSE);
+    LT_CHECK(b.len == sizeof(i1) && memcmp(b.data, i1, sizeof(i1)) == 0);
+    f = "w%2o%v";                                       /* dfi.ini: two-byte little-endian */
+    build(&b, f, strlen(f), 0, 0x0123, 1, data, 1, LT_TRUE);
+    LT_CHECK(b.len == 4 && bytes_of(&b)[1] == 0x23 && bytes_of(&b)[2] == 0x01 &&
+             bytes_of(&b)[3] == 0xAA);
+    build(&b, "%x%", 3, 1, 2, 3, NULL, 0, LT_FALSE);   /* other letters stay literal */
+    LT_CHECK(b.len == 3 && memcmp(b.data, "%x%", 3) == 0);
+    lt_buf_free(&b);
+}
+
 LT_TEST(signature_from_payload_vectors)
 {
     char s[64];
@@ -587,6 +645,7 @@ int main(void)
     LT_RUN(response_codes);
     LT_RUN(cmd_parse_string_vectors);
     LT_RUN(cmd_build_vectors);
+    LT_RUN(cmd_ms1_vectors);
     LT_RUN(signature_from_payload_vectors);
     LT_RUN(write_status_and_strip_status);
     LT_RUN(response_complete_vectors);

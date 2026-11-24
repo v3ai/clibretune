@@ -88,6 +88,10 @@ definition by itself:
   **Find Exact INI...** button that searches online;
 - **nothing fits** (MegaSquirt, other firmware): choose the INI file that came with the firmware or
   search online. MegaSquirt INIs are not bundled because their license does not allow it.
+  This covers the MegaSquirt-I family too (B&G 2.x / 3.x and MSnS at 9600 baud, MS1-Extra /
+  MSnS-extra). For a MegaTune-era MS1 INI, put the options your firmware was built for at the top of
+  the file as `#set` lines (for example `#set SPEED_DENSITY`, `#set CELSIUS`), as MegaTune's
+  settings file did; without them some tables have no load axis.
 
 rusEFI F7/H7 boards also show a small USB drive with their own INI; when it is there and matches,
 clibretune uses that one. A definition you add yourself (**Settings > ECU Definitions**) wins over the

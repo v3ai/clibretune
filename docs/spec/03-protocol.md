@@ -95,7 +95,8 @@ PacketBuilder helpers: `command(b)`, `byte(b)`, `u16_be`, `u32_be`, `bytes(p,n)`
 ### 5.1 `parse_command_string(s)` (used for query command, handshake)
 Scan bytes: on `\` followed by:
 - `x`/`X`: needs `i+3 < len` (i.e. at least 2 chars after x AND one more char beyond - NOTE strict `<`: string `\x0f` of len 4 has i=0,i+3=3<4 OK). If the 2 chars parse as hex -> push byte, i+=4. Else push `\` literal, i+=1.
-- `n`->0x0A, `r`->0x0D, `t`->0x09, `\\`->0x5C, `0`->0x00 (all i+=2).
+- `n`->0x0A, `r`->0x0D, `t`->0x09, `\\`->0x5C (all i+=2).
+- `0`..`7`: octal, one to three digits, stopping before a digit that would overflow a byte (C port addition for the MegaSquirt-1 family: msns-extra `pageActivate = "P\001"`, MSExtra `"P\360"` -> `50 F0`). A lone `\0` is still 0x00; `\0\x30` -> `00 30`; `\4000` -> `20 '0' '0'`. `\8` is not an escape.
 - anything else: push `\` literal, i+=1.
 Other bytes pushed as-is. Tests: `\x0f`->0F; `\x00\x0f\x14`->00 0F 14; `r\x00\x0f\x00\x00\x00\x14` -> 7 bytes `72 00 0F 00 00 00 14`; `\n \r \t \\ \0`; "Q","S","Hello" unchanged.
 Caveat: `\x` at the very end (e.g. string exactly `\x41` is 4 chars: i=0 -> 3<4 ok). Edge: `i+3 < len` means `\x4` + nothing fails fine.
@@ -103,8 +104,9 @@ Caveat: `\x` at the very end (e.g. string exactly `\x41` is 4 chars: i=0 -> 3<4 
 ### 5.2 `CommandBuilder` (`lt_cmd_build(fmt, page, offset, count, data, ndata, little_endian, out)`)
 `little_endian` = INI endianness==Little (rusEFI/FOME/epicEFI), Big for Speeduino/MS2/MS3. It governs %2i/%2o/%2c ONLY (not envelope order). Walk the format char by char (chars cast to u8; non-ASCII UTF-8 chars truncate to low byte - port as bytes):
 1. `%` with next=`2` and next-next in {i,o,c} (requires `i+2 < len`): emit 2 bytes (u16) of page / offset / count in command endianness; i+=3. `%2` followed by other letter falls through (emits `%` literally, then continues scanning from next char).
+1b. `%i` / `%o` / `%c` (no width, requires i+1<len): ONE byte, the low byte of page / offset / count; i+=2 (C port addition: the MegaSquirt-1 family's `"W%o%v"`, `"X%o%c%v"`). Callers must keep offsets and counts that use a one-byte field below 256 (section 9).
 2. `%v` (requires i+1<len): append data bytes verbatim; i+=2. (`%v` is checked only when the `%2x` branch did not apply; i.e. `%2` with a non-matching 3rd char does NOT try `%v`.)
-3. `\` escapes (same set as 5.1, but written separately): `n r t 0 \\` as 5.1; `\x`/`\X` requires `i+3 < len` AND 2 hex digits -> byte, i+=4; otherwise falls to step 4 and `\` is emitted literally.
+3. `\` escapes (the same decoder as 5.1, octal included): `n r t \\` and octal as 5.1; `\x`/`\X` requires `i+3 < len` AND 2 hex digits -> byte, i+=4; otherwise falls to step 4 and `\` is emitted literally.
 4. Anything else: emit byte.
 `%2i` page value is the page IDENTIFIER (section 9), not the index. `%2c` for write = data length. Nothing else (no `$tsCanId` handling) - the INI parser must already have substituted `$tsCanId` (canId byte, default 0x00) and other `$var`s with literal bytes; the test passes a raw NUL byte in the string for it (`"r\0\\x30%2o%2c"` where `\0` there is a real 0 byte, then the 4-char `\x30`).
 Wrappers: read(fmt,page,off,count); write(fmt,page,off,data) count=len; burn(fmt,page) off=0,count=0; crc(fmt,page,off,count); och(fmt,count) page=0,off=0.
@@ -116,6 +118,7 @@ Test vectors:
 - same LE page1 off0x100 cnt0x200 -> `52 01 00 00 01 00 02`.
 - `C%2i%2o%2c%v` BE page0 off50 data AA BB CC -> `43 00 00 00 32 00 03 AA BB CC`.
 - `B%2i` page0 -> `42 00 00`. Empty format -> empty command.
+- MegaSquirt-1: `W%o%v` off 0x5A data 42 -> `57 5A 42` (either endianness); `X%o%c%v` off 0x10 data AA BB CC -> `58 10 03 AA BB CC`; `P%i%2i` page 0x0507 BE -> `50 07 05 07`; `w%2o%v` LE off 0x0123 data AA -> `77 23 01 AA`.
 
 Console command: bytes = text + `\n`, default timeout 1000 ms. Calibration/console command structs: `ReadMemoryParams{page u8,offset u16,length u16,can_id u8=0}`, `WriteMemoryParams{page,offset,data,can_id}`, `BurnParams{page,can_id}`. (can_id is carried but never used by the builder.)
 
@@ -174,7 +177,7 @@ State: DISCONNECTED, CONNECTING, CONNECTED, ERROR. Session state: signature, use
 ### 7.1 Handshake
 `query_cmd` = INI `query_command` (default "S" if no INI; ProtocolSettings default "Q"); `cmd_bytes = parse_command_string(query_cmd)`; `cmd_byte` = first byte or 'Q'. `ini_modern` = settings.uses_modern (false without INI).
 A. If ini_modern: clear_input. For order in [declared_order, flipped]: set envelope_order=order; if attempt>0: sleep 450 ms, clear_input (firmware ~400 ms SERIAL_TIMEOUT eats bytes). Send Packet(cmd_bytes) via send_packet (errors ignored); on Ok, `signature_from_payload(payload)`; if Some -> use_modern=true, return sig. After both fail: restore envelope_order=declared, fall through.
-B. Legacy: clear_input; `send_raw_command(&[cmd_byte])`. On Ok: use_modern=false; signature = lossy-UTF8(response).trim(). (Not validated, may be empty-trim string.) On Err(e): if !ini_modern: clear_input, sleep 50 ms, try one CRC attempt with CURRENT envelope_order (no flip); success -> use_modern=true, sig. Return original legacy Err otherwise.
+B. Legacy: clear_input; `send_raw_command(&[cmd_byte])`. On Ok: use_modern=false; signature = lossy-UTF8(response).trim(), except (C port addition) a ONE-byte reply that is not printable ASCII or answers an INI whose signature is a decimal number of up to 3 digits: the signature is that byte in decimal (MegaSquirt-I B&G 2.x/3.x and MSnS: `signature = 20` / `30`, the ECU answers "Q" with the code version byte 0x14 / 0x1E -> "20" / "30", so `signature_mismatch` compares equal). (Not validated, may be empty-trim string.) On Err(e): if !ini_modern: clear_input, sleep 50 ms, try one CRC attempt with CURRENT envelope_order (no flip); success -> use_modern=true, sig. Return original legacy Err otherwise.
 `signature_from_payload(p)`: empty -> None; first byte's ResponseCode is_error (incl. 0x03, >=0x80) -> None; bytes = p[1..] if p[0]==0 else p; trim ASCII/Unicode whitespace; empty -> None. Tests: `[0x80]`,`[0x84,'x']`,`[0x03,'n','o']`,`[]`,`[0x00]`,`"   "` -> None; `00 "speeduino 202501.4 "` -> "speeduino 202501.4"; `"rusEFI master.2024 "` -> "rusEFI master.2024".
 
 ### 7.2 EcuType detection (from INI signature + filename; case-insensitive)
@@ -187,7 +190,7 @@ burst_cmd = settings.burst_get_command or "A"; och = settings.och_get_command (o
 1. FORCE_BURST: if use_modern && och present -> OCH (reason "force: ForceBurst (burst is a no-op in new-comms; using OCH)"); else BURST.
 2. FORCE_OCH: och present -> OCH else BURST.
 3. DISABLED -> BURST.
-4. AUTO: `burst_ecu` = ecu_type in {Speeduino, MS2, MS3, Unknown}. If use_modern && burst_ecu && och -> OCH ("auto: OCH (modern protocol negotiated)"). If burst_ecu -> BURST ("auto: Burst (ecu=<display>)"). Else (rusEFI family): max_unused_runtime_range>0 && och -> OCH; slow link && och -> OCH; adaptive enabled with avg>50 ms && och -> OCH; else BURST ("default: burst").
+4. AUTO: `burst_ecu` = ecu_type in {Speeduino, MS2, MS3, Unknown}. If use_modern && burst_ecu && och -> OCH ("auto: OCH (modern protocol negotiated)"). (C port addition) If burst_ecu && och && the INI declares no `[BurstMode] getCommand` (`burst_declared` false) && the ochGetCommand has no `%` -> OCH ("auto: OCH (fixed ochGetCommand, no burst command declared)"): the MegaSquirt-I Extra firmwares answer their declared `"R"` with the 38/42-byte block, while a bare default 'A' gets the 22-byte B&G block; for every other corpus INI this changes nothing (MS2/MS3 declare a burst command, Speeduino's ochGetCommand has `%2o`, an ochGetCommand "A" sends the same byte). If burst_ecu -> BURST ("auto: Burst (ecu=<display>)"). Else (rusEFI family): max_unused_runtime_range>0 && och -> OCH; slow link && och -> OCH; adaptive enabled with avg>50 ms && och -> OCH; else BURST ("default: burst").
 `is_slow_link`: lowercase port_name contains rfcomm|bluetooth|tcp|telnet|wifi, or baud < 57600.
 Tests: rfcomm0+RusEFI+och "O"-> OCH; Speeduino/MS2/MS3/Unknown with rfcomm, max_unused=999, slow adaptive (200,180 ms) -> Burst "A" (reason contains "Burst"); ForceOCH overrides Speeduino; RusEFI + adaptive avg 190 ms -> OCH reason starts "adaptive".
 
@@ -212,11 +215,16 @@ The GUI is single-threaded, so the blocking exchanges above would freeze drawing
 
 Page identifier `page_id(idx)`: `settings.page_identifiers[idx]` raw bytes: >=2 bytes -> u16 of the first two in the command endianness; 1 byte -> that byte; empty/missing -> idx. (The builder then re-encodes with command endianness, so a two-byte identifier reaches the wire in INI order whatever the endianness: MegaSquirt (big endian) `"\$tsCanId\x04"` -> `00 04`, CAN id first.)
 
+Command lists (C port addition, MegaSquirt-I family): a list with ONE entry applies to every page (msns-extra: `burnCommand = "B"` for 8 pages); an entry that is empty or only blanks declares nothing (`pageActivate = " "`, `pageChunkWrite = " "`). One-byte fields (`%o`, `%c`, section 5.2) cannot carry more than 255: a read or write whose offset does not fit is refused with RANGE ("page P offset O does not fit the one-byte offset of the definition's command") before anything is sent; a one-byte count caps the chunk at 255.
+
+Page activation (C port addition; TunerStudio/MegaTune `pageActivate` + `pageActivationDelay`): on a LEGACY link only (enveloped commands carry their page; rusEFI/FOME INIs that declare `pageActivate = "P"` are enveloped and never get it), when `page_activate_commands[page]` is declared (not blank) and the ECU's selected page (`active_page`, -1 after connect) differs, send it (built like any page command: `%i`/`%2i` = page id; escapes, octal included: msns-extra `"P\001"` -> `50 01`) without a reply, set active_page = page and wait write_and_wait pacing + `page_activation_delay` before the next command. This precedes read_memory, write_memory, verify_page_crc and burn (the MegaSquirt-I Extra "B" burns the SELECTED page, so burn(p) selects p first; an auto-burn on page change runs while the previous page is still selected, then the new page is selected). The asynchronous writer does the same as a step of its queue (selection sent, gate = pacing + delay, then the chunk or burn). Example (msns-extra, pages 0..2 = `"P\001"`, `"P\002"`, `"P\000"`): read_all -> `50 01`, (>= 50 ms) `56`, `50 02`, `56`, `50 00`, `56`; write page 1 then page 2 -> `58 10 03 A1 A2 A3`, `42` (auto-burn of page 1, still selected), `50 00`, `57 05 A1`, `57 06 A2`.
+
 `read_memory(page, offset, length)`:
 - fmt = settings.page_read_commands[page] (default "R%2i%2o%2c" when index missing); empty string -> PROTOCOL_ERROR "No read command for page N". cmd = build_read(fmt, page_id, offset, length).
+- (C port addition) A read command WITHOUT an offset field (`%o`/`%2o`) reads the whole page (MegaSquirt-I `"V"`, `"I"`: the ECU streams every byte of the page): the command is sent once expecting page_sizes[page] bytes, and [offset, offset+length) of that is returned (0/missing page size or a range outside the page -> PROTOCOL_ERROR).
 - Modern: send_packet; empty payload -> INVALID_RESPONSE; payload[0]!=0 -> PROTOCOL_ERROR("Read error, status: N"); data = payload[1..]. Legacy: `send_raw_command_expecting(cmd, Some(length))`.
 - Then require data.len()==length else PROTOCOL_ERROR("wrong-length read on page P offset O: got X of Y bytes") (short OR long).
-`read_page(page)`: size = page_sizes[page] (0/missing -> PROTOCOL_ERROR "Unknown page size for page N"); bf = blocking_factor (default 256); loop chunk=min(remaining,bf), read_memory, append; offset advances by chunk (u16 offset!).
+`read_page(page)`: size = page_sizes[page] (0/missing -> PROTOCOL_ERROR "Unknown page size for page N"); bf = blocking_factor (default 256), = size for a whole-page read command (one command, whatever blockingFactor says: dbrul.ini's 408-byte page with `"v"`), at most 255 with a one-byte count; loop chunk=min(remaining,bf), read_memory, append; offset advances by chunk (u16 offset!).
 
 `effective_write_chunk` = max(1, blocking_factor.max(1) - 8). Speeduino bf=251 -> 243. (Frame = 7B header + data <= 250 <= 257 Mega RX ring.)
 
@@ -225,7 +233,7 @@ Page identifier `page_id(idx)`: `settings.page_identifiers[idx]` raw bytes: >=2 
 `write_memory(page, offset, data)`:
 1. If data.len > effective_write_chunk: split sequentially (offset advances), recursing; return.
 2. Auto-burn safety: if config.auto_burn_on_page_change and last_written_page=Some(prev) and prev != page: if failed_pages non-empty -> skip (warn); else `burn(prev)` (error propagates).
-3. fmt = settings.page_chunk_write_commands[page], default "C%2i%2o%2c%v"; empty -> PROTOCOL_ERROR "No write command for page N". cmd = build_write(fmt, page_id, offset, data).
+3. fmt (C port: `pageValueWrite` and `pageChunkWrite` are separate lists, see spec 01): `page_chunk_write_commands[page]` when declared and not blank, unless `writeBlocks` is off and a `pageValueWrite` is declared; else `page_value_write_commands[page]`; neither list has an entry for the page -> default "C%2i%2o%2c%v"; entries only empty/blank -> PROTOCOL_ERROR "No write command for page N". The chunk size of step 1 follows the format: blocking_factor-8, at most 255 with a one-byte count, and 1 for a format with `%v` but no count (a value write, MegaSquirt-I `"W%o%v"`: one byte per command, `57 05 A1`). cmd = build_write(fmt, page_id, offset, data). (Every non-MegaSquirt-I corpus INI resolves to the same format and chunking as before: they declare pageChunkWrite last or identical to pageValueWrite.)
 4. Modern: send_packet, then `check_write_response_status`: empty payload OK; first byte code !is_error OK (extra bytes ignored); else ECU_STATUS_ERROR{code,msg per section 3}. Legacy: `send_raw_command_no_response(cmd)` (writes are silent; waiting would time out ~2 s).
 5. On success: last_written_page=page; dirty_pages.insert(page); sleep `inter_frame_delay(len(cmd))`.
 Tests: ack `[0x84]` -> ECU_STATUS_ERROR code 0x84 msg "Controller Reported a Out of Range"; `[0x94]+"flash write failed"` -> msg "flash write failed"; `[]`,`[0]`,`[0,AB,CD]` ok.
@@ -238,7 +246,7 @@ Tests: ack `[0x84]` -> ECU_STATUS_ERROR code 0x84 msg "Controller Reported a Out
 
 `burn(page)`:
 1. failed_pages non-empty -> PROTOCOL_ERROR "refusing to burn: page(s) {list} failed to write or verify; write the tune again or reconnect first".
-2. fmt = burn_commands[page], default "B%2i" (index missing); empty string -> return OK (not burnable), no state change. cmd = build_burn(fmt, page_id).
+2. fmt = burn_commands[page], default "B%2i" (index missing); empty string -> return OK (not burnable), no state change. cmd = build_burn(fmt, page_id). On a legacy link with page activation, the page is selected first (see above).
 3. Send WITHOUT waiting: modern -> send_packet_no_response; legacy -> send_raw_command_no_response.
 4. Sleep `max(page_activation_delay,2000) + 600` ms (page_activation_delay default 500; 2000 if no INI). Then drain what arrived (LibreTune-C addition): a read error (link lost) -> SERIAL_ERROR "connection lost while burning page N", a modern reply whose status has the high bit set -> ECU_STATUS; in both cases the page stays in dirty_pages (burn not confirmed, may be partial). Silence is accepted. Then clear_rx.
 5. If last_written_page==page -> None; dirty_pages.remove(page).

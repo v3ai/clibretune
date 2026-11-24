@@ -33,6 +33,7 @@ struct lt_ecusim {
     lt_bool no_page_arg;       /* page commands carry no page ("R%2o%2c": FOME, one page) */
     lt_simcmds *cmds;          /* the INI's commands, compiled (sim_cmd.h) */
     char *sig, *ver;
+    int sig_byte;              /* >= 0: a numeric signature, answered as that one byte (MS1) */
     lt_u8 query_cmd;
     lt_bool cmd_le, enveloped;
     lt_env_order hint, order;
@@ -268,6 +269,7 @@ lt_ecusim *lt_ecusim_new(const lt_ini *ini)
     s->query_cmd = 'Q';
     s->sig = lt_strdup(SIM_DEFAULT_SIG);
     s->ver = lt_strdup(SIM_DEFAULT_VER);
+    s->sig_byte = -1;
     if (ini) {
         size_t np = ini->proto.n_page_sizes;
 
@@ -278,6 +280,16 @@ lt_ecusim *lt_ecusim_new(const lt_ini *ini)
         if (ini->signature && ini->signature[0]) {
             lt_free(s->ver);       /* versionInfo is the command; its reply is the title text */
             s->ver = lt_strdup(ini->signature);
+        }
+        if (ini->signature && ini->signature[0] && strlen(ini->signature) <= 3 &&
+            strspn(ini->signature, "0123456789") == strlen(ini->signature)) {
+            /* MegaSquirt-1 B&G "signature = 20": "Q" answers the code version byte */
+            int v = 0;
+            const char *d;
+            for (d = ini->signature; *d; d++) {
+                v = v * 10 + (*d - '0');
+            }
+            s->sig_byte = v <= 255 ? v : -1;
         }
         if (ini->proto.query_command.n > 0) {
             s->query_cmd = (lt_u8)ini->proto.query_command.p[0];
@@ -565,6 +577,62 @@ static void do_burn(lt_ecusim *s, lt_buf *out, lt_bool env, int pg)
     }
 }
 
+static void put_signature(const lt_ecusim *s, lt_buf *out)
+{
+    if (s->sig_byte >= 0) {
+        lt_buf_putc(out, s->sig_byte);
+    } else {
+        lt_buf_puts(out, s->sig);
+    }
+}
+
+static lt_bool blank_blob(const lt_ini_blob *b)
+{
+    size_t i;
+
+    for (i = 0; i < b->n; i++) {
+        if (b->p[i] != ' ' && b->p[i] != '\t') {
+            return LT_FALSE;
+        }
+    }
+    return LT_TRUE;
+}
+
+/* a page without its own pageActivate (B&G MSnS: "V" / "I" pages, one "B") */
+static lt_bool no_select(const lt_ecusim *s, size_t pg)
+{
+    const lt_ini_cmdlist *a = &s->ini->proto.page_activate_commands;
+
+    if (a->n == 1) {
+        pg = 0;                    /* one entry: every page's */
+    }
+    return pg >= a->n || blank_blob(&a->v[pg]);
+}
+
+/* A burn command that several pages declare alike, with no page selection and no fields (so
+ * the same bytes for every page), stores them all (the B&G "B" writes the whole flash block). */
+static void burn_alike(lt_ecusim *s, int pg)
+{
+    const lt_ini_cmdlist *b;
+    size_t j;
+
+    if (s->ini == NULL || !no_select(s, (size_t)pg)) {
+        return;
+    }
+    b = &s->ini->proto.burn_commands;
+    if (b->n == 0 || ((size_t)pg >= b->n && b->n != 1) ||
+        memchr(b->v[(size_t)pg < b->n ? pg : 0].p, '%', b->v[(size_t)pg < b->n ? pg : 0].n)) {
+        return;                    /* "B%2i": each page's own bytes */
+    }
+    for (j = 0; j < s->n_pages && (j < b->n || b->n == 1); j++) {
+        const lt_ini_blob *bj = &b->v[j < b->n ? j : 0], *bp = &b->v[(size_t)pg < b->n ? pg : 0];
+        if ((int)j != pg && no_select(s, j) && bj->n == bp->n &&
+            memcmp(bj->p, bp->p, bp->n) == 0) {
+            memcpy(s->pages[j].flash, s->pages[j].ram, s->pages[j].size);
+        }
+    }
+}
+
 /* a command the INI declares (sim_cmd.h) */
 static void exec_declared(lt_ecusim *s, const lt_simcmd_match *m, lt_bool env, lt_buf *out)
 {
@@ -574,7 +642,11 @@ static void exec_declared(lt_ecusim *s, const lt_simcmd_match *m, lt_bool env, l
     switch (m->kind) {
     case LT_SIMCMD_QUERY:
         put_status(out, env, LT_RC_OK);
-        lt_buf_puts(out, s->sig);
+        put_signature(s, out);
+        return;
+    case LT_SIMCMD_ACTIVATE:      /* silent on a plain link */
+        lt_simcmds_set_active(s->cmds, pg);
+        put_status(out, env, pg >= 0 ? LT_RC_OK : LT_RC_OUT_OF_RANGE);
         return;
     case LT_SIMCMD_VERSION:
         put_status(out, env, LT_RC_OK);
@@ -596,6 +668,9 @@ static void exec_declared(lt_ecusim *s, const lt_simcmd_match *m, lt_bool env, l
         do_write(s, out, env, pg, m->off, m->data, m->ndata, LT_TRUE);
         return;
     case LT_SIMCMD_BURN:
+        if (pg >= 0) {
+            burn_alike(s, pg);
+        }
         do_burn(s, out, env, pg);
         return;
     case LT_SIMCMD_CRC:
@@ -627,7 +702,7 @@ static void respond(lt_ecusim *s, const lt_u8 *cmd, size_t n, lt_bool env, lt_bu
     }
     if (c == s->query_cmd) {
         put_status(out, env, LT_RC_OK);
-        lt_buf_puts(out, s->sig);
+        put_signature(s, out);
         return;
     }
     switch (c) {

@@ -71,6 +71,7 @@ struct lt_proto {
     lt_proto_stats stats;
     lt_proto_err   err;
     int            last_written;
+    int            active_page;     /* legacy pageActivate: the page the ECU has selected, -1 */
     lt_u8          dirty[256];
     lt_u8          failed[256];
     char           reason[96];
@@ -356,6 +357,7 @@ lt_proto *lt_proto_new(const lt_proto_io *io, const lt_ini *ini, const lt_proto_
     }
     p->state = LT_CONN_DISCONNECTED;
     p->last_written = -1;
+    p->active_page = -1;
     p->modern = (ini && ini->proto.uses_modern) ? LT_TRUE : LT_FALSE;
     if (p->cfg.env_order_hint == 0 || p->cfg.env_order_hint == 1) {
         p->declared_order = (lt_env_order)p->cfg.env_order_hint;
@@ -879,6 +881,27 @@ static void trim_copy(const lt_u8 *b, size_t n, char *sig, size_t cap)
     sig[k] = '\0';
 }
 
+/* A one-byte reply to the query is a number, not text, when the INI's signature is a number
+ * (MegaSquirt-1 B&G: signature = 20, the ECU sends the byte 20) or the byte is not printable. */
+static lt_bool byte_signature(const lt_proto *p, lt_u8 b)
+{
+    const char *s = p->ini ? p->ini->signature : NULL;
+    size_t i;
+
+    if (b < 0x20 || b > 0x7E) {
+        return LT_TRUE;
+    }
+    if (s == NULL || s[0] == '\0' || strlen(s) > 3) {
+        return LT_FALSE;
+    }
+    for (i = 0; s[i]; i++) {
+        if (s[i] < '0' || s[i] > '9') {
+            return LT_FALSE;
+        }
+    }
+    return LT_TRUE;
+}
+
 int lt_proto_handshake(lt_proto *p, char *sig, size_t cap)
 {
     lt_buf cmd, reply;
@@ -929,7 +952,12 @@ int lt_proto_handshake(lt_proto *p, char *sig, size_t cap)
                       LT_FALSE, &reply);
     if (rc == LT_OK) {
         p->modern = LT_FALSE;
-        trim_copy((const lt_u8 *)reply.data, reply.len, tmp, sizeof(tmp));
+        if (reply.len == 1 && byte_signature(p, (lt_u8)reply.data[0])) {
+            /* MegaSquirt-1 "Q": one byte, the code version (signature = 20 in the INI) */
+            lt_snprintf(tmp, sizeof(tmp), "%u", (unsigned)(lt_u8)reply.data[0]);
+        } else {
+            trim_copy((const lt_u8 *)reply.data, reply.len, tmp, sizeof(tmp));
+        }
         lt_strlcpy(p->sig, tmp, sizeof(p->sig));
         lt_strlcpy(sig, tmp, cap);
         goto done;
@@ -972,6 +1000,7 @@ int lt_proto_connect(lt_proto *p)
     async_abort(p);
     p->cancel = 0;
     p->state = LT_CONN_CONNECTING;
+    p->active_page = -1;
     p->sig[0] = '\0';
     delay = p->ini ? ini_ms(p->ini->proto.delay_after_port_open) : 1000;
     sleep_ms(p, delay);
@@ -985,6 +1014,7 @@ int lt_proto_connect(lt_proto *p)
     }
     p->state = LT_CONN_CONNECTED;
     p->last_written = -1;
+    p->active_page = -1;
     memset(p->dirty, 0, sizeof(p->dirty));
     memset(p->failed, 0, sizeof(p->failed));
     return LT_OK;
@@ -1023,10 +1053,14 @@ lt_bool lt_proto_signature_mismatch(const lt_proto *p)
 /* ---------------------------------------------------------------------- */
 /* page commands                                                           */
 /* ---------------------------------------------------------------------- */
+/* A list of one entry is every page's (MegaSquirt-1 Extra: one burnCommand "B" for 8 pages). */
 static void get_cmd(const lt_ini_cmdlist *l, int idx, const char *dflt, const char **s,
                     size_t *n)
 {
-    if (l && l->v && idx >= 0 && (size_t)idx < l->n) {
+    if (l && l->v && idx >= 0 && ((size_t)idx < l->n || l->n == 1)) {
+        if ((size_t)idx >= l->n) {
+            idx = 0;
+        }
         *s = l->v[idx].p ? l->v[idx].p : "";
         *n = l->v[idx].n;
     } else {
@@ -1082,12 +1116,202 @@ static int build_page_cmd(lt_proto *p, const lt_ini_cmdlist *l, const char *dflt
 #define PRO(p) (&(p)->ini->proto)
 #define LIST(p, f) ((p)->ini ? &PRO(p)->f : NULL)
 
+/* An empty or all-blank command declares nothing: MegaSquirt-1 INIs write pageActivate = " "
+ * and pageChunkWrite = " " for "none". */
+static lt_bool blank_cmd(const char *s, size_t n)
+{
+    size_t i;
+
+    for (i = 0; i < n; i++) {
+        if (s[i] != ' ' && s[i] != '\t') {
+            return LT_FALSE;
+        }
+    }
+    return LT_TRUE;
+}
+
+/* The entry of page idx in l, or NULL when the list has none for it. */
+static const lt_ini_blob *list_entry(const lt_ini_cmdlist *l, int idx)
+{
+    if (l && l->v && idx >= 0 && (size_t)idx < l->n) {
+        return &l->v[idx];
+    }
+    if (l && l->v && idx >= 0 && l->n == 1) {
+        return &l->v[0];                 /* one entry for every page, as get_cmd */
+    }
+    return NULL;
+}
+
+/* Width of the field `letter` (i, o, c) in a command format: 2 for %2o, 1 for %o, 0 none. */
+static int field_width(const char *f, size_t n, char letter)
+{
+    size_t i;
+
+    for (i = 0; i + 1 < n; i++) {
+        if (f[i] != '%') {
+            continue;
+        }
+        if (f[i + 1] == letter) {
+            return 1;
+        }
+        if (f[i + 1] == '2' && i + 2 < n && f[i + 2] == letter) {
+            return 2;
+        }
+    }
+    return 0;
+}
+
+static size_t declared_page_size(const lt_proto *p, int page)
+{
+    if (p->ini && page >= 0 && (size_t)page < p->ini->proto.n_page_sizes) {
+        return (size_t)p->ini->proto.page_sizes[page];
+    }
+    return 0;
+}
+
+/* ---- page activation (legacy pageActivate: MegaSquirt-1 family "P\001") ----
+ * An ECU that keeps one page in RAM at a time is told which one before that page is read,
+ * written or burned ("B" burns the selected page). Sent only when the page changes, never on
+ * an msEnvelope link (there every command carries its page), and followed by
+ * pageActivationDelay. */
+static const lt_ini_blob *activate_cmd(const lt_proto *p, int page)
+{
+    const lt_ini_blob *b;
+
+    if (p->modern || !p->ini) {
+        return NULL;
+    }
+    b = list_entry(&p->ini->proto.page_activate_commands, page);
+    return (b && b->p && !blank_cmd(b->p, b->n)) ? b : NULL;
+}
+
+/* Send the activation of `page` if it is needed, without waiting. *wait_ms: how long the ECU
+ * needs before the next command (0 = nothing was sent). */
+static int activate_send(lt_proto *p, int page, int *wait_ms)
+{
+    const lt_ini_blob *b = activate_cmd(p, page);
+    lt_buf cmd;
+    int rc;
+
+    *wait_ms = 0;
+    if (b == NULL || p->active_page == page) {
+        return LT_OK;
+    }
+    lt_buf_init(&cmd);
+    lt_cmd_build(&cmd, b->p, b->n, page_id(p, page), 0, 0, NULL, 0, cmd_le(p));
+    rc = raw_write(p, cmd.data, cmd.len);
+    if (rc == LT_OK) {
+        if (p->io.flush) {
+            p->io.flush(p->io.ud);
+        }
+        p->stats.tx_packets++;
+        p->active_page = page;
+        *wait_ms = pace_ms(p, cmd.len) + ini_ms(p->ini->proto.page_activation_delay);
+    } else {
+        p->active_page = -1;
+    }
+    lt_buf_free(&cmd);
+    return rc;
+}
+
+/* Blocking form: select the page and wait until the ECU has switched. */
+static int activate_page(lt_proto *p, int page)
+{
+    int rc, wait_ms = 0;
+
+    if (activate_cmd(p, page) == NULL || p->active_page == page) {
+        return LT_OK;
+    }
+    io_settle(p);
+    rc = activate_send(p, page, &wait_ms);
+    if (rc == LT_OK && wait_ms > 0) {
+        sleep_ms(p, wait_ms);
+    }
+    return rc;
+}
+
+/* ---- the write command of a page (spec 9) ----
+ * pageChunkWrite when it is declared (and writeBlocks is not off while a pageValueWrite
+ * exists), else pageValueWrite; neither listed for the page: the default "C%2i%2o%2c%v".
+ * *chunk: the most bytes one command may carry: blockingFactor - 8, at most 255 with a
+ * one-byte count (%c), and 1 for a format with data but no count (a value write: "W%o%v"). */
+static int write_fmt(lt_proto *p, int page, const char **f, size_t *fn, size_t *chunk)
+{
+    const lt_ini_blob *c = p->ini ? list_entry(&PRO(p)->page_chunk_write_commands, page) : NULL;
+    const lt_ini_blob *v = p->ini ? list_entry(&PRO(p)->page_value_write_commands, page) : NULL;
+    lt_bool have_c = (c && c->p && !blank_cmd(c->p, c->n)) ? LT_TRUE : LT_FALSE;
+    lt_bool have_v = (v && v->p && !blank_cmd(v->p, v->n)) ? LT_TRUE : LT_FALSE;
+    size_t k = (size_t)lt_proto_effective_write_chunk(p);
+    int cw;
+
+    if (have_c && (PRO(p)->write_blocks || !have_v)) {
+        *f = c->p;
+        *fn = c->n;
+    } else if (have_v) {
+        *f = v->p;
+        *fn = v->n;
+    } else if (c || v) {
+        *f = "";
+        *fn = 0;
+        return fail(p, LT_EPROTO, LT_PE_PROTOCOL, "No write command for page %d", page);
+    } else {
+        *f = "C%2i%2o%2c%v";
+        *fn = strlen(*f);
+    }
+    cw = field_width(*f, *fn, 'c');
+    if (cw == 0 && field_width(*f, *fn, 'v') == 1) {
+        k = 1;                           /* data without a count: one byte per command */
+    } else if (cw == 1 && k > 255) {
+        k = 255;
+    }
+    *chunk = k;
+    return LT_OK;
+}
+
+/* The chunk size of page writes (write_fmt's *chunk; blockingFactor - 8 when undecidable). */
+static size_t write_chunk(lt_proto *p, int page)
+{
+    const char *f;
+    size_t fn, k = 0;
+    lt_proto_err keep = p->err;
+
+    if (write_fmt(p, page, &f, &fn, &k) != LT_OK) {
+        p->err = keep;
+        lt_err_clear();
+        k = (size_t)lt_proto_effective_write_chunk(p);
+    }
+    return k;
+}
+
+/* A one-byte offset field cannot address beyond 255. */
+static int check_offset(lt_proto *p, const char *f, size_t fn, int page, size_t off)
+{
+    if (off > 255 && field_width(f, fn, 'o') == 1) {
+        return fail(p, LT_ERANGE, LT_PE_PROTOCOL, "page %d offset %lu does not fit the one-byte "
+                    "offset of the definition's command", page, (unsigned long)off);
+    }
+    return LT_OK;
+}
+
+/* A read command without an offset reads the whole page (MegaSquirt-1 "V": the ECU sends
+ * every byte of the selected page). */
+static lt_bool whole_page_read(const lt_proto *p, int page)
+{
+    const char *f;
+    size_t fn;
+
+    get_cmd(LIST(p, page_read_commands), page, "R%2i%2o%2c", &f, &fn);
+    return (fn > 0 && field_width(f, fn, 'o') == 0) ? LT_TRUE : LT_FALSE;
+}
+
 int lt_proto_read_memory(lt_proto *p, int page, size_t offset, size_t len, lt_buf *out)
 {
     lt_buf cmd, reply;
     int rc;
     const lt_u8 *d;
-    size_t dn;
+    size_t dn, want = len, skip = 0;
+    const char *f;
+    size_t fn;
 
     rc = need_conn(p);
     if (rc) {
@@ -1095,8 +1319,31 @@ int lt_proto_read_memory(lt_proto *p, int page, size_t offset, size_t len, lt_bu
     }
     lt_buf_init(&cmd);
     lt_buf_init(&reply);
-    rc = build_page_cmd(p, LIST(p, page_read_commands), "R%2i%2o%2c", page, (lt_u32)offset,
-                        (lt_u32)len, NULL, 0, "read", &cmd);
+    get_cmd(LIST(p, page_read_commands), page, "R%2i%2o%2c", &f, &fn);
+    if (fn > 0 && whole_page_read(p, page)) {
+        /* the ECU answers with the whole page: read it, keep [offset, offset+len) */
+        want = declared_page_size(p, page);
+        if (want == 0 || offset > want || len > want - offset) {
+            rc = fail(p, LT_EPROTO, LT_PE_PROTOCOL, "page %d reads whole (%lu bytes): cannot "
+                      "read %lu bytes at offset %lu", page, (unsigned long)want,
+                      (unsigned long)len, (unsigned long)offset);
+            goto done;
+        }
+        skip = offset;
+        offset = 0;
+    }
+    rc = check_offset(p, f, fn, page, offset);
+    if (rc == LT_OK && want > 255 && field_width(f, fn, 'c') == 1) {
+        rc = fail(p, LT_ERANGE, LT_PE_PROTOCOL, "page %d: %lu bytes do not fit the one-byte "
+                  "count of the read command", page, (unsigned long)want);
+    }
+    if (rc == LT_OK) {
+        rc = activate_page(p, page);
+    }
+    if (rc == LT_OK) {
+        rc = build_page_cmd(p, LIST(p, page_read_commands), "R%2i%2o%2c", page, (lt_u32)offset,
+                            (lt_u32)want, NULL, 0, "read", &cmd);
+    }
     if (rc) {
         goto done;
     }
@@ -1117,7 +1364,7 @@ int lt_proto_read_memory(lt_proto *p, int page, size_t offset, size_t len, lt_bu
         d = (const lt_u8 *)reply.data + 1;
         dn = reply.len - 1;
     } else {
-        rc = raw_exchange(p, (const lt_u8 *)cmd.data, cmd.len, len,
+        rc = raw_exchange(p, (const lt_u8 *)cmd.data, cmd.len, want,
                           lt_proto_effective_timeout_ms(p), inter_char_ms(p), LT_FALSE, &reply);
         if (rc) {
             goto done;
@@ -1125,13 +1372,13 @@ int lt_proto_read_memory(lt_proto *p, int page, size_t offset, size_t len, lt_bu
         d = (const lt_u8 *)reply.data;
         dn = reply.len;
     }
-    if (dn != len) {
+    if (dn != want) {
         rc = fail(p, LT_EPROTO, LT_PE_PROTOCOL,
                   "wrong-length read on page %d offset %lu: got %lu of %lu bytes", page,
-                  (unsigned long)offset, (unsigned long)dn, (unsigned long)len);
+                  (unsigned long)offset, (unsigned long)dn, (unsigned long)want);
         goto done;
     }
-    lt_buf_append(out, d, dn);
+    lt_buf_append(out, d + skip, len);
 done:
     lt_buf_free(&cmd);
     lt_buf_free(&reply);
@@ -1158,6 +1405,17 @@ int lt_proto_read_page(lt_proto *p, int page, lt_ecu_mem *mem)
         return fail(p, LT_EPROTO, LT_PE_PROTOCOL, "Unknown page size for page %d", page);
     }
     bf = (size_t)read_chunk(p);
+    if (whole_page_read(p, page)) {
+        bf = size;                       /* one command returns the whole page */
+    } else {
+        const char *f;
+        size_t fn;
+
+        get_cmd(LIST(p, page_read_commands), page, "R%2i%2o%2c", &f, &fn);
+        if (bf > 255 && field_width(f, fn, 'c') == 1) {
+            bf = 255;
+        }
+    }
     lt_buf_init(&img);
     if (mem) {
         lt_ecu_mem_set_state(mem, page, LT_PAGE_LOADING);
@@ -1246,13 +1504,20 @@ size_t lt_proto_dirty_pages(const lt_proto *p, int *out, size_t cap)
 
 int lt_proto_write_memory(lt_proto *p, int page, size_t offset, const lt_u8 *data, size_t n)
 {
-    size_t chunk = (size_t)lt_proto_effective_write_chunk(p), done = 0, k;
+    size_t chunk = 1, done = 0, k, fn = 0;
     lt_buf cmd, reply;
     int rc;
+    const char *f = "";
 
     rc = need_conn(p);
     if (rc) {
         return rc;
+    }
+    if (n > 0) {
+        rc = write_fmt(p, page, &f, &fn, &chunk);
+        if (rc) {
+            return rc;
+        }
     }
     while (done < n) {
         k = n - done < chunk ? n - done : chunk;
@@ -1268,9 +1533,13 @@ int lt_proto_write_memory(lt_proto *p, int page, size_t offset, const lt_u8 *dat
         }
         lt_buf_init(&cmd);
         lt_buf_init(&reply);
-        rc = build_page_cmd(p, LIST(p, page_chunk_write_commands), "C%2i%2o%2c%v", page,
-                            (lt_u32)(offset + done), (lt_u32)k, data + done, k, "write", &cmd);
+        rc = check_offset(p, f, fn, page, offset + done);
         if (rc == LT_OK) {
+            rc = activate_page(p, page);
+        }
+        if (rc == LT_OK) {
+            lt_cmd_build(&cmd, f, fn, page_id(p, page), (lt_u32)(offset + done), (lt_u32)k,
+                         data + done, k, cmd_le(p));
             if (p->modern) {
                 rc = send_packet(p, (const lt_u8 *)cmd.data, cmd.len, &reply);
                 if (rc == LT_OK) {
@@ -1329,6 +1598,10 @@ int lt_proto_verify_page_crc(lt_proto *p, int page, const lt_u8 *expected, size_
         return fail(p, LT_EPROTO, LT_PE_VERIFY_UNAVAILABLE,
                     "no crc32CheckCommand declared for page %d", page);
     }
+    rc = activate_page(p, page);
+    if (rc) {
+        goto done;
+    }
     lt_cmd_build(&cmd, f, fn, page_id(p, page), 0, (lt_u32)n, NULL, 0, cmd_le(p));
     clear_rx(p);
     rc = lt_proto_send_raw_response(p, (const lt_u8 *)cmd.data, cmd.len,
@@ -1361,13 +1634,14 @@ done:
 
 int lt_proto_write_page(lt_proto *p, int page, const lt_u8 *data, size_t n)
 {
-    size_t chunk = (size_t)lt_proto_effective_write_chunk(p), off = 0, k;
+    size_t chunk, off = 0, k;
     int rc = LT_OK, attempt;
 
     rc = need_conn(p);
     if (rc) {
         return rc;
     }
+    chunk = write_chunk(p, page);
     while (off < n) {
         k = n - off < chunk ? n - off : chunk;
         rc = clamp_progress(p, "write page", page, off, n);
@@ -1412,7 +1686,7 @@ int lt_proto_write_page(lt_proto *p, int page, const lt_u8 *data, size_t n)
 int lt_proto_write_memory_verified(lt_proto *p, int page, size_t offset, const lt_u8 *data,
                                    size_t n)
 {
-    size_t chunk = (size_t)lt_proto_effective_write_chunk(p), at = 0, k, i;
+    size_t chunk = (size_t)lt_proto_effective_write_chunk(p), at = 0, k, i;   /* readback size */
     lt_buf got;
     int rc;
 
@@ -1596,6 +1870,19 @@ static int burn_send(lt_proto *p, int page, int *settle_ms)
     return rc;
 }
 
+/* Will burn_send send a burn for this page that needs it selected first? */
+static lt_bool burn_needs_page(lt_proto *p, int page)
+{
+    const char *fm;
+    size_t fn;
+
+    if (any_set(p->failed) || activate_cmd(p, page) == NULL || p->active_page == page) {
+        return LT_FALSE;
+    }
+    get_cmd(LIST(p, burn_commands), page, "B%2i", &fm, &fn);
+    return fn > 0 ? LT_TRUE : LT_FALSE;
+}
+
 /* After the settle time: check what the ECU said and update the page bookkeeping. */
 static int burn_finish(lt_proto *p, int page, lt_ecu_mem *mem)
 {
@@ -1640,6 +1927,12 @@ int lt_proto_burn(lt_proto *p, int page, lt_ecu_mem *mem)
             lt_ecu_mem_mark_burned(mem);
         }
         return LT_OK;
+    }
+    if (burn_needs_page(p, page)) {
+        rc = activate_page(p, page);    /* "B" burns the selected page */
+        if (rc) {
+            return rc;
+        }
     }
     rc = burn_send(p, page, &settle_ms);
     if (rc == 1) {
@@ -1705,6 +1998,13 @@ lt_rt_kind lt_proto_choose_runtime(const lt_proto *pc, const char **reason)
         if (p->modern && burst_ecu && och) {
             k = LT_RT_KIND_OCH;
             r = "auto: OCH (modern protocol negotiated)";
+        } else if (burst_ecu && och && !p->ini->proto.burst_declared &&
+                   memchr(p->ini->proto.och_get_command.p, '%',
+                          p->ini->proto.och_get_command.n) == NULL) {
+            /* no [BurstMode] command, a fixed ochGetCommand: that is the realtime command
+             * (MegaSquirt-1 Extra "R"; a bare 'A' gets the 22-byte B&G block) */
+            k = LT_RT_KIND_OCH;
+            r = "auto: OCH (fixed ochGetCommand, no burst command declared)";
         } else if (burst_ecu) {
             lt_snprintf(p->reason, sizeof(p->reason), "auto: Burst (ecu=%s)",
                         lt_ecu_type_name(t));
@@ -2149,10 +2449,21 @@ static void job_send(lt_proto *p)
     wr_chunk *c = &j->ch[j->next];
     const lt_u8 *data;
     lt_buf cmd;
-    int rc, settle_ms = 0, page = c->page;
+    int rc, settle_ms = 0, page = c->page, wait_ms = 0;
+    const char *f = "";
+    size_t fn = 0, chunk = 0;
 
     if (p->cfg.auto_burn_on_page_change && p->last_written >= 0 &&
         p->last_written != page && !any_set(p->failed)) {
+        if (burn_needs_page(p, p->last_written)) {
+            rc = activate_send(p, p->last_written, &wait_ms);
+            if (rc) {
+                job_fail(p, rc, -1);
+                return;
+            }
+            p->next_tx_at = now_ms(p) + (double)wait_ms;
+            return;                        /* the burn goes once the page is selected */
+        }
         rc = burn_send(p, p->last_written, &settle_ms);
         if (rc == 1) {
             p->last_written = -1;          /* nothing to burn */
@@ -2172,9 +2483,24 @@ static void job_send(lt_proto *p)
                          "written", page), page);
         return;
     }
+    rc = write_fmt(p, page, &f, &fn, &chunk);
+    if (rc == LT_OK) {
+        rc = check_offset(p, f, fn, page, c->off);
+    }
+    if (rc == LT_OK && activate_cmd(p, page) != NULL && p->active_page != page) {
+        rc = activate_send(p, page, &wait_ms);
+        if (rc == LT_OK) {
+            p->next_tx_at = now_ms(p) + (double)wait_ms;
+            return;                        /* the chunk goes once the page is selected */
+        }
+    }
+    if (rc) {
+        job_fail(p, rc, page);
+        return;
+    }
     lt_buf_init(&cmd);
-    rc = build_page_cmd(p, LIST(p, page_chunk_write_commands), "C%2i%2o%2c%v", page,
-                        (lt_u32)c->off, (lt_u32)c->len, data, c->len, "write", &cmd);
+    lt_cmd_build(&cmd, f, fn, page_id(p, page), (lt_u32)c->off, (lt_u32)c->len, data, c->len,
+                 cmd_le(p));
     if (rc == LT_OK) {
         j->cmd_len = cmd.len;
         if (p->modern) {
@@ -2519,7 +2845,7 @@ static void job_add(lt_proto *p, int page, size_t off, size_t len, size_t chunk)
 int lt_proto_write_dirty_begin(lt_proto *p, lt_ecu_mem *mem)
 {
     int pages[256];
-    size_t np, i, nr, r, total = 0, chunk;
+    size_t np, i, nr, r, total = 0;
     lt_range *rg;
     int rc;
 
@@ -2530,7 +2856,6 @@ int lt_proto_write_dirty_begin(lt_proto *p, lt_ecu_mem *mem)
     if (p->job.n > 0 && p->job.mem != mem) {
         settle(p);                               /* another shadow: finish that one first */
     }
-    chunk = (size_t)lt_proto_effective_write_chunk(p);
     np = lt_ecu_mem_dirty_pages(mem, pages, 256);
     if (np > 256) {
         np = 256;   /* proto tracks page ids 0..255 only */
@@ -2543,7 +2868,7 @@ int lt_proto_write_dirty_begin(lt_proto *p, lt_ecu_mem *mem)
         rg = (lt_range *)lt_malloc((nr + 1) * sizeof(lt_range));
         nr = lt_ecu_mem_dirty_ranges(mem, pages[i], rg, nr);
         for (r = 0; r < nr; r++) {
-            job_add(p, pages[i], rg[r].start, rg[r].len, chunk);
+            job_add(p, pages[i], rg[r].start, rg[r].len, write_chunk(p, pages[i]));
             lt_ecu_mem_clear_dirty(mem, pages[i], rg[r].start, rg[r].len);
             total += rg[r].len;
         }
