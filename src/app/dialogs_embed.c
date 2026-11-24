@@ -358,6 +358,7 @@ static void emb_apply(lt_app *app, emb *m, int xaxis, const double *nv)
     if (xaxis) { lt_tabs_lim_init(&lim, m->xlo, m->xhi, m->xdig); }
     else { lt_tabs_lim_init(&lim, m->lo, m->hi, m->zdig); }
     if (lt_tabs_apply(&m->v, xaxis ? LT_TABS_X : LT_TABS_Z, nv, &lim) > 0) { emb_commit(app, m); }
+    lt_tabs_lim_report(app, &lim);
 }
 
 /* scratch copy of the values (z, or x when xaxis); free with lt_free */
@@ -520,8 +521,13 @@ int lt_emb_curve(lt_app *app, lt_embeds *e, const lt_ini_curve *c, int enabled)
                 if (lt_parse_double(lt_ui_grid_edit_text(ui), &v) && er >= 0 && ec >= 0 && ec < (int)m->v.cols) {
                     double *nv = emb_copy(m, er == 0);
                     if (er == 0) {
-                        if (m->xhi > m->xlo) { v = v < m->xlo ? m->xlo : (v > m->xhi ? m->xhi : v); }
-                        v = lt_tbl_clamp_between(m->v.x, m->v.cols, (size_t)ec, v);
+                        lt_tabs_lim xl;
+                        double inlim;
+                        lt_tabs_lim_init(&xl, m->xlo, m->xhi, m->xdig);
+                        inlim = lt_tabs_lim_fix(&xl, v);
+                        v = lt_tbl_clamp_between(m->v.x, m->v.cols, (size_t)ec, inlim);
+                        if (v != inlim) { lt_app_toast(app, 2, "The X axis must increase: kept at %g", v); }
+                        else { lt_tabs_lim_report(app, &xl); }
                     }
                     nv[ec] = v;
                     emb_apply(app, m, er == 0, nv);

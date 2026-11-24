@@ -144,6 +144,17 @@ double lt_tabs_lim_fix(lt_tabs_lim *l, double v)
     return lt_tabs_round(v, l->digits);
 }
 
+void lt_tabs_lim_report(lt_app *app, const lt_tabs_lim *l)
+{
+    char a[32], b[32], c[32];
+    if (l->n <= 0) { return; }
+    lt_fmt_double(a, sizeof(a), l->last, l->digits);
+    lt_fmt_double(b, sizeof(b), lt_tabs_round(l->lo, l->digits), l->digits);
+    lt_fmt_double(c, sizeof(c), lt_tabs_round(l->hi, l->digits), l->digits);
+    if (l->n == 1) { lt_app_toast(app, 2, "Limited to %s (allowed %s - %s)", a, b, c); }
+    else { lt_app_toast(app, 2, "%d values limited (allowed %s - %s)", l->n, b, c); }
+}
+
 size_t lt_tabs_apply(lt_tblview *v, int what, const double *nv, lt_tabs_lim *lim)
 {
     size_t i, n = what == LT_TABS_X ? v->cols : v->rows * v->cols, changed = 0;

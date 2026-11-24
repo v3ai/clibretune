@@ -1339,6 +1339,9 @@ static const char *const mp_6_0[] = {
     "Esc while typing cancels that edit and the cell keeps its value. Esc otherwise only reduces the selection to the cursor cell: it never changes values. To go back to the values the table had when it was opened use **Revert** in the toolbar (whole table) or **Reset to original** in the right-click",
     "menu (selected cells).",
     "",
+    "A typed, pasted or calculated value outside the limits of the ECU definition is set to the nearest allowed value and a message says so (\"Limited to 255 (allowed 0 - 255)\", or how many values were limited). An operation that changes nothing (for example pasting the values a cell already has) adds no",
+    "undo step and leaves the tune unmodified.",
+    "",
     "### Increment/Decrement",
     "- `+` or `>`: Increase by step",
     "- `-` or `<`: Decrease by step",
@@ -1408,7 +1411,7 @@ static const char *const mp_6_0[] = {
     "",
 };
 static const lt_man_part mpp_6[] = {
-    { mp_6_0, 101 },
+    { mp_6_0, 104 },
 };
 
 static const char *const mp_7_0[] = {

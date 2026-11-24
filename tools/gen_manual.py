@@ -97,7 +97,12 @@ REWRITES = [
      " cell)\n\nEsc while typing cancels that edit and the cell keeps its value. Esc otherwise"
      " only reduces the selection to the cursor cell: it never changes values. To go back to the"
      " values the table had when it was opened use **Revert** in the toolbar (whole table) or"
-     " **Reset to original** in the right-click menu (selected cells).\n"),
+     " **Reset to original** in the right-click menu (selected cells).\n\n"
+     "A typed, pasted or calculated value outside the limits of the ECU definition is set to"
+     " the nearest allowed value and a message says so (\"Limited to 255 (allowed 0 - 255)\","
+     " or how many values were limited). An operation that changes nothing (for example"
+     " pasting the values a cell already has) adds no undo step and leaves the tune"
+     " unmodified.\n"),
     ("features/autotune/usage-guide", r"This sends changes to ECU RAM\. They take effect immediately\.\n",
      "This sends changes to ECU RAM. They take effect immediately. **Undo** (Ctrl+Z) writes the\n"
      "table back as it was before the last Send to ECU.\n"),

@@ -32,7 +32,7 @@ lt_bool lt_tabs_live_index(lt_app *app, const char *channel, const double *bins,
  * The operation computes new values into a scratch copy; lt_tabs_apply writes back only what
  * really changes (an operation that changes nothing adds no undo step and marks nothing
  * modified), clamping each changed value into the constant's limits and counting the clamped
- * ones. */
+ * ones, and lt_tabs_lim_report says what was limited in one toast. */
 typedef struct lt_tabs_lim {
     double lo, hi;              /* allowed range in display units (hi <= lo: none) */
     int digits;                 /* values are rounded to this many decimals */
@@ -42,6 +42,8 @@ typedef struct lt_tabs_lim {
 void   lt_tabs_lim_init(lt_tabs_lim *l, double lo, double hi, int digits);
 /* clamp v into the range (counted when it was outside) and round it */
 double lt_tabs_lim_fix(lt_tabs_lim *l, double v);
+/* toast "Limited to 255 (allowed 0 - 255)" or "3 values limited (allowed 0 - 255)"; none if n == 0 */
+void   lt_tabs_lim_report(lt_app *app, const lt_tabs_lim *l);
 #define LT_TABS_Z 0             /* lt_tabs_apply targets */
 #define LT_TABS_X 1
 /* Write nv (rows*cols values for LT_TABS_Z, cols for LT_TABS_X) into the view: every value that

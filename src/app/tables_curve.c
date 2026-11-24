@@ -522,6 +522,7 @@ static void crv_op(lt_app *app, lt_app_tab *tab, crv_tab *st, int op, double arg
     default: break;
     }
     if (crv_apply(st, xcol, tmp, op == C_RESTORE, &lim) > 0) { crv_commit(app, tab, st); }
+    lt_tabs_lim_report(app, &lim);
     lt_free(tmp);
     lt_free(sel);
 }
@@ -605,6 +606,7 @@ static void crv_paste(lt_app *app, lt_app_tab *tab, crv_tab *st)
     }
     lt_free(nx); lt_free(nz);
     lt_app_toast(app, 0, "Pasted %lu points", (unsigned long)put);
+    lt_tabs_lim_report(app, lz.n > 0 ? &lz : &lx);
 }
 
 static void crv_undo_redo(lt_app *app, lt_app_tab *tab, crv_tab *st, int redo)
@@ -939,14 +941,18 @@ static void crv_draw(lt_app *app, lt_app_tab *tab, lt_rect rr)
                     lt_tabs_lim lim;
                     memcpy(nv, ec == 0 ? st->v.x : st->v.z, st->v.cols * sizeof(double));
                     if (ec == 0) {
-                        double typed;
-                        if (st->xhi > st->xlo) { v = v < st->xlo ? st->xlo : (v > st->xhi ? st->xhi : v); }
-                        typed = v;
-                        v = lt_tbl_clamp_between(st->v.x, st->v.cols, (size_t)er, v);
-                        if (v != typed) { lt_app_toast(app, 2, "The X axis must increase: kept at %g", v); }
+                        /* the X limits first, then between the neighbours (one toast) */
+                        lt_tabs_lim xl;
+                        double inlim;
+                        lt_tabs_lim_init(&xl, st->xlo, st->xhi, st->xdig);
+                        inlim = lt_tabs_lim_fix(&xl, v);
+                        v = lt_tbl_clamp_between(st->v.x, st->v.cols, (size_t)er, inlim);
+                        if (v != inlim) { lt_app_toast(app, 2, "The X axis must increase: kept at %g", v); }
+                        else { lt_tabs_lim_report(app, &xl); }
                     }
                     nv[er] = v;
                     if (crv_apply(st, ec == 0, nv, 0, &lim) > 0) { crv_commit(app, tab, st); }
+                    lt_tabs_lim_report(app, &lim);
                     lt_free(nv);
                 } else { lt_app_toast(app, 2, "Not a number"); }
             }

@@ -213,6 +213,7 @@ static void tbl_apply(lt_app *app, lt_app_tab *tab, tbl_tab *st, const double *n
     lt_tabs_lim lim;
     lt_tabs_lim_init(&lim, st->lo, st->hi, st->zdig);
     if (lt_tabs_apply(&st->v, LT_TABS_Z, nz, exact ? NULL : &lim) > 0) { tbl_commit(app, tab, st); }
+    lt_tabs_lim_report(app, &lim);             /* typed, pasted or computed beyond the limits */
 }
 
 static void tbl_op(lt_app *app, lt_app_tab *tab, tbl_tab *st, int op, double arg)
@@ -1056,8 +1057,9 @@ static void tbl_toolbar(lt_app *app, lt_app_tab *tab, tbl_tab *st)
     }
 }
 
-/* write the whole grid (all cells) back clamped and rounded to the constant's precision */
-static void tbl_fix_all(tbl_tab *st)
+/* write the whole grid (all cells) back clamped and rounded to the constant's precision; a
+ * toast says how many values were limited */
+static void tbl_fix_all(lt_app *app, tbl_tab *st)
 {
     size_t k, n = st->v.rows * st->v.cols;
     lt_tabs_lim lim;
@@ -1066,6 +1068,7 @@ static void tbl_fix_all(tbl_tab *st)
         double w = lt_tabs_lim_fix(&lim, st->v.z[k]);
         if (w != st->v.z[k]) { lt_tblview_set(&st->v, k / st->v.cols, k % st->v.cols, w); }
     }
+    lt_tabs_lim_report(app, &lim);
 }
 
 static void tbl_apply_gen(lt_app *app, lt_app_tab *tab, tbl_tab *st, const double *nx,
@@ -1080,9 +1083,9 @@ static void tbl_apply_gen(lt_app *app, lt_app_tab *tab, tbl_tab *st, const doubl
     for (y = 0; y < st->v.rows; y++) {
         for (x = 0; x < st->v.cols; x++) { lt_tblview_set(&st->v, y, x, nz[y * st->v.cols + x]); }
     }
-    tbl_fix_all(st);
-    tbl_commit(app, tab, st);
     lt_app_toast(app, 1, "Table generated from engine specs");
+    tbl_fix_all(app, st);
+    tbl_commit(app, tab, st);
 }
 
 static void tbl_apply_io(lt_app *app, lt_app_tab *tab, tbl_tab *st)
@@ -1106,9 +1109,9 @@ static void tbl_apply_io(lt_app *app, lt_app_tab *tab, tbl_tab *st)
     if (rc < 0) {
         lt_app_toast(app, 3, "Load failed: %s", lt_err_get());
     } else {
-        tbl_fix_all(st);
-        tbl_commit(app, tab, st);
         lt_app_toast(app, 1, "Table loaded from file");
+        tbl_fix_all(app, st);
+        tbl_commit(app, tab, st);
     }
     lt_tabs_io_free(d);
 }

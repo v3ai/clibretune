@@ -700,6 +700,75 @@ LT_TEST(embedded_curve_noop)
     lt_app_free(app);
 }
 
+/* a typed, stepped or pasted value outside the constant's limits is clamped and a toast says so,
+ * once per operation */
+LT_TEST(table_clamp_explained)
+{
+    size_t rows, cols;
+    double hi;
+    lt_app *app = tbl_open("veTableTbl", &rows, &cols);
+    LT_CHECK(rows > 2 && cols > 3);
+    if (rows <= 2 || cols <= 3) { lt_app_free(app); return; }
+    type_real(app, "9999");
+    press(app, LT_KEY_ENTER, 0);
+    hi = cell0(app, "veTableTbl", rows - 1, 0);
+    LT_CHECK_NEAR(hi, 650.0, 1e-9);
+    LT_CHECK_STR(app->status, "Limited to 650 (allowed 0 - 650)");
+    lt_app_set_status(app, "-");
+    press(app, LT_KEY_UP, 0);                       /* Enter moved the cursor down */
+    press(app, '+', 0);                             /* already at the limit */
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 0), 650.0, 1e-9);
+    LT_CHECK_STR(app->status, "Limited to 650 (allowed 0 - 650)");
+    /* three cells at once: one toast with the count */
+    press(app, LT_KEY_HOME, LT_MOD_CTRL);
+    press(app, LT_KEY_RIGHT, LT_MOD_SHIFT);
+    press(app, LT_KEY_RIGHT, LT_MOD_SHIFT);
+    press(app, LT_KEY_F2, 0);                       /* a negative value: F2 first */
+    type_real(app, "-7");
+    press(app, LT_KEY_ENTER, 0);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 2), 0.0, 1e-9);
+    LT_CHECK_STR(app->status, "3 values limited (allowed 0 - 650)");
+    /* pasted values are limited the same way */
+    lt_app_set_status(app, "-");
+    lt_ui_clipboard_set(app->ui, "700\n");
+    press(app, LT_KEY_HOME, LT_MOD_CTRL);
+    press(app, 'v', LT_MOD_CTRL);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 0), 650.0, 1e-9);
+    LT_CHECK_STR(app->status, "Limited to 650 (allowed 0 - 650)");
+    /* a value inside the limits says nothing */
+    lt_app_set_status(app, "-");
+    type_real(app, "649");
+    press(app, LT_KEY_ENTER, 0);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 0), 649.0, 1e-9);
+    LT_CHECK_STR(app->status, "-");
+    lt_app_free(app);
+}
+
+/* curve editor and the compact curve in an INI dialog explain a limited value too */
+LT_TEST(curve_clamp_explained)
+{
+    char buf[512];
+    lt_app *app = lt_app_new();
+    LT_CHECK(lt_app_find_demo_ini(buf, sizeof(buf)) != NULL);
+    LT_CHECK(lt_app_start_demo(app, buf) == 0);
+    LT_CHECK(lt_app_curve_editor_open(app, "cltFuelCorrCurve") == 0);
+    lt_app_screenshot(app, "build/lt_test_tables14.ppm", 1600, 1000, 3);
+    click(app, 1224, 192, LT_MB_LEFT);               /* first row, Y column */
+    type_real(app, "99");
+    press(app, LT_KEY_ENTER, 0);
+    LT_CHECK(strncmp(app->status, "Limited to ", 11) == 0);
+    LT_CHECK(curve_val(app, "cltFuelCorrCurve", 0, 0) < 99.0);
+    lt_app_set_status(app, "-");
+    LT_CHECK(lt_app_dialog_open(app, "cltFuelCorrCurveDialog") == 0);
+    lt_app_screenshot(app, "build/lt_test_tables15.ppm", 1400, 900, 3);
+    click(app, 453, 527, LT_MB_LEFT);                /* second point's value */
+    type_real(app, "99");
+    press(app, LT_KEY_ENTER, 0);
+    LT_CHECK(strncmp(app->status, "Limited to ", 11) == 0);
+    LT_CHECK(curve_val(app, "cltFuelCorrCurve", 0, 1) < 99.0);
+    lt_app_free(app);
+}
+
 int main(void)
 {
     LT_RUN(autotune_send_undo);
@@ -718,5 +787,7 @@ int main(void)
     LT_RUN(table_noop_no_undo);
     LT_RUN(curve_noop_no_undo);
     LT_RUN(embedded_curve_noop);
+    LT_RUN(table_clamp_explained);
+    LT_RUN(curve_clamp_explained);
     LT_TEST_MAIN_END
 }
