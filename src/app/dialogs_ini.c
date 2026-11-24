@@ -36,6 +36,8 @@ typedef struct ini_state {
     int counts[LT_EMB_KINDS];       /* drawn this frame (tests); [0] = help buttons */
     int stacked;                    /* column sets drawn one below the other this frame (tests) */
     int overflow;                   /* px the content is wider than the tab (tests) */
+    int reveal;                     /* app->reveal names a field of this tab */
+    int revealed;                   /* the field is outlined this frame (tests) */
 } ini_state;
 
 typedef struct opt_ctx { const lt_ini_const *c; const int *map; } opt_ctx;
@@ -377,6 +379,53 @@ static void draw_graph(lt_app *app, ini_state *st, const lt_ini_comp *cm)
 
 static void draw_dialog(lt_app *app, ini_state *st, const lt_ini_dialog *dlg, int depth);
 
+/* ---- a field opened from the settings search: focused once, outlined for 1.5 s ---- */
+#define REVEAL_MS 1500.0
+
+static int reveal_this(lt_app *app, const ini_state *st, const lt_ini_comp *cm)
+{
+    return st->reveal && app->reveal.comp == (const void *)cm;
+}
+
+/* before the field's input: it takes the keyboard focus (and scrolls into view) */
+static void reveal_focus(lt_app *app, const ini_state *st, const lt_ini_comp *cm, int enabled)
+{
+    if (enabled && reveal_this(app, st, cm) && app->reveal.t0 == 0.0) { lt_ui_focus_next(app->ui, LT_FALSE); }
+}
+
+static void reveal_cell_cb(lt_gfx *g, lt_rect r, void *user)
+{
+    LT_UNUSED(user);
+    lt_gfx_cell_attr(g, r, LT_CELL_REVERSE, 1);
+}
+
+/* after the field's row: the accent outline around it while the 1.5 s last */
+static void reveal_outline(lt_app *app, ini_state *st, const lt_ini_comp *cm)
+{
+    lt_ui *ui = app->ui;
+    double now = lt_ui_now(ui);
+    lt_rect lr, body, o;
+    int b;
+    if (!reveal_this(app, st, cm)) { return; }
+    lr = lt_ui_last_rect(ui);
+    body = lt_ui_layout_body(ui);
+    if (app->reveal.t0 == 0.0) {        /* the first frame: into view (a disabled field takes no focus) */
+        app->reveal.t0 = now > 0.0 ? now : 1.0;
+        lt_ui_scroll_reveal(ui, lt_rect_make(body.x, lr.y, body.w, lr.h));
+    }
+    if (now - app->reveal.t0 >= REVEAL_MS) { app->reveal.comp = NULL; return; }
+    st->revealed = 1;
+    if (lt_ui_cell_mode(ui)) {          /* a terminal has no room for a frame: the row in reverse video */
+        lt_ui_draw_custom(ui, lt_rect_make(body.x, lr.y, body.w, lr.h), reveal_cell_cb, NULL);
+    } else {
+        b = lt_ui_px(ui, 2);
+        o = lt_rect_make(body.x - b, lr.y - b, body.w + 2 * b, lr.h + 2 * b);
+        lt_ui_draw_rect(ui, o, lt_ui_theme(ui)->accent);
+        lt_ui_draw_rect(ui, lt_rect_make(o.x + 1, o.y + 1, o.w - 2, o.h - 2), lt_ui_theme(ui)->accent);
+    }
+    lt_ui_request_redraw(ui);
+}
+
 static const lt_ini_dialog *find_panel(lt_app *app, const char *name)
 {
     const lt_ini_dialog *d;
@@ -496,6 +545,7 @@ static void draw_comp(lt_app *app, ini_state *st, const lt_ini_dialog *dlg, size
         field_label(app, label, c, enabled);
         if (c != NULL && c->help != NULL) { lt_ui_tooltip(ui, c->help); }
         if (c != NULL) {
+            reveal_focus(app, st, cm, enabled);
             value_widget(app, st, c, cm->kind == LT_COMP_DISPLAYONLY);
             if (c->help != NULL) { lt_ui_tooltip(ui, c->help); }
             units_cell(app, c, n == 3);
@@ -512,6 +562,7 @@ static void draw_comp(lt_app *app, ini_state *st, const lt_ini_dialog *dlg, size
         lt_ui_layout_row(ui, 1, &w1, 0);
         if (c != NULL && val_get(app, c, &v) == 0) {
             int on = ((v != 0.0) ? 1 : 0) ^ (cm->flip ? 1 : 0);
+            reveal_focus(app, st, cm, enabled);
             if (lt_ui_checkbox(ui, label, &on)) { val_set(app, c, (double)(on ^ (cm->flip ? 1 : 0))); }
             if (c->help != NULL) { lt_ui_tooltip(ui, c->help); }
         } else {
@@ -528,6 +579,7 @@ static void draw_comp(lt_app *app, ini_state *st, const lt_ini_dialog *dlg, size
             if (!(hi > lo)) { lo = 0; hi = 100; }
             lt_uconv_range(&uc, &lo, &hi);
             v = lt_uconv_to_disp(&uc, v);
+            reveal_focus(app, st, cm, enabled);
             if (lt_ui_slider(ui, c->name, &v, lo, hi, lt_uconv_digits(&uc, c->digits))) {
                 val_set(app, c, lt_uconv_from_disp(&uc, v));
             }
@@ -556,6 +608,7 @@ static void draw_comp(lt_app *app, ini_state *st, const lt_ini_dialog *dlg, size
             const char *items[32] = { NULL };
             size_t m = cm->n_options < 32 ? cm->n_options : 32;
             for (o = 0; o < m; o++) { items[o] = cm->options[o].label != NULL ? cm->options[o].label : ""; }
+            reveal_focus(app, st, cm, enabled);
             ch = lt_ui_combo(ui, "sel", &sel, items, (int)m);
         }
         if (ch && sel >= 0 && (size_t)sel < cm->n_options) {
@@ -626,6 +679,8 @@ static void draw_comp(lt_app *app, ini_state *st, const lt_ini_dialog *dlg, size
         break;
     }
     lt_ui_disabled_end(ui);
+    if (reveal_this(app, st, cm)) { lt_ui_focus_next_drop(ui); }    /* its input was disabled */
+    reveal_outline(app, st, cm);
     lt_ui_pop_id(ui);
 }
 
@@ -820,6 +875,12 @@ static void ini_dialog_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
     }
     st->close_req = 0;
     st->stacked = 0;
+    st->revealed = 0;
+    st->reveal = app->reveal.comp != NULL && strcmp(app->reveal.tab, tab->target) == 0;
+    if (st->reveal && app->reveal.t0 == 0.0 && ++app->reveal.frames > 30) {
+        app->reveal.comp = NULL;                /* hidden by a condition: never drawn */
+        st->reveal = 0;
+    }
     memset(st->counts, 0, sizeof(st->counts));
     if (app->ini == NULL) { return; }
     dlg = find_panel(app, tab->target);
@@ -901,6 +962,13 @@ int lt_dlg_ini_stacked(lt_app *app, const char *name, int *overflow)
     const ini_state *st = tab != NULL ? (const ini_state *)tab->data : NULL;
     if (overflow != NULL) { *overflow = st != NULL ? st->overflow : 0; }
     return st != NULL ? st->stacked : -1;
+}
+
+int lt_dlg_ini_revealed(lt_app *app, const char *name)
+{
+    lt_app_tab *tab = lt_app_tab_find(app, "dialog", name);
+    const ini_state *st = tab != NULL ? (const ini_state *)tab->data : NULL;
+    return st != NULL && st->revealed;
 }
 
 void lt_dlg_register_ini(lt_app *app)

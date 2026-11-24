@@ -9,6 +9,7 @@
 #include "feat.h"
 #include "app_ttyshot.h"
 #include "iniext.h"
+#include "search_index.h"
 
 
 static const char *const theme_names[] = { "dark", "light", "midnight", "carbon", "synthwave",
@@ -758,7 +759,7 @@ static lt_bool subtree_matches(const lt_ini_menu_item *it, const char *q)
 }
 
 static void sidebar_items(lt_app *app, lt_ini_menu_item *const *items, size_t n, const char *q,
-                          lt_bool parent_match, const char *active, int *counter)
+                          lt_bool parent_match, const char *active, int *counter, int *in_focus)
 {
     size_t i;
     char lab[160];
@@ -778,9 +779,10 @@ static void sidebar_items(lt_app *app, lt_ini_menu_item *const *items, size_t n,
             if (q[0] != '\0' && !parent_match && !subtree_matches(it, q)) { lt_ui_pop_id(ui); continue; }
             ico = node_icon(lab, NODE_FOLDER, &ic, th);
             r = lt_ui_tree_node_ex(ui, lab, LT_UI_LUCIDE(ico), ic, q[0] ? LT_UI_TREE_FORCE_OPEN : 0);
+            if (lt_ui_last_focused(ui)) { *in_focus = 1; }
             if (r & LT_UI_TREE_OPEN) {
                 sidebar_items(app, items[i]->items, items[i]->n_items, q, parent_match || self,
-                              active, counter);
+                              active, counter, in_focus);
                 lt_ui_tree_end(ui);
             }
         } else {
@@ -798,48 +800,175 @@ static void sidebar_items(lt_app *app, lt_ini_menu_item *const *items, size_t n,
             }
             ico = node_icon(lab, type, &ic, th);
             r = lt_ui_tree_node_ex(ui, lab, LT_UI_LUCIDE(ico), ic, fl);
+            if (lt_ui_last_focused(ui)) { *in_focus = 1; }
             if (r & LT_UI_TREE_CLICKED) { lt_app_open_target(app, it->target, it->label); }
         }
         lt_ui_pop_id(ui);
     }
 }
 
-/* first leaf the filtered sidebar shows (an enabled one when there is one): Enter in the search
- * field opens it */
-static const lt_ini_menu_item *search_first(lt_app *app, lt_ini_menu_item *const *items, size_t n,
-                                            const char *q, lt_bool parent_match, lt_bool want_enabled)
+/* ---- the settings search: fields inside the dialogs, below the tree ---- */
+#define SEARCH_MAX 50
+
+static int sidx_cond(void *ud, const char *c) { return env_test((lt_app *)ud, c) ? 1 : 0; }
+
+static lt_sidx *search_index(lt_app *app)
+{
+    if (app->sidx == NULL && app->ini != NULL) { app->sidx = lt_sidx_build(app->ini); }
+    return app->sidx;
+}
+
+/* the field's dialog as a tab; the dialog view then focuses the field and outlines it */
+static void open_field(lt_app *app, const lt_sidx_hit *h)
+{
+    lt_app_open_target(app, h->target, h->title);
+    app->reveal.comp = h->comp;
+    lt_strlcpy(app->reveal.tab, h->target, sizeof(app->reveal.tab));
+    app->reveal.t0 = 0.0;
+    app->reveal.frames = 0;
+    if (!lt_sidx_visible(app->sidx, h->entry, sidx_cond, app)) {
+        lt_app_toast(app, 0, lt_tr("\"%s\" is hidden by another setting in %s"), h->caption, h->title);
+    }
+}
+
+/* the best leaf of the filtered tree for Enter: an enabled one before a disabled one, then the
+ * best score (lt_sidx_score, so that it compares with the fields), then the first */
+static void search_best_leaf(lt_app *app, lt_ini_menu_item *const *items, size_t n, const char *q,
+                             lt_bool parent_match, const lt_ini_menu_item **best, int *rank)
 {
     size_t i;
     for (i = 0; i < n; i++) {
-        const lt_ini_menu_item *it = items[i], *f;
+        const lt_ini_menu_item *it = items[i];
         if (it->kind == LT_MENU_SEPARATOR ||
             (it->target != NULL && strcmp(it->target, "std_separator") == 0)) { continue; }
         if (!env_test(app, it->vis_cond)) { continue; }
         if (it->kind == LT_MENU_SUBMENU) {
-            f = search_first(app, it->items, it->n_items, q, parent_match || item_matches(it, q), want_enabled);
-            if (f != NULL) { return f; }
-        } else if (it->target != NULL && (parent_match || item_matches(it, q)) &&
-                   (!want_enabled || env_test(app, it->en_cond))) {
-            return it;
+            search_best_leaf(app, it->items, it->n_items, q, parent_match || item_matches(it, q), best, rank);
+        } else if (it->target != NULL && (parent_match || item_matches(it, q))) {
+            char lab[160];
+            int s, s2, r;
+            clean_label(lab, sizeof(lab), it->label != NULL ? it->label : it->target);
+            s = lt_sidx_score(lab, q);
+            s2 = lt_sidx_score(it->target, q);
+            if (s2 > s) { s = s2; }
+            if (s == 0) { s = 1; }                    /* shown for its folder's name */
+            r = (env_test(app, it->en_cond) ? 1000 : 0) + s;
+            if (r > *rank) { *rank = r; *best = it; }
         }
     }
-    return NULL;
 }
 
-static void search_open_first(lt_app *app)
+/* Enter in the search box: the best match of the tree and the settings; the tree on a tie */
+static void search_open_best(lt_app *app)
 {
     const lt_ini *ini = app->ini;
-    const lt_ini_menu_item *f = NULL;
-    size_t i;
-    int pass;
-    for (pass = 0; pass < 2 && f == NULL; pass++) {
-        for (i = 0; i < ini->n_menus && f == NULL; i++) {
-            f = search_first(app, ini->menus[i].items, ini->menus[i].n_items, app->search,
-                             icontains(ini->menus[i].title, app->search), pass == 0);
-        }
+    const lt_ini_menu_item *leaf = NULL;
+    const lt_sidx_hit *hits = NULL;
+    size_t i, nh;
+    int rank = 0;
+    for (i = 0; i < ini->n_menus; i++) {
+        search_best_leaf(app, ini->menus[i].items, ini->menus[i].n_items, app->search,
+                         icontains(ini->menus[i].title, app->search), &leaf, &rank);
     }
-    if (f != NULL) { lt_app_open_target(app, f->target, f->label); }
-    else { lt_app_toast(app, 2, "Nothing in the sidebar matches \"%s\"", app->search); }
+    nh = lt_sidx_query(search_index(app), app->search, SEARCH_MAX, &hits, NULL);
+    if (leaf != NULL && (nh == 0 || rank % 1000 >= hits[0].score)) {
+        lt_app_open_target(app, leaf->target, leaf->label);
+    } else if (nh > 0) {
+        open_field(app, &hits[0]);
+    } else {
+        lt_app_toast(app, 2, "Nothing in the sidebar matches \"%s\"", app->search);
+    }
+}
+
+static size_t u8_cols(const char *s)
+{
+    size_t n = 0;
+    for (; *s != '\0'; s++) { if (((unsigned char)*s & 0xC0) != 0x80) { n++; } }
+    return n;
+}
+
+/* "Caption - Dialog" in cols terminal columns (0: no limit): the dialog's name is shortened at
+ * its end first, so that the caption keeps its words as long as it can */
+static void field_row_label(char *out, size_t cap, const char *caption, const char *title, int cell,
+                            int cols, const char *suffix)
+{
+    const char *dash = cell ? " - " : " \xE2\x80\x94 ";
+    size_t lc = u8_cols(caption), ls = u8_cols(suffix), keep, n = 0, chars = 0;
+    char t[160];
+    lt_snprintf(out, cap, "%s%s%s%s", caption, dash, title, suffix);
+    if (!cell || cols <= 0 || u8_cols(out) <= (size_t)cols) { return; }
+    keep = (size_t)cols > lc + 3 + ls + 1 ? (size_t)cols - lc - 3 - ls - 1 : 0;    /* 1: the ellipsis */
+    if (keep < 4) {                     /* not even a word of it: the caption alone */
+        lt_snprintf(out, cap, "%s%s", caption, suffix);
+        return;
+    }
+    while (title[n] != '\0' && n + 4 < sizeof(t)) {
+        if (((unsigned char)title[n] & 0xC0) != 0x80) {
+            if (chars == keep) { break; }
+            chars++;
+        }
+        t[n] = title[n];
+        n++;
+    }
+    t[n] = '\0';
+    lt_snprintf(out, cap, "%s%s%s\xE2\x80\xA6%s", caption, dash, t, suffix);
+}
+
+/* the "Settings" part of the results: "Caption - Dialog" rows, best first */
+static size_t search_fields(lt_app *app, int *in_focus)
+{
+    lt_ui *ui = app->ui;
+    const lt_theme *t = lt_ui_theme(ui);
+    int cell = lt_ui_cell_mode(ui), w1 = -1;
+    const lt_sidx_hit *hits = NULL;
+    size_t nh, total = 0, k;
+    char lab[300], cap[160];
+    lt_sidx *x = search_index(app);
+    if (x == NULL) { return 0; }
+    nh = lt_sidx_query(x, app->search, SEARCH_MAX, &hits, &total);
+    if (nh == 0) { return 0; }
+    lt_ui_layout_row_px(ui, 1, &w1, t->tree_row_h);
+    {
+        lt_rect hr = lt_ui_layout_next(ui);
+        size_t j;
+        lt_snprintf(cap, sizeof(cap), "%s", lt_tr("Settings"));
+        if (!cell) { for (j = 0; cap[j] != '\0'; j++) { if (cap[j] >= 'a' && cap[j] <= 'z') { cap[j] = (char)(cap[j] - 32); } } }
+        lt_ui_draw_text_in_f(ui, lt_rect_make(hr.x + (cell ? 8 : t->padding), hr.y, hr.w - (cell ? 8 : 2 * t->padding), hr.h),
+                             cap, t->text2, 0, (int)LT_FONT_SANS_SEMIBOLD, LT_UI_FS_SM);
+    }
+    lt_ui_push_id(ui, "settings-results");
+    for (k = 0; k < nh; k++) {
+        const lt_sidx_hit *h = &hits[k];
+        int vis = lt_sidx_visible(x, h->entry, sidx_cond, app), r;
+        lt_snprintf(cap, sizeof(cap), "%s%s", vis ? "" : " ", vis ? "" : lt_tr("(hidden by another setting)"));
+        field_row_label(lab, sizeof(lab), h->caption, h->title, cell, (lt_ui_layout_width(ui) - 32) / 8, cap);
+        lt_ui_push_id_int(ui, (int)k);
+        r = lt_ui_tree_node_ex(ui, lab, LT_UI_LUCIDE(LT_ICON_SLIDERS_HORIZONTAL), vis ? t->success : t->muted,
+                               LT_UI_TREE_LEAF | (vis ? 0 : LT_UI_TREE_DISABLED));
+        if (h->comp->name != NULL && strcmp(h->comp->name, h->caption) != 0) {
+            lt_snprintf(lab, sizeof(lab), "%s (%s) %s %s", h->caption, h->comp->name, cell ? "-" : "\xE2\x80\x94", h->title);
+        }
+        lt_ui_tooltip(ui, lab);
+        if (lt_ui_last_focused(ui)) { *in_focus = 1; }
+        if (r & LT_UI_TREE_CLICKED) { open_field(app, h); }
+        lt_ui_pop_id(ui);
+    }
+    lt_ui_pop_id(ui);
+    if (total > nh) {
+        lt_snprintf(lab, sizeof(lab), lt_tr("%d more: type more to narrow the list"), (int)(total - nh));
+        lt_ui_layout_indent(ui, cell ? 1 : 8);
+        lt_ui_label_wrap(ui, lab, t->muted);
+        lt_ui_layout_indent(ui, cell ? -1 : -8);
+    }
+    return nh;
+}
+
+/* Esc in the search box or its results: empty it and give the focus back */
+static void search_leave(lt_app *app)
+{
+    app->search[0] = '\0';
+    lt_ui_set_focus(app->ui, app->search_ret);
+    app->search_in = 0;
 }
 
 static void sidebar(lt_app *app, lt_rect r)
@@ -847,15 +976,17 @@ static void sidebar(lt_app *app, lt_rect r)
     lt_ui *ui = app->ui;
     const lt_theme *t = lt_ui_theme(ui);
     const lt_ini *ini = app->ini;
-    int w1 = -1, counter = 0, sres = 0, shown = 0;
+    int w1 = -1, counter = 0, sres = 0, shown = 0, in_focus = 0, left = 0;
     int cell = lt_ui_cell_mode(ui);
     int hh = t->tab_h, sh = cell ? 16 : lt_ui_px(ui, 30);
-    size_t i;
+    size_t i, nfields = 0;
     char lab[160], title[160];
     const char *active = NULL;
     lt_rect hdr, srow, sin, tree;
+    lt_u32 sid = 0, focus0 = lt_ui_focus(ui);
     lt_app_tab *at = lt_app_tab_active(app);
     if (at != NULL) { active = at->target; }
+    if (!app->search_in) { app->search_ret = focus0; }             /* where Esc goes back to */
     lt_ui_region_begin(ui, r, t->sidebar);
     /* header: project name in small caps */
     hdr = lt_rect_make(r.x, r.y, r.w, hh);
@@ -890,8 +1021,22 @@ static void sidebar(lt_app *app, lt_rect r)
         lt_ui_text_style(ui, (int)LT_FONT_SANS, LT_UI_FS_SM);
         sres = lt_ui_text(ui, "search", app->search, sizeof(app->search), 0);
         lt_ui_text_style_reset(ui);
-        if ((sres & LT_UI_SUBMIT) && ini != NULL && app->search[0] != '\0') { search_open_first(app); }
-        if (ini != NULL && lt_hk_pressed(app, "sidebar.search")) { lt_ui_set_focus(ui, lt_ui_last_id(ui)); }
+        sid = lt_ui_last_id(ui);
+        if (ini != NULL && lt_ui_last_focused(ui)) {
+            in_focus = 1;
+            if (lt_ui_key_take(ui, LT_KEY_DOWN, 0)) { lt_ui_focus_next(ui, LT_TRUE); }   /* into the results */
+        }
+        if (sres & LT_UI_CANCEL) {
+            (void)lt_ui_key_take(ui, LT_KEY_ESCAPE, 0);   /* an untouched field leaves its Esc */
+            search_leave(app);
+            left = 1;
+        }
+        if ((sres & LT_UI_SUBMIT) && ini != NULL && app->search[0] != '\0') { search_open_best(app); }
+        if (ini != NULL && (app->search_focus || lt_hk_pressed(app, "sidebar.search"))) {
+            app->search_focus = 0;
+            lt_ui_set_focus(ui, sid);
+            in_focus = 1;
+        }
         if (app->search[0] == '\0' && !lt_ui_text_focused(ui)) {
             lt_rect sr = lt_ui_last_rect(ui);
             lt_ui_draw_text_in_f(ui, lt_rect_make(sr.x + t->pad_x, sr.y, sr.w - 2 * t->pad_x, sr.h),
@@ -901,7 +1046,8 @@ static void sidebar(lt_app *app, lt_rect r)
             lt_ui_region_begin(ui, cr, 0);
             lt_ui_layout_row_px(ui, 1, &w1, cr.h);
             lt_ui_layout_gap(ui, 0, 0);
-            if (lt_ui_icon_button(ui, cell ? LT_UI_ICON_CLOSE : LT_UI_LUCIDE(LT_ICON_X), lt_tr("Clear search"), 0)) { app->search[0] = '\0'; }
+            if (lt_ui_icon_button(ui, cell ? LT_UI_ICON_CLOSE : LT_UI_LUCIDE(LT_ICON_X), lt_tr("Clear search"),
+                                  LT_UI_BTN_NOTAB)) { app->search[0] = '\0'; }
             lt_ui_region_end(ui);
         }
         lt_ui_region_end(ui);
@@ -918,7 +1064,7 @@ static void sidebar(lt_app *app, lt_rect r)
         lt_ui_pop_id(ui);
         lt_ui_region_end(ui);
     }
-    /* tree */
+    /* tree, then the settings that match the search */
     tree = lt_rect_make(r.x, srow.y + srow.h, r.w, r.h - hh - sh);
     if (ini == NULL) { lt_ui_region_end(ui); return; }
     lt_ui_region_begin(ui, tree, 0);
@@ -926,12 +1072,13 @@ static void sidebar(lt_app *app, lt_rect r)
     if (lt_ui_scroll_begin(ui, "tree")) {
         lt_ui_layout_gap(ui, 0, 0);
         lt_ui_layout_row_px(ui, 1, &w1, t->tree_row_h);
+        lt_ui_tree_prev(ui, sid);                    /* Up from the first entry: the search box */
         for (i = 0; i < ini->n_menus; i++) {
             const lt_ini_menu *m = &ini->menus[i];
             size_t k;
             lt_bool any = LT_FALSE;
             lt_color ic;
-            int ico;
+            int ico, res;
             if (app->search[0] != '\0') {
                 if (!icontains(m->title, app->search)) {
                     for (k = 0; k < m->n_items && !any; k++) { any = subtree_matches(m->items[k], app->search); }
@@ -942,28 +1089,38 @@ static void sidebar(lt_app *app, lt_rect r)
             clean_label(lab, sizeof(lab), m->title);
             lt_ui_push_id_int(ui, 100000 + (int)i);
             ico = node_icon(lab, NODE_FOLDER, &ic, t);
-            if (lt_ui_tree_node_ex(ui, lab, LT_UI_LUCIDE(ico), ic,
-                                   app->search[0] ? LT_UI_TREE_FORCE_OPEN : (i < 2 ? LT_UI_TREE_DEFAULT_OPEN : 0))
-                & LT_UI_TREE_OPEN) {
+            res = lt_ui_tree_node_ex(ui, lab, LT_UI_LUCIDE(ico), ic,
+                                     app->search[0] ? LT_UI_TREE_FORCE_OPEN : (i < 2 ? LT_UI_TREE_DEFAULT_OPEN : 0));
+            if (lt_ui_last_focused(ui)) { in_focus = 1; }
+            if (res & LT_UI_TREE_OPEN) {
                 sidebar_items(app, m->items, m->n_items, app->search,
-                              app->search[0] != '\0' && icontains(m->title, app->search), active, &counter);
+                              app->search[0] != '\0' && icontains(m->title, app->search), active, &counter,
+                              &in_focus);
                 lt_ui_tree_end(ui);
             }
             lt_ui_pop_id(ui);
         }
-        if (shown == 0 && app->search[0] != '\0') {
+        if (app->search[0] != '\0') { nfields = search_fields(app, &in_focus); }
+        if (shown == 0 && nfields == 0 && app->search[0] != '\0') {
             lt_ui_layout_indent(ui, cell ? 1 : 8);
-            lt_ui_label_wrap(ui, lt_tr("No menu entry matches. The search looks at the names in this "
-                                       "tree, not at the settings inside the dialogs."), t->muted);
+            lt_ui_label_wrap(ui, lt_tr("No menu entry or setting matches."), t->muted);
         }
         lt_ui_scroll_end(ui);
     }
     lt_ui_region_end(ui);
     lt_ui_region_end(ui);
+    if (!left && in_focus && app->search[0] != '\0' && lt_ui_key_pressed(ui, LT_KEY_ESCAPE, 0)) {
+        search_leave(app);
+        left = 1;
+    }
+    /* Up/Down between the entries move the focus from one to another while they are drawn */
+    if (app->search_in && lt_ui_focus(ui) != focus0) { in_focus = 1; }
+    app->search_in = left ? 0 : in_focus;
 }
 
 /* ------------------------------------------------------------------ */
 /* status bar                                                          */
+
 /* terminal status bar: connection | activity ...... project | [Burn] | rate | units | version.
  * Optional items drop out (rightmost first) when the terminal is narrow. */
 static void statusbar_cell(lt_app *app)
@@ -1199,6 +1356,11 @@ static void shortcuts(lt_app *app)
     if (lt_hk_pressed(app, "conn.connect")) { lt_app_connect(app); }
     if (lt_hk_pressed(app, "conn.settings")) { (void)lt_app_connect_dialog(app); }
     if (app->ini == NULL) { return; }
+    if (!app->settings.sidebar_on && lt_hk_pressed(app, "sidebar.search")) {   /* show it, then search */
+        app->settings.sidebar_on = 1;
+        app->search_focus = 1;
+        lt_app_settings_save(app);
+    }
     if (lt_hk_pressed(app, "file.load_tune")) {
         lt_app_file_dialog(app, LT_APP_FD_LOAD_TUNE, LT_UI_FILE_OPEN, NULL, "", "Tune files|*.msq;*.xml|All files|*");
     }

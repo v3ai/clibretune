@@ -39,5 +39,8 @@ int lt_dlg_ini_counts(lt_app *app, const char *name, int *counts);
  * in its last frame because the window was too narrow for them; -1 when no such tab was drawn.
  * *overflow (may be NULL) = how many device px its content is wider than the tab, 0 none. */
 int lt_dlg_ini_stacked(lt_app *app, const char *name, int *overflow);
+/* Test hook: the dialog tab `name` outlined a field opened from the settings search in its last
+ * frame */
+int lt_dlg_ini_revealed(lt_app *app, const char *name);
 
 #endif

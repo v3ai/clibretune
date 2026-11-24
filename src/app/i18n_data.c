@@ -5,6 +5,10 @@
 #include "i18n.h"
 
 static const lt_i18n_pair tab_pt_BR[] = {
+    { "\"%s\" is hidden by another setting in %s",
+      "\"%s\" est\303\241 oculto por outra configura\303\247\303\243o em %s" },
+    { "%d more: type more to narrow the list",
+      "Mais %d: digite mais para refinar a lista" },
     { "&AI Assistant",
       "&Assistente de IA" },
     { "&About LibreTune",
@@ -83,6 +87,8 @@ static const lt_i18n_pair tab_pt_BR[] = {
       "&Manual do Usu\303\241rio" },
     { "&View",
       "&Visualizar" },
+    { "(hidden by another setting)",
+      "(oculto por outra configura\303\247\303\243o)" },
     { "AFR &Delay Test...",
       "Teste de &atraso do AFR..." },
     { "Add",
@@ -333,6 +339,8 @@ static const lt_i18n_pair tab_pt_BR[] = {
       "Nenhuma p\303\241gina encontrada" },
     { "No matching section",
       "Nenhuma se\303\247\303\243o encontrada" },
+    { "No menu entry or setting matches.",
+      "Nenhuma entrada de menu ou configura\303\247\303\243o corresponde." },
     { "No project is open",
       "Nenhum projeto aberto" },
     { "No recent projects yet.",
@@ -548,6 +556,10 @@ static const lt_i18n_pair tab_pt_BR[] = {
 };
 
 static const lt_i18n_pair tab_hu_HU[] = {
+    { "\"%s\" is hidden by another setting in %s",
+      "\"%s\" rejtve van egy m\303\241sik be\303\241ll\303\255t\303\241s miatt itt: %s" },
+    { "%d more: type more to narrow the list",
+      "M\303\251g %d: \303\255rjon t\303\266bbet a lista sz\305\261k\303\255t\303\251s\303\251hez" },
     { "&AI Assistant",
       "&AI Asszisztens" },
     { "&About LibreTune",
@@ -626,6 +638,8 @@ static const lt_i18n_pair tab_hu_HU[] = {
       "Felhasznl\303\263i k\303\251zik\303\266nyv" },
     { "&View",
       "&N\303\251zet" },
+    { "(hidden by another setting)",
+      "(egy m\303\241sik be\303\241ll\303\255t\303\241s elrejti)" },
     { "AFR &Delay Test...",
       "AFR &k\303\251sleltet\303\251si teszt..." },
     { "Add",
@@ -870,6 +884,8 @@ static const lt_i18n_pair tab_hu_HU[] = {
       "Nincs tal\303\241lat" },
     { "No matching section",
       "Nincs tal\303\241lat" },
+    { "No menu entry or setting matches.",
+      "Nincs egyez\305\221 men\303\274pont vagy be\303\241ll\303\255t\303\241s." },
     { "No project is open",
       "Nincs projekt megnyitva" },
     { "No recent projects yet.",

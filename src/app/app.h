@@ -165,6 +165,17 @@ struct lt_app {
 
     /* shell UI state */
     char        search[64];
+    struct lt_sidx *sidx;            /* settings search index of `ini`, built on the first search */
+    lt_u32      search_ret;          /* focus to go back to when Esc leaves the search */
+    int         search_focus;        /* 1: focus the search box when the sidebar is next drawn */
+    int         search_in;           /* the focus was in the search box or its results last frame */
+    /* a field opened from the settings search: focus it in its dialog tab, outline it briefly */
+    struct {
+        const void *comp;            /* lt_ini_comp to find, NULL none */
+        char        tab[96];         /* the dialog tab it is in */
+        double      t0;              /* when it was focused (ms), 0 still to find */
+        int         frames;          /* frames of that tab drawn while looking for it */
+    } reveal;
     lt_ui_filedlg fd;
     int         fd_purpose;          /* LT_APP_FD_* */
     int         burn_open, quit_open, close_proj_open, reset_open;

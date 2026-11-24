@@ -8,6 +8,7 @@
 #include "app_ext.h"
 #include "feat.h"
 #include "iniext.h"
+#include "search_index.h"
 #include "../project/inidb.h"
 
 static const char *g_build_id = "dev";
@@ -948,6 +949,9 @@ void lt_app_close_project(lt_app *app)
     }
     /* tabs drawn this frame may have queued draw callbacks that still read the definition */
     if (app->ini != NULL) { lt_ui_after_frame(app->ui, ini_free_later, app->ini); app->ini = NULL; }
+    lt_sidx_free(app->sidx);
+    app->sidx = NULL;
+    app->reveal.comp = NULL;
     lt_expr_cache_free(&app->expr);
     lt_expr_cache_init(&app->expr);
     app->modified = 0;
@@ -1344,6 +1348,9 @@ int lt_app_reload_ini(lt_app *app)
     (void)lt_tune_capture_from_pages(app->tune, ini);
     lt_ui_after_frame(app->ui, ini_free_later, app->ini);      /* see lt_app_close_project */
     app->ini = ini;
+    lt_sidx_free(app->sidx);
+    app->sidx = NULL;
+    app->reveal.comp = NULL;
     lt_expr_cache_free(&app->expr);
     lt_expr_cache_init(&app->expr);
     app->rt = lt_ini_rt_new(ini);

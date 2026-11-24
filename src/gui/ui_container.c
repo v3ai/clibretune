@@ -762,6 +762,8 @@ int lt_ui_tree_node_ex(lt_ui *ui, const char *label, int icon, lt_color icon_col
     return out;
 }
 
+void lt_ui_tree_prev(lt_ui *ui, lt_u32 id) { ui->prev_tree = id; }
+
 void lt_ui_tree_set_all(lt_ui *ui, int open)
 {
     ui->tree_cmd = open ? 1 : 2;

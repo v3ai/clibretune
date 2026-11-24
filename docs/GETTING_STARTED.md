@@ -112,7 +112,12 @@ connect and read it.
 
 ## 4. Find your way around
 
-- The sidebar is the ECU's own menu tree from its INI; **Ctrl+K** searches it and **Enter** opens the first match.
+- The sidebar is the ECU's own menu tree from its INI. **Ctrl+K** searches it and every setting
+  inside its dialogs, by caption or by the INI's constant name: matching entries of the tree come
+  first, then a **Settings** list of fields ("Caption — Dialog"), best match first. **Down** moves
+  into the results, **Enter** opens the best match or the selected one (a field opens its dialog
+  with the field focused and outlined for a moment), **Esc** empties the search and goes back to
+  where you were. Fields that another setting hides are listed greyed, "(hidden by another setting)".
   Drag its right edge to make it wider or narrower (double-click the edge for the default width);
   **F9** hides and shows it. Both are remembered.
 - Tables: arrow keys or the mouse select, type a number to set, `+`/`-` step, `=` average,

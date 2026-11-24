@@ -157,3 +157,7 @@ Connection Settings	Configurações de conexão	Kapcsolat beállításai
 Connect (saved port)	Conectar (porta salva)	Csatlakozás (mentett port)
 Connect to my ECU	Conectar à minha ECU	Csatlakozás az ECU-mhoz
 Connect: find the ECU (Connect ECU wizard)	Conectar: encontrar a ECU (assistente de conexão)	Csatlakozás: az ECU megkeresése (csatlakozási varázsló)
+(hidden by another setting)	(oculto por outra configuração)	(egy másik beállítás elrejti)
+"%s" is hidden by another setting in %s	"%s" está oculto por outra configuração em %s	"%s" rejtve van egy másik beállítás miatt itt: %s
+%d more: type more to narrow the list	Mais %d: digite mais para refinar a lista	Még %d: írjon többet a lista szűkítéséhez
+No menu entry or setting matches.	Nenhuma entrada de menu ou configuração corresponde.	Nincs egyező menüpont vagy beállítás.

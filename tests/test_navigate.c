@@ -10,6 +10,7 @@
 #include "../src/app/dialogs_embed.h"
 #include "../src/app/feat.h"
 #include "../src/app/hotkeys.h"
+#include "../src/app/search_index.h"
 #include "../src/plat/plat.h"
 
 static void sandbox(const char *tag)
@@ -160,7 +161,7 @@ static void mouse(lt_app *app, int type, int x, int y)
 {
     lt_event ev;
     memset(&ev, 0, sizeof(ev));
-    ev.type = type; ev.x = x; ev.y = y; ev.button = LT_MB_LEFT;
+    ev.type = (lt_ev_type)type; ev.x = x; ev.y = y; ev.button = LT_MB_LEFT;
     lt_ui_input(app->ui, &ev);
     run1(app);
 }
@@ -327,18 +328,276 @@ LT_TEST(narrow_panels)
     LT_CHECK(lt_app_screenshot(app, "build/test_navigate_gppwm1280.ppm", 1280, 800, 6) == 0);
     LT_CHECK(lt_dlg_ini_stacked(app, "gppwm1", &ov) == 0 && ov == 0);
     lt_app_free(app);
-    /* nothing overflows sideways, in any dialog of the rusEFI, Speeduino and MegaSquirt INIs */
+    /* nothing overflows sideways, in any dialog of the rusEFI and Speeduino INIs (the MegaSquirt
+     * fixtures are excerpts without dialogs) */
     LT_CHECK(overflowing_dialogs(ini, 800, 600, "100") == 0);
     LT_CHECK(overflowing_dialogs(ini, 1920, 1080, "200") == 0);
     LT_CHECK(overflowing_dialogs("tests/fixtures/ini/speeduino_202501.ini", 800, 600, "100") == 0);
     LT_CHECK(overflowing_dialogs("tests/fixtures/ini/speeduino_202501.ini", 1920, 1080, "200") == 0);
-    LT_CHECK(overflowing_dialogs("tests/fixtures/ini/ms3.ini", 800, 600, "100") == 0);
     LT_CHECK(overflowing_dialogs(ini, 100, 30, "tty") == 0);
     LT_CHECK(overflowing_dialogs("tests/fixtures/ini/speeduino_202501.ini", 100, 30, "tty") == 0);
 }
 
+/* ---- settings search: the fields inside the dialogs ---- */
+static int all_true(void *ud, const char *c) { LT_UNUSED(ud); LT_UNUSED(c); return 1; }
+static int all_false(void *ud, const char *c) { LT_UNUSED(ud); return c == NULL || c[0] == '\0'; }
+static int app_cond(void *ud, const char *c)
+{
+    lt_app *app = (lt_app *)ud;
+    return c == NULL || c[0] == '\0' || lt_expr_cache_test(&app->expr, c, &app->varenv.env);
+}
+
+LT_TEST(settings_index)
+{
+    char ini_path[512];
+    lt_ini *ini;
+    lt_sidx *x;
+    const lt_sidx_hit *h = NULL;
+    size_t n, total = 0, k, nfree = 0;
+    int found = 0;
+    /* whole word > start of a word > inside a word; camelCase and snake_case split words */
+    LT_CHECK(lt_sidx_score("P factor", "factor") == 3);
+    LT_CHECK(lt_sidx_score("P factor", "fact") == 2);
+    LT_CHECK(lt_sidx_score("Interfactor", "fact") == 1);
+    LT_CHECK(lt_sidx_score("idleRpmPid_pFactor", "factor") == 3);
+    LT_CHECK(lt_sidx_score("idleRpmPid_pFactor", "rpm") == 3);
+    LT_CHECK(lt_sidx_score("Boost control P gain", "boost gain") == 6);
+    LT_CHECK(lt_sidx_score("Boost control P gain", "boost zzz") == 0);
+    LT_CHECK(lt_sidx_score("ALS timeout", "TIMEOUT") == 3);
+    ini = lt_ini_load_file(lt_app_find_demo_ini(ini_path, sizeof(ini_path)), NULL);
+    LT_CHECK(ini != NULL);
+    if (ini == NULL) { return; }
+    x = lt_sidx_build(ini);
+    LT_CHECK(lt_sidx_count(x) > 1000);
+    /* by caption, best first */
+    n = lt_sidx_query(x, "pfactor", 50, &h, &total);
+    LT_CHECK(n > 3 && total >= n);
+    for (k = 0; k < n; k++) {
+        if (k > 0) { LT_CHECK(h[k - 1].score >= h[k].score); }
+        if (strcmp(h[k].caption, "pFactor") == 0 && strcmp(h[k].target, "etbDialog") == 0) {
+            found = 1;
+            LT_CHECK(strcmp(h[k].title, "Electronic throttle body") == 0);   /* the menu's name, no '&' */
+        }
+    }
+    LT_CHECK(found);
+    LT_CHECK(h[0].score == 4 && strcmp(h[0].caption, "pFactor") == 0);   /* the whole caption typed */
+    /* and by constant name: "Proportional gain" is idleTimingPid_pFactor */
+    found = 0;
+    for (k = 0; k < n; k++) {
+        if (strcmp(h[k].caption, "Proportional gain") == 0) {
+            found = 1;
+            LT_CHECK(h[k].comp->name != NULL && strstr(h[k].comp->name, "pFactor") != NULL);
+        }
+    }
+    LT_CHECK(found);
+    /* exact word before prefix before inside; on a tie a match in the caption before one in the
+     * constant name only, then the shorter caption */
+    n = lt_sidx_query(x, "idle", 50, &h, &total);
+    LT_CHECK(n == 50 && total > 50);
+    for (k = 1; k < n; k++) {
+        LT_CHECK(h[k - 1].score > h[k].score ||
+                 (h[k - 1].score == h[k].score && h[k - 1].in_caption > h[k].in_caption) ||
+                 (h[k - 1].score == h[k].score && h[k - 1].in_caption == h[k].in_caption &&
+                  strlen(h[k - 1].caption) <= strlen(h[k].caption)));
+    }
+    n = lt_sidx_query(x, "injection", 50, &h, &total);
+    LT_CHECK(n > 5 && h[0].in_caption == 1 && strcmp(h[0].caption, "Mode") != 0);   /* not injectionMode's "Mode" */
+    /* the same text again is the cached list */
+    LT_CHECK(lt_sidx_query(x, "idle", 50, &h, NULL) == 50);
+    /* every word must match */
+    n = lt_sidx_query(x, "boost gain", 50, &h, &total);
+    LT_CHECK(n > 0);
+    for (k = 0; k < n; k++) { LT_CHECK(lt_sidx_score(h[k].caption, "gain") > 0 || lt_sidx_score(h[k].comp->name, "gain") > 0); }
+    LT_CHECK(lt_sidx_query(x, "zzqqxx", 50, &h, &total) == 0 && total == 0);
+    /* visibility goes through the field's, its panels' and its menu entry's conditions */
+    n = lt_sidx_query(x, "pfactor", 50, &h, NULL);
+    for (k = 0; k < n; k++) {
+        LT_CHECK(lt_sidx_visible(x, h[k].entry, all_true, NULL));
+        if (!lt_sidx_visible(x, h[k].entry, all_false, NULL)) { nfree++; }
+    }
+    LT_CHECK(nfree > 0);
+    lt_sidx_free(x);
+    lt_ini_free(ini);
+    /* Speeduino */
+    ini = lt_ini_load_file("tests/fixtures/ini/speeduino_202501.ini", NULL);
+    LT_CHECK(ini != NULL);
+    if (ini == NULL) { return; }
+    x = lt_sidx_build(ini);
+    LT_CHECK(lt_sidx_count(x) > 300);
+    n = lt_sidx_query(x, "pairing", 10, &h, NULL);
+    LT_CHECK(n >= 1 && strcmp(h[0].caption, "Injector Pairing") == 0);
+    lt_sidx_free(x);
+    lt_ini_free(ini);
+}
+
+/* a key and the frame after it (a text field ends its editing when it is next drawn) */
+static void nav(lt_app *app, int k)
+{
+    key(app, k, 0);
+    run1(app);
+}
+
+static int sidebar_has(const char *txt, const char *s, int *line)
+{
+    const char *p = strstr(txt, s), *q;
+    if (p == NULL) { return 0; }
+    *line = 0;
+    for (q = txt; q < p; q++) { if (*q == '\n') { (*line)++; } }
+    return 1;
+}
+
+LT_TEST(settings_search)
+{
+    char ini[512];
+    lt_app *app;
+    const lt_sidx_hit *h = NULL;
+    lt_u32 f1, f2, ret;
+    size_t n;
+    int i, hid = -1;
+    sandbox("search");
+    app = lt_app_new();
+    LT_CHECK(lt_app_start_demo(app, lt_app_find_demo_ini(ini, sizeof(ini))) == 0);
+    LT_CHECK(lt_app_screenshot(app, "build/test_navigate_search.ppm", 1280, 800, 2) == 0);
+    /* Ctrl+K, a field's caption, Enter: its dialog opens as a tab, the field gets the focus and an
+     * outline for 1.5 s */
+    key(app, 'k', LT_MOD_CTRL);
+    run1(app);
+    LT_CHECK(lt_ui_text_focused(app->ui));
+    text(app, "ifactor");
+    LT_CHECK(app->sidx != NULL);
+    key(app, LT_KEY_ENTER, 0);
+    run1(app); run1(app);
+    LT_CHECK(lt_app_tab_find(app, "dialog", "etbDialog") != NULL);
+    LT_CHECK(lt_dlg_ini_revealed(app, "etbDialog"));
+    LT_CHECK(lt_ui_text_focused(app->ui) && !app->search_in);    /* editing the iFactor field */
+    ret = lt_ui_focus(app->ui);
+    for (i = 0; i < 25; i++) { run1(app); }
+    LT_CHECK(!lt_dlg_ini_revealed(app, "etbDialog") && app->reveal.comp == NULL);
+    LT_CHECK(lt_ui_focus(app->ui) == ret);
+    /* back in the search: Down into the results, Up and Down through them, Up from the first one
+     * back to the box; Esc there empties it and gives the focus back to the iFactor field */
+    key(app, 'k', LT_MOD_CTRL);
+    run1(app);
+    LT_CHECK(lt_ui_text_focused(app->ui) && app->search_in);
+    key(app, 'a', LT_MOD_CTRL);
+    text(app, "pfactor");                     /* no menu entry has it: the results are fields only */
+    LT_CHECK(strcmp(app->search, "pfactor") == 0);
+    nav(app, LT_KEY_DOWN);
+    f1 = lt_ui_focus(app->ui);
+    LT_CHECK(!lt_ui_text_focused(app->ui) && f1 != 0 && app->search_in);
+    nav(app, LT_KEY_DOWN);
+    f2 = lt_ui_focus(app->ui);
+    LT_CHECK(f2 != f1 && f2 != 0);
+    nav(app, LT_KEY_UP);
+    LT_CHECK(lt_ui_focus(app->ui) == f1);
+    nav(app, LT_KEY_UP);
+    LT_CHECK(lt_ui_text_focused(app->ui));
+    nav(app, LT_KEY_DOWN);
+    LT_CHECK(lt_ui_focus(app->ui) == f1);
+    key(app, LT_KEY_ESCAPE, 0);
+    run1(app);
+    LT_CHECK(app->search[0] == '\0' && lt_ui_focus(app->ui) == ret && !app->search_in);
+    /* Esc in the box itself does the same */
+    key(app, 'k', LT_MOD_CTRL);
+    run1(app);
+    text(app, "boost");
+    nav(app, LT_KEY_ESCAPE);
+    LT_CHECK(app->search[0] == '\0' && lt_ui_focus(app->ui) == ret);
+    /* Enter on a result opens that one */
+    key(app, 'k', LT_MOD_CTRL);
+    run1(app);
+    text(app, "pfactor");
+    n = lt_sidx_query(app->sidx, "pfactor", 50, &h, NULL);
+    LT_CHECK(n > 3);
+    nav(app, LT_KEY_DOWN);
+    nav(app, LT_KEY_DOWN);
+    nav(app, LT_KEY_DOWN);
+    key(app, LT_KEY_ENTER, 0);
+    run1(app); run1(app);
+    LT_CHECK(lt_app_tab_active(app) != NULL && strcmp(lt_app_tab_active(app)->target, h[2].target) == 0);
+    LT_CHECK(lt_dlg_ini_revealed(app, h[2].target));
+    /* the clear button is not in the Tab order: Tab from the box goes to "Expand all" */
+    key(app, 'k', LT_MOD_CTRL);
+    run1(app);
+    i = app->tree_expanded;
+    nav(app, LT_KEY_TAB);
+    LT_CHECK(!lt_ui_text_focused(app->ui));
+    key(app, LT_KEY_ENTER, 0);
+    LT_CHECK(app->tree_expanded != i && strcmp(app->search, "pfactor") == 0);
+    /* a hidden field is found too; opening it says why it cannot be seen */
+    n = lt_sidx_query(app->sidx, "pfactor", 50, &h, NULL);
+    for (i = 0; i < (int)n && hid < 0; i++) { if (!lt_sidx_visible(app->sidx, h[i].entry, app_cond, app)) { hid = i; } }
+    LT_CHECK(hid >= 0);
+    key(app, 'k', LT_MOD_CTRL);
+    run1(app);
+    for (i = 0; i <= hid; i++) { nav(app, LT_KEY_DOWN); }
+    nav(app, LT_KEY_ENTER);
+    LT_CHECK(strcmp(lt_app_tab_active(app)->target, h[hid].target) == 0);
+    LT_CHECK(strstr(app->status, "is hidden by another setting") != NULL);
+    for (i = 0; i < 40; i++) { run1(app); }
+    LT_CHECK(app->reveal.comp == NULL);                       /* not drawn: given up */
+    /* Ctrl+K with the sidebar hidden shows it */
+    nav(app, LT_KEY_F9);
+    LT_CHECK(!app->settings.sidebar_on);
+    key(app, 'k', LT_MOD_CTRL);
+    run1(app);
+    run1(app);
+    LT_CHECK(app->settings.sidebar_on && lt_ui_text_focused(app->ui));
+    /* a new definition drops the index */
+    lt_app_close_project(app);
+    LT_CHECK(app->sidx == NULL && app->search[0] == '\0');
+    lt_app_free(app);
+}
+
+/* the terminal UI: "Settings" below the menu entries, hidden ones say so */
+LT_TEST(settings_search_tty)
+{
+    char ini[512], *txt = NULL;
+    lt_app *app;
+    size_t len = 0;
+    int l_tree = -1, l_set = -1, l_field = -1, l_hidden = -1;
+    sandbox("searchtty");
+    app = lt_app_new();
+    LT_CHECK(lt_app_start_demo(app, lt_app_find_demo_ini(ini, sizeof(ini))) == 0);
+    app->settings.sidebar_cols = 60;
+    lt_strlcpy(app->search, "injection", sizeof(app->search));
+    lt_plat_setenv("LT_SHOT_TEXT", "build/test_navigate_search.txt");
+    LT_CHECK(lt_app_screenshot(app, "build/test_navigate_search_tty.ppm", 160, 60, 3) == 0);
+    txt = lt_file_read("build/test_navigate_search.txt", &len);
+    LT_CHECK(txt != NULL);
+    if (txt != NULL) {
+        LT_CHECK(sidebar_has(txt, "Injection configuration", &l_tree));
+        LT_CHECK(sidebar_has(txt, "\n Settings ", &l_set));
+        LT_CHECK(sidebar_has(txt, " - Injection", &l_field));
+        LT_CHECK(l_tree >= 0 && l_set > l_tree && l_field > l_set);
+        lt_free(txt);
+        txt = NULL;
+    }
+    lt_strlcpy(app->search, "pfactor", sizeof(app->search));
+    LT_CHECK(lt_app_screenshot(app, "build/test_navigate_search_tty.ppm", 160, 60, 3) == 0);
+    txt = lt_file_read("build/test_navigate_search.txt", &len);
+    LT_CHECK(txt != NULL);
+    if (txt != NULL) {
+        LT_CHECK(sidebar_has(txt, "pFactor - Electronic throttle body", &l_field));
+        LT_CHECK(sidebar_has(txt, "(hidden by another setting)", &l_hidden));
+        LT_CHECK(strstr(txt, "No menu entry or setting matches") == NULL);
+        lt_free(txt);
+        txt = NULL;
+    }
+    lt_strlcpy(app->search, "zzqqxx", sizeof(app->search));
+    LT_CHECK(lt_app_screenshot(app, "build/test_navigate_search_tty.ppm", 160, 60, 3) == 0);
+    txt = lt_file_read("build/test_navigate_search.txt", &len);
+    LT_CHECK(txt != NULL);
+    if (txt != NULL) { LT_CHECK(strstr(txt, "No menu entry or setting matches") != NULL); lt_free(txt); }
+    lt_plat_setenv("LT_SHOT_TEXT", "");
+    lt_app_free(app);
+}
+
 int main(void)
 {
+    LT_RUN(settings_index);
+    LT_RUN(settings_search);
+    LT_RUN(settings_search_tty);
     LT_RUN(narrow_panels);
     LT_RUN(connect_entries);
     LT_RUN(ini_menu_access_keys);
