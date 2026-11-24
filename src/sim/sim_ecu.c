@@ -609,8 +609,8 @@ static lt_bool no_select(const lt_ecusim *s, size_t pg)
     return pg >= a->n || blank_blob(&a->v[pg]);
 }
 
-/* A burn command that several pages declare alike, with no page selection, stores them all
- * (the B&G "B" writes the whole flash block). */
+/* A burn command that several pages declare alike, with no page selection and no fields (so
+ * the same bytes for every page), stores them all (the B&G "B" writes the whole flash block). */
 static void burn_alike(lt_ecusim *s, int pg)
 {
     const lt_ini_cmdlist *b;
@@ -620,8 +620,9 @@ static void burn_alike(lt_ecusim *s, int pg)
         return;
     }
     b = &s->ini->proto.burn_commands;
-    if (b->n == 0 || ((size_t)pg >= b->n && b->n != 1)) {
-        return;
+    if (b->n == 0 || ((size_t)pg >= b->n && b->n != 1) ||
+        memchr(b->v[(size_t)pg < b->n ? pg : 0].p, '%', b->v[(size_t)pg < b->n ? pg : 0].n)) {
+        return;                    /* "B%2i": each page's own bytes */
     }
     for (j = 0; j < s->n_pages && (j < b->n || b->n == 1); j++) {
         const lt_ini_blob *bj = &b->v[j < b->n ? j : 0], *bp = &b->v[(size_t)pg < b->n ? pg : 0];
