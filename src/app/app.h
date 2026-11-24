@@ -41,7 +41,9 @@ typedef struct lt_app_tab lt_app_tab;
 typedef struct lt_app_dialog lt_app_dialog;
 typedef struct lt_app_ext lt_app_ext;     /* extension registry, see app_ext.h */
 
+#ifndef LT_APP_VERSION                  /* release builds pass it: LT_VERSION=x.y.z ./build.sh */
 #define LT_APP_VERSION "0.1.0"
+#endif
 
 typedef enum lt_app_conn {
     LT_APP_OFFLINE = 0, LT_APP_CONNECTING, LT_APP_ONLINE, LT_APP_DEMO

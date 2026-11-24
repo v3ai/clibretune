@@ -7,6 +7,7 @@
 #   TARGET   linux | macos | windows | bsd   (default: detected from uname)
 #   CC       compiler (default cc); e.g. CC=x86_64-w64-mingw32-gcc TARGET=windows
 #   CFLAGS   default -O2;  LDFLAGS extra link flags
+#   LT_VERSION  version the binary reports (release builds), e.g. 0.1.3 or v0.1.3
 #   STRICT   1 = -std=c89 + the full UNIVERSAL_C warning set, 23 = same with -std=c2x
 #   RUNNER   prefix for running test binaries (e.g. RUNNER=qemu-s390x);
 #            defaults to wine when TARGET=windows is cross-built on a non-Windows host
@@ -25,6 +26,13 @@ WARN="-Wall -Wextra -pedantic-errors -Werror -Wconversion -Wsign-conversion -Wsh
 -Wformat=2 -Wcast-align -Wstrict-prototypes -Wmissing-prototypes"
 CC=${CC:-cc}
 CFLAGS=${CFLAGS:--O2}
+if [ -n "${LT_VERSION:-}" ]; then
+    LT_VERSION=${LT_VERSION#v}
+    case $LT_VERSION in
+        *[!0-9A-Za-z.+-]*|'') echo "build.sh: bad LT_VERSION '$LT_VERSION'" >&2; exit 1 ;;
+    esac
+    CFLAGS="$CFLAGS -DLT_APP_VERSION=\"$LT_VERSION\""
+fi
 LDFLAGS=${LDFLAGS:-}
 case ${STRICT:-} in
     1)  CFLAGS="$CFLAGS -std=c89 $WARN" ;;

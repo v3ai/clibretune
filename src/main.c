@@ -21,7 +21,7 @@
 
 static void usage(void)
 {
-    puts("LibreTune 0.1.0 - open source ECU tuning software\n"
+    puts("LibreTune " LT_APP_VERSION " - open source ECU tuning software\n"
          "usage: libretune [options]\n"
          "  --backend NAME   GUI backend: auto x11 win32 cocoa web tty\n"
          "  --demo           start in demo mode (simulated ECU)\n"
@@ -42,7 +42,7 @@ int main(int argc, char **argv)
 
     for (i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) { usage(); return 0; }
-        if (strcmp(argv[i], "--version") == 0) { printf("libretune 0.1.0 (build %s)\n", LT_BUILD_ID); return 0; }
+        if (strcmp(argv[i], "--version") == 0) { printf("libretune %s (build %s)\n", LT_APP_VERSION, LT_BUILD_ID); return 0; }
         if (strcmp(argv[i], "--demo") == 0) { demo = 1; }
         else if (strcmp(argv[i], "--mcp") == 0) { mcp = 1; }
         else if (strcmp(argv[i], "--backend") == 0 && i + 1 < argc) { backend = argv[++i]; }

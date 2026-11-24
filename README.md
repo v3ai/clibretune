@@ -35,7 +35,10 @@ warning-free with gcc and clang for `-std=c89` through `-std=c2x`.
 `TARGET` is `linux`, `macos`, `windows` or `bsd` and is detected from `uname`; it selects the
 per-OS source files (`src/plat/<posix|win32>/`, `src/gui/os/<unix|macos|win32>/`) in
 `tools/target.sh`, never through `#ifdef`. See `docs/CONVENTIONS.md`. Prebuilt binaries for
-Linux (x86-64, ARM64), Windows and macOS (universal) are attached to each release.
+Linux (x86-64, ARM64), Windows and macOS (universal) are attached to each release. Every update
+of the website (`site/`) publishes a new release (next patch version, marked Latest) so its download
+buttons always serve a current build; every other push to `main` refreshes the `nightly`
+pre-release. `LT_VERSION=x.y.z ./build.sh app` sets the version the binary reports.
 
 ## Running
 

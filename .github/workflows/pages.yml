@@ -1,6 +1,7 @@
 name: Pages
 
-# Publishes site/ to GitHub Pages whenever it changes on main.
+# Publishes site/ to GitHub Pages whenever it changes on main, then publishes a new release
+# (next patch version, marked Latest) so the site's download links serve binaries of this commit.
 on:
   push:
     branches: [main]
@@ -30,3 +31,29 @@ jobs:
           path: site
       - id: deployment
         uses: actions/deploy-pages@v4
+
+  version:
+    needs: deploy
+    runs-on: ubuntu-latest
+    outputs:
+      next: ${{ steps.next.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: next
+        name: Next patch version
+        run: |
+          last=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' | sed 's/^v//' | sort -t. -k1,1n -k2,2n -k3,3n | tail -1)
+          [ -n "$last" ] || last=0.1.0
+          next=$(echo "$last" | awk -F. '{ printf "%d.%d.%d", $1, $2, $3 + 1 }')
+          echo "last release v$last, next v$next"
+          echo "version=$next" >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: version
+    permissions:
+      contents: write
+    uses: ./.github/workflows/release.yml
+    with:
+      version: ${{ needs.version.outputs.next }}

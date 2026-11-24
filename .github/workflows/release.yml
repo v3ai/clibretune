@@ -1,7 +1,9 @@
 name: Release
 
-# Tag push (v*) -> versioned release with native per-OS binaries.
-# Push to main  -> rolling "nightly" pre-release, rebuilt on every commit.
+# Tag push (v*)            -> versioned release with native per-OS binaries.
+# Called with a version    -> the same, tagged v<version> at this commit (pages.yml calls it after
+#                             every site deploy, so the site's download links serve a current build)
+# Push to main             -> rolling "nightly" pre-release, rebuilt on every commit.
 on:
   push:
     branches: [main]
@@ -9,13 +11,23 @@ on:
     # Site-only changes don't need new binaries (path filters don't apply to tag pushes).
     paths-ignore: ["site/**", ".github/workflows/pages.yml"]
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      version:
+        description: "Release version without the v (e.g. 0.1.3)"
+        required: true
+        type: string
 
 permissions:
   contents: write
 
 concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: true
+  group: release-${{ github.ref }}-${{ inputs.version || 'nightly' }}
+  cancel-in-progress: ${{ inputs.version == '' }}
+
+env:
+  # The version the binaries report: the called version, else the pushed tag (build.sh drops the v).
+  LT_VERSION: ${{ inputs.version || (startsWith(github.ref, 'refs/tags/v') && github.ref_name) || '' }}
 
 jobs:
   linux-x86_64:
@@ -126,7 +138,7 @@ jobs:
           ls -l
 
       - name: Publish tagged release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') && inputs.version == ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -135,8 +147,21 @@ jobs:
             --notes-file .github/release-notes.md \
             --generate-notes
 
+      - name: Publish versioned release
+        if: inputs.version != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          gh release create "v${VERSION}" dist/* \
+            --target "${GITHUB_SHA}" \
+            --latest \
+            --title "LibreTune In Universal C v${VERSION}" \
+            --notes-file .github/release-notes.md \
+            --generate-notes
+
       - name: Publish nightly
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && inputs.version == ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
