@@ -1,5 +1,5 @@
 /* ui_theme.c - theme palettes, metrics and color helpers.
- * Dark palette values come from docs/spec/10-ui.md section 1.
+ * Stock palettes are generated into ui_theme_data.c by tools/gen_themes.py.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 #include <stddef.h>
@@ -77,36 +77,6 @@ void ui_theme_metrics(lt_theme *t, int cell, int pct)
 }
 
 /* ------------------------------------------------------------------ */
-void lt_theme_dark(lt_theme *t)
-{
-    memset(t, 0, sizeof(*t));
-    t->name = "dark"; t->dark = 1;
-    t->bg_app = H(0x1A1A1A); t->surface = H(0x242424); t->elevated = H(0x2D2D2D);
-    t->input = H(0x2A2A2A); t->hover = H(0x383838); t->active = H(0x424242);
-    t->selected = H(0x0D47A1); t->dash_bg = H(0x000000);
-    t->menubar = H(0x2D2D2D); t->bg_toolbar = H(0x262626); t->statusbar = H(0x1E1E1E);
-    t->sidebar = H(0x1E1E1E); t->tab = H(0x2A2A2A); t->tab_active = H(0x1E1E1E);
-    t->text = H(0xE8E8E8); t->text2 = H(0xB0B0B0); t->muted = H(0x909090);
-    t->disabled = H(0x606060); t->inverse = H(0x1A1A1A); t->link = H(0x64B5F6);
-    t->border = H(0x555555); t->border_subtle = H(0x444444); t->border_strong = H(0x666666);
-    t->focus = H(0x1976D2);
-    t->primary = H(0x1976D2); t->primary_hover = H(0x1E88E5); t->primary_active = H(0x1565C0);
-    t->primary_text = H(0xFFFFFF);
-    t->accent = H(0xFF9800); t->accent_hover = H(0xFFA726); t->accent_text = H(0x000000);
-    t->success = H(0x4CAF50); t->success_bg = H(0x1B5E20);
-    t->warning = H(0xFF9800); t->warning_bg = H(0xE65100);
-    t->error = H(0xF44336); t->error_bg = H(0xB71C1C);
-    t->info = H(0x2196F3); t->info_bg = H(0x0D47A1);
-    t->scroll_track = H(0x1E1E1E); t->scroll_thumb = H(0x404040); t->scroll_hover = H(0x505050);
-    t->table_bg = H(0x1E1E1E); t->table_header = H(0x2A2A2A); t->table_cell = H(0x252525);
-    t->table_hover = H(0x333333); t->table_selected = H(0x0D47A1);
-    t->table_editing = H(0x1565C0); t->table_axis = H(0x2D2D2D); t->table_grid = H(0x383838);
-    t->change_richer = H(0x2196F3); t->change_leaner = H(0xF44336); t->change_same = H(0x808080);
-    t->cursor_live = H(0x00FF00); t->cursor_trail = H(0xFFCC00);
-    t->cursor_selected = H(0xFF0000); t->cursor_active = H(0x0088FF);
-    ui_theme_metrics(t, 0, 100);
-}
-
 static void theme_base_light(lt_theme *t)
 {
     memset(t, 0, sizeof(*t));
@@ -160,11 +130,14 @@ static const size_t field_off[LT_THEME_NTOK] = {
     offsetof(lt_theme, cursor_trail), offsetof(lt_theme, cursor_selected), offsetof(lt_theme, cursor_active)
 };
 
-/* stock theme row: start from the matching built-in base, then overlay tokens */
+/* stock theme row: start from the matching base (the full "dark" row for dark themes, the
+ * built-in light palette otherwise), then overlay the tokens the row sets */
 static void theme_from_row(lt_theme *t, const lt_theme_row *row)
 {
     int i;
-    if (row->dark) { lt_theme_dark(t); } else { theme_base_light(t); }
+    if (row->dark && row != &lt_theme_rows[0]) { theme_from_row(t, &lt_theme_rows[0]); }
+    else if (row->dark) { memset(t, 0, sizeof(*t)); }
+    else { theme_base_light(t); }
     for (i = 0; i < LT_THEME_NTOK; i++) {
         lt_color c;
         if (row->col[i] == 0xFFFFFFFFUL) { continue; }
@@ -176,6 +149,7 @@ static void theme_from_row(lt_theme *t, const lt_theme_row *row)
     ui_theme_metrics(t, 0, 100);
 }
 
+void lt_theme_dark(lt_theme *t) { theme_from_row(t, &lt_theme_rows[0]); }
 void lt_theme_light(lt_theme *t) { theme_from_row(t, &lt_theme_rows[1]); }
 
 void lt_theme_derive(lt_theme *t, const char *name, lt_color bg, lt_color primary,
@@ -227,7 +201,7 @@ int lt_theme_preset(lt_theme *t, const char *name)
     if (name == NULL) { return -1; }
     for (i = 0; i < LT_THEME_NROWS; i++) {
         if (lt_stricmp(name, lt_theme_rows[i].name) == 0) {
-            if (i == 0) { lt_theme_dark(t); } else { theme_from_row(t, &lt_theme_rows[i]); }
+            theme_from_row(t, &lt_theme_rows[i]);
             return 0;
         }
     }

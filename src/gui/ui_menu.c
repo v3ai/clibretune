@@ -609,7 +609,7 @@ lt_bool lt_ui_combo_cb(lt_ui *ui, const char *label, int *sel, int n,
         }
     }
     fill = ui->disabled ? t->surface : t->input;
-    border = (ui->focus == id || open) ? t->focus : ((res & UI_HOVER) ? t->border_strong : t->border);
+    border = (ui->focus == id || open) ? t->focus : ((res & UI_HOVER) ? t->text2 : t->border_strong);
     if (ui->cell && (ui->focus == id || open)) { fill = lt_color_mix(t->input, t->primary, 70); }
     ui_field_box(ui, r, fill, border, ui->focus == id && ui->kbd_nav);
     ui_text_in(ui, lt_rect_make(r.x + t->pad_x, r.y, r.w - t->pad_x - (ui->cell ? 16 : lt_ui_px(ui, 26)), r.h), cur,

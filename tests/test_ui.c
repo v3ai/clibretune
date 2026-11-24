@@ -292,8 +292,8 @@ LT_TEST(test_ids_and_theme)
 
     lt_theme_dark(&t);
     LT_CHECK(t.bg_app == 0xFF1A1A1AUL && t.surface == 0xFF242424UL && t.selected == 0xFF0D47A1UL);
-    LT_CHECK(t.primary == 0xFF1976D2UL && t.text == 0xFFE8E8E8UL && t.table_grid == 0xFF383838UL);
-    LT_CHECK(t.cursor_live == 0xFF00FF00UL && t.error == 0xFFF44336UL && t.dark);
+    LT_CHECK(t.primary == 0xFF1976D2UL && t.text == 0xFFE8E8E8UL && t.table_grid == 0xFF767676UL);
+    LT_CHECK(t.cursor_live == 0xFF00FF00UL && t.error == 0xFFFF5D4DUL && t.dark);
     lt_theme_light(&t);
     LT_CHECK(t.bg_app == 0xFFF5F5F5UL && !t.dark);
     LT_CHECK(lt_theme_preset(&t, "nord") == 0 && t.bg_app == 0xFF2E3440UL);

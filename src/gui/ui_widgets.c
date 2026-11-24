@@ -153,10 +153,11 @@ static lt_bool button_impl(lt_ui *ui, const char *label, int icon, int flags)
     }
     /* colors */
     if (icon && (flags & LT_UI_BTN_FLAT) && !ui->cell) {
-        /* toolbar button: text2 glyph, hover/active wash, selected = primary glyph on active */
+        /* toolbar button: text2 glyph, hover/active wash, selected = link-blue glyph on active
+         * (link is the theme's accent colour made to read on surfaces; primary is a fill) */
         fill = (res & UI_ACTIVE) ? t->active : ((res & UI_HOVER) ? t->hover : 0);
         border = 0;
-        fg = (flags & LT_UI_BTN_SELECTED) ? t->primary : ((res & UI_HOVER) ? t->text : t->text2);
+        fg = (flags & LT_UI_BTN_SELECTED) ? t->link : ((res & UI_HOVER) ? t->text : t->text2);
         if (flags & LT_UI_BTN_SELECTED) { fill = t->active; }
         if (flags & LT_UI_BTN_DANGER) {
             fg = t->error;
@@ -168,7 +169,7 @@ static lt_bool button_impl(lt_ui *ui, const char *label, int icon, int flags)
     } else if (flags & LT_UI_BTN_DANGER) {
         fill = t->dark ? ((res & UI_HOVER) ? t->error : t->error_bg)
                        : ((res & UI_HOVER) ? lt_color_mix(t->error, LT_RGB(255, 255, 255), 40) : t->error);
-        border = fill; fg = LT_RGB(255, 255, 255);
+        border = fill; fg = ui_text_on(LT_RGB(255, 255, 255), LT_RGB(16, 16, 16), fill);
     } else if (flags & LT_UI_BTN_ACCENT) {
         fill = (res & UI_HOVER) ? t->accent_hover : t->accent; border = fill; fg = t->accent_text;
     } else if (flags & LT_UI_BTN_FLAT) {
@@ -265,7 +266,7 @@ lt_bool lt_ui_checkbox(lt_ui *ui, const char *label, int *v)
         if (on) {
             fill = (res & UI_HOVER) ? t->primary_hover : t->primary; border = fill;
         } else {
-            fill = t->input; border = (res & UI_HOVER) ? t->text2 : t->border;
+            fill = t->input; border = (res & UI_HOVER) ? t->text2 : t->border_strong;
         }
         if (ui->disabled) { fill = t->surface; border = t->border_subtle; }
         if (ui->focus == id && ui->kbd_nav) { border = t->focus; }
@@ -298,7 +299,7 @@ lt_bool lt_ui_radio(lt_ui *ui, const char *label, int *v, int value)
     } else {
         double cx = r.x + bw / 2.0, cy = r.y + r.h / 2.0, rr = bw / 2.0;
         lt_color border = (ui->focus == id && ui->kbd_nav) ? t->focus :
-                          (on ? t->primary : ((res & UI_HOVER) ? t->text2 : t->border));
+                          (on ? t->primary : ((res & UI_HOVER) ? t->text2 : t->border_strong));
         lt_ui_draw_circle_fill(ui, cx, cy, rr, border);
         lt_ui_draw_circle_fill(ui, cx, cy, rr - 1.0, ui->disabled ? t->surface : t->input);
         if (on) { lt_ui_draw_circle_fill(ui, cx, cy, rr * 0.45, ui->disabled ? t->disabled : t->primary); }

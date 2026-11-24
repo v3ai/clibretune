@@ -102,9 +102,9 @@ Found in the November 2026 usability pass; each needs a product decision rather 
   dialog fields were switched to TunerStudio's enable-then-visibility order. Doing the same for
   menus changes which rusEFI items are greyed versus hidden (test_ini_parse `menus` encodes the
   current order).
-- **Theme contrast**: several generated themes have warning, muted or border colours under WCAG
-  AA (light: warning text 2.7:1, status bar muted text 2.2:1; nord, dracula, solarized similar).
-  Selected text was fixed; the palette itself comes from tools/gen_themes.py.
+- **Theme contrast** (stock themes done: tools/gen_themes.py adjusts them to WCAG 2.1 AA and
+  tests/test_theme_contrast.c checks every drawn pair): themes derived from a user's bg, primary
+  and accent (lt_theme_derive) are not checked; they could run the same lightness fix at runtime.
 - **One spelling and one verb**: the UI mixes US and UK spelling (colour/color, centre/center)
   and "burn", "write" and "flash" for writing to the ECU.
 - **Connect entries**: File > Connect ECU..., File > Connect ECU Wizard... and Tools > ECU

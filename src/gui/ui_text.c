@@ -353,7 +353,7 @@ int ui_edit_widget(lt_ui *ui, lt_u32 id, lt_rect r, char *buf, size_t cap, int f
     }
     /* draw */
     bg = ui->disabled ? t->surface : t->input;
-    border = focused ? t->focus : ((ir & UI_HOVER) ? t->border_strong : t->border);
+    border = focused ? t->focus : ((ir & UI_HOVER) ? t->text2 : t->border_strong);
     if (ui->cell && focused) { bg = lt_color_mix(t->input, t->primary, 70); }
     if (draw_box) { ui_field_box(ui, r, bg, border, focused && ui->kbd_nav); }
     inner = lt_rect_make(r.x + padx - (ui->cell ? 0 : lt_ui_px(ui, 2)), r.y, r.w - 2 * padx + (ui->cell ? 0 : lt_ui_px(ui, 4)), r.h);
@@ -545,7 +545,7 @@ int lt_ui_number(lt_ui *ui, const char *label, double *v, double mn, double mx, 
             st->i[0] = 0; st->i[2] = 0;
         }
         fill = ui->disabled ? t->surface : t->input;
-        border = (ir & UI_HOVER) ? t->border_strong : t->border;
+        border = (ir & UI_HOVER) ? t->text2 : t->border_strong;
         fg = ui->disabled ? t->disabled : t->text;
         if (ir & UI_ACTIVE) { border = t->primary; }
         lt_ui_draw_box(ui, r, fill, border, t->radius);
