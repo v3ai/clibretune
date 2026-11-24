@@ -149,6 +149,7 @@ struct lt_app {
     char        signature[96];       /* ECU signature when connected */
 
     /* recorder */
+    unsigned     log_files_gen;      /* +1 when a datalog file starts or is finished (viewers rescan) */
     lt_recorder *rec;
     char       **rec_names;
     size_t       rec_n;

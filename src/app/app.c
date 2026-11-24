@@ -511,6 +511,7 @@ int lt_app_log_toggle(lt_app *app)
     }
     if (lt_rec_is_recording(app->rec)) {
         lt_rec_stop(app->rec);
+        app->log_files_gen++;
         lt_app_toast(app, 0, "Logging stopped (%ld rows)", lt_rec_count(app->rec));
         return 0;
     }
@@ -525,7 +526,10 @@ int lt_app_log_toggle(lt_app *app)
     path = lt_rec_new_path(app->rec, dir);
     i = (size_t)lt_rec_start(app->rec, path);
     if ((int)i < 0) { lt_app_toast(app, 3, "Cannot start log: %s", lt_err_get()); }
-    else { lt_app_toast(app, 1, "Logging to %s", lt_path_base(lt_rec_path(app->rec))); }
+    else {
+        app->log_files_gen++;
+        lt_app_toast(app, 1, "Logging to %s", lt_path_base(lt_rec_path(app->rec)));
+    }
     lt_free(path);
     lt_free(dir);
     return (int)i < 0 ? -1 : 0;
@@ -559,7 +563,7 @@ static void link_free(lt_app *app)
 void lt_app_disconnect(lt_app *app)
 {
     if (app->conn == LT_APP_OFFLINE && app->proto == NULL) { return; }
-    if (app->rec != NULL && lt_rec_is_recording(app->rec)) { lt_rec_stop(app->rec); }
+    if (app->rec != NULL && lt_rec_is_recording(app->rec)) { lt_rec_stop(app->rec); app->log_files_gen++; }
     if (app->proto != NULL && lt_proto_state(app->proto) == LT_CONN_CONNECTED &&
         lt_proto_write_pending(app->proto)) {
         lt_proto_async_finish(app->proto);         /* edits made just before still reach the ECU */

@@ -150,7 +150,8 @@ do not fit this ECU definition) first shows what does not map, and is loaded onl
 
 **Tools > Data Logging** (Ctrl+L) records every channel. **Tools > Datalog Viewer...** opens logs
 (`.csv`, `.msl`, `.mlg`) with stacked graph pages, scatter plots and histograms; logs from
-TunerStudio open directly.
+TunerStudio open directly. Its list of logs in the project's `datalogs` folder updates when a
+recording starts or stops and when you come back to the viewer from another tab.
 
 ## 7. AutoTune
 
