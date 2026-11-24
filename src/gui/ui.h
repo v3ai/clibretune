@@ -134,6 +134,8 @@ void   lt_ui_request_redraw(lt_ui *ui);
  * right away. For when state that this frame's custom draw callbacks point at is freed before
  * lt_ui_end replays them (a tab or dialog closed after it was drawn). */
 void   lt_ui_discard_frame(lt_ui *ui);
+/* after lt_ui_end: the frame was discarded (nothing drawn; lt_tiles_cancel instead of _end) */
+lt_bool lt_ui_frame_discarded(const lt_ui *ui);
 lt_bool lt_ui_quit_requested(const lt_ui *ui);  /* LT_EV_QUIT seen */
 lt_bool lt_ui_cell_mode(const lt_ui *ui);
 int    lt_ui_row_height(const lt_ui *ui);       /* 24 pixel mode, 16 cell mode (scaled) */

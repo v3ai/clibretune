@@ -1507,7 +1507,14 @@ static void run_frame(lt_app *app)
     lt_ui_begin(app->ui, &app->gfx, t0);
     lt_app_frame(app);
     lt_ui_end(app->ui);
-    if (retained) { rs->nrects = lt_tiles_end(rs->tiles, &app->gfx, rs->rects, PRESENT_MAX_RECTS); }
+    if (retained && lt_ui_frame_discarded(app->ui)) {
+        /* nothing was drawn: the canvas keeps (and shows) the previous frame */
+        lt_tiles_cancel(rs->tiles, &app->gfx);
+        rs->nrects = 0;
+        app->gfx.dirty = lt_rect_make(0, 0, 0, 0);
+    } else if (retained) {
+        rs->nrects = lt_tiles_end(rs->tiles, &app->gfx, rs->rects, PRESENT_MAX_RECTS);
+    }
     t1 = lt_plat_now_ms();
     if (app->backend != NULL) {
         pixels = present_frame(app, rs, retained);

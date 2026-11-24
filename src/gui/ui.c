@@ -461,6 +461,7 @@ void ui_animate(lt_ui *ui, int ms)
 }
 
 void lt_ui_discard_frame(lt_ui *ui) { if (ui->in_frame) { ui->discard = 1; } }
+lt_bool lt_ui_frame_discarded(const lt_ui *ui) { return ui->discarded ? LT_TRUE : LT_FALSE; }
 
 lt_bool lt_ui_needs_redraw(const lt_ui *ui) { return (ui->dirty || ui->extra > 0) ? LT_TRUE : LT_FALSE; }
 void lt_ui_request_redraw(lt_ui *ui) { ui->dirty = 1; }
@@ -1721,6 +1722,7 @@ void lt_ui_end(lt_ui *ui)
     ui_layer_end(ui);
     /* replay (not for a discarded frame: its callbacks may point at freed state) */
     sort_layers(ui, order);
+    ui->discarded = ui->discard;
     if (ui->discard) {
         ui->discard = 0;
         ui_request(ui);

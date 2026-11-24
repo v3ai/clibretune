@@ -258,6 +258,38 @@ LT_TEST(test_tiles_source_copy_on_change)
     lt_canvas_free(&ref);
 }
 
+/* a cancelled (discarded) frame leaves the canvas and the hashes alone: the next frame is
+ * compared with the last one that was shown */
+LT_TEST(test_tiles_cancel)
+{
+    lt_canvas ref, cur;
+    lt_gfx g;
+    lt_tiles *t = lt_tiles_new();
+    lt_rect out[16];
+    int n, ndirty, vx, vy;
+    lt_canvas_init(&ref, CW, CH);
+    lt_canvas_init(&cur, CW, CH);
+    lt_gfx_init_canvas(&g, &cur);
+    (void)render_retained(t, &g, 0, NULL, out);
+    render_immediate(&ref, 0, NULL);
+    /* a discarded frame that drew something else */
+    lt_tiles_begin(t, &g);
+    scene(&g, 9, NULL);
+    lt_gfx_fill_rect(&g, lt_rect_make(0, 0, CW, CH), LT_RGB(255, 0, 0));
+    lt_tiles_cancel(t, &g);
+    LT_CHECK(!lt_gfx_recording(&g));
+    LT_CHECK(canvas_cmp(&ref, &cur) < 0);
+    LT_CHECK(lt_tiles_verify(t, &g, &vx, &vy) == 0);
+    /* the same frame as the last shown one: nothing to do */
+    n = render_retained(t, &g, 0, NULL, out);
+    lt_tiles_stats(t, NULL, NULL, &ndirty, NULL);
+    LT_CHECK(n == 0 && ndirty == 0);
+    LT_CHECK(canvas_cmp(&ref, &cur) < 0);
+    lt_tiles_free(t);
+    lt_canvas_free(&cur);
+    lt_canvas_free(&ref);
+}
+
 /* reference: lt_ui_draw_shadow's ring loop */
 static void shadow_ref(lt_gfx *g, lt_rect r, int radius, int n, int alpha)
 {
@@ -373,6 +405,7 @@ int main(void)
     LT_RUN(test_tiles_identical_and_incremental);
     LT_RUN(test_tiles_appended_overlay);
     LT_RUN(test_tiles_source_copy_on_change);
+    LT_RUN(test_tiles_cancel);
     LT_RUN(test_shadow_matches_rings);
     LT_RUN(test_blend_exact);
     lt_font_release_all();

@@ -346,6 +346,17 @@ void lt_tiles_begin(lt_tiles *t, lt_gfx *g)
     g->rec = &t->rec;
 }
 
+void lt_tiles_cancel(lt_tiles *t, lt_gfx *g)
+{
+    g->rec = NULL;
+    rec_reset(&t->rec);
+    t->recorded = 0;
+    t->st_cmd = 0;
+    t->st_dirty = 0;
+    t->st_pixels = 0.0;
+    t->nruns = 0;
+}
+
 static void tiles_grid(lt_tiles *t, int cw, int ch)
 {
     size_t n;
