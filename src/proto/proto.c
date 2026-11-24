@@ -142,7 +142,7 @@ static int cancelled(lt_proto *p)
     if (p->state == LT_CONN_CONNECTED) {
         p->cancel = 0;
     }
-    return fail(p, LT_ECANCEL, LT_PE_CANCELLED, "operation cancelled");
+    return fail(p, LT_ECANCEL, LT_PE_CANCELLED, "operation canceled");
 }
 
 static int progress(lt_proto *p, const char *phase, int page, size_t done, size_t total)
@@ -2296,11 +2296,11 @@ static void settle_cancel(lt_proto *p)
         } else {
             rx_clear_now(p);
         }
-        fail(p, LT_ECANCEL, LT_PE_CANCELLED, "operation cancelled");
+        fail(p, LT_ECANCEL, LT_PE_CANCELLED, "operation canceled");
         ax_complete(p, LT_ECANCEL);
     }
     if (p->job.n > 0 && a->phase == AX_IDLE) {
-        job_fail(p, fail(p, LT_ECANCEL, LT_PE_CANCELLED, "operation cancelled"), -1);
+        job_fail(p, fail(p, LT_ECANCEL, LT_PE_CANCELLED, "operation canceled"), -1);
     }
 }
 

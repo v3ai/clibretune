@@ -175,7 +175,7 @@ const char *lt_fw_phase_name(int phase)
     case LT_FW_PH_LEAVE: return "leave";
     case LT_FW_PH_DONE: return "done";
     case LT_FW_PH_FAILED: return "failed";
-    case LT_FW_PH_CANCELLED: return "cancelled";
+    case LT_FW_PH_CANCELLED: return "canceled";
     default: return "?";
     }
 }

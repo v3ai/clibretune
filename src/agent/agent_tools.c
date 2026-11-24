@@ -34,7 +34,7 @@ static const lt_ag_tool ag_catalog[] = {
       "{\"type\":\"object\",\"properties\":{}}", 0, 0 },
     { "tune_health_check",
       "Health score of a table: value statistics, axis monotonicity and suspect cells that "
-      "differ strongly from their neighbours.",
+      "differ strongly from their neighbors.",
       "{\"type\":\"object\",\"required\":[\"table_name\"],\"properties\":"
       "{\"table_name\":{\"type\":\"string\"}}}", 0, 0 },
     { "get_realtime_snapshot",

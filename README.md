@@ -48,7 +48,7 @@ pre-release. `LT_VERSION=x.y.z ./build.sh app` sets the version the binary repor
   found, else a bundled rusEFI Proteus definition; `--ini FILE` picks another).
 - Backends (`LT_BACKEND` or `--backend`): `auto`, `x11` (Linux/BSD), `cocoa` (macOS), `win32` (Windows),
   `web` and `tty` (everywhere). `x11`, `cocoa` and `win32` are native windows; `auto` picks them first.
-  - `web` serves the UI on 127.0.0.1 and prints a tokenised URL (`LT_NO_BROWSER=1` to not open a browser).
+  - `web` serves the UI on 127.0.0.1 and prints a tokenized URL (`LT_NO_BROWSER=1` to not open a browser).
   - `tty` renders in a terminal.
   - `win32` (Windows) and `cocoa` (macOS) are the native window backends; `auto` picks them first on
     their OS. On Windows `./build.sh app` (MinGW) or `build.bat` (MSVC) gives `build/clibretune.exe`
@@ -199,4 +199,4 @@ Speeduino project and contributors (the author of each tune is shown in the brow
 `tools/gen_basetunes.py` into `src/tune/basetune_data.c`. clibretune is free software and is never
 sold; because the program bundle contains these non-commercial tunes, it must not be sold either. To
 distribute a build commercially, first regenerate the data without them
-(`python3 tools/gen_basetunes.py --empty`). Help > About lists all licences.
+(`python3 tools/gen_basetunes.py --empty`). Help > About lists all licenses.

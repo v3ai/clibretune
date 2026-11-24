@@ -649,7 +649,7 @@ static void trim_panel(lt_app *app, trim_tab *st)
         lt_ui_label_wrap(ui, "A collector sensor as reference measures each cylinder against the engine average.", th->muted);
         {
             int on = st->c.balance ? 1 : 0;
-            if (lt_ui_checkbox(ui, "Balance: keep the cylinders' average fuelling", &on)) { st->c.balance = on ? LT_TRUE : LT_FALSE; }
+            if (lt_ui_checkbox(ui, "Balance: keep the cylinders' average fueling", &on)) { st->c.balance = on ? LT_TRUE : LT_FALSE; }
         }
         lt_ui_layout_row(ui, 2, w2, 0);
         lt_ui_label(ui, "Update mode");

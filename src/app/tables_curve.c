@@ -690,7 +690,7 @@ static void crv_toolbar_items(lt_app *app, crv_tab *st, lt_vk_item *it, int cell
     CB(CB_XY, LT_ICON_CIRCLE_DOT, "X-Y", "X-Y log plot", "X-Y log plot: recorded points of the X channel against a chosen channel");
     it[n - 1].on = st->xy_on;
     it[n].kind = LT_VK_SEP; n++;
-    CB(CB_BURN, LT_ICON_FLAME, "Burn", "Burn", "Write the changes to ECU flash");
+    CB(CB_BURN, LT_ICON_FLAME, "Burn", "Burn", "Burn the changes to ECU flash");
     it[n - 1].pin = 1;                  /* stays on a narrow bar */
     it[n - 1].accent = 1;
     it[n - 1].disabled = lt_app_can_burn(app) ? 0 : 1;

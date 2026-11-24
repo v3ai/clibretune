@@ -1,14 +1,14 @@
 # Speeduino base tunes
 
 **These files are NOT under the GPL.** They are third-party works licensed under the
-Creative Commons Attribution-NonCommercial 4.0 International licence (CC BY-NC 4.0),
+Creative Commons Attribution-NonCommercial 4.0 International license (CC BY-NC 4.0),
 full text in `LICENSE` (also https://creativecommons.org/licenses/by-nc/4.0/).
 
 | | |
 |---|---|
 | Source | https://github.com/speeduino/Tunes |
 | Commit | 99b2a62e402144fa38c911f937b2b6571c8a720a (2025-03-03) |
-| Licence | CC BY-NC 4.0 (`LICENSE`, copied unmodified from the source repository) |
+| License | CC BY-NC 4.0 (`LICENSE`, copied unmodified from the source repository) |
 | Attribution | Speeduino project and contributors; the author of each tune is the `provider` in `index.json` |
 | Changes | None: the `.msq` files, `index.json` and `LICENSE` are byte-identical copies |
 
@@ -39,8 +39,8 @@ These are the 14 tunes listed in the upstream `index.json`. The upstream reposit
 
 `tools/gen_basetunes.py` embeds the files unmodified (packed with a lossless LZ77 coder, about 75 KB,
 unpacked byte for byte at run time) into `src/tune/basetune_data.c`, which
-carries the same licence notice. The program shows them in File > New Project from Base Tune and
-File > Load Base Tune, with the tune's author and this licence. When a base tune is loaded into a
+carries the same license notice. The program shows them in File > New Project from Base Tune and
+File > Load Base Tune, with the tune's author and this license. When a base tune is loaded into a
 project with a different ECU definition, the values are converted to that definition (an
 adaptation; the original files stay unchanged here), and the saved tune records which base tune it
 came from.

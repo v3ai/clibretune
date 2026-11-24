@@ -319,7 +319,7 @@ static void settings_page(lt_app *app)
     lt_ui_heading(ui, "AI Assistant (at your own risk)");
     lt_ui_layout_row(ui, 1, &w1, 0);
     lt_ui_label_wrap(ui, "A model you run yourself reads your tune through tools and can propose "
-                     "changes that affect engine behaviour. Proposals are validated, limited to the "
+                     "changes that affect engine behavior. Proposals are validated, limited to the "
                      "AutoTune authority limits and applied only after you confirm; a restore point is "
                      "created first and nothing is burned. Only plain http:// endpoints work (no TLS): "
                      "Ollama, LM Studio, llama.cpp or a local proxy.", th->muted);

@@ -625,8 +625,8 @@ static void dfuse_step(lt_fw_job *j)
         if (d->cstep > 0) { (void)ctl(j, RT_OUT, DFU_ABORT, 0, NULL, 0); }
         lt_fwj_phase(j, LT_FW_PH_CANCELLED, 0, NULL);
         lt_strlcpy(j->msg, j->done > 0 || j->w_total[LT_FW_PH_ERASE] > 0
-                   ? "Cancelled: the flash is incomplete - flash again before starting the ECU."
-                   : "Cancelled.", sizeof(j->msg));
+                   ? "Canceled: the flash is incomplete - flash again before starting the ECU."
+                   : "Canceled.", sizeof(j->msg));
         lt_fwj_log(j, 2, "%s", j->msg);
         return;
     }

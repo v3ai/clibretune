@@ -209,7 +209,7 @@ static int color_field(lt_ui *ui, const char *label, const char *id, char hex[8]
             ch = 1;
         }
     } else {
-        lt_ui_label_ex(ui, "Theme colour", lt_ui_theme(ui)->muted, LT_UI_ALIGN_LEFT);
+        lt_ui_label_ex(ui, "Theme color", lt_ui_theme(ui)->muted, LT_UI_ALIGN_LEFT);
     }
     lt_ui_pop_id(ui);
     return ch;
@@ -241,7 +241,7 @@ static void ramp(lt_app *app, int ctx)
 static const char *const heat_names[] = { "tunerstudio", "grayscale", "pastel", "thermal", "viridis",
                                           "plasma", "custom" };
 static const char *const heat_labels[] = { "TunerStudio", "Grayscale", "Pastel", "Thermal", "Viridis",
-                                           "Plasma", "Custom colours" };
+                                           "Plasma", "Custom colors" };
 static const char *const ctx_titles[] = { "Value (VE, timing tables)", "Change (AFR correction size)",
                                           "Coverage (hit weighting)" };
 
@@ -297,7 +297,7 @@ static int heat_context(lt_app *app, int ctx)
         if (p->heat_n[ctx] < LT_PREFS_HEAT_STOPS) {
             lt_ui_layout_row(ui, 1, &w1, 0);
             lt_ui_push_id_int(ui, ctx);
-            if (lt_ui_button(ui, "Add colour stop")) {
+            if (lt_ui_button(ui, "Add color stop")) {
                 p->heat_stops[ctx][p->heat_n[ctx]] = p->heat_stops[ctx][p->heat_n[ctx] - 1];
                 p->heat_n[ctx]++;
                 ch = 1;
@@ -319,8 +319,8 @@ static void table_page(lt_app *app)
     caption(ui, "Table display");
     lt_ui_layout_row(ui, 1, &w1, 0);
     if (lt_ui_checkbox(ui, "Y axis starts at the bottom (new table tabs)", &p->y_bottom)) { ch = 1; }
-    if (color_field(ui, "Custom cursor colour", "curcol", p->cursor_color, 0xFF8000UL)) { ch = 1; }
-    if (color_field(ui, "Custom trail colour", "trlcol", p->trail_color, 0x3080FFUL)) { ch = 1; }
+    if (color_field(ui, "Custom cursor color", "curcol", p->cursor_color, 0xFF8000UL)) { ch = 1; }
+    if (color_field(ui, "Custom trail color", "trlcol", p->trail_color, 0x3080FFUL)) { ch = 1; }
     lt_ui_layout_row(ui, 1, &w1, 0);
     if (lt_ui_checkbox(ui, "Show the live-cell trail in table editors", &p->trail_on)) { ch = 1; }
     lt_ui_layout_row(ui, 1, &w1, 0);

@@ -394,7 +394,7 @@ void lt_lxy_draw(lt_app *app, lt_lxy *s, const lt_log *L, int log_gen, int mode,
     char b[96];
     if (L == NULL || L->n == 0 || L->n_ch == 0) {
         lt_ui_layout_row(ui, 1, &w1, 0);
-        lt_ui_label_ex(ui, "Open a log to analyse it.", th->muted, LT_UI_ALIGN_LEFT);
+        lt_ui_label_ex(ui, "Open a log to analyze it.", th->muted, LT_UI_ALIGN_LEFT);
         return;
     }
     if (!s->inited || s->log_gen != log_gen) {

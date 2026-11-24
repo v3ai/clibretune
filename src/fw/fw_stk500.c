@@ -264,9 +264,9 @@ static void stk_step(lt_fw_job *j)
     if (j->cancel) {
         int partial = j->phase >= LT_FW_PH_WRITE && (j->phase > LT_FW_PH_WRITE || j->done > 0);
         lt_fwj_phase(j, LT_FW_PH_CANCELLED, 0, NULL);
-        lt_strlcpy(j->msg, partial ? "Cancelled: the firmware is incomplete; the bootloader runs after a reset - "
+        lt_strlcpy(j->msg, partial ? "Canceled: the firmware is incomplete; the bootloader runs after a reset - "
                                      "flash again."
-                                   : "Cancelled.", sizeof(j->msg));
+                                   : "Canceled.", sizeof(j->msg));
         lt_fwj_log(j, 2, "%s", j->msg);
         return;
     }

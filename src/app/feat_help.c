@@ -101,7 +101,7 @@ static void about_draw(lt_app *app, lt_app_dialog *d)
         }
         w[0] = -1; w[1] = 96;
         lt_ui_layout_row(ui, 2, w, 0);
-        lt_ui_label_ex(ui, "Licences and credits", t->muted, LT_UI_ALIGN_LEFT);
+        lt_ui_label_ex(ui, "Licenses and credits", t->muted, LT_UI_ALIGN_LEFT);
         if (lt_ui_button_ex(ui, "OK", LT_UI_BTN_DEFAULT)) { d->open = 0; }
         lt_ui_modal_end(ui);
     }

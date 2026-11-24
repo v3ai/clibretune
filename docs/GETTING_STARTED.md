@@ -50,7 +50,7 @@ safest place to learn the editor.
   signed yet: right-click the app and choose Open the first time.
 
 Plug in the ECU's USB cable (a data cable: some cables only charge), switch the ignition on and press
-**Connect to my ECU**. clibretune looks at USB serial ports first and recognises common ECU boards by
+**Connect to my ECU**. clibretune looks at USB serial ports first and recognizes common ECU boards by
 their USB id: STM32 boards (rusEFI, FOME, epicEFI) as 0483:5740, Arduino Mega (Speeduino) as
 2341:0042 / 2341:0010, Teensy, and the usual USB-serial adapters (CH340, FTDI, CP210x, PL2303). Each
 port is asked at its likeliest baud rate first, and the window stays responsive while it searches
@@ -87,7 +87,7 @@ definition by itself:
   nearest build of the same board is used, with a warning that some settings may differ and a
   **Find Exact INI...** button that searches online;
 - **nothing fits** (MegaSquirt, other firmware): choose the INI file that came with the firmware or
-  search online. MegaSquirt INIs are not bundled because their licence does not allow it.
+  search online. MegaSquirt INIs are not bundled because their license does not allow it.
 
 rusEFI F7/H7 boards also show a small USB drive with their own INI; when it is there and matches,
 clibretune uses that one. A definition you add yourself (**Settings > ECU Definitions**) wins over the
@@ -106,7 +106,7 @@ has a copy.
 A new project opens **Tools > Engine Setup Checklist**: engine (displacement, cylinders), injectors
 (flow, dead time), trigger, MAP sensor, TPS, coolant and air temperature sensors, wideband and
 ignition. Each **Open** button goes to the page of your ECU's definition that handles it (rusEFI,
-FOME, Speeduino and MegaSquirt menus are recognised); pages you open are ticked, and the ticks are
+FOME, Speeduino and MegaSquirt menus are recognized); pages you open are ticked, and the ticks are
 kept with the project (`setup.conf`). **Hide this checklist** puts it away; the Tools menu brings it
 back.
 
@@ -127,7 +127,7 @@ connect and read it.
   first, then a **Settings** list of fields ("Caption — Dialog"), best match first. **Down** moves
   into the results, **Enter** opens the best match or the selected one (a field opens its dialog
   with the field focused and outlined for a moment), **Esc** empties the search and goes back to
-  where you were. Fields that another setting hides are listed greyed, "(hidden by another setting)".
+  where you were. Fields that another setting hides are listed grayed, "(hidden by another setting)".
   Drag its right edge to make it wider or narrower (double-click the edge for the default width);
   **F9** hides and shows it. Both are remembered.
 - Tables: arrow keys or the mouse select, type a number to set, `+`/`-` step, `=` average,
