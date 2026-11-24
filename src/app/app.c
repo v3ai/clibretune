@@ -1123,6 +1123,14 @@ int lt_app_open_project(lt_app *app, const char *dir_in)
     lt_app_recent_add(app, app->project.path);
     lt_feat_connset_apply(app);
     lt_app_set_status(app, "Opened project %s", app->project.cfg.name);
+    {   /* it parsed, but would it work? (no menus and no dialogs, constants beyond the pages) */
+        char why[400], msg[700];
+        if (lt_ini_looks_incomplete(ini, why, sizeof(why))) {
+            lt_snprintf(msg, sizeof(msg), "The project opened, but its ECU definition looks incomplete. %s",
+                        why);
+            (void)lt_feat_projerr_show(app, LT_PROJERR_INCOMPLETE, app->project.path, app->ini_path, msg);
+        }
+    }
     return 0;
 }
 

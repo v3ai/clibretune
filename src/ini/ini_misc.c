@@ -88,6 +88,56 @@ lt_bool lt_ini_supports_console(const lt_ini *ini)
 }
 
 /* ------------------------------------------------------------------ */
+/* completeness                                                        */
+/* ------------------------------------------------------------------ */
+
+lt_bool lt_ini_looks_incomplete(const lt_ini *ini, char *why, size_t cap)
+{
+    size_t i, items = 0;
+    if (why != NULL && cap > 0) why[0] = '\0';
+    if (ini == NULL) return LT_TRUE;
+    for (i = 0; i < ini->n_menus; i++) items += ini->menus[i].n_items;
+    if (items == 0 && ini->n_dialogs == 0) {
+        if (why != NULL) {
+            lt_snprintf(why, cap, "It has no menus and no dialogs, so there are no settings to open "
+                        "(%lu constants, %lu output channels).", (unsigned long)ini->n_constants,
+                        (unsigned long)ini->n_channels);
+        }
+        return LT_TRUE;
+    }
+    /* pageSize per page: every constant must fit (pages without a size are not judged) */
+    for (i = 0; i < ini->n_constants && ini->proto.n_page_sizes > 0; i++) {
+        const lt_ini_const *c = ini->constants[i];
+        unsigned long need, size;
+        if (c->is_pc_var) continue;
+        if (c->type == LT_DT_BITS) {
+            int top = (c->bit_pos > 0 ? c->bit_pos : 0) + (c->bit_size > 0 ? c->bit_size : 1);
+            need = (unsigned long)c->offset + (unsigned long)((top + 7) / 8);
+        } else {
+            need = (unsigned long)c->offset + (unsigned long)c->size_bytes;
+        }
+        if ((size_t)c->page >= ini->proto.n_page_sizes) {
+            if (why != NULL) {
+                lt_snprintf(why, cap, "The setting '%s' is on page %d, but the definition only "
+                            "describes %lu page(s).", c->name, (int)c->page + 1,
+                            (unsigned long)ini->proto.n_page_sizes);
+            }
+            return LT_TRUE;
+        }
+        size = ini->proto.page_sizes[c->page];
+        if (size > 0 && need > size) {
+            if (why != NULL) {
+                lt_snprintf(why, cap, "The setting '%s' needs bytes %lu-%lu of page %d, but that "
+                            "page is only %lu bytes long.", c->name, (unsigned long)c->offset,
+                            need - 1, (int)c->page + 1, size);
+            }
+            return LT_TRUE;
+        }
+    }
+    return LT_FALSE;
+}
+
+/* ------------------------------------------------------------------ */
 /* diagnostic loggers                                                  */
 /* ------------------------------------------------------------------ */
 

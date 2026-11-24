@@ -20,7 +20,9 @@ With no project open LibreTune shows its start screen:
   (`project.json`) is missing, empty or damaged, or its ECU definition is missing or unreadable.
   **Show Folder** opens the folder, **Remove from Recent Projects** takes it off the list and, for a
   definition problem, **Replace Definition...** picks one (bundled with LibreTune, from the INI library
-  or a file), puts it into the project and opens it.
+  or a file), puts it into the project and opens it. A definition that loads but looks incomplete (no
+  menus and no dialogs, or settings that do not fit its pages) opens with a warning: replace it, or
+  **Continue anyway** to look around (do not burn with it).
 - `libretune <project folder>` (or `--project <folder>`) opens a project straight away, for example
   from a desktop shortcut or a file manager; the folder must hold the project's `project.json`.
 - **Try the demo**, **Start from a base tune**, **Import a TunerStudio project**, **Open a project

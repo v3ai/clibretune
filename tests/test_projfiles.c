@@ -1,7 +1,7 @@
 /* test_projfiles.c - projects and files: recent projects stored as absolute paths (and the
  * migration of older relative entries), the command line (`libretune <folder>`), project folder
  * names that work on every OS, no half-created project when creating fails, the dialog for a
- * project that cannot be opened (project.json, the definition).
+ * project that cannot be opened (project.json, the definition) or whose definition looks incomplete.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 #include "lt_test.h"
@@ -316,6 +316,80 @@ LT_TEST(broken_definition)
     lt_free(dir); lt_free(ini);
 }
 
+/* parses, but no menus and no dialogs, or constants beyond the page size: the project opens with
+ * a warning; Replace Definition... is the Update Project INI flow */
+LT_TEST(incomplete_definition)
+{
+    static const char *const cut =
+        "[MegaTune]\nsignature = \"cut 1\"\n"
+        "[Constants]\nnPages = 1\npageSize = 16\n"
+        "page = 1\n"
+        "   a = scalar, U08, 0, \"\", 1, 0, 0, 255, 0\n"
+        "   b = array, U08, 10, [8], \"\", 1, 0, 0, 255, 0\n"
+        "[Menu]\nmenu = \"M\"\nsubMenu = b, \"B\"\n";
+    lt_app *app;
+    lt_project p;
+    lt_ini *ini;
+    lt_app_dialog *d;
+    char why[400], *dir, *cfg;
+    const char *msg = NULL;
+    /* the check itself */
+    ini = lt_ini_load_string(cut, strlen(cut), NULL, NULL);
+    LT_CHECK(ini != NULL && lt_ini_looks_incomplete(ini, why, sizeof(why)));
+    LT_CHECK(strstr(why, "'b'") != NULL && strstr(why, "16 bytes") != NULL);
+    lt_ini_free(ini);
+    ini = lt_ini_load_file(DEMO, NULL);
+    LT_CHECK(ini != NULL && !lt_ini_looks_incomplete(ini, why, sizeof(why)));
+    lt_ini_free(ini);
+    ini = lt_ini_load_file("tests/fixtures/project/mini.ini", NULL);
+    LT_CHECK(ini != NULL && lt_ini_looks_incomplete(ini, why, sizeof(why)));
+    LT_CHECK(strstr(why, "no menus and no dialogs") != NULL);
+    lt_ini_free(ini);
+    /* opening a project with such a definition */
+    (void)lt_proj_rmtree(TMP "/incomplete");
+    (void)lt_plat_mkdirs(TMP "/incomplete");
+    LT_CHECK(lt_project_create("Foxtrot", "tests/fixtures/project/mini.ini", "x", TMP "/incomplete", &p) == 0);
+    dir = lt_strdup(p.path);
+    lt_project_close(&p);
+    app = lt_app_new();
+    app->headless = 1;
+    LT_CHECK(lt_app_open_project(app, dir) == 0);
+    LT_CHECK(app->has_project);
+    d = problem(app);
+    LT_CHECK(lt_feat_projerr_info(d, &msg, NULL) == LT_PROJERR_INCOMPLETE);
+    LT_CHECK(strstr(msg, "incomplete") != NULL);
+    LT_CHECK_STR(d->title, "This ECU definition looks incomplete");
+    LT_CHECK(lt_app_screenshot(app, TMP "/incomplete.ppm", 1100, 700, 2) == 0);
+    d = problem(app);
+    LT_CHECK(lt_feat_projerr_act(app, d, LT_PROJERR_ACT_SHOW_FOLDER) == -1);
+    LT_CHECK(lt_feat_projerr_act(app, d, LT_PROJERR_ACT_FORGET) == -1);
+    LT_CHECK(lt_feat_projerr_act(app, d, LT_PROJERR_ACT_REPLACE) == 0);
+    LT_CHECK(has_dialog(app, "migration", "update"));
+    lt_app_frame(app);
+    LT_CHECK(problem(app) == NULL && app->has_project);
+    lt_app_free(app);
+    /* a page-size mismatch is reported too */
+    cfg = lt_path_join(dir, "projectCfg/definition.ini");
+    put_file(cfg, cut);
+    app = lt_app_new();
+    app->headless = 1;
+    LT_CHECK(lt_app_open_project(app, dir) == 0);
+    LT_CHECK(lt_feat_projerr_info(problem(app), &msg, NULL) == LT_PROJERR_INCOMPLETE);
+    LT_CHECK(strstr(msg, "page 1") != NULL);
+    lt_app_free(app);
+    /* a complete definition opens without a word */
+    app = lt_app_new();
+    LT_CHECK(lt_project_create("Golf", DEMO, "x", TMP "/incomplete", &p) == 0);
+    lt_free(dir);
+    dir = lt_strdup(p.path);
+    lt_project_close(&p);
+    LT_CHECK(lt_app_open_project(app, dir) == 0);
+    LT_CHECK(problem(app) == NULL);
+    lt_app_free(app);
+    (void)lt_proj_rmtree(TMP "/incomplete");
+    lt_free(dir); lt_free(cfg);
+}
+
 int main(void)
 {
     (void)lt_plat_mkdirs(TMP);
@@ -326,5 +400,6 @@ int main(void)
     LT_RUN(create_cleanup);
     LT_RUN(broken_project_json);
     LT_RUN(broken_definition);
+    LT_RUN(incomplete_definition);
     LT_TEST_MAIN_END
 }
