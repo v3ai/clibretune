@@ -622,6 +622,84 @@ LT_TEST(table_minus_while_editing)
     lt_app_free(app);
 }
 
+/* An operation that changes no cell adds no undo step and marks nothing modified */
+LT_TEST(table_noop_no_undo)
+{
+    size_t rows, cols;
+    double a;
+    lt_app *app = tbl_open("veTableTbl", &rows, &cols);
+    lt_app_tab *tab = lt_app_tab_find(app, "table", "veTableTbl");
+    LT_CHECK(rows > 2 && tab != NULL);
+    if (rows <= 2 || tab == NULL) { lt_app_free(app); return; }
+    a = cell0(app, "veTableTbl", rows - 1, 0);
+    LT_CHECK(!app->modified);
+    press(app, '=', 0);                            /* average of one cell */
+    press(app, '/', 0);                            /* interpolate one cell */
+    press(app, 'c', LT_MOD_CTRL);
+    press(app, 'v', LT_MOD_CTRL);                  /* paste the same value */
+    press(app, LT_KEY_F2, 0);
+    press(app, LT_KEY_ENTER, 0);                   /* commit the unchanged text */
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 0), a, 1e-9);
+    LT_CHECK(!app->modified);
+    LT_CHECK(!tab->dirty);
+    press(app, 'z', LT_MOD_CTRL);
+    LT_CHECK_STR(app->status, "Nothing to undo");
+    /* at the upper limit '+' changes nothing: the first Ctrl+Z undoes the typed value */
+    type_real(app, "9999");
+    press(app, LT_KEY_ENTER, 0);
+    LT_CHECK(cell0(app, "veTableTbl", rows - 1, 0) > a);
+    press(app, '+', 0);
+    press(app, 'z', LT_MOD_CTRL);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 0), a, 1e-9);
+    lt_app_free(app);
+}
+
+/* curve: an unchanged typed value adds no undo step, so Ctrl+Z still undoes the real edit */
+LT_TEST(curve_noop_no_undo)
+{
+    char buf[512];
+    lt_app *app = lt_app_new();
+    double y0;
+    LT_CHECK(lt_app_find_demo_ini(buf, sizeof(buf)) != NULL);
+    LT_CHECK(lt_app_start_demo(app, buf) == 0);
+    LT_CHECK(lt_app_curve_editor_open(app, "cltFuelCorrCurve") == 0);
+    lt_app_screenshot(app, "build/lt_test_tables12.ppm", 1600, 1000, 3);
+    y0 = curve_val(app, "cltFuelCorrCurve", 0, 0);
+    click(app, 1224, 192, LT_MB_LEFT);               /* first row, Y column */
+    press(app, LT_KEY_F2, 0);
+    press(app, LT_KEY_ENTER, 0);
+    LT_CHECK(!app->modified);
+    press(app, 'q', 0);
+    LT_CHECK(curve_val(app, "cltFuelCorrCurve", 0, 0) > y0);
+    press(app, LT_KEY_UP, 0);                        /* back onto the cell after Enter moved on */
+    press(app, LT_KEY_F2, 0);
+    press(app, LT_KEY_ENTER, 0);
+    press(app, '=', 0);
+    press(app, 'z', LT_MOD_CTRL);
+    LT_CHECK_NEAR(curve_val(app, "cltFuelCorrCurve", 0, 0), y0, 1e-9);
+    lt_app_free(app);
+}
+
+/* the compact curve editor inside an INI dialog: clicking a point or committing an unchanged value
+ * changes nothing and leaves nothing to undo */
+LT_TEST(embedded_curve_noop)
+{
+    char buf[512];
+    lt_app *app = lt_app_new();
+    LT_CHECK(lt_app_find_demo_ini(buf, sizeof(buf)) != NULL);
+    LT_CHECK(lt_app_start_demo(app, buf) == 0);
+    LT_CHECK(lt_app_dialog_open(app, "cltFuelCorrCurveDialog") == 0);
+    lt_app_screenshot(app, "build/lt_test_tables13.ppm", 1400, 900, 3);
+    click(app, 320, 367, LT_MB_LEFT);                /* first point of the plot */
+    click(app, 389, 527, LT_MB_LEFT);                /* its value cell */
+    press(app, LT_KEY_F2, 0);
+    press(app, LT_KEY_ENTER, 0);
+    LT_CHECK(!app->modified);
+    click(app, 1239, 566, LT_MB_LEFT);               /* Undo */
+    LT_CHECK_STR(app->status, "Nothing to undo");
+    lt_app_free(app);
+}
+
 int main(void)
 {
     LT_RUN(autotune_send_undo);
@@ -637,5 +715,8 @@ int main(void)
     LT_RUN(table_esc_cancels_edit);
     LT_RUN(curve_esc_keeps_values);
     LT_RUN(table_minus_while_editing);
+    LT_RUN(table_noop_no_undo);
+    LT_RUN(curve_noop_no_undo);
+    LT_RUN(embedded_curve_noop);
     LT_TEST_MAIN_END
 }

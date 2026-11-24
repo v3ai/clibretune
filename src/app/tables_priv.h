@@ -28,6 +28,27 @@ lt_bool lt_tabs_live_index(lt_app *app, const char *channel, const double *bins,
                            double *value, size_t *idx);
 
 
+/* ---- one edit operation on a table or curve: limits, rounding, no-op detection ----
+ * The operation computes new values into a scratch copy; lt_tabs_apply writes back only what
+ * really changes (an operation that changes nothing adds no undo step and marks nothing
+ * modified), clamping each changed value into the constant's limits and counting the clamped
+ * ones. */
+typedef struct lt_tabs_lim {
+    double lo, hi;              /* allowed range in display units (hi <= lo: none) */
+    int digits;                 /* values are rounded to this many decimals */
+    int n;                      /* values limited so far */
+    double last;                /* what the last limited value became */
+} lt_tabs_lim;
+void   lt_tabs_lim_init(lt_tabs_lim *l, double lo, double hi, int digits);
+/* clamp v into the range (counted when it was outside) and round it */
+double lt_tabs_lim_fix(lt_tabs_lim *l, double v);
+#define LT_TABS_Z 0             /* lt_tabs_apply targets */
+#define LT_TABS_X 1
+/* Write nv (rows*cols values for LT_TABS_Z, cols for LT_TABS_X) into the view: every value that
+ * differs from the current one goes through lim (NULL: written exactly, e.g. a restore), and one
+ * undo step is pushed before the first real change. Returns the number of values changed. */
+size_t lt_tabs_apply(lt_tblview *v, int what, const double *nv, lt_tabs_lim *lim);
+
 /* before a commit: warn (toast) when the largest pending cell change is large (logging alert) */
 int  lt_tabs_check_change(lt_app *app, const lt_tblview *v);
 

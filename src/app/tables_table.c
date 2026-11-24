@@ -203,86 +203,67 @@ static size_t sel_cells(tbl_tab *st, lt_tcell **out)
     return n;
 }
 
-static void tbl_fix(tbl_tab *st, const lt_tcell *sel, size_t n)
-{
-    size_t i;
-    for (i = 0; i < n; i++) {
-        double v = lt_tblview_get(&st->v, sel[i].y, sel[i].x), w = v;
-        if (st->hi > st->lo) { w = w < st->lo ? st->lo : (w > st->hi ? st->hi : w); }
-        w = lt_tabs_round(w, st->zdig);
-        if (w != v) { lt_tblview_set(&st->v, sel[i].y, sel[i].x, w); }
-    }
-}
-
 enum { OP_EQUAL = 1, OP_ADD, OP_SCALE, OP_INTERP, OP_INTERP_H, OP_INTERP_V, OP_SMOOTH,
        OP_FILL_R, OP_FILL_D, OP_SET, OP_RESTORE, OP_CLEAR };
+
+/* write the scratch copy back: only changed cells, clamped and rounded (a restore is exact);
+ * nothing changed = no undo step, nothing marked modified */
+static void tbl_apply(lt_app *app, lt_app_tab *tab, tbl_tab *st, const double *nz, int exact)
+{
+    lt_tabs_lim lim;
+    lt_tabs_lim_init(&lim, st->lo, st->hi, st->zdig);
+    if (lt_tabs_apply(&st->v, LT_TABS_Z, nz, exact ? NULL : &lim) > 0) { tbl_commit(app, tab, st); }
+}
 
 static void tbl_op(lt_app *app, lt_app_tab *tab, tbl_tab *st, int op, double arg)
 {
     lt_tcell *sel;
     size_t n = sel_cells(st, &sel), miny, maxy, minx, maxx, i, y, x;
-    size_t cols = st->v.cols;
+    size_t rows = st->v.rows, cols = st->v.cols;
+    double *tmp;
     if (n == 0) { lt_free(sel); return; }
     lt_tbl_bbox(sel, n, &miny, &maxy, &minx, &maxx);
+    /* the pure operation runs on a scratch copy; tbl_apply keeps what really changed */
+    tmp = (double *)lt_calloc(rows * cols + 1, sizeof(double));
+    memcpy(tmp, st->v.z, rows * cols * sizeof(double));
     switch (op) {
     case OP_EQUAL: {
         double s = 0.0;
-        for (i = 0; i < n; i++) { s += lt_tblview_get(&st->v, sel[i].y, sel[i].x); }
-        lt_tblview_set_equal(&st->v, sel, n, lt_tabs_round(s / (double)n, st->zdig));
+        for (i = 0; i < n; i++) { s += tmp[sel[i].y * cols + sel[i].x]; }
+        lt_tbl_set_equal(tmp, rows, cols, sel, n, s / (double)n);
         break; }
-    case OP_SET: lt_tblview_set_equal(&st->v, sel, n, arg); break;
-    case OP_ADD: lt_tblview_offset(&st->v, sel, n, arg); break;
-    case OP_SCALE: lt_tblview_scale(&st->v, sel, n, arg); break;
+    case OP_SET: lt_tbl_set_equal(tmp, rows, cols, sel, n, arg); break;
+    case OP_ADD: lt_tbl_offset(tmp, rows, cols, sel, n, arg); break;
+    case OP_SCALE: lt_tbl_scale(tmp, rows, cols, sel, n, arg); break;
     case OP_INTERP:
-        if (maxy == miny) { lt_tblview_interp_linear(&st->v, sel, n, LT_TBL_AXIS_ROW); }
-        else if (maxx == minx) { lt_tblview_interp_linear(&st->v, sel, n, LT_TBL_AXIS_COL); }
-        else { lt_tblview_interp2d(&st->v, sel, n); }
+        if (maxy == miny) { lt_tbl_interp_linear(tmp, rows, cols, sel, n, LT_TBL_AXIS_ROW); }
+        else if (maxx == minx) { lt_tbl_interp_linear(tmp, rows, cols, sel, n, LT_TBL_AXIS_COL); }
+        else { lt_tbl_interp2d(tmp, rows, cols, sel, n); }
         break;
     case OP_RESTORE:
-    case OP_CLEAR: {
-        /* run the pure op on a scratch copy, then write the selected cells through the view */
-        double *tmp = (double *)lt_calloc(st->v.rows * cols + 1, sizeof(double));
-        memcpy(tmp, st->v.z, st->v.rows * cols * sizeof(double));
-        if (op == OP_RESTORE && st->orig != NULL && st->orig_n == st->v.rows * cols) {
-            lt_tbl_restore(tmp, st->v.rows, cols, sel, n, st->orig);
-        } else if (op == OP_CLEAR) {
-            lt_tbl_clear(tmp, st->v.rows, cols, sel, n, st->lo, st->hi);
-        }
-        {
-            int changed = 0;
-            for (i = 0; i < n; i++) {
-                if (tmp[sel[i].y * cols + sel[i].x] != lt_tblview_get(&st->v, sel[i].y, sel[i].x)) { changed = 1; }
-            }
-            if (changed) {
-                lt_tblview_push_undo(&st->v);
-                for (i = 0; i < n; i++) {
-                    lt_tblview_set(&st->v, sel[i].y, sel[i].x, tmp[sel[i].y * cols + sel[i].x]);
-                }
-            }
-        }
-        lt_free(tmp);
-        break; }
-    case OP_INTERP_H: lt_tblview_interp_linear(&st->v, sel, n, LT_TBL_AXIS_ROW); break;
-    case OP_INTERP_V: lt_tblview_interp_linear(&st->v, sel, n, LT_TBL_AXIS_COL); break;
-    case OP_SMOOTH: lt_tblview_smooth(&st->v, sel, n, 1.0); break;
+        if (st->orig != NULL && st->orig_n == rows * cols) { lt_tbl_restore(tmp, rows, cols, sel, n, st->orig); }
+        break;
+    case OP_CLEAR: lt_tbl_clear(tmp, rows, cols, sel, n, st->lo, st->hi); break;
+    case OP_INTERP_H: lt_tbl_interp_linear(tmp, rows, cols, sel, n, LT_TBL_AXIS_ROW); break;
+    case OP_INTERP_V: lt_tbl_interp_linear(tmp, rows, cols, sel, n, LT_TBL_AXIS_COL); break;
+    case OP_SMOOTH: lt_tbl_smooth(tmp, rows, cols, sel, n, 1.0); break;
     case OP_FILL_R:
-    case OP_FILL_D: {
-        lt_tblview_push_undo(&st->v);
+    case OP_FILL_D:
         for (y = miny; y <= maxy; y++) {
             for (x = minx; x <= maxx; x++) {
                 size_t sy, sx;
                 if (!st->sel[y * cols + x] && n > 1) { continue; }
                 if (op == OP_FILL_R) { sy = y; sx = minx; }
                 else { sy = st->ybottom ? maxy : miny; sx = x; }
-                lt_tblview_set(&st->v, y, x, lt_tblview_get(&st->v, sy, sx));
+                tmp[y * cols + x] = tmp[sy * cols + sx];
             }
         }
-        break; }
+        break;
     default: break;
     }
-    tbl_fix(st, sel, n);
     lt_free(sel);
-    tbl_commit(app, tab, st);
+    tbl_apply(app, tab, st, tmp, op == OP_RESTORE);
+    lt_free(tmp);
 }
 
 static void tbl_undo_redo(lt_app *app, lt_app_tab *tab, tbl_tab *st, int redo)
@@ -359,20 +340,17 @@ static void tbl_copy(lt_app *app, tbl_tab *st)
     lt_app_toast(app, 0, "Copied %dx%d cells", r1 - r0 + 1, c1 - c0 + 1);
 }
 
-/* combine value `val` with data cell (y,x) using a paste mode and write it through the view */
-static void tbl_put(tbl_tab *st, size_t y, size_t x, double val, int mode)
+/* combine value `val` with scratch cell (y,x) using a paste mode */
+static void tbl_put(const tbl_tab *st, double *z, size_t y, size_t x, double val, int mode)
 {
-    double cell = lt_tblview_get(&st->v, y, x);
-    lt_tbl_paste_op(&cell, 1, 1, 0, 0, &val, 1, 1, mode);
-    lt_tblview_set(&st->v, y, x, cell);
+    lt_tbl_paste_op(&z[y * st->v.cols + x], 1, 1, 0, 0, &val, 1, 1, mode);
 }
 
 static void tbl_paste(lt_app *app, lt_app_tab *tab, tbl_tab *st, int mode)
 {
     char *txt = lt_ui_clipboard_get(app->ui);
-    double *blk = NULL, row[64];
-    lt_tcell *put;
-    size_t bh = 0, bw = 0, nput = 0;
+    double *blk = NULL, *tmp, row[64];
+    size_t bh = 0, bw = 0;
     int r0, c0, r1, c1, r, c, rows = (int)st->v.rows, cols = (int)st->v.cols;
     if (txt != NULL && txt[0] != '\0') {
         const char *p = txt;
@@ -408,16 +386,14 @@ static void tbl_paste(lt_app *app, lt_app_tab *tab, tbl_tab *st, int mode)
     }
     if (blk == NULL) { lt_app_toast(app, 2, "Clipboard is empty"); return; }
     tbl_bbox_disp(st, &r0, &c0, &r1, &c1);
-    lt_tblview_push_undo(&st->v);
-    /* only the pasted cells are clamped and rounded: the others keep their stored values */
-    put = (lt_tcell *)lt_calloc((size_t)(rows * cols) + 1, sizeof(lt_tcell));
+    /* combined into a scratch copy: only the pasted cells that change are written (clamped and
+     * rounded), the others keep their stored values, and pasting equal values is a no-op */
+    tmp = (double *)lt_calloc((size_t)(rows * cols) + 1, sizeof(double));
+    memcpy(tmp, st->v.z, (size_t)(rows * cols) * sizeof(double));
     if (bh == 1 && bw == 1 && st->nsel > 1) {
         for (r = 0; r < rows; r++) {
             for (c = 0; c < cols; c++) {
-                if (st->sel[(size_t)r * (size_t)cols + (size_t)c]) {
-                    tbl_put(st, (size_t)r, (size_t)c, blk[0], mode);
-                    put[nput].y = (size_t)r; put[nput].x = (size_t)c; nput++;
-                }
+                if (st->sel[(size_t)r * (size_t)cols + (size_t)c]) { tbl_put(st, tmp, (size_t)r, (size_t)c, blk[0], mode); }
             }
         }
     } else {
@@ -425,17 +401,14 @@ static void tbl_paste(lt_app *app, lt_app_tab *tab, tbl_tab *st, int mode)
         for (i = 0; i < bh; i++) {
             for (j = 0; j < bw; j++) {
                 int dr = r0 + (int)i, dc = c0 + (int)j;
-                if (dr < rows && dc < cols) {
-                    tbl_put(st, (size_t)drow(st, dr), (size_t)dc, blk[i * bw + j], mode);
-                    put[nput].y = (size_t)drow(st, dr); put[nput].x = (size_t)dc; nput++;
-                }
+                if (dr < rows && dc < cols) { tbl_put(st, tmp, (size_t)drow(st, dr), (size_t)dc, blk[i * bw + j], mode); }
             }
         }
     }
-    tbl_fix(st, put, nput);
-    lt_free(put);
+    (void)r1; (void)c1;
+    tbl_apply(app, tab, st, tmp, 0);
+    lt_free(tmp);
     lt_free(blk);
-    tbl_commit(app, tab, st);
 }
 
 /* ---- re-bin ---- */
@@ -1086,13 +1059,13 @@ static void tbl_toolbar(lt_app *app, lt_app_tab *tab, tbl_tab *st)
 /* write the whole grid (all cells) back clamped and rounded to the constant's precision */
 static void tbl_fix_all(tbl_tab *st)
 {
-    size_t y, x, n = 0;
-    lt_tcell *all = (lt_tcell *)lt_calloc(st->v.rows * st->v.cols + 1, sizeof(lt_tcell));
-    for (y = 0; y < st->v.rows; y++) {
-        for (x = 0; x < st->v.cols; x++) { all[n].y = y; all[n].x = x; n++; }
+    size_t k, n = st->v.rows * st->v.cols;
+    lt_tabs_lim lim;
+    lt_tabs_lim_init(&lim, st->lo, st->hi, st->zdig);
+    for (k = 0; k < n; k++) {
+        double w = lt_tabs_lim_fix(&lim, st->v.z[k]);
+        if (w != st->v.z[k]) { lt_tblview_set(&st->v, k / st->v.cols, k % st->v.cols, w); }
     }
-    tbl_fix(st, all, n);
-    lt_free(all);
 }
 
 static void tbl_apply_gen(lt_app *app, lt_app_tab *tab, tbl_tab *st, const double *nx,
@@ -1449,9 +1422,8 @@ static void tbl_grid(lt_app *app, lt_app_tab *tab, tbl_tab *st, int vh)
             double v;
             if (lt_parse_double(lt_ui_grid_edit_text(ui), &v)) {
                 unsigned char *keep = st->sel;
-                if (st->hi > st->lo) { v = v < st->lo ? st->lo : (v > st->hi ? st->hi : v); }
                 st->sel = st->esel;
-                tbl_op(app, tab, st, OP_SET, lt_tabs_round(v, st->zdig));
+                tbl_op(app, tab, st, OP_SET, v);        /* limited and rounded there */
                 st->sel = keep;
             } else { lt_app_toast(app, 2, "Not a number"); }
         }
