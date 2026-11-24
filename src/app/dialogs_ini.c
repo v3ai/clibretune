@@ -34,6 +34,8 @@ typedef struct ini_state {
     int close_req;
     lt_embeds emb;                  /* embedded curves/tables/gauges */
     int counts[LT_EMB_KINDS];       /* drawn this frame (tests); [0] = help buttons */
+    int stacked;                    /* column sets drawn one below the other this frame (tests) */
+    int overflow;                   /* px the content is wider than the tab (tests) */
 } ini_state;
 
 typedef struct opt_ctx { const lt_ini_const *c; const int *map; } opt_ctx;
@@ -396,6 +398,13 @@ static void titled_end(lt_app *app, int g)
     if (g == 2) { lt_ui_group_end(app->ui); }
 }
 
+/* cells of the current container that stick out on the right (tests: nothing may) */
+static void note_overflow(lt_app *app, ini_state *st)
+{
+    int ex = lt_ui_layout_used_w(app->ui) - lt_ui_layout_width(app->ui);
+    if (ex > st->overflow) { st->overflow = ex; }
+}
+
 /* "panel = name": a dialog, curve, table, indicator panel, readout panel or gauge. Returns 1
  * when something was drawn. */
 static int draw_panel_ref(lt_app *app, ini_state *st, const char *name, int enabled, int depth)
@@ -410,18 +419,18 @@ static int draw_panel_ref(lt_app *app, ini_state *st, const char *name, int enab
         /* an untitled dialog (title defaults to its name) gets no titled border, as in TunerStudio */
         g = titled_begin(app, sub->title != NULL && sub->name != NULL && strcmp(sub->title, sub->name) == 0
                               ? NULL : sub->title);
-        if (g) { draw_dialog(app, st, sub, depth + 1); titled_end(app, g); }
+        if (g) { draw_dialog(app, st, sub, depth + 1); note_overflow(app, st); titled_end(app, g); }
         st->counts[LT_EMB_DIALOG]++;
         return 1; }
     case LT_EMB_CURVE: {
         const lt_ini_curve *c = lt_ini_find_curve(app->ini, name);
         g = titled_begin(app, c->title != NULL ? c->title : c->name);
-        if (g) { drawn = lt_emb_curve(app, &st->emb, c, enabled); titled_end(app, g); }
+        if (g) { drawn = lt_emb_curve(app, &st->emb, c, enabled); note_overflow(app, st); titled_end(app, g); }
         break; }
     case LT_EMB_TABLE: {
         const lt_ini_table *t = lt_ini_find_table(app->ini, name);
         g = titled_begin(app, t->title != NULL ? t->title : t->name);
-        if (g) { drawn = lt_emb_table(app, &st->emb, t, enabled); titled_end(app, g); }
+        if (g) { drawn = lt_emb_table(app, &st->emb, t, enabled); note_overflow(app, st); titled_end(app, g); }
         break; }
     case LT_EMB_IND:
         drawn = lt_emb_indicators(app, lt_ini_find_ind_panel(app->ini, name));
@@ -637,28 +646,99 @@ static int columnable(lt_app *app, const lt_ini_comp *cm)
     return cm->kind == LT_COMP_PANEL && lt_emb_kind(app, cm->name) != LT_EMB_NONE;
 }
 
-/* draw groups of components side by side: col[k] lists n_in[k] component indices */
+/* ---- narrowest widths (px at 100%), to decide whether columns fit side by side ----
+ * A field row needs its caption and an input, an embedded table its toolbar (value box, - + Undo
+ * ? and Open in editor), a curve its plot and toolbar. A dialog needs what its widest component
+ * needs: its own columns can stack too. A titled panel adds its group box border. */
+#define MINW_FIELD 250
+#define MINW_TEXT 140
+#define MINW_GAUGE 180
+#define MINW_CURVE 360
+#define MINW_TABLE 420
+#define MINW_PANEL 200
+#define MINW_GROUP 18
+
+static int dialog_min_w(lt_app *app, const lt_ini_dialog *d, int depth);
+
+static int comp_min_w(lt_app *app, const lt_ini_comp *cm, int depth)
+{
+    switch (cm->kind) {
+    case LT_COMP_FIELD: case LT_COMP_DISPLAYONLY: case LT_COMP_SLIDER: case LT_COMP_SETTINGSEL:
+    case LT_COMP_RUNTIMEVALUE:
+        return MINW_FIELD;
+    case LT_COMP_GAUGE: return MINW_GAUGE;
+    case LT_COMP_LIVEGRAPH: return MINW_PANEL;
+    case LT_COMP_TABLE: return MINW_TABLE + MINW_GROUP;
+    case LT_COMP_PANEL:
+        switch (lt_emb_kind(app, cm->name)) {
+        case LT_EMB_DIALOG: {
+            const lt_ini_dialog *sub = find_panel(app, cm->name);
+            int g = sub != NULL && sub->title != NULL && sub->name != NULL && strcmp(sub->title, sub->name) != 0;
+            if (sub == NULL || depth >= MAX_DEPTH) { return MINW_TEXT; }
+            return dialog_min_w(app, sub, depth + 1) + (g ? MINW_GROUP : 0); }
+        case LT_EMB_CURVE: return MINW_CURVE + MINW_GROUP;
+        case LT_EMB_TABLE: return MINW_TABLE + MINW_GROUP;
+        case LT_EMB_GAUGE: return MINW_GAUGE;
+        default: return MINW_PANEL;
+        }
+    default:
+        return MINW_TEXT;
+    }
+}
+
+static int dialog_min_w(lt_app *app, const lt_ini_dialog *d, int depth)
+{
+    size_t i;
+    int w = MINW_TEXT;
+    for (i = 0; i < d->n_comps; i++) {
+        if (!cond(app, d->comps[i].vis_cond)) { continue; }
+        w = LT_MAX(w, comp_min_w(app, &d->comps[i], depth));
+    }
+    return w;
+}
+
+/* draw groups of components side by side: col[k] lists n_in[k] component indices. weight NULL
+ * shares the width in proportion to what each column needs. When the width is below what the
+ * columns need, they are drawn one below the other instead. */
 #define MAX_COLS 4
 #define COL_CAP 64
 static void draw_columns(lt_app *app, ini_state *st, const lt_ini_dialog *dlg, size_t col[][COL_CAP],
                          const int *n_in, const int *weight, int ncols, int depth)
 {
     lt_ui *ui = app->ui;
-    int ws[MAX_COLS], k, n = 0, idx[MAX_COLS], j;
+    int ws[MAX_COLS], need[MAX_COLS], k, n = 0, idx[MAX_COLS], j, sumw = 0, total = 0, avail;
     for (k = 0; k < ncols; k++) {
-        int vis = 0;
+        int vis = 0, mw = 0;
         for (j = 0; j < n_in[k]; j++) {
             const lt_ini_comp *cm = &dlg->comps[col[k][j]];
-            if (cond(app, cm->vis_cond)) { vis = 1; }
+            if (cond(app, cm->vis_cond)) { vis = 1; mw = LT_MAX(mw, comp_min_w(app, cm, depth)); }
         }
-        if (vis) { ws[n] = weight[k]; idx[n++] = k; }
+        if (vis) {
+            need[n] = mw;
+            ws[n] = weight != NULL ? weight[k] : -mw;
+            sumw += -ws[n];
+            idx[n++] = k;
+        }
     }
     if (n == 0) { return; }
+    for (k = 0; k < n; k++) {      /* the share each column gets must cover what it needs */
+        total = LT_MAX(total, (int)((long)need[k] * sumw / (-ws[k] > 0 ? -ws[k] : 1)));
+    }
+    total += (n - 1) * lt_ui_unpx(ui, lt_ui_theme(ui)->spacing_x);
+    avail = lt_ui_unpx(ui, lt_ui_layout_width(ui));
+    st->stacked += n > 1 && avail < total;
+    for (k = 0; k < n && avail < total; k++) {
+        lt_ui_push_id_int(ui, 1000 + idx[k]);
+        for (j = 0; j < n_in[idx[k]]; j++) { draw_comp(app, st, dlg, col[idx[k]][j], depth); }
+        lt_ui_pop_id(ui);
+    }
+    if (avail < total) { return; }
     lt_ui_layout_row(ui, n, ws, 0);
     for (k = 0; k < n; k++) {
         lt_ui_push_id_int(ui, 1000 + idx[k]);
         lt_ui_layout_column_begin(ui);
         for (j = 0; j < n_in[idx[k]]; j++) { draw_comp(app, st, dlg, col[idx[k]][j], depth); }
+        note_overflow(app, st);
         lt_ui_layout_column_end(ui);
         lt_ui_pop_id(ui);
     }
@@ -668,7 +748,7 @@ static void draw_columns(lt_app *app, ini_state *st, const lt_ini_dialog *dlg, s
 static void draw_border(lt_app *app, ini_state *st, const lt_ini_dialog *dlg, int depth)
 {
     size_t (*col)[COL_CAP];
-    int n_in[5] = { 0, 0, 0, 0, 0 }, k, j, wide, used = 0;
+    int n_in[5] = { 0, 0, 0, 0, 0 }, j;
     static const int weight[3] = { -2, -3, -2 };
     size_t i;
     /* 0 North, 1 West, 2 Center, 3 East, 4 South */
@@ -684,16 +764,8 @@ static void draw_border(lt_app *app, ini_state *st, const lt_ini_dialog *dlg, in
         }
         if (n_in[r] < COL_CAP) { col[r][n_in[r]++] = i; }
     }
-    for (k = 1; k <= 3; k++) { if (n_in[k] > 0) { used++; } }
-    wide = lt_ui_unpx(app->ui, lt_ui_layout_width(app->ui)) >= 700 && used >= 2;
     for (j = 0; j < n_in[0]; j++) { draw_comp(app, st, dlg, col[0][j], depth); }
-    if (wide) {
-        draw_columns(app, st, dlg, &col[1], &n_in[1], weight, 3, depth);
-    } else {
-        for (k = 1; k <= 3; k++) {
-            for (j = 0; j < n_in[k]; j++) { draw_comp(app, st, dlg, col[k][j], depth); }
-        }
-    }
+    draw_columns(app, st, dlg, &col[1], &n_in[1], weight, 3, depth);
     for (j = 0; j < n_in[4]; j++) { draw_comp(app, st, dlg, col[4][j], depth); }
     lt_free(col);
 }
@@ -711,18 +783,19 @@ static void draw_dialog(lt_app *app, ini_state *st, const lt_ini_dialog *dlg, in
     while (i < dlg->n_comps) {
         if (is_xaxis(dlg) && columnable(app, &dlg->comps[i]) && depth < MAX_DEPTH) {
             size_t (*col)[COL_CAP] = (size_t (*)[COL_CAP])lt_calloc(MAX_COLS, sizeof(*col));
-            int n_in[MAX_COLS] = { 0, 0, 0, 0 }, ws[MAX_COLS] = { 0, 0, 0, 0 }, n = 0;
+            int n_in[MAX_COLS] = { 0, 0, 0, 0 }, n = 0;
             for (j = i; j < dlg->n_comps && columnable(app, &dlg->comps[j]) && n < MAX_COLS; j++) {
-                col[n][0] = j; n_in[n] = 1; ws[n] = -1; n++;
+                col[n][0] = j; n_in[n] = 1; n++;
             }
             i = j;
-            draw_columns(app, st, dlg, col, n_in, ws, n, depth);
+            draw_columns(app, st, dlg, col, n_in, NULL, n, depth);
             lt_free(col);
             continue;
         }
         draw_comp(app, st, dlg, i, depth);
         i++;
     }
+    note_overflow(app, st);
     lt_ui_pop_id(ui);
 }
 
@@ -746,11 +819,13 @@ static void ini_dialog_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
         tab->data = st;
     }
     st->close_req = 0;
+    st->stacked = 0;
     memset(st->counts, 0, sizeof(st->counts));
     if (app->ini == NULL) { return; }
     dlg = find_panel(app, tab->target);
     lt_ui_layout_row(ui, 1, &w1, -1);
     if (lt_ui_scroll_begin(ui, "inidlg")) {
+        st->overflow = lt_ui_scroll_overflow_x(ui);         /* and cells sticking out, below */
         if (lt_ui_cell_mode(ui)) {
             int wh[2];
             wh[0] = -1; wh[1] = 8 * 8;
@@ -818,6 +893,14 @@ int lt_dlg_ini_counts(lt_app *app, const char *name, int *counts)
     if (st == NULL) { return -1; }
     memcpy(counts, st->counts, sizeof(st->counts));
     return 0;
+}
+
+int lt_dlg_ini_stacked(lt_app *app, const char *name, int *overflow)
+{
+    lt_app_tab *tab = lt_app_tab_find(app, "dialog", name);
+    const ini_state *st = tab != NULL ? (const ini_state *)tab->data : NULL;
+    if (overflow != NULL) { *overflow = st != NULL ? st->overflow : 0; }
+    return st != NULL ? st->stacked : -1;
 }
 
 void lt_dlg_register_ini(lt_app *app)

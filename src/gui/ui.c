@@ -1218,6 +1218,11 @@ void lt_ui_layout_gap(lt_ui *ui, int x, int y)
 
 int lt_ui_layout_width(const lt_ui *ui) { return ui->lay[ui->nlay > 0 ? ui->nlay - 1 : 0].body.w; }
 lt_rect lt_ui_layout_body(const lt_ui *ui) { return ui->lay[ui->nlay > 0 ? ui->nlay - 1 : 0].body; }
+int lt_ui_layout_used_w(const lt_ui *ui)
+{
+    const ui_layout *L = &ui->lay[ui->nlay > 0 ? ui->nlay - 1 : 0];
+    return L->max_x - L->body.x;
+}
 
 void lt_ui_layout_column_begin(lt_ui *ui)
 {

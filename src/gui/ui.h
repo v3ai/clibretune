@@ -268,6 +268,9 @@ void    lt_ui_layout_indent(lt_ui *ui, int dx);
 void    lt_ui_layout_gap(lt_ui *ui, int x, int y);   /* spacing between cells of this container */
 int     lt_ui_layout_width(const lt_ui *ui);    /* body width of the current container */
 lt_rect lt_ui_layout_body(const lt_ui *ui);
+/* how wide the cells placed in the current container so far reach, from its left edge (device
+ * px): more than lt_ui_layout_width means fixed-width cells stick out on the right */
+int     lt_ui_layout_used_w(const lt_ui *ui);
 /* nested column: the next cell becomes a container with its own layout */
 void    lt_ui_layout_column_begin(lt_ui *ui);
 void    lt_ui_layout_column_end(lt_ui *ui);
@@ -286,6 +289,9 @@ void    lt_ui_scroll_set(lt_ui *ui, int x, int y);
 /* scroll the innermost scroll container so that r (absolute coords) is visible */
 void    lt_ui_scroll_ensure_visible(lt_ui *ui, lt_rect r);
 lt_rect lt_ui_scroll_view(const lt_ui *ui);     /* viewport of the innermost scroll container */
+/* how far (device px) the content of the innermost scroll container is wider than its view, as
+ * measured in the previous frame: > 0 means a horizontal scrollbar */
+int     lt_ui_scroll_overflow_x(const lt_ui *ui);
 /* Group box with a title. height>0 fixed, 0 = grow to fit content. */
 lt_bool lt_ui_group_begin(lt_ui *ui, const char *title, int height);
 void    lt_ui_group_end(lt_ui *ui);

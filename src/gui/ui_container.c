@@ -83,6 +83,12 @@ lt_rect lt_ui_scroll_view(const lt_ui *ui)
     return ui->scr[ui->nscr - 1].view;
 }
 
+int lt_ui_scroll_overflow_x(const lt_ui *ui)
+{
+    const ui_scroll *S = ui->nscr > 0 ? &ui->scr[ui->nscr - 1] : NULL;
+    return S != NULL && S->cw > S->inner.w ? S->cw - S->inner.w : 0;
+}
+
 void lt_ui_scroll_ensure_visible(lt_ui *ui, lt_rect r)
 {
     ui_scroll *S = scr_top(ui);

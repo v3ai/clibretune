@@ -7,6 +7,7 @@
 #include "lt_test.h"
 #include "../src/app/app.h"
 #include "../src/app/app_ext.h"
+#include "../src/app/dialogs_embed.h"
 #include "../src/app/feat.h"
 #include "../src/app/hotkeys.h"
 #include "../src/plat/plat.h"
@@ -261,8 +262,84 @@ LT_TEST(sidebar_resize)
     lt_app_free(app);
 }
 
+/* ---- narrow windows: side-by-side INI panels fall back to one column ---- */
+/* a dialog that lays panels side by side, or holds one that does */
+static int has_columns(const lt_ini *ini, const lt_ini_dialog *d, int depth)
+{
+    size_t k;
+    if (d->layout_hint != NULL) { return 1; }
+    for (k = 0; k < d->n_comps && depth < 5; k++) {
+        const lt_ini_dialog *sub = d->comps[k].kind == LT_COMP_PANEL && d->comps[k].name != NULL
+                                   ? lt_ini_find_dialog(ini, d->comps[k].name) : NULL;
+        if (sub != NULL && sub != d && has_columns(ini, sub, depth + 1)) { return 1; }
+    }
+    return 0;
+}
+
+/* every such dialog of ini_path at w x h (scale pct, or "tty": the terminal UI, w x h cells): how
+ * many overflow sideways; their names are printed */
+static int overflowing_dialogs(const char *ini_path, int w, int h, const char *scale)
+{
+    lt_app *app = lt_app_new();
+    size_t i;
+    int bad = 0, n = 0, ov = 0, tty = strcmp(scale, "tty") == 0;
+    LT_CHECK(lt_app_start_demo(app, ini_path) == 0);
+    lt_plat_setenv(tty ? "LT_SHOT_TEXT" : "LT_SCALE", tty ? "build/test_navigate_narrow.txt" : scale);
+    LT_CHECK(lt_app_screenshot(app, "build/test_navigate_narrow.ppm", w, h, 1) == 0);
+    lt_plat_setenv(tty ? "LT_SHOT_TEXT" : "LT_SCALE", "");
+    for (i = 0; app->ini != NULL && i < app->ini->n_dialogs; i++) {
+        const lt_ini_dialog *d = app->ini->dialogs[i];
+        lt_app_tab *t;
+        if (d->name == NULL || d->n_comps == 0 || !has_columns(app->ini, d, 0)) { continue; }
+        if (lt_app_dialog_open(app, d->name) != 0) { continue; }
+        run1(app); run1(app); run1(app); run1(app); run1(app); run1(app); run1(app); run1(app);
+        if (lt_dlg_ini_stacked(app, d->name, &ov) >= 0 && ov > 0) {
+            printf("    %s overflows at %dx%d@%s: %d px\n", d->name, w, h, scale, ov);
+            bad++;
+        }
+        n++;
+        t = lt_app_tab_find(app, "dialog", d->name);
+        if (t != NULL) { lt_app_tab_close(app, t); }
+    }
+    LT_CHECK(n > 0);
+    lt_app_free(app);
+    return bad;
+}
+
+LT_TEST(narrow_panels)
+{
+    char ini[512];
+    lt_app *app;
+    int ov = -1;
+    sandbox("narrow");
+    LT_CHECK(lt_app_find_demo_ini(ini, sizeof(ini)) != NULL);
+    app = lt_app_new();
+    LT_CHECK(lt_app_start_demo(app, ini) == 0);
+    /* the known cases: gauges | fields | gauge, fields | table */
+    LT_CHECK(lt_app_dialog_open(app, "fuelClosedLoopDialog") == 0);
+    LT_CHECK(lt_app_screenshot(app, "build/test_navigate_fcl800.ppm", 800, 600, 6) == 0);
+    LT_CHECK(lt_dlg_ini_stacked(app, "fuelClosedLoopDialog", &ov) >= 1 && ov == 0);
+    LT_CHECK(lt_app_screenshot(app, "build/test_navigate_fcl1280.ppm", 1280, 800, 6) == 0);
+    LT_CHECK(lt_dlg_ini_stacked(app, "fuelClosedLoopDialog", &ov) == 0 && ov == 0);
+    LT_CHECK(lt_app_dialog_open(app, "gppwm1") == 0);
+    LT_CHECK(lt_app_screenshot(app, "build/test_navigate_gppwm800.ppm", 800, 600, 6) == 0);
+    LT_CHECK(lt_dlg_ini_stacked(app, "gppwm1", &ov) == 1 && ov == 0);
+    LT_CHECK(lt_app_screenshot(app, "build/test_navigate_gppwm1280.ppm", 1280, 800, 6) == 0);
+    LT_CHECK(lt_dlg_ini_stacked(app, "gppwm1", &ov) == 0 && ov == 0);
+    lt_app_free(app);
+    /* nothing overflows sideways, in any dialog of the rusEFI, Speeduino and MegaSquirt INIs */
+    LT_CHECK(overflowing_dialogs(ini, 800, 600, "100") == 0);
+    LT_CHECK(overflowing_dialogs(ini, 1920, 1080, "200") == 0);
+    LT_CHECK(overflowing_dialogs("tests/fixtures/ini/speeduino_202501.ini", 800, 600, "100") == 0);
+    LT_CHECK(overflowing_dialogs("tests/fixtures/ini/speeduino_202501.ini", 1920, 1080, "200") == 0);
+    LT_CHECK(overflowing_dialogs("tests/fixtures/ini/ms3.ini", 800, 600, "100") == 0);
+    LT_CHECK(overflowing_dialogs(ini, 100, 30, "tty") == 0);
+    LT_CHECK(overflowing_dialogs("tests/fixtures/ini/speeduino_202501.ini", 100, 30, "tty") == 0);
+}
+
 int main(void)
 {
+    LT_RUN(narrow_panels);
     LT_RUN(connect_entries);
     LT_RUN(ini_menu_access_keys);
     LT_RUN(sidebar_resize);

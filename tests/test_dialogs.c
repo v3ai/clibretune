@@ -158,7 +158,7 @@ LT_TEST(elided_field_caption_has_tooltip)
     LT_CHECK(lt_app_start_demo(app, lt_app_find_demo_ini(buf, sizeof(buf))) == 0);
     LT_CHECK(lt_app_open_target(app, "fuelClosedLoopDialog", "fuelClosedLoopDialog") == 0);
     LT_CHECK(lt_app_screenshot(app, "build/test_dialogs_caption.ppm", 800, 600, 2) == 0);
-    for (y = 130; y < 240 && !found; y += 8) {      /* the caption column of the middle panel */
+    for (y = 360; y < 470 && !found; y += 8) {      /* captions below the gauge (the panels stack at 800 px) */
         for (x = 280; x < 800 && !found; x += 12) {
             int k;
             memset(&ev, 0, sizeof(ev));
