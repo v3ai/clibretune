@@ -19,7 +19,7 @@ typedef struct sim_tok {
 typedef struct sim_tpl {
     lt_simcmd_kind kind;
     int page;
-    sim_tok *tok;
+    sim_tok *seq;
     size_t n;
 } sim_tpl;
 
@@ -131,8 +131,8 @@ static void add(lt_simcmds *c, lt_simcmd_kind kind, int page, const char *f, siz
     t->kind = kind;
     t->page = page;
     t->n = toks.len / sizeof(sim_tok);
-    t->tok = (sim_tok *)lt_malloc(toks.len);
-    memcpy(t->tok, toks.data, toks.len);
+    t->seq = (sim_tok *)lt_malloc(toks.len);
+    memcpy(t->seq, toks.data, toks.len);
     lt_buf_free(&toks);
 }
 
@@ -183,7 +183,7 @@ void lt_simcmds_free(lt_simcmds *c)
         return;
     }
     for (i = 0; i < c->n; i++) {
-        lt_free(c->t[i].tok);
+        lt_free(c->t[i].seq);
     }
     lt_free(c->t);
     lt_free(c);
@@ -199,7 +199,7 @@ static int match_one(const lt_simcmds *c, const sim_tpl *t, const lt_u8 *b, size
     m->kind = t->kind;
     m->page = t->page;
     for (k = 0; k < t->n; k++) {
-        const sim_tok *tk = &t->tok[k];
+        const sim_tok *tk = &t->seq[k];
         switch (tk->type) {
         case TK_LIT:
             if (pos >= n) {
