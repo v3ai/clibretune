@@ -168,6 +168,17 @@ struct lt_app {
 
     /* shell UI state */
     char        search[64];
+    struct lt_sidx *sidx;            /* settings search index of `ini`, built on the first search */
+    lt_u32      search_ret;          /* focus to go back to when Esc leaves the search */
+    int         search_focus;        /* 1: focus the search box when the sidebar is next drawn */
+    int         search_in;           /* the focus was in the search box or its results last frame */
+    /* a field opened from the settings search: focus it in its dialog tab, outline it briefly */
+    struct {
+        const void *comp;            /* lt_ini_comp to find, NULL none */
+        char        tab[96];         /* the dialog tab it is in */
+        double      t0;              /* when it was focused (ms), 0 still to find */
+        int         frames;          /* frames of that tab drawn while looking for it */
+    } reveal;
     lt_ui_filedlg fd;
     int         fd_purpose;          /* LT_APP_FD_* */
     int         burn_open, quit_open, close_proj_open, reset_open;
@@ -316,7 +327,14 @@ void lt_app_register_dialogs(lt_app *app);
 int  lt_app_dialog_open(lt_app *app, const char *ini_dialog_name);
 int  lt_app_datalog_open(lt_app *app, int viewer);       /* 0 logger, 1 viewer */
 int  lt_app_special_open(lt_app *app, const char *id);   /* och-status, tooth-logger, composite-logger, console */
-int  lt_app_connect_dialog(lt_app *app);
+int  lt_app_connect_dialog(lt_app *app);    /* File > Connection Settings... */
+/* File > Connect (app_shell.c): the project's saved port; with no project or no saved port the
+ * Connect ECU wizard (on the start screen a plugged-in ECU used before opens its project) */
+void lt_app_connect(lt_app *app);
+/* Alt access key (lowercase letter or digit, 0 = none) of ECU menu idx as the menu bar shows it
+ * now, label = its title with the '&' marker; idx (size_t)-1 = the Tuning menu that holds them
+ * all when the bar is too narrow (app_shell.c) */
+char lt_app_menu_access_key(lt_app *app, size_t idx, char *label, size_t cap);
 int  lt_app_settings_dialog(lt_app *app);
 int  lt_app_basemap_wizard(lt_app *app);
 int  lt_app_restore_points_dialog(lt_app *app);

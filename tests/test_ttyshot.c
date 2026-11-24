@@ -226,7 +226,24 @@ LT_TEST(sidebar_search_enter_opens_first_match)
     render(100, 30, NULL, "ctrl+k,text:zzzq,enter", NULL, 0, NULL);
     LT_CHECK(strstr(g_txt, "Nothing in the sidebar matches") != NULL);
     render(100, 30, NULL, "ctrl+k,text:zzzq", NULL, 0, NULL);
-    LT_CHECK(strstr(g_txt, "No menu entry matches") != NULL);     /* an empty tree says why */
+    LT_CHECK(strstr(g_txt, "No menu entry or") != NULL);
+}
+
+/* the settings search in a terminal: a field's caption finds its dialog; Down, Enter, Esc */
+LT_TEST(settings_search_keyboard)
+{
+    char l[1024];
+    render(120, 40, NULL, "ctrl+k,text:pfactor", NULL, 0, NULL);
+    LT_CHECK(strstr(g_txt, " Settings ") != NULL);
+    LT_CHECK(strstr(g_txt, "pFactor - Electronic") != NULL);
+    render(120, 40, NULL, "ctrl+k,text:ifactor,enter", NULL, 0, NULL);
+    line_of(1, l, sizeof(l));
+    LT_CHECK(strstr(l, "Electronic Throttle Body") != NULL);
+    render(120, 40, NULL, "ctrl+k,text:pfactor,down,down,enter", NULL, 0, NULL);
+    line_of(1, l, sizeof(l));
+    LT_CHECK(strstr(l, "Boost") != NULL);                 /* the second result: P Gain - Boost control PID */
+    render(120, 40, NULL, "ctrl+k,text:pfactor,down,esc", NULL, 0, NULL);
+    LT_CHECK(strstr(g_txt, "Search...") != NULL && strstr(g_txt, "pFactor - Electronic") == NULL);
 }
 
 LT_TEST(ve_table_and_selection)
@@ -436,6 +453,7 @@ int main(void)
     LT_RUN(menu_shows_rebound_log_shortcut);
     LT_RUN(one_help_menu);
     LT_RUN(sidebar_search_enter_opens_first_match);
+    LT_RUN(settings_search_keyboard);
     LT_RUN(ve_table_and_selection);
     LT_RUN(ve_table_16_colors_ascii);
     LT_RUN(dialog_frame);

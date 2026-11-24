@@ -143,7 +143,7 @@ static lt_bool button_impl(lt_ui *ui, const char *label, int icon, int flags)
     const lt_theme *t = &ui->theme;
     r = ui_next(ui, pref);
     if (dis) { ui->disabled++; }
-    res = ui_interact(ui, id, r, UI_FOCUSABLE | UI_KIND(UI_K_BUTTON));
+    res = ui_interact(ui, id, r, (flags & LT_UI_BTN_NOTAB) ? 0 : (UI_FOCUSABLE | UI_KIND(UI_K_BUTTON)));
     focused = (ui->focus == id && !dis);
     if (res & UI_CLICK) { clicked = 1; }
     if (key_activate(ui, id)) { clicked = 1; }

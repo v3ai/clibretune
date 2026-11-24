@@ -160,6 +160,14 @@ void   lt_ui_pop_id(lt_ui *ui);
  * caller is outside it. */
 lt_bool lt_ui_key_pressed(lt_ui *ui, int key, int mods);
 lt_bool lt_ui_text_focused(const lt_ui *ui);    /* a text/number field is being edited */
+/* lt_ui_key_pressed for the code that drew the focused text field: takes the key even while
+ * the field is being edited (Down out of a search box into its results) */
+lt_bool lt_ui_key_take(lt_ui *ui, int key, int mods);
+/* the next widget drawn that takes the keyboard (tree_only: the next tree node) gets the focus,
+ * shown as keyboard focus and scrolled into view */
+void   lt_ui_focus_next(lt_ui *ui, lt_bool tree_only);
+/* withdraw a lt_ui_focus_next request that no widget has taken yet (the one meant was disabled) */
+void   lt_ui_focus_next_drop(lt_ui *ui);
 lt_point lt_ui_mouse(const lt_ui *ui);
 lt_bool lt_ui_mouse_down(const lt_ui *ui, int button);
 /* LT_MOD_* held at the last mouse/key event */
@@ -271,7 +279,11 @@ void    lt_ui_layout_indent(lt_ui *ui, int dx);
 void    lt_ui_layout_gap(lt_ui *ui, int x, int y);   /* spacing between cells of this container */
 int     lt_ui_layout_width(const lt_ui *ui);    /* body width of the current container */
 lt_rect lt_ui_layout_body(const lt_ui *ui);
-/* nested column: the next cell becomes a container with its own layout */
+/* how wide the cells placed in the current container so far reach, from its left edge (device
+ * px): more than lt_ui_layout_width means fixed-width cells stick out on the right */
+int     lt_ui_layout_used_w(const lt_ui *ui);
+/* nested column: the next cell becomes a container with its own layout. In a row of default
+ * height (lt_ui_layout_row height 0) the row grows to the tallest column at column_end. */
 void    lt_ui_layout_column_begin(lt_ui *ui);
 void    lt_ui_layout_column_end(lt_ui *ui);
 
@@ -286,9 +298,15 @@ void    lt_ui_scroll_end(lt_ui *ui);
 void    lt_ui_scroll_set_content(lt_ui *ui, int w, int h);
 void    lt_ui_scroll_get(const lt_ui *ui, int *x, int *y);
 void    lt_ui_scroll_set(lt_ui *ui, int x, int y);
+/* scroll the scroll containers around the current point so that r (device px, as drawn this
+ * frame) comes into view; it moves there in the next frame */
+void    lt_ui_scroll_reveal(lt_ui *ui, lt_rect r);
 /* scroll the innermost scroll container so that r (absolute coords) is visible */
 void    lt_ui_scroll_ensure_visible(lt_ui *ui, lt_rect r);
 lt_rect lt_ui_scroll_view(const lt_ui *ui);     /* viewport of the innermost scroll container */
+/* how far (device px) the content of the innermost scroll container is wider than its view, as
+ * measured in the previous frame: > 0 means a horizontal scrollbar */
+int     lt_ui_scroll_overflow_x(const lt_ui *ui);
 /* Group box with a title. height>0 fixed, 0 = grow to fit content. */
 lt_bool lt_ui_group_begin(lt_ui *ui, const char *title, int height);
 void    lt_ui_group_end(lt_ui *ui);
@@ -301,6 +319,14 @@ void    lt_ui_region_end(lt_ui *ui);
  * Returns LT_TRUE while the divider moves. */
 lt_bool lt_ui_splitter(lt_ui *ui, const char *id, lt_rect area, int vertical, int *size,
                        int min_a, int min_b, lt_rect *a, lt_rect *b);
+/* same, returning LT_UI_SPLIT_* bits: the divider was dragged to a new place (a size merely
+ * clamped to the area is not a move), a drag ended (mouse released) this frame, the divider was
+ * double-clicked (no drag then; callers reset *size to a default) */
+#define LT_UI_SPLIT_MOVED    1
+#define LT_UI_SPLIT_RELEASED 2
+#define LT_UI_SPLIT_DOUBLE   4
+int     lt_ui_splitter_ex(lt_ui *ui, const char *id, lt_rect area, int vertical, int *size,
+                          int min_a, int min_b, lt_rect *a, lt_rect *b);
 /* Menubar / statusbar occupy the top / bottom edge of the surface */
 lt_bool lt_ui_menubar_begin(lt_ui *ui);
 void    lt_ui_menubar_end(lt_ui *ui);
@@ -349,6 +375,7 @@ void lt_ui_separator(lt_ui *ui);
 #define LT_UI_BTN_DANGER   16
 #define LT_UI_BTN_ACCENT   32
 #define LT_UI_BTN_SELECTED 64   /* drawn pressed/on (toggle look) */
+#define LT_UI_BTN_NOTAB   128   /* clickable, but Tab skips it (a field's clear button) */
 lt_bool lt_ui_button(lt_ui *ui, const char *label);
 lt_bool lt_ui_button_ex(lt_ui *ui, const char *label, int flags);
 lt_bool lt_ui_icon_button(lt_ui *ui, int icon, const char *tooltip, int flags);
@@ -403,6 +430,9 @@ void lt_ui_tree_end(lt_ui *ui);
 /* expand (open != 0) or collapse every tree node; takes a few frames to reach
  * nodes that only appear once their parent opens */
 void lt_ui_tree_set_all(lt_ui *ui, int open);
+/* Up from the next tree node drawn moves the focus to id (the search box above a tree); by
+ * default Up from the first node of a frame goes nowhere */
+void lt_ui_tree_prev(lt_ui *ui, lt_u32 id);
 
 /* Tab bar occupying the next row: begin, one lt_ui_tab per tab, end. */
 #define LT_UI_TAB_CLOSABLE 1

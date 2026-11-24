@@ -55,7 +55,12 @@ their USB id: STM32 boards (rusEFI, FOME, epicEFI) as 0483:5740, Arduino Mega (S
 2341:0042 / 2341:0010, Teensy, and the usual USB-serial adapters (CH340, FTDI, CP210x, PL2303). Each
 port is asked at its likeliest baud rate first, and the window stays responsive while it searches
 (**Cancel scan** stops it). Built-in serial ports (`/dev/ttyS*`, COM1) are skipped unless you tick
-**Show all ports** in **File > Connect ECU...**.
+**Show all ports** in **File > Connection Settings...**.
+
+Once a project is set up, **File > Connect** (Ctrl+Shift+C, or the plug button) connects with the
+port and baud rate saved in the project. A project without a saved port, or no project at all, gets
+the Connect ECU wizard instead, which finds the ECU first. **File > Connection Settings...** picks
+the port, baud rate, a TCP/WiFi address or the simulator by hand.
 
 When something is in the way LibreTune says what to do:
 
@@ -117,7 +122,14 @@ connect and read it.
 
 ## 4. Find your way around
 
-- The sidebar is the ECU's own menu tree from its INI; **Ctrl+K** searches it and **Enter** opens the first match.
+- The sidebar is the ECU's own menu tree from its INI. **Ctrl+K** searches it and every setting
+  inside its dialogs, by caption or by the INI's constant name: matching entries of the tree come
+  first, then a **Settings** list of fields ("Caption — Dialog"), best match first. **Down** moves
+  into the results, **Enter** opens the best match or the selected one (a field opens its dialog
+  with the field focused and outlined for a moment), **Esc** empties the search and goes back to
+  where you were. Fields that another setting hides are listed greyed, "(hidden by another setting)".
+  Drag its right edge to make it wider or narrower (double-click the edge for the default width);
+  **F9** hides and shows it. Both are remembered.
 - Tables: arrow keys or the mouse select, type a number to set, `+`/`-` step, `=` average,
   `/` interpolate, `s` smooth, Ctrl+Z undo. `-` steps down, as in TunerStudio: for a negative
   value press F2 or Enter first, then type it (`-5`). Esc cancels a value you are typing (otherwise it only

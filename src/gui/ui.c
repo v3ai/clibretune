@@ -374,6 +374,22 @@ lt_bool lt_ui_key_pressed(lt_ui *ui, int key, int mods)
 }
 
 lt_bool lt_ui_text_focused(const lt_ui *ui) { return ui->edit.id != 0 ? LT_TRUE : LT_FALSE; }
+
+lt_bool lt_ui_key_take(lt_ui *ui, int key, int mods)
+{
+    ui_layer *L = ui->nlstack > 0 ? &ui->layers[ui->lstack[ui->nlstack - 1]] : NULL;
+    if (L != NULL && L->blocked) { return LT_FALSE; }
+    return ui_key_take_exact(ui, key, norm_mods(mods)) ? LT_TRUE : LT_FALSE;
+}
+
+void lt_ui_focus_next(lt_ui *ui, lt_bool tree_only)
+{
+    ui->focus_req = 1;
+    ui->focus_req_kind = tree_only ? UI_K_TREE : 0;
+    ui_request(ui);
+}
+
+void lt_ui_focus_next_drop(lt_ui *ui) { ui->focus_req = 0; }
 lt_point lt_ui_mouse(const lt_ui *ui) { lt_point p; p.x = ui->mx; p.y = ui->my; return p; }
 int lt_ui_mods(const lt_ui *ui) { return ui->mods; }
 int lt_ui_wheel(const lt_ui *ui) { return ui->wheel; }
@@ -1219,6 +1235,11 @@ void lt_ui_layout_gap(lt_ui *ui, int x, int y)
 
 int lt_ui_layout_width(const lt_ui *ui) { return ui->lay[ui->nlay > 0 ? ui->nlay - 1 : 0].body.w; }
 lt_rect lt_ui_layout_body(const lt_ui *ui) { return ui->lay[ui->nlay > 0 ? ui->nlay - 1 : 0].body; }
+int lt_ui_layout_used_w(const lt_ui *ui)
+{
+    const ui_layout *L = &ui->lay[ui->nlay > 0 ? ui->nlay - 1 : 0];
+    return L->max_x - L->body.x;
+}
 
 void lt_ui_layout_column_begin(lt_ui *ui)
 {
@@ -1226,7 +1247,23 @@ void lt_ui_layout_column_begin(lt_ui *ui)
     ui_layout_push(ui, r);
 }
 
-void lt_ui_layout_column_end(lt_ui *ui) { ui_layout_pop(ui); }
+void lt_ui_layout_column_end(lt_ui *ui)
+{
+    const ui_layout *C;
+    ui_layout *P;
+    int h;
+    if (ui->nlay < 2) { return; }
+    C = &ui->lay[ui->nlay - 1];
+    P = &ui->lay[ui->nlay - 2];
+    ui_layout_pop(ui);
+    if (P->spec_h != 0) { return; }
+    /* a row of default height grows to its tallest column, so that what follows starts below
+     * it and a group or scroll area around it measures it */
+    h = C->max_y - P->row_y;
+    if (h > P->row_h) { P->row_h = h; }
+    if (C->max_y > P->max_y) { P->max_y = C->max_y; }
+    if (C->max_x > P->max_x) { P->max_x = C->max_x; }
+}
 
 /* ------------------------------------------------------------------ */
 /* hit testing, interaction, focus                                     */
@@ -1264,6 +1301,8 @@ static void ui_reveal(lt_ui *ui, lt_rect r)
         }
     }
 }
+
+void lt_ui_scroll_reveal(lt_ui *ui, lt_rect r) { ui_reveal(ui, r); }
 
 void ui_set_last(lt_ui *ui, lt_u32 id, lt_rect r)
 {
@@ -1514,6 +1553,7 @@ void lt_ui_begin(lt_ui *ui, lt_gfx *g, double now_ms)
     ui->press_claimed = 0;
     ui->tip_want = 0;
     ui->first_focusable = ui->last_focusable = ui->prev_focusable = 0;
+    ui->prev_tree = 0;
     ui->focus_seen = 0;
     ui->nlayers = 0;
     ui->nlstack = 0;

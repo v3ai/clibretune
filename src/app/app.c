@@ -8,6 +8,7 @@
 #include "app_ext.h"
 #include "feat.h"
 #include "iniext.h"
+#include "search_index.h"
 #include "../project/inidb.h"
 
 static const char *g_build_id = "dev";
@@ -148,7 +149,8 @@ void lt_app_settings_load(lt_app *app)
     }
     lt_props_free(&p);
     lt_free(path);
-    s->sidebar_w = LT_CLAMP(s->sidebar_w, 160, 600);
+    s->sidebar_w = LT_CLAMP(s->sidebar_w, 180, 4000);     /* and at most half the window when drawn */
+    s->sidebar_on = s->sidebar_on ? 1 : 0;
     if (s->sidebar_cols != 0) { s->sidebar_cols = LT_CLAMP(s->sidebar_cols, 14, 80); }
     if (s->scale_pct != 0) { s->scale_pct = LT_CLAMP(s->scale_pct, 100, 300); }
     if (s->win_w < 320 || s->win_h < 240 || s->win_w > 16384 || s->win_h > 16384) { s->win_w = s->win_h = 0; }
@@ -965,6 +967,9 @@ void lt_app_close_project(lt_app *app)
     }
     /* tabs drawn this frame may have queued draw callbacks that still read the definition */
     if (app->ini != NULL) { lt_ui_after_frame(app->ui, ini_free_later, app->ini); app->ini = NULL; }
+    lt_sidx_free(app->sidx);
+    app->sidx = NULL;
+    app->reveal.comp = NULL;
     lt_expr_cache_free(&app->expr);
     lt_expr_cache_init(&app->expr);
     app->modified = 0;
@@ -1427,6 +1432,9 @@ int lt_app_reload_ini(lt_app *app)
     (void)lt_tune_capture_from_pages(app->tune, ini);
     lt_ui_after_frame(app->ui, ini_free_later, app->ini);      /* see lt_app_close_project */
     app->ini = ini;
+    lt_sidx_free(app->sidx);
+    app->sidx = NULL;
+    app->reveal.comp = NULL;
     lt_expr_cache_free(&app->expr);
     lt_expr_cache_init(&app->expr);
     app->rt = lt_ini_rt_new(ini);

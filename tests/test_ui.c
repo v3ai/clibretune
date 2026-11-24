@@ -1436,11 +1436,11 @@ LT_TEST(test_tab_scrolls_focus_into_view)
 }
 
 /* ---- splitter ---------------------------------------------------- */
-static int s_split;
+static int s_split, s_split_fl;
 static void scene_split(lt_ui *ui)
 {
     lt_rect a, b;
-    lt_ui_splitter(ui, "sp", lt_rect_make(0, 0, 400, 200), 1, &s_split, 60, 80, &a, &b);
+    s_split_fl |= lt_ui_splitter_ex(ui, "sp", lt_rect_make(0, 0, 400, 200), 1, &s_split, 60, 80, &a, &b);
     R[0] = a; R[1] = b;
 }
 
@@ -1448,6 +1448,7 @@ LT_TEST(test_splitter)
 {
     reset_state();
     s_split = 100;
+    s_split_fl = 0;
     h_open(400, 200, 0);
     H.scene = scene_split;
     frames(3);
@@ -1460,8 +1461,28 @@ LT_TEST(test_splitter)
     LT_CHECK_INT(s_split, 60);                   /* min_a */
     mouse_move(399, 50); frame();
     LT_CHECK_INT(s_split, 400 - 80 - lt_ui_theme(H.ui)->splitter_w);   /* min_b */
+    LT_CHECK(s_split_fl == LT_UI_SPLIT_MOVED);
     mouse_up(399, 50, LT_MB_LEFT, 0); frame();
     LT_CHECK(R[0].w == s_split && R[0].w + lt_ui_theme(H.ui)->splitter_w + R[1].w == 400);
+    LT_CHECK(s_split_fl == (LT_UI_SPLIT_MOVED | LT_UI_SPLIT_RELEASED));
+    /* a size clamped to a smaller area is no move */
+    s_split_fl = 0;
+    s_split = 390;
+    frame();
+    LT_CHECK(s_split_fl == 0 && s_split == 400 - 80 - lt_ui_theme(H.ui)->splitter_w);
+    /* double-click: reported, and the second press does not start a drag */
+    s_split = 150;
+    frame();
+    mouse_move(152, 50); frame();
+    mouse_down(152, 50, LT_MB_LEFT, 0); frame();
+    mouse_up(152, 50, LT_MB_LEFT, 0); frame();
+    s_split_fl = 0;
+    mouse_down(152, 50, LT_MB_LEFT, 0); frame();
+    LT_CHECK(s_split_fl & LT_UI_SPLIT_DOUBLE);
+    s_split = 100;                               /* what a caller does with it */
+    mouse_move(250, 50); frame();
+    mouse_up(250, 50, LT_MB_LEFT, 0); frame();
+    LT_CHECK_INT(s_split, 100);
     h_close();
 }
 
@@ -1521,6 +1542,36 @@ LT_TEST(test_layout)
     r1 = lt_ui_layout_next(H.ui);
     lt_ui_layout_column_end(H.ui);
     LT_CHECK(r0.w == 200 && r1.y == r0.y + 20 + sp - sp + lt_ui_theme(H.ui)->spacing_y);
+    lt_ui_end(H.ui);
+    /* columns in a row of default height: the row grows to the tallest one, so the next row
+     * starts below it and a group around them measures all of it */
+    lt_ui_begin(H.ui, &H.g, 2.0);
+    {
+        int k;
+        lt_ui_group_begin(H.ui, "cols", 0);
+        lt_ui_layout_row(H.ui, 2, (w[0] = -1, w[1] = -1, w), 0);
+        lt_ui_layout_column_begin(H.ui);
+        lt_ui_layout_row(H.ui, 1, NULL, 20);
+        for (k = 0; k < 5; k++) { r0 = lt_ui_layout_next(H.ui); }     /* the tall one */
+        lt_ui_layout_column_end(H.ui);
+        lt_ui_layout_column_begin(H.ui);
+        lt_ui_layout_row(H.ui, 1, NULL, 20);
+        r1 = lt_ui_layout_next(H.ui);
+        lt_ui_layout_column_end(H.ui);
+        lt_ui_layout_row(H.ui, 1, NULL, 0);
+        rr = lt_ui_layout_next(H.ui);
+        LT_CHECK(rr.y >= r0.y + r0.h && r1.y < r0.y);
+        lt_ui_group_end(H.ui);
+    }
+    lt_ui_end(H.ui);
+    lt_ui_begin(H.ui, &H.g, 3.0);           /* the next frame the group is as tall as all that */
+    lt_ui_group_begin(H.ui, "cols", 0);
+    lt_ui_layout_row(H.ui, 1, NULL, 0);
+    (void)lt_ui_layout_next(H.ui);
+    lt_ui_group_end(H.ui);
+    lt_ui_layout_row(H.ui, 1, NULL, 0);
+    r3 = lt_ui_layout_next(H.ui);
+    LT_CHECK(r3.y > rr.y + rr.h);
     lt_ui_end(H.ui);
     h_close();
 }

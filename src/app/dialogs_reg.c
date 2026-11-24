@@ -58,7 +58,7 @@ int lt_app_special_open(lt_app *app, const char *id)
 
 int lt_app_connect_dialog(lt_app *app)
 {
-    return lt_app_dialog_push(app, "connect", "", "ECU Connection") != NULL ? 0 : -1;
+    return lt_app_dialog_push(app, "connect", "", "Connection Settings") != NULL ? 0 : -1;
 }
 
 int lt_app_settings_dialog(lt_app *app)

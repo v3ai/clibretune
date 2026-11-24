@@ -118,7 +118,7 @@ static void connect_draw(lt_app *app, lt_app_dialog *d)
         set_baud(s, s->ports[s->sel].bauds[0]);
         s->last_sel = s->sel;
     }
-    if (lt_ui_modal_begin(ui, lt_tr("ECU Connection"), CH * 80, CV * 26, &open)) {
+    if (lt_ui_modal_begin(ui, lt_tr("Connection Settings"), CH * 80, CV * 26, &open)) {
         w2[0] = CH * 14; w2[1] = -1;
         lt_ui_layout_row(ui, 1, &w1, 0);
         lt_ui_heading(ui, lt_tr("Serial / USB"));

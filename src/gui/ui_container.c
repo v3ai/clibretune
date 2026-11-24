@@ -83,6 +83,12 @@ lt_rect lt_ui_scroll_view(const lt_ui *ui)
     return ui->scr[ui->nscr - 1].view;
 }
 
+int lt_ui_scroll_overflow_x(const lt_ui *ui)
+{
+    const ui_scroll *S = ui->nscr > 0 ? &ui->scr[ui->nscr - 1] : NULL;
+    return S != NULL && S->cw > S->inner.w ? S->cw - S->inner.w : 0;
+}
+
 void lt_ui_scroll_ensure_visible(lt_ui *ui, lt_rect r)
 {
     ui_scroll *S = scr_top(ui);
@@ -293,12 +299,18 @@ void lt_ui_region_end(lt_ui *ui)
 lt_bool lt_ui_splitter(lt_ui *ui, const char *label, lt_rect area, int vertical, int *size,
                        int min_a, int min_b, lt_rect *a, lt_rect *b)
 {
+    return (lt_ui_splitter_ex(ui, label, area, vertical, size, min_a, min_b, a, b) & LT_UI_SPLIT_MOVED)
+           ? LT_TRUE : LT_FALSE;
+}
+
+int lt_ui_splitter_ex(lt_ui *ui, const char *label, lt_rect area, int vertical, int *size,
+                      int min_a, int min_b, lt_rect *a, lt_rect *b)
+{
     const lt_theme *t = &ui->theme;
     lt_u32 id = lt_ui_id(ui, label);
     ui_state *st = ui_state_get(ui, id);
-    int sw = t->splitter_w, total = vertical ? area.w : area.h, changed = 0, res;
+    int sw = t->splitter_w, total = vertical ? area.w : area.h, res, out = 0;
     lt_rect bar;
-    int old = *size;
     int maxs = total - min_b - sw;
     if (maxs < min_a) { maxs = min_a; }
     *size = LT_CLAMP(*size, min_a, maxs);
@@ -306,14 +318,22 @@ lt_bool lt_ui_splitter(lt_ui *ui, const char *label, lt_rect area, int vertical,
                    : lt_rect_make(area.x, area.y + *size, area.w, sw);
     res = ui_interact(ui, id, bar, 0);
     if (res & UI_PRESS) { st->d[0] = *size; st->d[1] = vertical ? ui->mx : ui->my; }
+    if (res & UI_DBLCLICK) {            /* no drag: the caller resets the size */
+        out |= LT_UI_SPLIT_DOUBLE;
+        if (ui->active == id) { ui->active = 0; }
+        res &= ~UI_ACTIVE;
+    }
+    if (res & UI_RELEASE) { out |= LT_UI_SPLIT_RELEASED; }
     if (res & UI_ACTIVE) {
         double d = (vertical ? ui->mx : ui->my) - st->d[1];
+        int before = *size;
         *size = LT_CLAMP((int)(st->d[0] + d), min_a, maxs);
         if (ui->cell) { *size = (*size / (vertical ? 8 : 16)) * (vertical ? 8 : 16); }
         bar = vertical ? lt_rect_make(area.x + *size, area.y, sw, area.h)
                        : lt_rect_make(area.x, area.y + *size, area.w, sw);
+        if (*size != before) { out |= LT_UI_SPLIT_MOVED; }
     }
-    if (*size != old) { changed = 1; }
+
     {
         lt_color c = (res & UI_ACTIVE) ? t->primary : ((res & UI_HOVER) ? t->primary_hover : t->border_subtle);
         if (ui->cell) {
@@ -337,7 +357,7 @@ lt_bool lt_ui_splitter(lt_ui *ui, const char *label, lt_rect area, int vertical,
                       : lt_rect_make(area.x, area.y + *size + sw, area.w, total - *size - sw);
     }
     ui_set_last(ui, id, bar);
-    return changed ? LT_TRUE : LT_FALSE;
+    return out;
 }
 
 /* ------------------------------------------------------------------ */
@@ -741,6 +761,8 @@ int lt_ui_tree_node_ex(lt_ui *ui, const char *label, int icon, lt_color icon_col
     }
     return out;
 }
+
+void lt_ui_tree_prev(lt_ui *ui, lt_u32 id) { ui->prev_tree = id; }
 
 void lt_ui_tree_set_all(lt_ui *ui, int open)
 {

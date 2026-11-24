@@ -17,6 +17,7 @@ static const lt_hk_def core_defs[] = {
     { "file.burn",       "Burn to ECU",          'b', HK_C },
     { "file.quit",       "Quit",                 'q', HK_C },
     { "conn.connect",    "Connect",              'c', HK_C | HK_S },
+    { "conn.settings",   "Connection settings",  LT_HK_NONE, 0 },
     { "conn.disconnect", "Disconnect",           'd', HK_C | HK_S },
     { "view.dashboard",  "Dashboard",            'd', HK_C },
     { "view.sidebar",    "Toggle sidebar",       LT_KEY_F9, 0 },

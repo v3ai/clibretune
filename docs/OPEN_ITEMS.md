@@ -96,14 +96,8 @@ cars should review which base tunes to recommend, and the browser should then ma
 
 Found in the November 2026 usability pass; each needs a product decision rather than a bug fix.
 
-- **Settings search** (Ctrl+K) only matches names in the sidebar tree. Index the field captions of
-  every dialog and offer "Dialog > Field" results that open the dialog on that field.
 - **Theme contrast** (stock themes done: tools/gen_themes.py adjusts them to WCAG 2.1 AA and
   tests/test_theme_contrast.c checks every drawn pair): themes derived from a user's bg, primary
   and accent (lt_theme_derive) are not checked; they could run the same lightness fix at runtime.
 - **One spelling and one verb**: the UI mixes US and UK spelling (colour/color, centre/center)
   and "burn", "write" and "flash" for writing to the ECU.
-- **Connect entries**: File > Connect ECU..., File > Connect ECU Wizard... and Tools > ECU
-  Connection... overlap; keep one.
-- **Narrow windows**: two-column INI panels overflow below about 1100 px; a one-column fallback
-  would help. (The table and curve toolbars move what does not fit into a "»" menu.)
