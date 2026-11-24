@@ -96,8 +96,6 @@ cars should review which base tunes to recommend, and the browser should then ma
 
 Found in the November 2026 usability pass; each needs a product decision rather than a bug fix.
 
-- **Settings search** (Ctrl+K) only matches names in the sidebar tree. Index the field captions of
-  every dialog and offer "Dialog > Field" results that open the dialog on that field.
 - **Menu conditions** (subMenu / groupMenu / groupChildMenu) are read as visibility then enable;
   dialog fields were switched to TunerStudio's enable-then-visibility order. Doing the same for
   menus changes which rusEFI items are greyed versus hidden (test_ini_parse `menus` encodes the
@@ -107,13 +105,11 @@ Found in the November 2026 usability pass; each needs a product decision rather 
   Selected text was fixed; the palette itself comes from tools/gen_themes.py.
 - **One spelling and one verb**: the UI mixes US and UK spelling (colour/color, centre/center)
   and "burn", "write" and "flash" for writing to the ECU.
-- **Connect entries**: File > Connect ECU..., File > Connect ECU Wizard... and Tools > ECU
-  Connection... overlap; keep one.
 - **Table editing**: Esc reverts the whole selection (users expect it to cancel only the edit),
   "-" while typing decrements instead of starting a negative number, typed values outside the
   limits are clamped silently, a no-op operation still adds an undo step, curve "+" steps by 1.0.
-- **Narrow windows**: below about 1100 px the table toolbar hides Burn and 3D, and two-column INI
-  panels overflow; a resizable sidebar and a one-column fallback would help.
+- **Narrow windows**: below about 1100 px the table toolbar hides Burn and 3D (INI panels now fall
+  back to one column and the sidebar can be resized).
 - **Broken project or INI**: an empty or invalid project.json only shows a status-bar line, and an
   INI with no menus opens silently with an empty sidebar; both deserve an error dialog with a way
   out (show folder, replace definition, remove from recents).
