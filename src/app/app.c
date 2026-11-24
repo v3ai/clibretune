@@ -1028,6 +1028,63 @@ static void keep_unreadable_tune(lt_app *app)
     lt_free(cur);
 }
 
+/* project.json of dir could not be read: say why in plain words, with the way out (feat_projerr.c) */
+static void project_json_problem(lt_app *app, const char *dir)
+{
+    char msg[700], why[400];
+    char *f = lt_path_join(dir, "project.json"), *text;
+    const char *file = f, *w = why;
+    size_t len = 0, i;
+    lt_strlcpy(why, lt_err_get(), sizeof(why));
+    if (strncmp(why, f, strlen(f)) == 0 && why[strlen(f)] == ':') {   /* "<path>: detail" */
+        w = why + strlen(f) + 1;
+        while (*w == ' ') { w++; }
+    }
+    if (!lt_plat_is_dir(dir)) {
+        lt_snprintf(msg, sizeof(msg), "The project folder was not found. It may have been moved, renamed "
+                    "or deleted, or it is on a drive that is not connected.");
+        file = dir;
+    } else if (!lt_file_exists(f) || lt_plat_is_dir(f)) {
+        lt_snprintf(msg, sizeof(msg), "This folder has no project settings file (project.json): it is "
+                    "not a LibreTune project, or the file was deleted.");
+    } else {
+        text = lt_file_read(f, &len);
+        for (i = 0; text != NULL && i < len && (text[i] == ' ' || text[i] == '\t' || text[i] == '\r' ||
+                                               text[i] == '\n' || text[i] == '\0'); i++) {}
+        if (text != NULL && i == len) {
+            lt_snprintf(msg, sizeof(msg), "The project settings file (project.json) is empty. It was "
+                        "probably cut off when the disk filled up or the computer lost power.");
+        } else if (text == NULL) {
+            lt_snprintf(msg, sizeof(msg), "The project settings file (project.json) cannot be read: %s", w);
+        } else {
+            lt_snprintf(msg, sizeof(msg), "The project settings file (project.json) is damaged and "
+                        "cannot be used (%s).", w);
+        }
+        lt_free(text);
+    }
+    lt_app_toast(app, 3, "Cannot open project: %s", msg);
+    (void)lt_feat_projerr_show(app, LT_PROJERR_PROJECT, dir, file, msg);
+    lt_free(f);
+}
+
+/* the project's definition is missing or does not parse */
+static void project_ini_problem(lt_app *app, const lt_project *p)
+{
+    char msg[700], why[400];
+    char *f = lt_project_ini_path(p);
+    lt_strlcpy(why, lt_err_get(), sizeof(why));
+    if (!lt_file_exists(f)) {
+        lt_snprintf(msg, sizeof(msg), "The project's ECU definition (projectCfg/definition.ini) is "
+                    "missing, so LibreTune does not know how the settings are laid out.");
+    } else {
+        lt_snprintf(msg, sizeof(msg), "The project's ECU definition (projectCfg/definition.ini) cannot "
+                    "be read: %s", why[0] != '\0' ? why : "it is not a valid INI file.");
+    }
+    lt_app_toast(app, 3, "Project INI failed: %s", why);
+    (void)lt_feat_projerr_show(app, LT_PROJERR_DEFINITION, p->path, f, msg);
+    lt_free(f);
+}
+
 int lt_app_open_project(lt_app *app, const char *dir_in)
 {
     lt_project p;
@@ -1035,7 +1092,7 @@ int lt_app_open_project(lt_app *app, const char *dir_in)
     char *ip, dir[sizeof(app->settings.recent[0])];
     abs_dir(dir_in, dir, sizeof(dir));          /* project.path, recents and tabs see one spelling */
     if (lt_project_open(dir, &p) < 0) {
-        lt_app_toast(app, 3, "Cannot open project: %s", lt_err_get());
+        project_json_problem(app, dir);
         return -1;
     }
     {   /* the project's [SettingGroups] choice (TunerStudio ecuSettings) seeds the preprocessor */
@@ -1048,8 +1105,8 @@ int lt_app_open_project(lt_app *app, const char *dir_in)
         lt_proj_symbols_free(&sy);
     }
     if (ini == NULL) {
-        lt_app_toast(app, 3, "Project INI failed: %s", lt_err_get());
-        lt_project_close(&p);
+        project_ini_problem(app, &p);
+        lt_project_free(&p);            /* nothing was opened: nothing to save */
         return -1;
     }
     lt_app_close_project(app);

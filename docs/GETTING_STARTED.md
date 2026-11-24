@@ -16,6 +16,11 @@ With no project open LibreTune shows its start screen:
 - **Recent projects** shows each project's ECU and when it was last opened; `x` takes one off the
   list (the folder stays on disk). Projects are remembered by their full path, so a project opened
   as `./MyCar` from a terminal still opens from the list when LibreTune is started elsewhere.
+- A project that cannot be opened says why in plain words: its folder is gone, its settings file
+  (`project.json`) is missing, empty or damaged, or its ECU definition is missing or unreadable.
+  **Show Folder** opens the folder, **Remove from Recent Projects** takes it off the list and, for a
+  definition problem, **Replace Definition...** picks one (bundled with LibreTune, from the INI library
+  or a file), puts it into the project and opens it.
 - `libretune <project folder>` (or `--project <folder>`) opens a project straight away, for example
   from a desktop shortcut or a file manager; the folder must hold the project's `project.json`.
 - **Try the demo**, **Start from a base tune**, **Import a TunerStudio project**, **Open a project
