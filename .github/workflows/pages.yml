@@ -1,7 +1,7 @@
 name: Pages
 
-# Publishes site/ to GitHub Pages whenever it changes on main, then publishes a new release
-# (next patch version, marked Latest) so the site's download links serve binaries of this commit.
+# Whenever site/ changes on main: publish a new release (next patch version, marked Latest) built
+# from this commit, then deploy the site, so its download links never point at missing files.
 on:
   push:
     branches: [main]
@@ -19,6 +19,7 @@ concurrency:
 
 jobs:
   deploy:
+    needs: release
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -33,7 +34,6 @@ jobs:
         uses: actions/deploy-pages@v4
 
   version:
-    needs: deploy
     runs-on: ubuntu-latest
     outputs:
       next: ${{ steps.next.outputs.version }}
