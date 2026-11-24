@@ -1361,6 +1361,9 @@ static const char *const mp_6_0[] = {
     "",
     "Every operation is also a toolbar button. When the window is too narrow for the whole toolbar, the buttons that do not fit move into the **\302\273** menu at its right end; **Burn** and **3D** always stay on the bar.",
     "",
+    "A Target AFR table has a read-only **lambda preview** beside it: the same cells as lambda for the fuel you pick (or as AFR when the table is shown in lambda), with live readouts. It scrolls with the table and shows its selection. Its **\302\273** button collapses it to a narrow strip, and the strip's",
+    "button opens it again; LibreTune remembers the choice.",
+    "",
     "## Copy and Paste",
     "",
     "### Basic Copy/Paste",
@@ -1416,7 +1419,7 @@ static const char *const mp_6_0[] = {
     "",
 };
 static const lt_man_part mpp_6[] = {
-    { mp_6_0, 109 },
+    { mp_6_0, 112 },
 };
 
 static const char *const mp_7_0[] = {

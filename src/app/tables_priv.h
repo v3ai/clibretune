@@ -113,8 +113,21 @@ int  lt_tabs_io_save(const char *path, const char *xname, const char *yname, con
                      size_t cols, const double *y, size_t rows, const double *z);
 
 /* ---- lambda preview companion of an AFR table (tables_lambda.c, G-27) ----
- * Draws into the next layout cell: header, live lambda/AFR readouts, fuel blend combo, read-only grid */
-void lt_tabs_lambda_draw(lt_app *app, const lt_tblview *v, int ybottom);
+ * Keeps the preview's grid lined up with the table's: the table grid fills in its scroll offset,
+ * column width, row height and selection each frame; the preview scrolls to match, and the wheel
+ * over the preview asks the table grid to scroll (follow, fx, fy: next frame). */
+typedef struct lt_tabs_lsync {
+    int ok;                      /* the table grid filled the fields below this frame */
+    int msx, msy, mcw, mch;      /* table grid: scroll offset (px), cell width and height (100% px) */
+    int sel[4];                  /* table selection bounds r0, c0, r1, c1 (display rows), -1 = none */
+    int have, lx, ly;            /* the preview's offset after the last frame's sync */
+    int follow, fx, fy;          /* the table grid scrolls to (fx, fy) next frame */
+} lt_tabs_lsync;
+/* Draws into the next layout cell: title with a collapse button, live lambda/AFR readouts, fuel
+ * blend combo, read-only grid. sync may be NULL. Returns 1 when the collapse button was clicked. */
+int  lt_tabs_lambda_draw(lt_app *app, const lt_tblview *v, int ybottom, lt_tabs_lsync *sync);
+/* the collapsed preview: a narrow strip with a button that opens it again (returns 1 then) */
+int  lt_tabs_lambda_strip(lt_app *app);
 
 /* saved AFR delay model of the project (afr_delay_model.json); 0 when present (dlg_afrdelay.c) */
 int  lt_tabs_delay_model_load(lt_app *app, double *floor_ms, double *anchor_ms);

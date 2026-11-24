@@ -19,6 +19,8 @@ typedef struct tbl_tab {
     int zdig, xdig, ydig;
     double lo, hi;                /* constant limits (display units) */
     int show3d, follow, shading, ybottom, lambda_on, is_afr;
+    int lambda_env;               /* LT_TABLE_VIEW lambda/nolambda: 1/0, -1 = the user's choice */
+    lt_tabs_lsync lsync;          /* the lambda preview's grid lined up with this one */
     unsigned char *sel;           /* rows*cols mask in data coordinates */
     unsigned char *esel;          /* the selection when the cell edit began (it gets the value) */
     size_t sel_cap;
@@ -941,6 +943,20 @@ static void tbl_file_save(lt_app *app, lt_app_tab *tab, tbl_tab *st)
     lt_app_file_dialog(app, LT_TABS_FD_SAVE, LT_UI_FILE_SAVE, NULL, name, "TunerStudio table|*.table|All files|*");
 }
 
+/* open or collapse the lambda preview; in pixel mode the choice is remembered for every AFR
+ * table (prefs lambda_pane) */
+static void tbl_lambda_toggle(lt_app *app, tbl_tab *st)
+{
+    st->lambda_on = !st->lambda_on;
+    if (!lt_ui_cell_mode(app->ui)) {
+        st->lambda_env = -1;
+        app->settings.prefs.lambda_pane = st->lambda_on;
+        lt_app_settings_save(app);
+    }
+    st->lsync.have = 0;
+    lt_ui_request_redraw(app->ui);
+}
+
 static void tb_item(lt_vk_item *it, int kind, int icon, const char *label, const char *key,
                     const char *tip)
 {
@@ -1052,7 +1068,7 @@ static void tbl_toolbar(lt_app *app, lt_app_tab *tab, tbl_tab *st)
     case TB_SHADE: st->shading = !st->shading; break;
     case TB_YBOT: st->ybottom = !st->ybottom; break;
     case TB_3D: st->show3d = !st->show3d; break;
-    case TB_LAMBDA: st->lambda_on = !st->lambda_on; break;
+    case TB_LAMBDA: tbl_lambda_toggle(app, st); break;
     case TB_RESET3D: lt_t3d_reset_view(&st->t3); break;
     case TB_STYLE3D: st->t3.style = (st->t3.style + 1) % LT_T3D_STYLES; break;
     case TB_COLOR3D: st->t3.color_mode = (st->t3.color_mode + 1) % LT_T3D_MODES; break;
@@ -1336,6 +1352,13 @@ static void tbl_grid(lt_app *app, lt_app_tab *tab, tbl_tab *st, int vh)
     if (lt_ui_grid_begin(ui, "grid", rows, cols, cw, ch, rhw, chh)) {
         int r0, r1, c0, c1, r, c, fl;
         st->grid_area = lt_ui_clip_get(ui);
+        st->lsync.ok = 0;
+        if (st->lambda_on && !cell) {
+            /* line up with the lambda preview (tables_lambda.c) */
+            if (st->lsync.follow) { lt_ui_grid_scroll_to(ui, st->lsync.fx, st->lsync.fy); st->lsync.follow = 0; }
+            lt_ui_scroll_get(ui, &st->lsync.msx, &st->lsync.msy);
+            st->lsync.mcw = cw; st->lsync.mch = ch; st->lsync.ok = 1;
+        }
         lt_ui_grid_visible(ui, &r0, &r1, &c0, &c1);
         lt_ui_grid_corner(ui, st->ylab[0] ? st->ylab : "Y \\ X");
         for (c = c0; c <= c1; c++) {
@@ -1419,6 +1442,9 @@ static void tbl_grid(lt_app *app, lt_app_tab *tab, tbl_tab *st, int vh)
                     st->nsel++;
                 }
             }
+        }
+        if (lt_ui_grid_sel_bounds(ui, &st->lsync.sel[0], &st->lsync.sel[1], &st->lsync.sel[2], &st->lsync.sel[3]) == 0) {
+            st->lsync.sel[0] = -1;
         }
         lt_ui_grid_cursor(ui, &r, &c);
         st->cur_r = r >= 0 ? drow(st, r) : 0;
@@ -1616,8 +1642,8 @@ static void tbl_preview_env(tbl_tab *st)
     char *e = lt_plat_getenv("LT_TABLE_VIEW");
     if (e == NULL) { return; }
     if (strstr(e, "3d") != NULL) { st->show3d = 1; }
-    if (strstr(e, "nolambda") != NULL) { st->lambda_on = 0; }
-    else if (strstr(e, "lambda") != NULL) { st->lambda_on = st->is_afr; }
+    if (strstr(e, "nolambda") != NULL) { st->lambda_on = 0; st->lambda_env = 0; }
+    else if (strstr(e, "lambda") != NULL) { st->lambda_on = st->is_afr; st->lambda_env = st->is_afr; }
     if (strstr(e, "wire") != NULL) { st->t3.style = LT_T3D_WIRE; }
     if (strstr(e, "points") != NULL) { st->t3.style = LT_T3D_POINTS; }
     if (strstr(e, "change") != NULL) { st->t3.color_mode = LT_T3D_BY_CHANGE; }
@@ -1636,7 +1662,7 @@ static void tbl_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
     tbl_tab *st = (tbl_tab *)tab->data;
     lt_ui *ui = app->ui;
     const lt_theme *th = lt_ui_theme(ui);
-    int w1 = -1, w2[2], w3[3];
+    int w1 = -1, w2[2], w3[3], strip = 0;
     LT_UNUSED(r);
     if (st == NULL) {
         st = (tbl_tab *)lt_calloc(1, sizeof(*st));
@@ -1648,7 +1674,8 @@ static void tbl_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
         tbl_load(app, tab, st);
         /* one native unit (1 AFR, 1 degree, 1 %) in the unit shown */
         st->step = st->loaded ? lt_tabs_unit_step(&st->v.zu, lt_ini_find_const(app->ini, st->t->z_const)) : 1.0;
-        st->lambda_on = st->is_afr && !lt_ui_cell_mode(ui);
+        st->lambda_env = -1;
+        st->lambda_on = st->is_afr && !lt_ui_cell_mode(ui) && app->settings.prefs.lambda_pane;
         tbl_preview_env(st);
     }
     st->frame++;
@@ -1664,11 +1691,18 @@ static void tbl_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
     tbl_live(app, st);
     tbl_3d_keys(ui, st);
     tbl_header(app, tab, st);
+    if (st->is_afr && !lt_ui_cell_mode(ui)) {
+        /* the preview open or collapsed as the user left it (another AFR tab may have changed it) */
+        int want = st->lambda_env >= 0 ? st->lambda_env : app->settings.prefs.lambda_pane;
+        if (want != st->lambda_on) { st->lambda_on = want; st->lsync.have = 0; }
+    }
     tbl_toolbar(app, tab, st);
-    if ((st->show3d || st->lambda_on) && !lt_ui_cell_mode(ui)) {
+    strip = st->is_afr && !st->lambda_on && !lt_ui_cell_mode(ui);
+    if ((st->show3d || st->lambda_on || strip) && !lt_ui_cell_mode(ui)) {
         int n2 = 1;
         w3[0] = -3;
         if (st->lambda_on) { w3[n2++] = -2; }
+        if (strip) { w3[n2++] = 30; }
         if (st->show3d) { w3[n2++] = -2; }
         lt_ui_layout_row(ui, n2, w3, -28);
     } else if (st->show3d || st->lambda_on) {
@@ -1680,7 +1714,8 @@ static void tbl_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
     tbl_grid(app, tab, st, 0);
     tbl_keys(app, tab, st);
     tbl_context(app, tab, st, st->grid_area);
-    if (st->lambda_on) { lt_tabs_lambda_draw(app, &st->v, st->ybottom); }
+    if (st->lambda_on && lt_tabs_lambda_draw(app, &st->v, st->ybottom, &st->lsync)) { tbl_lambda_toggle(app, st); }
+    else if (strip && lt_tabs_lambda_strip(app)) { tbl_lambda_toggle(app, st); }
     if (st->show3d) {
         lt_rect r3 = lt_ui_layout_next(ui);
         tbl_3d_mouse(ui, st, r3);

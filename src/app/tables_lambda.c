@@ -6,6 +6,7 @@
 #include <string.h>
 #include "tables_priv.h"
 #include "app_ext.h"
+#include "view_kit.h"
 
 static const char *fuel_get(void *ud, int i)
 {
@@ -39,13 +40,47 @@ static void live_line(lt_app *app, char *out, size_t cap)
     lt_snprintf(out, cap, "lambda %s   AFR %s   fuel %s", l, a, f);
 }
 
-void lt_tabs_lambda_draw(lt_app *app, const lt_tblview *v, int ybottom)
+/* the preview's grid follows the table grid (see lt_tabs_lsync); called right after its begin */
+static void lambda_sync(lt_ui *ui, lt_tabs_lsync *s, int cw, int ch)
+{
+    int lx = 0, ly = 0;
+    if (s == NULL || !s->ok || s->mcw <= 0 || s->mch <= 0) { return; }
+    lt_ui_scroll_get(ui, &lx, &ly);
+    if (s->have && (lx != s->lx || ly != s->ly)) {
+        /* the preview was scrolled itself: the table follows */
+        s->follow = 1;
+        s->fx = (int)((long)lx * s->mcw / cw);
+        s->fy = (int)((long)ly * s->mch / ch);
+        lt_ui_request_redraw(ui);
+    } else {
+        lt_ui_grid_scroll_to(ui, (int)((long)s->msx * cw / s->mcw), (int)((long)s->msy * ch / s->mch));
+    }
+    lt_ui_scroll_get(ui, &s->lx, &s->ly);
+    s->have = 1;
+    if (s->sel[0] >= 0) { lt_ui_grid_select(ui, s->sel[0], s->sel[1], s->sel[2], s->sel[3]); }
+}
+
+int lt_tabs_lambda_strip(lt_app *app)
+{
+    lt_ui *ui = app->ui;
+    const lt_theme *th = lt_ui_theme(ui);
+    lt_rect r = lt_ui_layout_next(ui);
+    int w1 = -1, hit = 0;
+    lt_ui_region_begin(ui, r, th->bg_app);
+    lt_ui_layout_row(ui, 1, &w1, 28);
+    if (lt_vk_icon_btn(ui, LT_ICON_CHEVRONS_LEFT, "Show the lambda preview", 0, 24, 24)) { hit = 1; }
+    lt_ui_region_end(ui);
+    return hit;
+}
+
+int lt_tabs_lambda_draw(lt_app *app, const lt_tblview *v, int ybottom, lt_tabs_lsync *sync)
 {
     lt_ui *ui = app->ui;
     const lt_theme *th = lt_ui_theme(ui);
     int *fuel = (int *)lt_ext_state(app, "tables_lambda", sizeof(int), NULL);
     lt_rect r = lt_ui_layout_next(ui);
     int w1 = -1, w2[2], rows = (int)v->rows, cols = (int)v->cols, shown_l, cw, cell = lt_ui_cell_mode(ui);
+    int collapse = 0;
     double stoich, zlo = 1e300, zhi = -1e300;
     size_t k;
     char b[96];
@@ -57,9 +92,12 @@ void lt_tabs_lambda_draw(lt_app *app, const lt_tblview *v, int ybottom)
         if (v->z[k] > zhi) { zhi = v->z[k]; }
     }
     lt_ui_region_begin(ui, r, th->bg_app);
-    lt_ui_layout_row(ui, 1, &w1, 0);
-    lt_snprintf(b, sizeof(b), shown_l ? "AFR view (%s)" : "Lambda view (%s)", lt_lambda_fuel_label(*fuel));
-    lt_ui_label_ex(ui, b, th->text, LT_UI_ALIGN_LEFT);
+    w2[0] = -1; w2[1] = cell ? 4 : 28;
+    lt_ui_layout_row(ui, cell ? 1 : 2, w2, 0);
+    lt_ui_label_ex(ui, shown_l ? "AFR preview (read-only)" : "Lambda preview (read-only)", th->text, LT_UI_ALIGN_LEFT);
+    lt_ui_tooltip(ui, shown_l ? "The table in AFR for the chosen fuel; edit it on the left"
+                              : "The table in lambda for the chosen fuel; edit it on the left");
+    if (!cell && lt_vk_icon_btn(ui, LT_ICON_CHEVRONS_RIGHT, "Hide the preview", 0, 24, 24)) { collapse = 1; }
     w2[0] = -1; w2[1] = cell ? 22 : 150;
     lt_ui_layout_row(ui, 2, w2, 0);
     live_line(app, b, sizeof(b));
@@ -70,6 +108,7 @@ void lt_tabs_lambda_draw(lt_app *app, const lt_tblview *v, int ybottom)
     lt_ui_disabled_begin(ui, 1);
     if (lt_ui_grid_begin(ui, "lambda_grid", rows, cols, cw, cell ? 16 : 22, 56, cell ? 16 : 24)) {
         int r0, r1, c0, c1, rr, cc;
+        if (!cell) { lambda_sync(ui, sync, cw, 22); }
         lt_ui_grid_visible(ui, &r0, &r1, &c0, &c1);
         lt_ui_grid_corner(ui, "");
         for (cc = c0; cc <= c1; cc++) {
@@ -94,4 +133,19 @@ void lt_tabs_lambda_draw(lt_app *app, const lt_tblview *v, int ybottom)
     }
     lt_ui_disabled_end(ui);
     lt_ui_region_end(ui);
+    if (sync != NULL && sync->ok && !cell && !lt_ui_popup_open(ui) && lt_ui_wheel(ui) != 0) {
+        /* the read-only grid takes no input: the wheel over the preview scrolls the table, and
+         * the preview follows it (Shift: sideways) */
+        lt_point m = lt_ui_mouse(ui);
+        if (m.x >= r.x && m.x < r.x + r.w && m.y >= r.y && m.y < r.y + r.h) {
+            int w = lt_ui_wheel_take(ui), step = lt_ui_row_height(ui) * 2;
+            sync->follow = 1;
+            sync->fx = sync->msx; sync->fy = sync->msy;
+            if (lt_ui_mods(ui) & LT_MOD_SHIFT) { sync->fx -= w * step; } else { sync->fy -= w * step; }
+            if (sync->fx < 0) { sync->fx = 0; }
+            if (sync->fy < 0) { sync->fy = 0; }
+            lt_ui_request_redraw(ui);
+        }
+    }
+    return collapse;
 }

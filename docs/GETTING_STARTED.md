@@ -114,6 +114,8 @@ connect and read it.
   shrinks the selection to one cell); **Revert** in the toolbar goes back to the values the table
   had when it was opened. Right-click for every other operation, including the 3D view. In a
   narrow window the toolbar buttons that do not fit are in the **»** menu at its right end.
+  A Target AFR table has a read-only **lambda preview** beside it that scrolls with it; collapse it
+  with its **»** button (LibreTune remembers) and open it again from the strip.
 - **View > Dashboard** (Ctrl+D) shows gauges; the Designer button edits them.
 - **Help > Keyboard Shortcuts** lists everything; **Help > User Manual** is the full manual.
 

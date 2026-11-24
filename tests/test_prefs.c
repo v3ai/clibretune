@@ -92,11 +92,14 @@ LT_TEST(prefs_file)
     lt_prefs_defaults(&a);
     LT_CHECK(lt_prefs_load(&b, dir) < 0);                   /* no file: defaults */
     LT_CHECK(b.y_bottom == 1);
+    LT_CHECK(a.lambda_pane == 1);                           /* lambda preview open by default */
     a.help_icons = 0;
     a.trail_fade_sec = 30;
+    a.lambda_pane = 0;
     LT_CHECK(lt_prefs_save(&a, dir) == 0);
     LT_CHECK(lt_prefs_load(&b, dir) == 0);
     LT_CHECK(b.help_icons == 0 && b.trail_fade_sec == 30);
+    LT_CHECK(b.lambda_pane == 0);
 }
 
 LT_TEST(prefs_colors_heat)

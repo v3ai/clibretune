@@ -107,7 +107,11 @@ REWRITES = [
      "| `S` | Smooth | Gaussian blur |\n\n"
      "Every operation is also a toolbar button. When the window is too narrow for the whole"
      " toolbar, the buttons that do not fit move into the **\u00bb** menu at its right end;"
-     " **Burn** and **3D** always stay on the bar.\n"),
+     " **Burn** and **3D** always stay on the bar.\n\n"
+     "A Target AFR table has a read-only **lambda preview** beside it: the same cells as lambda"
+     " for the fuel you pick (or as AFR when the table is shown in lambda), with live readouts."
+     " It scrolls with the table and shows its selection. Its **\u00bb** button collapses it to a"
+     " narrow strip, and the strip's button opens it again; LibreTune remembers the choice.\n"),
     ("features/table-editing/2d-tables", r"- Hold \*\*Shift\*\* for 10x step\n",
      "- `q` / `w`: small step; Ctrl with `+` / `-`: the step times the multiplier\n\n"
      "The step is one unit of the ECU's own unit (1 AFR, 1 \u00b0C, 1 kPa) shown in the unit you"

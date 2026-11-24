@@ -258,7 +258,7 @@ Orig = path under `ref/LibreTune/crates/`. `app/` = `libretune-app/src/component
 - Missing: companion read-only table showing the lambda equivalent of an AFR table (and reverse), honouring the
   AFR/lambda unit setting (G-90). Conversions exist (`lt_afr_to_lambda`).
 - Orig: `app/tables/LambdaPreviewTable.tsx`.
-- Status update: DONE: Target AFR tables show a read-only lambda companion beside the grid (toolbar toggle; E0/E10/E30/E85/E100 stoich, live lambda / AFR / calculated-fuel readouts); when the AFR unit preference is lambda it shows AFR instead. `src/app/tables_lambda.c`, helpers in the unit layer (`lt_lambda_*` in tableops_units.c).
+- Status update: DONE: Target AFR tables show a read-only lambda companion beside the grid (toolbar toggle; E0/E10/E30/E85/E100 stoich, live lambda / AFR / calculated-fuel readouts); when the AFR unit preference is lambda it shows AFR instead. It is titled "Lambda preview (read-only)", scrolls with the table (the wheel over it scrolls both) and mirrors its selection, and collapses to a narrow strip; open or collapsed is remembered (prefs `lambda_pane`). `src/app/tables_lambda.c`, helpers in the unit layer (`lt_lambda_*` in tableops_units.c).
 
 ### G-28 Large-change alert on table edits
 - Status: DONE | Priority: P2 | Effort: S

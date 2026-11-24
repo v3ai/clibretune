@@ -178,6 +178,28 @@ lt_rect lt_ui_grid_cell_rect(const lt_ui *ui, int r, int c)
     return cell_rect(ui->grid, r, c);
 }
 
+void lt_ui_grid_scroll_to(lt_ui *ui, int x, int y)
+{
+    ui_grid *G = ui->grid;
+    ui_scroll *S;
+    int maxx, maxy;
+    if (G == NULL || !G->in_frame || ui->nscr == 0) { return; }
+    S = &ui->scr[ui->nscr - 1];
+    maxx = LT_MAX(0, G->cols * G->cw - S->inner.w);
+    maxy = LT_MAX(0, G->rows * G->chh - S->inner.h);
+    x = clampi(x, 0, maxx); y = clampi(y, 0, maxy);
+    if (x == S->sx && y == S->sy) { return; }
+    S->sx = x; S->sy = y;
+    G->sx = x; G->sy = y;
+    G->ox = S->inner.x - x;
+    G->oy = S->inner.y - y;
+    G->r0 = clampi(y / G->chh, 0, G->rows - 1);
+    G->r1 = clampi((y + S->inner.h - 1) / G->chh, 0, G->rows - 1);
+    G->c0 = clampi(x / G->cw, 0, G->cols - 1);
+    G->c1 = clampi((x + S->inner.w - 1) / G->cw, 0, G->cols - 1);
+    ui_request(ui);
+}
+
 void lt_ui_grid_visible(const lt_ui *ui, int *r0, int *r1, int *c0, int *c1)
 {
     const ui_grid *G = ui->grid;

@@ -908,6 +908,63 @@ LT_TEST(table_toolbar_narrow)
     lt_app_free(app);
 }
 
+static void wheel(lt_app *app, int x, int y, int amount)
+{
+    lt_event ev;
+    int i;
+    memset(&ev, 0, sizeof(ev));
+    ev.type = LT_EV_MOUSE_MOVE; ev.x = x; ev.y = y;
+    lt_ui_input(app->ui, &ev);
+    frame(app);
+    ev.type = LT_EV_WHEEL; ev.wheel = amount;
+    lt_ui_input(app->ui, &ev);
+    for (i = 0; i < 4; i++) { frame(app); }
+}
+
+static lt_u32 *canvas_copy(const lt_app *app)
+{
+    size_t npx = (size_t)app->canvas.pitch * (size_t)app->canvas.h;
+    lt_u32 *p = (lt_u32 *)lt_calloc(npx, sizeof(lt_u32));
+    memcpy(p, app->canvas.px, npx * sizeof(lt_u32));
+    return p;
+}
+
+/* the lambda preview beside an AFR table: labelled, scrolls with the table both ways, and
+ * collapses to a strip; open or collapsed is remembered (prefs lambda_pane) */
+LT_TEST(lambda_preview_pane)
+{
+    size_t rows, cols;
+    lt_u32 *top, *snap;
+    int i;
+    lt_app *app = tbl_open("afrTableTbl", &rows, &cols);
+    LT_CHECK(rows > 20);
+    app->settings.prefs.lambda_pane = 1;
+    for (i = 0; i < 3; i++) { frame(app); }
+    top = canvas_copy(app);
+    /* rows headers of the preview (x 770..820) and of the table (x 266..334) */
+    wheel(app, 500, 400, -2);                       /* scroll the table */
+    LT_CHECK(canvas_diff(&app->canvas, top, 266, 250, 334, 720) > 500);
+    LT_CHECK(canvas_diff(&app->canvas, top, 772, 250, 820, 720) > 500);
+    snap = canvas_copy(app);
+    wheel(app, 950, 500, -2);                       /* scroll the preview: the table follows */
+    LT_CHECK(canvas_diff(&app->canvas, snap, 772, 250, 820, 720) > 500);
+    LT_CHECK(canvas_diff(&app->canvas, snap, 266, 250, 334, 720) > 500);
+    lt_free(snap);
+    press(app, LT_KEY_HOME, LT_MOD_CTRL);           /* both back at the top */
+    for (i = 0; i < 3; i++) { frame(app); }
+    LT_CHECK(canvas_diff(&app->canvas, top, 266, 250, 334, 720) == 0);
+    LT_CHECK(canvas_diff(&app->canvas, top, 772, 250, 820, 720) == 0);
+    lt_free(top);
+    /* collapse with the button in the preview's title row, open again from the strip */
+    click(app, 1083, 170, LT_MB_LEFT);
+    frame(app);
+    LT_CHECK(app->settings.prefs.lambda_pane == 0);
+    click(app, 1081, 172, LT_MB_LEFT);
+    frame(app);
+    LT_CHECK(app->settings.prefs.lambda_pane == 1);
+    lt_app_free(app);
+}
+
 int main(void)
 {
     LT_RUN(autotune_send_undo);
@@ -931,5 +988,6 @@ int main(void)
     LT_RUN(curve_step_display_units);
     LT_RUN(table_dblclick_while_editing);
     LT_RUN(table_toolbar_narrow);
+    LT_RUN(lambda_preview_pane);
     LT_TEST_MAIN_END
 }
