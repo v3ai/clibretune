@@ -22,6 +22,10 @@
 #define CACHE_SLOTS 768
 #define CACHE_BUCKETS 512
 #define CACHE_DEFAULT_BYTES 1048576UL
+#define KASC_N 96               /* kerning table of the printable ASCII pairs (32..127) */
+#define KASC_UNSET (-32768)
+
+static int glyph_index_cmap(const lt_ttf *f, lt_u32 cp);
 
 typedef struct cache_slot {
     lt_u32 ka, kb;      /* key: gid | subpos << 16, size in 1/64 px */
@@ -41,7 +45,11 @@ struct lt_ttf {
     int cmap_fmt;
     int upem, nglyphs, nhm, loca_long;
     int ascent, descent, line_gap, xh, cap;
+    /* Latin-1 code point -> glyph (text measuring and drawing look up every character) */
+    int gid_lat1[256];
     /* kerning */
+    lt_u8 *kidx;                /* per glyph: 1 + its slot in kasc (an ASCII character), or 0 */
+    short *kasc;                /* KASC_N x KASC_N kerning of ASCII pairs, KASC_UNSET = not yet */
     int nkl;
     size_t kl[KERN_LOOKUPS];
     size_t kpairs;
@@ -266,6 +274,22 @@ lt_ttf *lt_ttf_open(const lt_u8 *data, size_t len, lt_bool copy)
     }
     if (!find_table(f, "GPOS", &f->gpos, &l)) { f->gpos = 0; }
     find_kern(f);
+    {
+        lt_u32 cp;
+        int i;
+        for (cp = 0; cp < 256U; cp++) { f->gid_lat1[cp] = glyph_index_cmap(f, cp); }
+        if (f->nglyphs > 0) {
+            f->kidx = (lt_u8 *)lt_calloc((size_t)f->nglyphs, 1);
+            f->kasc = (short *)lt_malloc((size_t)KASC_N * KASC_N * sizeof(short));
+            for (i = 0; i < KASC_N * KASC_N; i++) { f->kasc[i] = KASC_UNSET; }
+            for (cp = 32; cp < 32U + KASC_N; cp++) {
+                int gid = f->gid_lat1[cp];
+                if (gid > 0 && gid < f->nglyphs && f->kidx[gid] == 0) {
+                    f->kidx[gid] = (lt_u8)(cp - 31U);
+                }
+            }
+        }
+    }
     f->xh = measure_top(f, 'x', f->upem / 2);
     f->cap = measure_top(f, 'H', (f->upem * 7) / 10);
     if (f->ascent <= 0 || f->ascent > f->upem * 4) { f->ascent = (f->upem * 8) / 10; }
@@ -328,6 +352,8 @@ void lt_ttf_close(lt_ttf *f)
     if (f == NULL) { return; }
     lt_ttf_cache_clear(f);
     lt_free(f->slots);
+    lt_free(f->kidx);
+    lt_free(f->kasc);
     lt_free(f->ox);
     lt_free(f->oy);
     lt_free(f->on);
@@ -373,7 +399,7 @@ lt_bool lt_ttf_glyph_composite(const lt_ttf *f, int gid)
 
 /* ------------------------------------------------------------------ */
 /* cmap                                                                */
-int lt_ttf_glyph_index(const lt_ttf *f, lt_u32 cp)
+static int glyph_index_cmap(const lt_ttf *f, lt_u32 cp)
 {
     size_t t = f->cmap_sub;
     int gid = 0;
@@ -528,7 +554,32 @@ static lt_bool pairpos_lookup(const lt_ttf *f, size_t st, int l, int r, int *adv
     return LT_FALSE;
 }
 
+int lt_ttf_glyph_index(const lt_ttf *f, lt_u32 cp)
+{
+    if (cp < 256U) { return f->gid_lat1[cp]; }
+    return glyph_index_cmap(f, cp);
+}
+
+static int kern_lookup(const lt_ttf *f, int left, int right);
+
 int lt_ttf_kern(const lt_ttf *f, int left, int right)
+{
+    if (left > 0 && right > 0 && left < f->nglyphs && right < f->nglyphs && f->kasc != NULL) {
+        int ia = f->kidx[left], ib = f->kidx[right];
+        if (ia > 0 && ib > 0) {
+            short *v = &f->kasc[(ia - 1) * KASC_N + (ib - 1)];
+            if (*v == KASC_UNSET) {
+                int k = kern_lookup(f, left, right);
+                if (k <= KASC_UNSET || k > 32767) { return k; }
+                *v = (short)k;
+            }
+            return *v;
+        }
+    }
+    return kern_lookup(f, left, right);
+}
+
+static int kern_lookup(const lt_ttf *f, int left, int right)
 {
     int i, sum = 0;
     if (left <= 0 || right <= 0) { return 0; }

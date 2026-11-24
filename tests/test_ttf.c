@@ -131,6 +131,39 @@ LT_TEST(test_advance_and_kerning)
     lt_ttf_close(f);
 }
 
+/* the ASCII kerning table is filled on demand: whatever the order of the queries, every pair
+ * reads back what the lookup found (two fonts, queried forwards and backwards) */
+LT_TEST(test_kerning_table)
+{
+    lt_ttf *f = open_font(LT_FONT_SANS), *h = open_font(LT_FONT_SANS);
+    int a, b, bad = 0, nonzero = 0;
+    if (f == NULL || h == NULL) { LT_CHECK(0); lt_ttf_close(f); lt_ttf_close(h); return; }
+    for (a = 0x20; a < 0x100; a++) {
+        for (b = 0x20; b < 0x100; b++) {
+            int ga = lt_ttf_glyph_index(f, (lt_u32)a), gb = lt_ttf_glyph_index(f, (lt_u32)b);
+            int k1 = lt_ttf_kern(f, ga, gb);
+            if (k1 != lt_ttf_kern(f, ga, gb)) { bad++; }
+            if (k1 != 0) { nonzero++; }
+        }
+    }
+    for (a = 0xFF; a >= 0x20; a--) {
+        for (b = 0xFF; b >= 0x20; b--) {
+            int ga = lt_ttf_glyph_index(h, (lt_u32)a), gb = lt_ttf_glyph_index(h, (lt_u32)b);
+            if (lt_ttf_kern(h, ga, gb) != lt_ttf_kern(f, lt_ttf_glyph_index(f, (lt_u32)a),
+                                                      lt_ttf_glyph_index(f, (lt_u32)b))) {
+                bad++;
+            }
+        }
+    }
+    LT_CHECK(bad == 0);
+    LT_CHECK(nonzero > 100);
+    /* a pair with a glyph outside ASCII goes straight to the lookup */
+    LT_CHECK(lt_ttf_kern(f, lt_ttf_glyph_index(f, 0xC0), lt_ttf_glyph_index(f, 'V')) ==
+             lt_ttf_kern(h, lt_ttf_glyph_index(h, 0xC0), lt_ttf_glyph_index(h, 'V')));
+    lt_ttf_close(f);
+    lt_ttf_close(h);
+}
+
 LT_TEST(test_composite_glyphs)
 {
     lt_ttf *f = open_font(LT_FONT_SANS);
@@ -762,6 +795,7 @@ int main(void)
     LT_RUN(test_cmap);
     LT_RUN(test_metrics_mono);
     LT_RUN(test_advance_and_kerning);
+    LT_RUN(test_kerning_table);
     LT_RUN(test_composite_glyphs);
     LT_RUN(test_raster_scaling_and_aa);
     LT_RUN(test_subpixel_and_rotation);
