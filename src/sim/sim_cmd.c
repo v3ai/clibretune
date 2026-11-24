@@ -11,6 +11,8 @@
 #define TK_OFF 1      /* %2o */
 #define TK_CNT 2      /* %2c */
 #define TK_DATA 3     /* %v */
+#define TK_OFF1 4     /* %o (one byte: MegaSquirt-1 "W%o%v") */
+#define TK_CNT1 5     /* %c */
 
 typedef struct sim_tok {
     lt_u8 type, byte;
@@ -27,6 +29,7 @@ struct lt_simcmds {
     sim_tpl *t;
     size_t n, cap;
     lt_bool le;
+    int active;          /* page selected by its pageActivate command, -1 none */
 };
 
 lt_u32 lt_simcmds_page_id(const lt_ini *ini, size_t idx)
@@ -82,9 +85,24 @@ static void add(lt_simcmds *c, lt_simcmd_kind kind, int page, const char *f, siz
     if (f == NULL || n == 0) {
         return;
     }
+    for (i = 0; i < n && (f[i] == ' ' || f[i] == '\t'); i++) {
+    }
+    if (i == n) {
+        return;            /* " ": MegaSquirt-1 INIs' way of declaring no command */
+    }
+    i = 0;
     lt_buf_init(&toks);
     while (i < n) {
-        if (f[i] == '%' && i + 2 < n && f[i + 1] == '2' &&
+        if (f[i] == '%' && i + 1 < n && (f[i + 1] == 'i' || f[i + 1] == 'o' || f[i + 1] == 'c')) {
+            put_lits(&toks, f + lit, i - lit);
+            if (f[i + 1] == 'i') {
+                put_tok(&toks, TK_LIT, (lt_u8)(page_id & 0xFFu));
+            } else {
+                put_tok(&toks, f[i + 1] == 'o' ? TK_OFF1 : TK_CNT1, 0);
+            }
+            i += 2;
+            lit = i;
+        } else if (f[i] == '%' && i + 2 < n && f[i + 1] == '2' &&
             (f[i + 2] == 'i' || f[i + 2] == 'o' || f[i + 2] == 'c')) {
             put_lits(&toks, f + lit, i - lit);
             if (f[i + 2] == 'i') {
@@ -146,8 +164,9 @@ static void add_list(lt_simcmds *c, const lt_ini *ini, lt_simcmd_kind kind,
 {
     size_t i;
 
-    for (i = 0; i < l->n && i < n_pages; i++) {
-        add(c, kind, (int)i, l->v[i].p, l->v[i].n, lt_simcmds_page_id(ini, i));
+    for (i = 0; i < n_pages && (i < l->n || l->n == 1); i++) {
+        const lt_ini_blob *b = &l->v[i < l->n ? i : 0];    /* one entry: every page's */
+        add(c, kind, (int)i, b->p, b->n, lt_simcmds_page_id(ini, i));
     }
 }
 
@@ -156,6 +175,7 @@ lt_simcmds *lt_simcmds_new(const lt_ini *ini, size_t n_pages)
     lt_simcmds *c = (lt_simcmds *)lt_calloc(1, sizeof(*c));
     const lt_ini_protocol *pr;
 
+    c->active = -1;
     if (ini == NULL) {
         return c;
     }
@@ -163,6 +183,7 @@ lt_simcmds *lt_simcmds_new(const lt_ini *ini, size_t n_pages)
     c->le = ini->endian == LT_ENDIAN_LITTLE ? LT_TRUE : LT_FALSE;
     /* first match wins: the handshake first, then realtime, then the page commands */
     add_blob(c, LT_SIMCMD_QUERY, &pr->query_command);
+    add_list(c, ini, LT_SIMCMD_ACTIVATE, &pr->page_activate_commands, n_pages);
     if (ini->version_info != NULL) {
         add(c, LT_SIMCMD_VERSION, -1, ini->version_info, strlen(ini->version_info), 0);
     }
@@ -170,9 +191,17 @@ lt_simcmds *lt_simcmds_new(const lt_ini *ini, size_t n_pages)
     add_blob(c, LT_SIMCMD_BURST, &pr->burst_get_command);
     add_list(c, ini, LT_SIMCMD_READ, &pr->page_read_commands, n_pages);
     add_list(c, ini, LT_SIMCMD_WRITE, &pr->page_chunk_write_commands, n_pages);
+    add_list(c, ini, LT_SIMCMD_WRITE, &pr->page_value_write_commands, n_pages);
     add_list(c, ini, LT_SIMCMD_BURN, &pr->burn_commands, n_pages);
     add_list(c, ini, LT_SIMCMD_CRC, &pr->crc32_check_commands, n_pages);
     return c;
+}
+
+void lt_simcmds_set_active(lt_simcmds *c, int page)
+{
+    if (c != NULL) {
+        c->active = page;
+    }
 }
 
 void lt_simcmds_free(lt_simcmds *c)
@@ -207,6 +236,20 @@ static int match_one(const lt_simcmds *c, const sim_tpl *t, const lt_u8 *b, size
             }
             if (b[pos] != tk->byte) {
                 return 0;
+            }
+            pos++;
+            break;
+        case TK_OFF1:
+        case TK_CNT1:
+            if (pos >= n) {
+                return -1;
+            }
+            if (tk->type == TK_OFF1) {
+                m->off = b[pos];
+                m->has_off = LT_TRUE;
+            } else {
+                m->cnt = b[pos];
+                m->has_cnt = LT_TRUE;
             }
             pos++;
             break;
@@ -258,7 +301,18 @@ int lt_simcmds_match(const lt_simcmds *c, const lt_u8 *b, size_t n, lt_bool exac
     for (i = 0; i < c->n; i++) {
         r = match_one(c, &c->t[i], b, n, exact, &tmp);
         if (r > 0) {
+            size_t k;
+
             *m = tmp;
+            /* the same command on several pages ("V" after "P\001"): the selected page's */
+            for (k = i + 1; tmp.page >= 0 && c->active >= 0 && m->page != c->active && k < c->n;
+                 k++) {
+                lt_simcmd_match alt;
+                if (c->t[k].kind == tmp.kind && c->t[k].page == c->active &&
+                    match_one(c, &c->t[k], b, n, exact, &alt) > 0 && alt.len == tmp.len) {
+                    *m = alt;
+                }
+            }
             return 1;
         }
         if (r < 0) {

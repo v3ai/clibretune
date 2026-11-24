@@ -8,7 +8,8 @@
  * 16-bit offset / count in the INI's byte order, %v = count data bytes), so the simulator
  * answers whatever dialect the INI speaks: rusEFI "R%2i%2o%2c", FOME "R%2o%2c", Speeduino
  * "p%2i%2o%2c", MegaSquirt 2 "r\x00\x04%2o%2c" / "w\x00\x04%2o%2c%v" / "b\x00\x04",
- * MegaSquirt 3 "r%2i%2o%2c" with "\$tsCanId\x04" identifiers and "k%2i\x00\x00\x00\x04".
+ * MegaSquirt 3 "r%2i%2o%2c" with "\$tsCanId\x04" identifiers and "k%2i\x00\x00\x00\x04",
+ * MegaSquirt-1 "V" / "W%o%v" / "X%o%c%v" (%i / %o / %c: one byte) after a pageActivate "P\001".
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 #ifndef LT_SIM_CMD_H
@@ -19,7 +20,7 @@
 
 typedef enum lt_simcmd_kind {
     LT_SIMCMD_NONE = 0, LT_SIMCMD_QUERY, LT_SIMCMD_VERSION, LT_SIMCMD_OCH, LT_SIMCMD_BURST,
-    LT_SIMCMD_READ, LT_SIMCMD_WRITE, LT_SIMCMD_BURN, LT_SIMCMD_CRC
+    LT_SIMCMD_READ, LT_SIMCMD_WRITE, LT_SIMCMD_BURN, LT_SIMCMD_CRC, LT_SIMCMD_ACTIVATE
 } lt_simcmd_kind;
 
 typedef struct lt_simcmd_match {
@@ -40,6 +41,9 @@ void        lt_simcmds_free(lt_simcmds *c);
  * -1 = one could, but more bytes are needed. */
 int         lt_simcmds_match(const lt_simcmds *c, const lt_u8 *b, size_t n, lt_bool exact,
                              lt_simcmd_match *m);
+/* The page the ECU has selected (pageActivate): a command declared identically for several
+ * pages (MegaSquirt-1 Extra "V", "W%o%v", "B") is that page's. -1 = none (first declared). */
+void        lt_simcmds_set_active(lt_simcmds *c, int page);
 /* The page identifier value of page idx as the host's %2i carries it (proto.c page_id). */
 lt_u32      lt_simcmds_page_id(const lt_ini *ini, size_t idx);
 
