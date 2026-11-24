@@ -125,6 +125,9 @@ void lt_dtab_redo(lt_app *app, dash_state *st);
 void lt_dtab_copy(lt_app *app, dash_state *st);
 void lt_dtab_paste(lt_app *app, dash_state *st);
 void lt_dtab_select_all(dash_state *st);
+/* the properties panel for component idx (-1 closes it): toolbar Properties, double-click in the
+ * designer, the context menu; while it is open it follows the designer's selection */
+void lt_dtab_props_open(dash_state *st, int idx);
 /* load a dashboard file / a built-in source; remember it in the project */
 int  lt_dtab_load_file(lt_app *app, dash_state *st, const char *path);
 void lt_dtab_load_builtin(lt_app *app, dash_state *st, int src);

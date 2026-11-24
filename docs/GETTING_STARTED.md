@@ -120,7 +120,9 @@ connect and read it.
 - The sidebar is the ECU's own menu tree from its INI; **Ctrl+K** searches it and **Enter** opens the first match.
 - Tables: arrow keys or the mouse select, type a number to set, `+`/`-` step, `=` average,
   `/` interpolate, `s` smooth, Ctrl+Z undo. Right-click for every other operation, including the 3D view.
-- **View > Dashboard** (Ctrl+D) shows gauges; the Designer button edits them.
+- **View > Dashboard** (Ctrl+D) shows gauges; the Designer button edits them. In the designer,
+  double-click a gauge (or select it and press **Properties**) to set its title, channel, range and
+  the warning and danger levels; **Save** keeps them in the dashboard file.
 - **Help > Keyboard Shortcuts** lists everything; **Help > User Manual** is the full manual.
 
 ## 5. Change and burn

@@ -110,6 +110,4 @@ Found in the November 2026 usability pass; each needs a product decision rather 
   limits are clamped silently, a no-op operation still adds an undo step, curve "+" steps by 1.0.
 - **Narrow windows**: below about 1100 px the table toolbar hides Burn and 3D, and two-column INI
   panels overflow; a resizable sidebar and a one-column fallback would help.
-- **Dashboard Designer**: double-click does not open an item's properties; there is no visible
-  Properties button.
 - **Log viewer**: the file list does not refresh when a recording ends while it is open.
