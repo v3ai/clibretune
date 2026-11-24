@@ -290,6 +290,8 @@ int lt_icon_count(void);              /* number of icons; ids are 1..count */
  * Fractional positions are anti-aliased exactly. */
 void lt_gfx_icon(lt_gfx *g, int icon, double x, double y, double size_px, double stroke_px,
                  lt_color c);
+/* free the cached rasterised icon masks (they are rebuilt on use) */
+void lt_icon_cache_release(void);
 
 /* ------------------------------------------------------------------ */
 /* Input events                                                        */

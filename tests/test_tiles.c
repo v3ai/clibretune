@@ -303,6 +303,33 @@ LT_TEST(test_tiles_occlusion)
     lt_canvas_free(&ref);
 }
 
+/* icon masks come from a cache with eviction: a mask from the cache draws the same pixels as a
+ * freshly rasterised one (more icons than the cache holds, drawn twice more after a reference
+ * pass that rasterises every icon from scratch) */
+LT_TEST(test_icon_cache)
+{
+    lt_canvas a, b;
+    lt_gfx ga, gb;
+    int pass, i;
+    lt_canvas_init(&a, CW, CH);
+    lt_canvas_init(&b, CW, CH);
+    lt_gfx_init_canvas(&ga, &a);
+    lt_gfx_init_canvas(&gb, &b);
+    for (pass = 0; pass < 3; pass++) {
+        lt_gfx *g = pass == 0 ? &ga : &gb;
+        lt_gfx_clear(g, LT_RGB(30, 30, 40));
+        for (i = 0; i < 700; i++) {
+            double x = (double)(i % 20) * 15.0 + (double)(i % 16) / 16.0;
+            double y = (double)(i / 20 % 12) * 15.0 + (double)(i % 3) / 4.0;
+            if (pass == 0) { lt_icon_cache_release(); }
+            lt_gfx_icon(g, 1 + i % 37, x, y, 12.0 + (double)(i % 2), 0.0, LT_RGB(255, 255 - i % 200, 200));
+        }
+        if (pass > 0) { LT_CHECK(canvas_cmp(&a, &b) < 0); }
+    }
+    lt_canvas_free(&a);
+    lt_canvas_free(&b);
+}
+
 /* a cancelled (discarded) frame leaves the canvas and the hashes alone: the next frame is
  * compared with the last one that was shown */
 LT_TEST(test_tiles_cancel)
@@ -488,6 +515,7 @@ int main(void)
     LT_RUN(test_tiles_source_copy_on_change);
     LT_RUN(test_tiles_cancel);
     LT_RUN(test_tiles_occlusion);
+    LT_RUN(test_icon_cache);
     LT_RUN(test_shadow_matches_rings);
     LT_RUN(test_blend_exact);
     lt_font_release_all();
