@@ -191,8 +191,20 @@ static size_t escape_at(const char *s, size_t n, size_t i, lt_u8 *out)
     case 'r': *out = 0x0D; return 2;
     case 't': *out = 0x09; return 2;
     case '\\': *out = 0x5C; return 2;
-    case '0': *out = 0x00; return 2;
     default: break;
+    }
+    if (c >= '0' && c <= '7') {
+        /* octal, one to three digits (MegaSquirt-1 INIs: "P\001", "P\360"); "\0" alone is NUL */
+        int v = c - '0';
+        size_t k = 2;
+
+        while (k < 4 && i + k < n && s[i + k] >= '0' && s[i + k] <= '7' &&
+               v * 8 + (s[i + k] - '0') <= 255) {
+            v = v * 8 + (s[i + k] - '0');
+            k++;
+        }
+        *out = (lt_u8)v;
+        return k;
     }
     return 0;
 }
@@ -235,6 +247,14 @@ void lt_cmd_build(lt_buf *out, const char *fmt, size_t n, lt_u32 page_id, lt_u32
                 }
                 lt_buf_append(out, b, 2);
                 i += 3;
+                continue;
+            }
+            if (i + 1 < n && (fmt[i + 1] == 'i' || fmt[i + 1] == 'o' || fmt[i + 1] == 'c')) {
+                /* one-byte field (MegaSquirt-1 "W%o%v", "X%o%c%v"): the low byte */
+                v = fmt[i + 1] == 'i' ? page_id : (fmt[i + 1] == 'o' ? offset : count);
+                b[0] = (lt_u8)(v & 0xFFu);
+                lt_buf_append(out, b, 1);
+                i += 2;
                 continue;
             }
             if (i + 1 < n && fmt[i + 1] == 'v') {

@@ -95,7 +95,8 @@ PacketBuilder helpers: `command(b)`, `byte(b)`, `u16_be`, `u32_be`, `bytes(p,n)`
 ### 5.1 `parse_command_string(s)` (used for query command, handshake)
 Scan bytes: on `\` followed by:
 - `x`/`X`: needs `i+3 < len` (i.e. at least 2 chars after x AND one more char beyond - NOTE strict `<`: string `\x0f` of len 4 has i=0,i+3=3<4 OK). If the 2 chars parse as hex -> push byte, i+=4. Else push `\` literal, i+=1.
-- `n`->0x0A, `r`->0x0D, `t`->0x09, `\\`->0x5C, `0`->0x00 (all i+=2).
+- `n`->0x0A, `r`->0x0D, `t`->0x09, `\\`->0x5C (all i+=2).
+- `0`..`7`: octal, one to three digits, stopping before a digit that would overflow a byte (C port addition for the MegaSquirt-1 family: msns-extra `pageActivate = "P\001"`, MSExtra `"P\360"` -> `50 F0`). A lone `\0` is still 0x00; `\0\x30` -> `00 30`; `\4000` -> `20 '0' '0'`. `\8` is not an escape.
 - anything else: push `\` literal, i+=1.
 Other bytes pushed as-is. Tests: `\x0f`->0F; `\x00\x0f\x14`->00 0F 14; `r\x00\x0f\x00\x00\x00\x14` -> 7 bytes `72 00 0F 00 00 00 14`; `\n \r \t \\ \0`; "Q","S","Hello" unchanged.
 Caveat: `\x` at the very end (e.g. string exactly `\x41` is 4 chars: i=0 -> 3<4 ok). Edge: `i+3 < len` means `\x4` + nothing fails fine.
@@ -103,8 +104,9 @@ Caveat: `\x` at the very end (e.g. string exactly `\x41` is 4 chars: i=0 -> 3<4 
 ### 5.2 `CommandBuilder` (`lt_cmd_build(fmt, page, offset, count, data, ndata, little_endian, out)`)
 `little_endian` = INI endianness==Little (rusEFI/FOME/epicEFI), Big for Speeduino/MS2/MS3. It governs %2i/%2o/%2c ONLY (not envelope order). Walk the format char by char (chars cast to u8; non-ASCII UTF-8 chars truncate to low byte - port as bytes):
 1. `%` with next=`2` and next-next in {i,o,c} (requires `i+2 < len`): emit 2 bytes (u16) of page / offset / count in command endianness; i+=3. `%2` followed by other letter falls through (emits `%` literally, then continues scanning from next char).
+1b. `%i` / `%o` / `%c` (no width, requires i+1<len): ONE byte, the low byte of page / offset / count; i+=2 (C port addition: the MegaSquirt-1 family's `"W%o%v"`, `"X%o%c%v"`). Callers must keep offsets and counts that use a one-byte field below 256 (section 9).
 2. `%v` (requires i+1<len): append data bytes verbatim; i+=2. (`%v` is checked only when the `%2x` branch did not apply; i.e. `%2` with a non-matching 3rd char does NOT try `%v`.)
-3. `\` escapes (same set as 5.1, but written separately): `n r t 0 \\` as 5.1; `\x`/`\X` requires `i+3 < len` AND 2 hex digits -> byte, i+=4; otherwise falls to step 4 and `\` is emitted literally.
+3. `\` escapes (the same decoder as 5.1, octal included): `n r t \\` and octal as 5.1; `\x`/`\X` requires `i+3 < len` AND 2 hex digits -> byte, i+=4; otherwise falls to step 4 and `\` is emitted literally.
 4. Anything else: emit byte.
 `%2i` page value is the page IDENTIFIER (section 9), not the index. `%2c` for write = data length. Nothing else (no `$tsCanId` handling) - the INI parser must already have substituted `$tsCanId` (canId byte, default 0x00) and other `$var`s with literal bytes; the test passes a raw NUL byte in the string for it (`"r\0\\x30%2o%2c"` where `\0` there is a real 0 byte, then the 4-char `\x30`).
 Wrappers: read(fmt,page,off,count); write(fmt,page,off,data) count=len; burn(fmt,page) off=0,count=0; crc(fmt,page,off,count); och(fmt,count) page=0,off=0.
@@ -116,6 +118,7 @@ Test vectors:
 - same LE page1 off0x100 cnt0x200 -> `52 01 00 00 01 00 02`.
 - `C%2i%2o%2c%v` BE page0 off50 data AA BB CC -> `43 00 00 00 32 00 03 AA BB CC`.
 - `B%2i` page0 -> `42 00 00`. Empty format -> empty command.
+- MegaSquirt-1: `W%o%v` off 0x5A data 42 -> `57 5A 42` (either endianness); `X%o%c%v` off 0x10 data AA BB CC -> `58 10 03 AA BB CC`; `P%i%2i` page 0x0507 BE -> `50 07 05 07`; `w%2o%v` LE off 0x0123 data AA -> `77 23 01 AA`.
 
 Console command: bytes = text + `\n`, default timeout 1000 ms. Calibration/console command structs: `ReadMemoryParams{page u8,offset u16,length u16,can_id u8=0}`, `WriteMemoryParams{page,offset,data,can_id}`, `BurnParams{page,can_id}`. (can_id is carried but never used by the builder.)
 
