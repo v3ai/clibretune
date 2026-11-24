@@ -367,6 +367,17 @@ static LT_INLINE void put_px_at(lt_gfx *g, const lt_rect *vc, int x, int y, lt_c
     put_px(g->canvas->px + (size_t)y * (size_t)g->canvas->pitch + (size_t)x, col, ca, cov);
 }
 
+/* w pixels of value v, eight per step (compilers turn the step into wide stores) */
+static void fill_px(lt_u32 *p, int w, lt_u32 v)
+{
+    int i;
+    for (i = 0; i + 8 <= w; i += 8) {
+        p[i] = v; p[i + 1] = v; p[i + 2] = v; p[i + 3] = v;
+        p[i + 4] = v; p[i + 5] = v; p[i + 6] = v; p[i + 7] = v;
+    }
+    for (; i < w; i++) { p[i] = v; }
+}
+
 /* pixel span primitive: horizontal run with constant coverage          */
 static void put_span(lt_gfx *g, int x, int y, int w, lt_color col, int cov)
 {
@@ -385,14 +396,27 @@ static void put_span(lt_gfx *g, int x, int y, int w, lt_color col, int cov)
     if (a <= 0) { return; }
     p = c->px + (size_t)y * (size_t)c->pitch + x;
     if (a >= 255) {
-        lt_u32 v = (col | OPAQUE_MASK) & LT_U32_MASK;
-        for (i = 0; i < w; i++) { p[i] = v; }
+        fill_px(p, w, (col | OPAQUE_MASK) & LT_U32_MASK);
         return;
     }
     ia = 255U - (lt_u32)a;
     srb = (col & LANES) * (lt_u32)a;
     sg = ((col >> 8) & 0xFFU) * (lt_u32)a;
-    for (i = 0; i < w; i++) { p[i] = blend_lanes(p[i], srb, sg, ia); }
+    /* under a translucent span there are mostly runs of one colour (panels, backgrounds): such
+     * a run is blended once and filled; elsewhere 32 pixels at a time */
+    i = 0;
+    while (i < w) {
+        lt_u32 d = p[i];
+        int e = i + 1;
+        while (e < w && p[e] == d) { e++; }
+        if (e - i < 8) {
+            e = LT_MIN(w, i + 32);
+            for (; i < e; i++) { p[i] = blend_lanes(p[i], srb, sg, ia); }
+        } else {
+            fill_px(p + i, e - i, blend_lanes(d, srb, sg, ia));
+            i = e;
+        }
+    }
 }
 
 /* Composite a premultiplied-ARGB layer (alpha in the top byte, colour already multiplied by it)
@@ -420,12 +444,18 @@ void lt_gfx_blit_premul(lt_gfx *g, int x, int y, const lt_canvas *src)
     for (yy = r.y; yy < r.y + r.h; yy++) {
         const lt_u32 *sp = src->px + (size_t)(yy - y) * (size_t)src->pitch + (size_t)(r.x - x);
         lt_u32 *dp = c->px + (size_t)yy * (size_t)c->pitch + (size_t)r.x;
+        /* layers are mostly opaque or empty runs: copy or skip a run at once */
         for (xx = 0; xx < r.w; xx++) {
             lt_u32 s = sp[xx];
             lt_u32 a = (s >> 24) & 0xFFU;
             if (a == 255U) {
-                dp[xx] = (s | 0xFF000000UL) & LT_U32_MASK;
-            } else if (a != 0U) {
+                int e = xx + 1;
+                while (e < r.w && ((sp[e] >> 24) & 0xFFU) == 255U) { e++; }
+                memcpy(dp + xx, sp + xx, (size_t)(e - xx) * sizeof(lt_u32));
+                xx = e - 1;
+            } else if (a == 0U) {
+                while (xx + 1 < r.w && ((sp[xx + 1] >> 24) & 0xFFU) == 0U) { xx++; }
+            } else {
                 /* source + destination * (255 - a) / 255 per channel, saturated at 255 */
                 lt_u32 d = dp[xx], ia = 255U - a, rb, gg, ov;
                 rb = (d & LANES) * ia + 0x00800080U;
@@ -804,15 +834,30 @@ static lt_u32 shadow_px(lt_u32 d, int a)
                     (lt_u32)DIV255((int)(d & 0xFF) * ia));
 }
 
+/* the combined effect of the first m rings on a fully covered pixel (luts + 256 * m) */
+static LT_INLINE lt_u32 shadow_lut_px(const lt_u8 *lut, lt_u32 d)
+{
+    return (lt_u32)(0xFF000000UL | ((lt_u32)lut[(d >> 16) & 0xFF] << 16) |
+                    ((lt_u32)lut[(d >> 8) & 0xFF] << 8) | (lt_u32)lut[d & 0xFF]);
+}
+
+/* ring tables of the last spread / alpha (they depend on nothing else); a dialog's shadow is
+ * replayed once per tile row */
+#define SHADOW_LUT_N 126
+static lt_u8 g_shadow_luts[(SHADOW_LUT_N + 1) * 256];
+static int g_shadow_lut_n = -1, g_shadow_lut_alpha = -1;
+
 /* Exactly the pixels of: for i = spread..1, lt_gfx_fill_round_rect(ring i, radius + i,
  * black with the ring's alpha) (lt_ui_draw_shadow's rings). The rings are concentric, so in a row
  * the covered ones are a prefix of that order and, where all of them cover fully, their combined
- * effect is one per-channel table; only the anti-aliased edge band is blended ring by ring. */
+ * effect is one per-channel table. In a row where no ring is at a corner, a pixel of the edge
+ * band is fully covered by the outer rings up to its position (a table too); only the rows of
+ * the anti-aliased corners are blended ring by ring. */
 void lt_gfx_shadow(lt_gfx *g, lt_rect r, int radius, int spread, int alpha)
 {
     shadow_ring *rg;
     lt_u8 *luts;
-    int n = spread, i, k, y, ylo, yhi, cx0, cx1, rad, a;
+    int n = spread, i, k, y, ylo, yhi, cx0, cx1, rad, a, n_lut = 0;
     double *dys;
     int *lo, *hi;
     lt_canvas *c = g->canvas;
@@ -850,9 +895,19 @@ void lt_gfx_shadow(lt_gfx *g, lt_rect r, int radius, int spread, int alpha)
         if (s->q.w <= 0 || s->q.h <= 0) { s->q.w = s->q.h = 0; }
     }
     /* luts + 256 * m: the first m rings' combined effect on a fully covered channel value */
-    luts = (lt_u8 *)lt_malloc(((size_t)n + 1) * 256U);
-    for (i = 0; i < 256; i++) { luts[i] = (lt_u8)i; }
-    for (k = 0; k < n; k++) {
+    if (n <= SHADOW_LUT_N) {
+        luts = g_shadow_luts;
+        n_lut = (g_shadow_lut_n == n && g_shadow_lut_alpha == alpha) ? 0 : n;
+        g_shadow_lut_n = n;
+        g_shadow_lut_alpha = alpha;
+    } else {
+        luts = (lt_u8 *)lt_malloc(((size_t)n + 1) * 256U);
+        n_lut = n;
+    }
+    if (n_lut > 0) {
+        for (i = 0; i < 256; i++) { luts[i] = (lt_u8)i; }
+    }
+    for (k = 0; k < n_lut; k++) {
         const lt_u8 *pv = luts + (size_t)k * 256U;
         lt_u8 *nx = luts + (size_t)(k + 1) * 256U;
         for (i = 0; i < 256; i++) {
@@ -864,6 +919,7 @@ void lt_gfx_shadow(lt_gfx *g, lt_rect r, int radius, int spread, int alpha)
     yhi = LT_MIN(LT_MIN(g->clip.y + g->clip.h, c->h), rg[0].q.y + rg[0].q.h);
     for (y = ylo; y < yhi && cx0 < cx1; y++) {
         int m = 0, ilo = -0x7FFFFFFF, ihi = 0x7FFFFFFF, ux0 = 0x7FFFFFFF, ux1 = -0x7FFFFFFF, x;
+        int corner = 0;
         lt_u32 *p = c->px + (size_t)y * (size_t)c->pitch;
         const lt_u8 *lut;
         /* rings covering this row: a prefix of the drawing order */
@@ -877,6 +933,7 @@ void lt_gfx_shadow(lt_gfx *g, lt_rect r, int radius, int spread, int alpha)
                 else if (yr >= s->q.h - s->rad) { dy = (yr + 0.5) - (s->q.h - s->rr); }
             }
             dys[k] = dy;
+            if (!s->plain && dy >= 0.0) { corner = 1; }
             if (s->plain || dy < 0.0) { lo[k] = s->q.x; hi[k] = s->q.x + s->q.w; }
             else { lo[k] = s->q.x + s->rad; hi[k] = s->q.x + s->q.w - s->rad; }
             if (lo[k] > ilo) { ilo = lo[k]; }
@@ -889,16 +946,29 @@ void lt_gfx_shadow(lt_gfx *g, lt_rect r, int radius, int spread, int alpha)
         lut = luts + (size_t)m * 256U;
         if (ux0 < cx0) { ux0 = cx0; }
         if (ux1 > cx1) { ux1 = cx1; }
+        if (!corner && ilo <= ihi) {
+            /* left band: rings k with lo[k] <= x cover x (lo grows with k), right band: those
+             * with hi[k] > x (hi shrinks with k); inside, all m */
+            int j = 0, xe = LT_MIN(ilo, ux1);
+            for (x = ux0; x < xe; x++) {
+                while (j < m && lo[j] <= x) { j++; }
+                p[x] = shadow_lut_px(luts + (size_t)j * 256U, p[x]);
+            }
+            xe = LT_MIN(ihi, ux1);
+            for (x = LT_MAX(ilo, ux0); x < xe; x++) { p[x] = shadow_lut_px(lut, p[x]); }
+            j = m;
+            for (x = LT_MAX(ihi, ux0); x < ux1; x++) {
+                while (j > 0 && hi[j - 1] <= x) { j--; }
+                p[x] = shadow_lut_px(luts + (size_t)j * 256U, p[x]);
+            }
+            continue;
+        }
         if (ihi < ilo) { ihi = ilo; }
         for (x = ux0; x < ux1; x++) {
             lt_u32 d = p[x];
             if (x >= ilo && x < ihi) {
                 int xe = LT_MIN(ihi, ux1);
-                for (; x < xe; x++) {
-                    d = p[x];
-                    p[x] = (lt_u32)(0xFF000000UL | ((lt_u32)lut[(d >> 16) & 0xFF] << 16) |
-                                    ((lt_u32)lut[(d >> 8) & 0xFF] << 8) | (lt_u32)lut[d & 0xFF]);
-                }
+                for (; x < xe; x++) { p[x] = shadow_lut_px(lut, p[x]); }
                 x--;
                 continue;
             }
@@ -909,7 +979,8 @@ void lt_gfx_shadow(lt_gfx *g, lt_rect r, int radius, int spread, int alpha)
             p[x] = d;
         }
     }
-    lt_free(luts); lt_free(lo); lt_free(dys); lt_free(rg);
+    if (luts != g_shadow_luts) { lt_free(luts); }
+    lt_free(lo); lt_free(dys); lt_free(rg);
     mark_clipped(g, r.x - n + g->ox, r.y - n + n / 2 + g->oy, r.w + 2 * n, r.h + 2 * n);
 }
 

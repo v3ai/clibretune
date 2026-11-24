@@ -80,15 +80,29 @@ static void icon_segment(lt_u8 *mask, int mw, int mh, double ax, double ay, doub
     }
 }
 
-/* Rasterised icon masks are cached (direct-mapped) by icon, size, stroke and the sub-pixel
- * position quantised to 1/16 px: the stroke rasteriser is far costlier than a blit. */
-#define ICON_CACHE 192
+/* Rasterised icon masks are cached by icon, size, stroke and the sub-pixel position quantised
+ * to 1/16 px: the stroke rasteriser is far costlier than a blit. Four ways per set, the least
+ * recently used one replaced: a sidebar shows well over a hundred icons, and a direct-mapped
+ * table re-rasterised the colliding ones on every redraw. */
+#define ICON_SETS 128
+#define ICON_WAYS 4
 typedef struct icon_cached {
     int icon, fxq, fyq, mw;
     double size_px, stk;
     lt_u8 *mask;
+    unsigned long used;
 } icon_cached;
-static icon_cached icon_cache[ICON_CACHE];
+static icon_cached icon_cache[ICON_SETS * ICON_WAYS];
+static unsigned long icon_clock;
+
+void lt_icon_cache_release(void)
+{
+    int i;
+    for (i = 0; i < ICON_SETS * ICON_WAYS; i++) {
+        lt_free(icon_cache[i].mask);
+        memset(&icon_cache[i], 0, sizeof(icon_cache[i]));
+    }
+}
 
 void lt_gfx_icon(lt_gfx *g, int icon, double x, double y, double size_px, double stroke_px,
                  lt_color c)
@@ -97,8 +111,9 @@ void lt_gfx_icon(lt_gfx *g, int icon, double x, double y, double size_px, double
     double scale, r, fx, fy, stroke_in = stroke_px;
     int margin, ix, iy, mw, mh, fxq, fyq;
     size_t cells;
-    icon_cached *e;
+    icon_cached *e, *set;
     unsigned h;
+    int w;
     if (d == NULL || g->canvas == NULL || g->cells != NULL) { return; }
     if (!(size_px >= 1.0) || size_px > (double)ICON_MAX_PX) { return; }
     if (!(fabs(x) < 1.0e6) || !(fabs(y) < 1.0e6)) { return; }
@@ -126,9 +141,22 @@ void lt_gfx_icon(lt_gfx *g, int icon, double x, double y, double size_px, double
     cells = (size_t)mw * (size_t)mh;
     h = ((unsigned)icon * 73856093U) ^ ((unsigned)fxq * 19349663U) ^ ((unsigned)fyq * 83492791U) ^
         ((unsigned)(size_px * 8.0) * 2654435761U);
-    e = &icon_cache[h % ICON_CACHE];
-    if (e->mask == NULL || e->icon != icon || e->fxq != fxq || e->fyq != fyq || e->mw != mw ||
-        e->size_px != size_px || e->stk != stroke_px) {
+    set = &icon_cache[(h % ICON_SETS) * ICON_WAYS];
+    e = NULL;
+    for (w = 0; w < ICON_WAYS; w++) {
+        icon_cached *q = &set[w];
+        if (q->mask != NULL && q->icon == icon && q->fxq == fxq && q->fyq == fyq && q->mw == mw &&
+            q->size_px == size_px && q->stk == stroke_px) {
+            e = q;
+            break;
+        }
+    }
+    icon_clock++;
+    if (e == NULL) {
+        e = &set[0];
+        for (w = 1; w < ICON_WAYS; w++) {
+            if (set[w].mask == NULL || (e->mask != NULL && set[w].used < e->used)) { e = &set[w]; }
+        }
         if (e->mask != NULL) { lt_free(e->mask); }
         e->mask = (lt_u8 *)lt_malloc(cells);
         e->icon = icon; e->fxq = fxq; e->fyq = fyq; e->mw = mw;
@@ -152,5 +180,6 @@ void lt_gfx_icon(lt_gfx *g, int icon, double x, double y, double size_px, double
             d += 1 + 2 * n;
         }
     }
+    e->used = icon_clock;
     lt_gfx_blit_mask(g, ix - margin, iy - margin, e->mask, mw, mh, mw, c, lt_gfx_contrast_lut(c));
 }

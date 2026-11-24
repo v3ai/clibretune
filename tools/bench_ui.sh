@@ -5,7 +5,8 @@
 #
 # Every case renders the demo app offscreen (LT_SCREENSHOT) with the real clock (LT_PERF), skips
 # a warm-up and prints the frame time (draw + present, ms) per case and size: average, 95th
-# percentile and maximum. Steady cases measure N frames of an open screen (the live demo keeps
+# percentile and maximum, then the processor time of the frames (average and 95th percentile:
+# on a busy machine the wall clock also counts the time other programs had the processor). Steady cases measure N frames of an open screen (the live demo keeps
 # changing values); interaction cases replay a scripted input sequence (LT_SHOT_SCRIPT, one frame
 # per step: hover sweeps, typing into a table, scrolling a list, switching tabs, opening dialogs).
 # Options:
@@ -15,8 +16,10 @@
 #   --cases LIST      subset of: dashboard realtime ve_table ve_3d autotune datalog curve
 #                     hover_sidebar hover_table type_table scroll_list switch_tabs open_dialog
 #   --sleep MS        pause between frames (default 16, like a 60 Hz display)
-#   --out FILE        also write the results as TSV (case size avg p95 max)
+#   --out FILE        also write the results as TSV (case size avg p95 max cpu_avg cpu_p95)
 #   --base FILE       TSV of an earlier run: print it next to this one (before / after)
+#   --full            re-render the whole window every frame (LT_RENDER_FULL=1): the cost of a
+#                     full redraw (dialog closing, screen switch, scale change) on each screen
 # Settings come from a private config directory, so the user's own settings do not matter.
 set -e
 cd "$(dirname "$0")/.."
@@ -28,6 +31,7 @@ CASES="dashboard realtime ve_table ve_3d autotune datalog curve hover_sidebar ho
 SLEEP=16
 OUT=
 BASE=
+FULL=0
 while [ $# -gt 0 ]; do
     case $1 in
         --bin) shift; BIN=$1 ;;
@@ -37,6 +41,7 @@ while [ $# -gt 0 ]; do
         --sleep) shift; SLEEP=$1 ;;
         --out) shift; OUT=$1 ;;
         --base) shift; BASE=$1 ;;
+        --full) FULL=1 ;;
         -h|--help) sed -n '2,/^set -e/p' "$0" | sed '$d;s/^# \{0,1\}//'; exit 0 ;;
         *) echo "unknown option $1" >&2; exit 2 ;;
     esac
@@ -110,7 +115,7 @@ run_case() {
     esac
     log=$W/log.txt
     env HOME="$W/home" CLIBRETUNE_CONFIG_DIR="$W/cfg" CLIBRETUNE_PROJECTS="$W/proj" \
-        LT_PERF=1 LT_PERF_SKIP=$skip LT_SHOT_SLEEP="$SLEEP" LT_SCALE="$pct" \
+        LT_RENDER_FULL=$FULL LT_PERF=1 LT_PERF_SKIP=$skip LT_SHOT_SLEEP="$SLEEP" LT_SCALE="$pct" \
         LT_SCREENSHOT="$W/x.ppm" LT_SHOT_SIZE="$wh" LT_SHOT_FRAMES=$frames \
         LT_SHOT_OPEN="$open" LT_TABLE_VIEW="$view" LT_SHOT_SCRIPT="$scr" \
         "$BIN" --demo > "$log" 2>&1 || { echo "$name $size: run failed" >&2; tail -5 "$log" >&2; return 0; }
@@ -118,30 +123,31 @@ run_case() {
         awk -v n="$name" -v sz="$size" '{
             for (i = 1; i <= NF; i++) {
                 if ($i == "avg" && $(i - 1) == "frame") a = $(i + 1)
-                if ($i == "p95") p = $(i + 1)
+                if ($i == "p95" && p == "") p = $(i + 1)
                 if ($i == "max" && m == "") m = $(i + 1)
+                if ($i == "cpu") { ca = $(i + 2); cp = $(i + 4) }
             }
-            printf "%s\t%s\t%s\t%s\t%s\n", n, sz, a, p, m }' >> "$RES"
+            printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", n, sz, a, p, m, ca, cp }' >> "$RES"
 }
 
 for c in $CASES; do
     for z in $SIZES; do
         run_case "$c" "$z"
-        tail -1 "$RES" | awk -F'\t' '{ printf "  %-14s %-16s avg %8s  p95 %8s  max %8s\n", $1, $2, $3, $4, $5 }' >&2
+        tail -1 "$RES" | awk -F'\t' '{ printf "  %-14s %-16s avg %8s  p95 %8s  max %8s  cpu %8s %8s\n", $1, $2, $3, $4, $5, $6, $7 }' >&2
     done
 done
 
 echo
 if [ -n "$BASE" ] && [ -f "$BASE" ]; then
-    awk -F'\t' 'NR == FNR { k = $1 "\t" $2; ba[k] = $3; bp[k] = $4; bm[k] = $5; next }
-        BEGIN { printf "%-14s %-16s %26s   %26s\n", "", "", "before (ms)", "after (ms)"
-                printf "%-14s %-16s %8s %8s %8s   %8s %8s %8s\n", "case", "size", "avg", "p95", "max", "avg", "p95", "max" }
+    awk -F'\t' 'NR == FNR { k = $1 "\t" $2; ba[k] = $3; bp[k] = $4; bm[k] = $5; bc[k] = $7; next }
+        BEGIN { printf "%-14s %-16s %35s   %35s\n", "", "", "before (ms)", "after (ms)"
+                printf "%-14s %-16s %8s %8s %8s %8s   %8s %8s %8s %8s\n", "case", "size", "avg", "p95", "max", "cpu95", "avg", "p95", "max", "cpu95" }
         { k = $1 "\t" $2
-          printf "%-14s %-16s %8s %8s %8s   %8s %8s %8s\n", $1, $2, ba[k], bp[k], bm[k], $3, $4, $5 }' \
+          printf "%-14s %-16s %8s %8s %8s %8s   %8s %8s %8s %8s\n", $1, $2, ba[k], bp[k], bm[k], bc[k], $3, $4, $5, $7 }' \
         "$BASE" "$RES"
 else
-    awk -F'\t' 'BEGIN { printf "%-14s %-16s %8s %8s %8s\n", "case", "size", "avg", "p95", "max" }
-        { printf "%-14s %-16s %8s %8s %8s\n", $1, $2, $3, $4, $5 }' "$RES"
+    awk -F'\t' 'BEGIN { printf "%-14s %-16s %8s %8s %8s %8s %8s\n", "case", "size", "avg", "p95", "max", "cpu", "cpu95" }
+        { printf "%-14s %-16s %8s %8s %8s %8s %8s\n", $1, $2, $3, $4, $5, $6, $7 }' "$RES"
 fi
-echo "frame = draw + present, ms; $FRAMES frames per steady case, sleep $SLEEP ms"
+echo "frame = draw + present, ms (wall clock; cpu = processor time); $FRAMES frames per steady case, sleep $SLEEP ms"
 if [ -n "$OUT" ]; then cp "$RES" "$OUT"; fi

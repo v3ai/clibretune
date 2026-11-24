@@ -84,10 +84,21 @@ cars should review which base tunes to recommend, and the browser should then ma
   a new firmware release changes its INI.
 - Logs, CSV exports, Lua scripts and logger captures are still written in place (not via
   `lt_plat_write_atomic` like tunes and settings); a crash mid-write can truncate that one export.
-- **Full-screen redraws** (opening/closing a dialog, switching screens, changing the UI scale) still
-  cost 17-24 ms at 4K (p95) because whole-tile overdraw is not skipped; scrolling and the datalog
-  graph are about 3.5 ms a frame. Next step: per-tile occlusion (skip commands fully covered by a
-  later opaque command in that tile).
+- **Full-screen redraws** (opening/closing a dialog, switching screens, changing the UI scale) at
+  4K: `tools/bench_ui.sh --full` (every tile re-rendered every frame) measured 7-12 ms p95 at both
+  150% and 200% (dashboard 10.4, VE table 9.7-10.5, datalog 11.1, curve 7.3-7.5, autotune 11.3-12.4,
+  realtime 9.8-10.6). Before this work these cases were 12.4-16.3 ms. The Settings dialog
+  open/close p95 went from 18.7/27.3 to 11.5/11.6 ms. The machine was under heavy load (load
+  average 40+), so the bench now also prints processor time, and that was 6.8-10.6 ms p95.
+  Steady frames are 0.4-2.9 ms. Already done: per-tile occlusion, the shadow ring tables, the
+  span fill and blend runs, opaque/empty runs in premultiplied blits, a 4-way icon cache, and a
+  Latin-1 glyph table with an ASCII kerning table. What is left:
+  - About a third of a full redraw is the opaque span fills, which are bound by memory bandwidth
+    on the 33 MB canvas.
+  - Gauge layers (premultiplied blits) cost about 2 ms on the dashboard.
+  - Text coverage blits cost about 2.3 ms on the VE table.
+  - Next candidates are to treat opaque gauge faces (FCIRC) as cover through their inscribed
+    square, and to keep each gauge's static layer opaque where it is.
 - **Monkey testing** (`tools/monkey.py --build --runs 2000 --jobs 8`, needs
   `tools/gen_definitions.py --extract`): about 20,000 random sessions under ASan/UBSan were clean
   after the November 2026 usability pass. Re-run before each release and after UI changes.

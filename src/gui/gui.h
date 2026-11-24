@@ -153,6 +153,9 @@ void lt_tiles_begin(lt_tiles *t, lt_gfx *g);  /* no-op (nothing recorded) in cel
  * count; g->dirty becomes their union */
 int  lt_tiles_end(lt_tiles *t, lt_gfx *g, lt_rect *out, int max_out);
 void lt_tiles_invalidate(lt_tiles *t);        /* next frame re-renders every tile */
+/* stop recording a frame that is not to be shown (lt_ui_frame_discarded): nothing is rasterized,
+ * the canvas and the tile hashes stay those of the last frame */
+void lt_tiles_cancel(lt_tiles *t, lt_gfx *g);
 /* debug cross-check: render the last recorded frame from scratch into a private canvas and
  * compare with g->canvas; returns the number of differing pixels (first one in *x, *y) */
 long lt_tiles_verify(lt_tiles *t, const lt_gfx *g, int *x, int *y);
@@ -287,6 +290,8 @@ int lt_icon_count(void);              /* number of icons; ids are 1..count */
  * Fractional positions are anti-aliased exactly. */
 void lt_gfx_icon(lt_gfx *g, int icon, double x, double y, double size_px, double stroke_px,
                  lt_color c);
+/* free the cached rasterised icon masks (they are rebuilt on use) */
+void lt_icon_cache_release(void);
 
 /* ------------------------------------------------------------------ */
 /* Input events                                                        */

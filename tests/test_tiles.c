@@ -258,6 +258,110 @@ LT_TEST(test_tiles_source_copy_on_change)
     lt_canvas_free(&ref);
 }
 
+/* opaque covers (fill, gradient, round rect, clipped and translated) over changing content:
+ * the tiles they hide skip the calls below them and the result still equals direct drawing */
+static void cover_scene(lt_gfx *g, int k)
+{
+    lt_rect prev;
+    scene(g, k % 5, NULL);
+    lt_gfx_fill_rect(g, lt_rect_make(0, 0, CW, CH), LT_RGBA(k * 30, 50, 80, 128));
+    lt_gfx_fill_round_rect(g, lt_rect_make(k * 2, 0, CW - k * 2, CH), 60 + k, LT_RGB(60, 60, 70));
+    lt_gfx_fill_rect(g, lt_rect_make(64, 32, 128, 64), LT_RGB(10, 20, 30));
+    lt_gfx_fill_rect_vgrad(g, lt_rect_make(0, 100 + k, 140, 70), LT_RGB(200, 0, 0), LT_RGB(0, 0, 200));
+    lt_gfx_fill_round_rect(g, lt_rect_make(130 + k, 10, 180, 180), 70 + k, LT_RGB(240, 240, 220));
+    lt_gfx_fill_rect(g, lt_rect_make(170, 60 + k, 40, 20), LT_RGBA(0, 0, 0, 90));
+    prev = lt_gfx_push_clip(g, lt_rect_make(5, 5, 200 - k * 7, 90));
+    g->ox += 3; g->oy += k;
+    lt_gfx_fill_round_rect(g, lt_rect_make(-20, 0, 300, 70), 12, LT_RGB(30, 90, 30));
+    lt_gfx_text(g, 10, 10, "covered", LT_RGB(255, 255, 255), 2);
+    g->ox -= 3; g->oy -= k;
+    lt_gfx_pop_clip(g, prev);
+    if (k & 1) { lt_gfx_fill_rect(g, lt_rect_make(0, 0, CW, CH), LT_RGBA(0, 0, 0, 120)); }
+}
+
+LT_TEST(test_tiles_occlusion)
+{
+    lt_canvas ref, cur;
+    lt_gfx g, gr;
+    lt_tiles *t = lt_tiles_new();
+    lt_rect out[16];
+    int k, vx, vy;
+    lt_canvas_init(&ref, CW, CH);
+    lt_canvas_init(&cur, CW, CH);
+    lt_gfx_init_canvas(&g, &cur);
+    lt_gfx_init_canvas(&gr, &ref);
+    for (k = 0; k < 8; k++) {
+        lt_tiles_begin(t, &g);
+        cover_scene(&g, k);
+        (void)lt_tiles_end(t, &g, out, 16);
+        cover_scene(&gr, k);
+        LT_CHECK(canvas_cmp(&ref, &cur) < 0);
+        LT_CHECK(lt_tiles_verify(t, &g, &vx, &vy) == 0);
+    }
+    lt_tiles_free(t);
+    lt_canvas_free(&cur);
+    lt_canvas_free(&ref);
+}
+
+/* icon masks come from a cache with eviction: a mask from the cache draws the same pixels as a
+ * freshly rasterised one (more icons than the cache holds, drawn twice more after a reference
+ * pass that rasterises every icon from scratch) */
+LT_TEST(test_icon_cache)
+{
+    lt_canvas a, b;
+    lt_gfx ga, gb;
+    int pass, i;
+    lt_canvas_init(&a, CW, CH);
+    lt_canvas_init(&b, CW, CH);
+    lt_gfx_init_canvas(&ga, &a);
+    lt_gfx_init_canvas(&gb, &b);
+    for (pass = 0; pass < 3; pass++) {
+        lt_gfx *g = pass == 0 ? &ga : &gb;
+        lt_gfx_clear(g, LT_RGB(30, 30, 40));
+        for (i = 0; i < 700; i++) {
+            double x = (double)(i % 20) * 15.0 + (double)(i % 16) / 16.0;
+            double y = (double)(i / 20 % 12) * 15.0 + (double)(i % 3) / 4.0;
+            if (pass == 0) { lt_icon_cache_release(); }
+            lt_gfx_icon(g, 1 + i % 37, x, y, 12.0 + (double)(i % 2), 0.0, LT_RGB(255, 255 - i % 200, 200));
+        }
+        if (pass > 0) { LT_CHECK(canvas_cmp(&a, &b) < 0); }
+    }
+    lt_canvas_free(&a);
+    lt_canvas_free(&b);
+}
+
+/* a cancelled (discarded) frame leaves the canvas and the hashes alone: the next frame is
+ * compared with the last one that was shown */
+LT_TEST(test_tiles_cancel)
+{
+    lt_canvas ref, cur;
+    lt_gfx g;
+    lt_tiles *t = lt_tiles_new();
+    lt_rect out[16];
+    int n, ndirty, vx, vy;
+    lt_canvas_init(&ref, CW, CH);
+    lt_canvas_init(&cur, CW, CH);
+    lt_gfx_init_canvas(&g, &cur);
+    (void)render_retained(t, &g, 0, NULL, out);
+    render_immediate(&ref, 0, NULL);
+    /* a discarded frame that drew something else */
+    lt_tiles_begin(t, &g);
+    scene(&g, 9, NULL);
+    lt_gfx_fill_rect(&g, lt_rect_make(0, 0, CW, CH), LT_RGB(255, 0, 0));
+    lt_tiles_cancel(t, &g);
+    LT_CHECK(!lt_gfx_recording(&g));
+    LT_CHECK(canvas_cmp(&ref, &cur) < 0);
+    LT_CHECK(lt_tiles_verify(t, &g, &vx, &vy) == 0);
+    /* the same frame as the last shown one: nothing to do */
+    n = render_retained(t, &g, 0, NULL, out);
+    lt_tiles_stats(t, NULL, NULL, &ndirty, NULL);
+    LT_CHECK(n == 0 && ndirty == 0);
+    LT_CHECK(canvas_cmp(&ref, &cur) < 0);
+    lt_tiles_free(t);
+    lt_canvas_free(&cur);
+    lt_canvas_free(&ref);
+}
+
 /* reference: lt_ui_draw_shadow's ring loop */
 static void shadow_ref(lt_gfx *g, lt_rect r, int radius, int n, int alpha)
 {
@@ -333,6 +437,19 @@ LT_TEST(test_blend_exact)
                        ref_div255(128 * a + ((i * 7) & 0xFF) * ia));
             if ((c.px[i] & 0xFFFFFFUL) != (want & 0xFFFFFFUL)) { bad++; }
         }
+        /* over runs of one colour (1 to 40 pixels long): the same result */
+        for (i = 0; i < 256; i++) {
+            int q = i / (1 + (i >> 4) % 12) + (i > 200 ? 3 : 0);
+            c.px[i] = LT_RGB((q * 13) & 0xFF, 255 - q, (q * 7) & 0xFF);
+        }
+        lt_gfx_fill_rect(&g, lt_rect_make(0, 0, 256, 1), col);
+        for (i = 0; i < 256 && a > 0; i++) {
+            int ia = 255 - a, q = i / (1 + (i >> 4) % 12) + (i > 200 ? 3 : 0);
+            lt_u32 want = a == 255 ? LT_RGB(17, 250, 128) :
+                LT_RGB(ref_div255(17 * a + ((q * 13) & 0xFF) * ia), ref_div255(250 * a + (255 - q) * ia),
+                       ref_div255(128 * a + ((q * 7) & 0xFF) * ia));
+            if ((c.px[i] & 0xFFFFFFUL) != (want & 0xFFFFFFUL)) { bad++; }
+        }
         /* coverage mask: alpha = a * coverage */
         for (i = 0; i < 256; i++) { c.px[i] = LT_RGB(i, 255 - i, (i * 7) & 0xFF); }
         lt_gfx_blit_mask(&g, 0, 0, cov, 256, 1, 256, col, NULL);
@@ -362,6 +479,29 @@ LT_TEST(test_blend_exact)
                 if ((c.px[i] & 0xFFFFFFUL) != (want & 0xFFFFFFUL)) { bad++; }
             }
         }
+        /* runs of opaque, empty and translucent pixels (gauge layers), clipped at both ends */
+        for (a = 0; a < 4; a++) {
+            static const int runs[] = { 255, 255, 0, 0, 0, 90, 255, 0, 255, 255, 255, 1, 254, 0 };
+            lt_rect prev;
+            for (i = 0; i < 256; i++) {
+                lt_u32 al = (lt_u32)runs[(i / (a + 1)) % (int)LT_COUNTOF(runs)];
+                s.px[i] = (al << 24) | ((al * (lt_u32)i / 255U) << 16) | ((al / 3U) << 8) | (al / 2U);
+                c.px[i] = LT_RGB((i * 5) & 0xFF, 255 - i, i);
+            }
+            prev = lt_gfx_push_clip(&g, lt_rect_make(a, 0, 256 - 2 * a, 1));
+            lt_gfx_blit_premul(&g, 0, 0, &s);
+            lt_gfx_pop_clip(&g, prev);
+            for (i = 0; i < 256; i++) {
+                int al = (int)((s.px[i] >> 24) & 0xFF), ia = 255 - al;
+                int sr = (int)((s.px[i] >> 16) & 0xFF), sg = (int)((s.px[i] >> 8) & 0xFF);
+                int sb = (int)(s.px[i] & 0xFF);
+                int r = sr + ref_div255(((i * 5) & 0xFF) * ia), gg = sg + ref_div255((255 - i) * ia);
+                int b = sb + ref_div255(i * ia);
+                lt_u32 want = LT_RGB(r > 255 ? 255 : r, gg > 255 ? 255 : gg, b > 255 ? 255 : b);
+                if (i < a || i >= 256 - a) { want = LT_RGB((i * 5) & 0xFF, 255 - i, i); }
+                if ((c.px[i] & 0xFFFFFFUL) != (want & 0xFFFFFFUL)) { bad++; }
+            }
+        }
         lt_canvas_free(&s);
     }
     LT_CHECK(bad == 0);
@@ -373,6 +513,9 @@ int main(void)
     LT_RUN(test_tiles_identical_and_incremental);
     LT_RUN(test_tiles_appended_overlay);
     LT_RUN(test_tiles_source_copy_on_change);
+    LT_RUN(test_tiles_cancel);
+    LT_RUN(test_tiles_occlusion);
+    LT_RUN(test_icon_cache);
     LT_RUN(test_shadow_matches_rings);
     LT_RUN(test_blend_exact);
     lt_font_release_all();
