@@ -218,6 +218,17 @@ static int save_config_to(const lt_project *p)
     return rc;
 }
 
+/* a create that failed half way leaves nothing behind: the project folder it made, and the
+ * projects folder when this create made it and it is empty again (the error message stays) */
+static void undo_create(const char *path, const char *parent, lt_bool parent_existed)
+{
+    char why[512];
+    lt_strlcpy(why, lt_err_get(), sizeof why);
+    (void)lt_proj_rmtree(path);
+    if (!parent_existed) (void)lt_plat_remove(parent);     /* only removes an empty folder */
+    lt_err_set("%s", why);
+}
+
 static int project_create(const char *name, const char *ini_src, const char *signature,
                           const char *parent_dir, lt_project *out)
 {
@@ -225,6 +236,7 @@ static int project_create(const char *name, const char *ini_src, const char *sig
     int rc;
     lt_project p;
     size_t i;
+    lt_bool parent_existed;
 
     if (name == NULL || name[0] == '\0' || out == NULL) {
         lt_err_set("project name is empty");
@@ -243,15 +255,17 @@ static int project_create(const char *name, const char *ini_src, const char *sig
     if (safe[i] == '\0' && i > 0) memset(safe, '_', i);
     path = lt_path_join(parent, safe);
     lt_free(safe);
-    lt_free(parent);
+    parent_existed = lt_plat_is_dir(parent);
     if (lt_plat_is_dir(path) || lt_file_exists(path)) {
         lt_err_set("Project '%s' already exists", name);
         lt_free(path);
+        lt_free(parent);
         return LT_EEXIST;
     }
     if (lt_plat_mkdirs(path) != 0) {
         lt_err_set("cannot create '%s'", path);
         lt_free(path);
+        lt_free(parent);
         return LT_EIO;
     }
     sub = lt_path_join(path, "projectCfg");
@@ -265,14 +279,18 @@ static int project_create(const char *name, const char *ini_src, const char *sig
     lt_free(sub);
     if (rc != 0) {
         lt_err_set("cannot create project subdirectories in '%s'", path);
+        undo_create(path, parent, parent_existed);
         lt_free(path);
+        lt_free(parent);
         return LT_EIO;
     }
     dst = lt_proj_join3(path, "projectCfg", "definition.ini");
     rc = lt_proj_copy_file(ini_src, dst);
     lt_free(dst);
     if (rc != LT_OK) {
+        undo_create(path, parent, parent_existed);
         lt_free(path);
+        lt_free(parent);
         return rc;
     }
     memset(&p, 0, sizeof p);
@@ -292,9 +310,12 @@ static int project_create(const char *name, const char *ini_src, const char *sig
     p.cfg.settings.max_restore_points = 20;
     rc = save_config_to(&p);
     if (rc != LT_OK) {
+        undo_create(p.path, parent, parent_existed);
         lt_project_free(&p);
+        lt_free(parent);
         return rc;
     }
+    lt_free(parent);
     *out = p;
     return LT_OK;
 }

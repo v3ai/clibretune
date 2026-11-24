@@ -1,6 +1,6 @@
 /* test_projfiles.c - projects and files: recent projects stored as absolute paths (and the
  * migration of older relative entries), the command line (`libretune <folder>`), project folder
- * names that work on every OS.
+ * names that work on every OS, no half-created project when creating fails.
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 #include "lt_test.h"
@@ -160,6 +160,36 @@ LT_TEST(safe_names)
     lt_free(x);
 }
 
+/* creating fails after the folder was made (disk full while writing project.json): nothing is
+ * left behind, not even the projects folder the create made; an existing parent stays */
+LT_TEST(create_cleanup)
+{
+    lt_project p;
+    const char *parent = TMP "/half/new_parent";
+    (void)lt_proj_rmtree(TMP "/half");
+    LT_CHECK(lt_plat_mkdirs(TMP "/half") == 0);
+    lt_plat_fault_write_limit(0);
+    LT_CHECK(lt_project_create("Half", DEMO, "sig", parent, &p) == LT_EIO);
+    lt_plat_fault_write_limit(-1);
+    LT_CHECK(lt_err_get()[0] != '\0');
+    LT_CHECK(!lt_plat_is_dir(TMP "/half/new_parent/Half"));
+    LT_CHECK(!lt_plat_is_dir(parent));
+    LT_CHECK(lt_plat_is_dir(TMP "/half"));
+    /* an existing parent with other projects in it is kept */
+    LT_CHECK(lt_project_create("Kept", DEMO, "sig", parent, &p) == 0);
+    lt_project_close(&p);
+    lt_plat_fault_write_limit(0);
+    LT_CHECK(lt_project_create("Half", DEMO, "sig", parent, &p) == LT_EIO);
+    lt_plat_fault_write_limit(-1);
+    LT_CHECK(!lt_plat_is_dir(TMP "/half/new_parent/Half"));
+    LT_CHECK(lt_app_is_project_dir(TMP "/half/new_parent/Kept"));
+    /* and the same name works once the disk has room again */
+    LT_CHECK(lt_project_create("Half", DEMO, "sig", parent, &p) == 0);
+    lt_project_close(&p);
+    LT_CHECK(lt_app_is_project_dir(TMP "/half/new_parent/Half"));
+    (void)lt_proj_rmtree(TMP "/half");
+}
+
 int main(void)
 {
     (void)lt_plat_mkdirs(TMP);
@@ -167,5 +197,6 @@ int main(void)
     LT_RUN(recent_abs);
     LT_RUN(recent_migrate);
     LT_RUN(safe_names);
+    LT_RUN(create_cleanup);
     LT_TEST_MAIN_END
 }
