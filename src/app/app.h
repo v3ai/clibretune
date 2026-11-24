@@ -176,6 +176,18 @@ struct lt_app {
     char        title[160];
 };
 
+/* ---- command line (main.c; app_args.c) ---- */
+typedef struct lt_app_args {
+    const char *backend, *project, *ini;  /* point into argv; NULL = not given */
+    int demo, mcp, help, version;
+} lt_app_args;
+/* libretune [--backend NAME] [--demo] [--mcp] [--project DIR] [--ini FILE] [PROJECT_DIR]
+ * A single folder argument that holds a project.json opens it like --project. 0 ok, 1 --help or
+ * --version (a->help / a->version), 2 bad command line with the reason in err. */
+int     lt_app_args_parse(int argc, char **argv, lt_app_args *a, char *err, size_t cap);
+/* a directory with a project.json in it */
+lt_bool lt_app_is_project_dir(const char *dir);
+
 /* ---- lifecycle ---- */
 lt_app *lt_app_new(void);
 void    lt_app_free(lt_app *app);

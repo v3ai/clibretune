@@ -14,7 +14,10 @@ With no project open LibreTune shows its start screen:
 - When an ECU is plugged in, a green strip names it ("rusEFI ECU is plugged in on /dev/ttyACM0").
   If this computer has talked to that ECU before, one click opens its project and connects.
 - **Recent projects** shows each project's ECU and when it was last opened; `x` takes one off the
-  list (the folder stays on disk).
+  list (the folder stays on disk). Projects are remembered by their full path, so a project opened
+  as `./MyCar` from a terminal still opens from the list when LibreTune is started elsewhere.
+- `libretune <project folder>` (or `--project <folder>`) opens a project straight away, for example
+  from a desktop shortcut or a file manager; the folder must hold the project's `project.json`.
 - **Try the demo**, **Start from a base tune**, **Import a TunerStudio project**, **Open a project
   folder** and **Set up a project manually** cover the other ways in.
 - **Before you connect** lists what a first connection needs, including the exact command when your
