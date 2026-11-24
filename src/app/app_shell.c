@@ -1310,10 +1310,11 @@ static void save_geometry(lt_app *app)
  * only the screen tiles whose calls changed are rasterized; those tiles are also exactly what has
  * to be presented. LT_RENDER=immediate draws every call directly and finds the changed pixels by
  * comparing whole frames (lt_diff_rects). LT_RENDER_VERIFY=1 renders every retained frame a second
- * time from scratch and exits with status 3 at the first pixel that differs. */
+ * time from scratch and exits with status 3 at the first pixel that differs. LT_RENDER_FULL=1
+ * re-renders every tile of every frame (benchmarks of full redraws: tools/bench_ui.sh --full). */
 #define PRESENT_MAX_RECTS 48
 typedef struct render_state {
-    int init, retained, verify;
+    int init, retained, verify, full;
     lt_tiles *tiles;
     long verified;
     lt_rect rects[PRESENT_MAX_RECTS];
@@ -1348,6 +1349,9 @@ static render_state *render_get(lt_app *app)
         lt_free(e);
         e = lt_plat_getenv("LT_RENDER_VERIFY");
         rs->verify = e != NULL && e[0] != '0';
+        lt_free(e);
+        e = lt_plat_getenv("LT_RENDER_FULL");
+        rs->full = e != NULL && e[0] != '0';
         lt_free(e);
         rs->tiles = lt_tiles_new();
     }
@@ -1503,7 +1507,10 @@ static void run_frame(lt_app *app)
     canvas_acquire(app, rs);            /* may wait for the window system: counted as present */
     t0 = lt_plat_now_ms();
     tw = t0 - tw;
-    if (retained) { lt_tiles_begin(rs->tiles, &app->gfx); }
+    if (retained) {
+        if (rs->full) { lt_tiles_invalidate(rs->tiles); }
+        lt_tiles_begin(rs->tiles, &app->gfx);
+    }
     lt_ui_begin(app->ui, &app->gfx, t0);
     lt_app_frame(app);
     lt_ui_end(app->ui);

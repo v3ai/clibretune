@@ -17,6 +17,8 @@
 #   --sleep MS        pause between frames (default 16, like a 60 Hz display)
 #   --out FILE        also write the results as TSV (case size avg p95 max)
 #   --base FILE       TSV of an earlier run: print it next to this one (before / after)
+#   --full            re-render the whole window every frame (LT_RENDER_FULL=1): the cost of a
+#                     full redraw (dialog closing, screen switch, scale change) on each screen
 # Settings come from a private config directory, so the user's own settings do not matter.
 set -e
 cd "$(dirname "$0")/.."
@@ -28,6 +30,7 @@ CASES="dashboard realtime ve_table ve_3d autotune datalog curve hover_sidebar ho
 SLEEP=16
 OUT=
 BASE=
+FULL=0
 while [ $# -gt 0 ]; do
     case $1 in
         --bin) shift; BIN=$1 ;;
@@ -37,6 +40,7 @@ while [ $# -gt 0 ]; do
         --sleep) shift; SLEEP=$1 ;;
         --out) shift; OUT=$1 ;;
         --base) shift; BASE=$1 ;;
+        --full) FULL=1 ;;
         -h|--help) sed -n '2,/^set -e/p' "$0" | sed '$d;s/^# \{0,1\}//'; exit 0 ;;
         *) echo "unknown option $1" >&2; exit 2 ;;
     esac
@@ -110,7 +114,7 @@ run_case() {
     esac
     log=$W/log.txt
     env HOME="$W/home" LIBRETUNE_CONFIG_DIR="$W/cfg" LIBRETUNE_PROJECTS="$W/proj" \
-        LT_PERF=1 LT_PERF_SKIP=$skip LT_SHOT_SLEEP="$SLEEP" LT_SCALE="$pct" \
+        LT_RENDER_FULL=$FULL LT_PERF=1 LT_PERF_SKIP=$skip LT_SHOT_SLEEP="$SLEEP" LT_SCALE="$pct" \
         LT_SCREENSHOT="$W/x.ppm" LT_SHOT_SIZE="$wh" LT_SHOT_FRAMES=$frames \
         LT_SHOT_OPEN="$open" LT_TABLE_VIEW="$view" LT_SHOT_SCRIPT="$scr" \
         "$BIN" --demo > "$log" 2>&1 || { echo "$name $size: run failed" >&2; tail -5 "$log" >&2; return 0; }
