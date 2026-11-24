@@ -146,11 +146,8 @@ static void refresh_ve(lt_ecusim *s)
     s->ve_gen = s->mem_gen;
     s->ve_gen_valid = LT_TRUE;
     lt_simengine_set_ve(s->eng, NULL, 0, NULL, 0, NULL);
-    if (!ini || !ini->ve_analyze.present || !ini->ve_analyze.ve_table) {
-        return;
-    }
-    t = lt_ini_find_table(ini, ini->ve_analyze.ve_table);
-    if (!t || !t->x_const || !t->y_const || !t->z_const) {
+    t = lt_sim_ve_table(ini);
+    if (!t) {
         return;
     }
     cx = lt_ini_find_const(ini, t->x_const);
@@ -242,6 +239,18 @@ static void auto_tick(lt_ecusim *s)
 }
 
 /* ------------------------------------------------------ construction */
+/* a bits constant's option named INVALID (MegaSquirt marks unusable raw values that way) */
+static lt_bool invalid_option(const lt_ini_const *c, double raw)
+{
+    size_t r;
+
+    if (!(raw >= 0.0) || raw >= (double)c->n_bit_options) {
+        return LT_FALSE;
+    }
+    r = (size_t)raw;
+    return c->bit_options[r] != NULL && lt_stricmp(c->bit_options[r], "INVALID") == 0;
+}
+
 lt_ecusim *lt_ecusim_new(const lt_ini *ini)
 {
     lt_ecusim *s = (lt_ecusim *)lt_calloc(1, sizeof(*s));
@@ -320,6 +329,8 @@ lt_ecusim *lt_ecusim_new(const lt_ini *ini)
                 { "rpmHardLimit", 7000.0 },      /* rusEFI, FOME */
                 { "hardRevLim", 7000.0 },        /* Speeduino */
                 { "cylindersCount", 4.0 },
+                { "nCylinders", 4.0 },           /* MegaSquirt (bits: option "4") */
+                { "reqFuel", 8.0 },
                 { "displacement", 1.8 },
                 { "injector_flow", 240.0 },
                 { "stoich", 14.7 }
@@ -346,6 +357,22 @@ lt_ecusim *lt_ecusim_new(const lt_ini *ini)
             for (e = 0; e < ini->n_constants; e++) {
                 const lt_ini_const *c = ini->constants[e];
                 double v = 0.0;
+                if (!c->is_pc_var && c->type == LT_DT_BITS && c->name != NULL &&
+                    c->shape.kind == LT_SH_SCALAR && lt_ini_get(ini, &src, c->name, &v) == 0 &&
+                    invalid_option(c, v)) {
+                    /* MegaSquirt's 0 is "INVALID" for the cylinder count, the fuel algorithm,
+                     * ...: start at the first real option */
+                    size_t o;
+                    for (o = 0; o < c->n_bit_options; o++) {
+                        if (!invalid_option(c, (double)o)) {
+                            if (lt_ini_set(ini, &src, c->name, (double)o) == 0) {
+                                seeded = LT_TRUE;
+                            }
+                            break;
+                        }
+                    }
+                    continue;
+                }
                 if (c->is_pc_var || c->type == LT_DT_BITS || c->type == LT_DT_STRING ||
                     c->shape.kind != LT_SH_SCALAR || !(c->max > c->min) || c->name == NULL) {
                     continue;

@@ -475,6 +475,88 @@ static void spread(size_t n, double lo, double hi, double *out)
     }
 }
 
+/* lower-case prefix test */
+static lt_bool starts_ci(const char *s, const char *prefix)
+{
+    size_t i;
+    for (i = 0; prefix[i] != '\0'; i++) {
+        int a = (unsigned char)s[i];
+        if (a >= 'A' && a <= 'Z') {
+            a += 'a' - 'A';
+        }
+        if (a != (unsigned char)prefix[i]) {
+            return LT_FALSE;
+        }
+    }
+    return LT_TRUE;
+}
+
+/* the first 3-D table whose cell constant is named like one of the prefixes */
+static const lt_ini_table *table_by_cells(const lt_ini *ini, const char *const *prefixes, size_t np)
+{
+    size_t i, k;
+
+    for (i = 0; i < ini->n_tables; i++) {
+        const lt_ini_table *t = ini->tables[i];
+        if (!t->x_const || !t->y_const || !t->z_const) {
+            continue;
+        }
+        for (k = 0; k < np; k++) {
+            if (starts_ci(t->z_const, prefixes[k])) {
+                return t;
+            }
+        }
+    }
+    return NULL;
+}
+
+/* The VE table: the one [VeAnalyze] names, else (MegaSquirt INIs have no [VeAnalyze]) the
+ * first table of VE cells by name (veTable1, veBins). */
+const lt_ini_table *lt_sim_ve_table(const lt_ini *ini)
+{
+    static const char *const names[] = { "vetable", "vebins" };
+    const lt_ini_table *t = NULL;
+
+    if (!ini) {
+        return NULL;
+    }
+    if (ini->ve_analyze.present && ini->ve_analyze.ve_table) {
+        t = lt_ini_find_table(ini, ini->ve_analyze.ve_table);
+        if (t && t->x_const && t->y_const && t->z_const) {
+            return t;
+        }
+        return NULL;
+    }
+    if (ini->ve_analyze.present) {
+        return NULL;
+    }
+    t = table_by_cells(ini, names, LT_COUNTOF(names));
+    return t;
+}
+
+/* The AFR / lambda target table, the same way (afrTable1, lambdaTable1). */
+const lt_ini_table *lt_sim_afr_table(const lt_ini *ini)
+{
+    static const char *const names[] = { "afrtable", "afrbins", "lambdatable" };
+    const lt_ini_table *t = NULL;
+
+    if (!ini) {
+        return NULL;
+    }
+    if (ini->ve_analyze.present && ini->ve_analyze.target_table) {
+        t = lt_ini_find_table(ini, ini->ve_analyze.target_table);
+        if (t && t->x_const && t->y_const && t->z_const) {
+            return t;
+        }
+        return NULL;
+    }
+    if (ini->ve_analyze.present) {
+        return NULL;
+    }
+    t = table_by_cells(ini, names, LT_COUNTOF(names));
+    return t;
+}
+
 lt_bool lt_sim_seed_ve_table(const lt_ini *ini, lt_pagesrc *dst)
 {
     const lt_ini_table *t;
@@ -483,11 +565,11 @@ lt_bool lt_sim_seed_ve_table(const lt_ini *ini, lt_pagesrc *dst)
     double *rpm, *load, *z;
     lt_bool ok;
 
-    if (!ini || !dst || !ini->ve_analyze.present || !ini->ve_analyze.ve_table) {
+    if (!ini || !dst) {
         return LT_FALSE;
     }
-    t = lt_ini_find_table(ini, ini->ve_analyze.ve_table);
-    if (!t || !t->x_const || !t->y_const || !t->z_const) {
+    t = lt_sim_ve_table(ini);
+    if (!t) {
         return LT_FALSE;
     }
     cx = lt_ini_find_const(ini, t->x_const);
@@ -650,11 +732,11 @@ lt_bool lt_sim_seed_afr_target(const lt_ini *ini, lt_pagesrc *dst)
     double *rpm, *load, *z, tgt = 14.7;
     lt_bool ok;
 
-    if (!ini || !dst || !ini->ve_analyze.present || !ini->ve_analyze.target_table) {
+    if (!ini || !dst) {
         return LT_FALSE;
     }
-    t = lt_ini_find_table(ini, ini->ve_analyze.target_table);
-    if (!t || !t->x_const || !t->y_const || !t->z_const) {
+    t = lt_sim_afr_table(ini);
+    if (!t) {
         return LT_FALSE;
     }
     cx = lt_ini_find_const(ini, t->x_const);
@@ -799,6 +881,27 @@ static void write_bits(lt_u8 *block, size_t len, size_t off, lt_dtype storage, l
     }
 }
 
+/* units naming degrees Fahrenheit: "F", "degF", "deg F", a degree sign (any encoding) + F */
+static lt_bool fahrenheit(const char *u)
+{
+    size_t n;
+
+    if (u == NULL) {
+        return LT_FALSE;
+    }
+    n = strlen(u);
+    while (n > 0 && u[n - 1] == ' ') {
+        n--;
+    }
+    if (n == 0 || u[n - 1] != 'F') {
+        return LT_FALSE;
+    }
+    if (n == 1 || (unsigned char)u[n - 2] >= 0x80 || u[n - 2] == ' ') {
+        return n <= 4 || has_ci(u, "deg");
+    }
+    return has_ci(u, "deg") && n <= 5;
+}
+
 static lt_bool scalar_by_name(const char *n, const lt_sim_snapshot *s, double *out)
 {
     if (!strcmp(n, "secl") || !strcmp(n, "seconds")) {
@@ -807,7 +910,7 @@ static lt_bool scalar_by_name(const char *n, const lt_sim_snapshot *s, double *o
         *out = s->rpm;
     } else if (!strcmp(n, "map") || !strcmp(n, "MAPValue")) {
         *out = s->map_kpa;
-    } else if (!strcmp(n, "baro") || !strcmp(n, "baroPressure")) {
+    } else if (!strcmp(n, "baro") || !strcmp(n, "baroPressure") || !strcmp(n, "barometer")) {
         *out = 100.0;
     } else if (!strcmp(n, "coolantRaw")) {
         *out = s->coolant_c + 40;
@@ -815,7 +918,7 @@ static lt_bool scalar_by_name(const char *n, const lt_sim_snapshot *s, double *o
         *out = s->iat_c + 40;
     } else if (!strcmp(n, "coolant")) {
         *out = s->coolant_c;
-    } else if (!strcmp(n, "iat") || !strcmp(n, "intake")) {
+    } else if (!strcmp(n, "iat") || !strcmp(n, "intake") || !strcmp(n, "mat")) {
         *out = s->iat_c;
     } else if (!strcmp(n, "tps") || !strcmp(n, "throttle") || !strcmp(n, "TPSValue") ||
                !strcmp(n, "throttlePedalPosition")) {
@@ -824,17 +927,19 @@ static lt_bool scalar_by_name(const char *n, const lt_sim_snapshot *s, double *o
         *out = s->battery_dv / 10.0;
     } else if (!strcmp(n, "advance") || !strcmp(n, "ignitionAdvance")) {
         *out = s->advance_deg;
-    } else if (!strcmp(n, "afrTarget")) {
+    } else if (!strcmp(n, "afrTarget") || !strcmp(n, "afrtgt1") || !strcmp(n, "afrtgt2")) {
         *out = s->afr_target;
     } else if (!strcmp(n, "afr") || !strcmp(n, "afrGasolineScale") || !strcmp(n, "AFRValue") ||
-               !strcmp(n, "AFRValue2") || !strcmp(n, "afr1") || !strcmp(n, "AFR")) {
+               !strcmp(n, "AFRValue2") || !strcmp(n, "afr1") || !strcmp(n, "afr2") ||
+               !strcmp(n, "AFR")) {
         /* rusEFI names its wideband AFR AFRValue (gauges) and afrGasolineScale */
         *out = s->afr;
     } else if (!strcmp(n, "lambdaValue") || !strcmp(n, "lambdaValue2") || !strcmp(n, "lambda")) {
         *out = s->afr / 14.7;
     } else if (!strcmp(n, "targetLambda") || !strcmp(n, "lambdaTarget")) {
         *out = s->afr_target / 14.7;
-    } else if (!strcmp(n, "egoCorrection")) {
+    } else if (!strcmp(n, "egoCorrection") || !strcmp(n, "egoCorrection1") ||
+               !strcmp(n, "egoCorrection2")) {
         *out = 100.0;
     } else if (!strcmp(n, "engine")) {
         *out = (s->running ? 1 : 0) | (s->cranking ? 2 : 0);
@@ -864,7 +969,7 @@ void lt_sim_encode_och(const lt_ini *ini, const lt_sim_snapshot *s, lt_u8 *block
             if (c->bit_pos < 0 || c->bit_count <= 0) {
                 continue;
             }
-            if (!strcmp(c->name, "running")) {
+            if (!strcmp(c->name, "running") || !strcmp(c->name, "ready")) {
                 v = s->running ? 1 : 0;
             } else if (!strcmp(c->name, "crank") || !strcmp(c->name, "cranking")) {
                 v = s->cranking ? 1 : 0;
@@ -877,6 +982,10 @@ void lt_sim_encode_och(const lt_ini *ini, const lt_sim_snapshot *s, lt_u8 *block
         }
         if (!scalar_by_name(c->name, s, &phys)) {
             continue;
+        }
+        if (fahrenheit(c->units) && (!strcmp(c->name, "coolant") || !strcmp(c->name, "iat") ||
+                                     !strcmp(c->name, "intake") || !strcmp(c->name, "mat"))) {
+            phys = phys * 9.0 / 5.0 + 32.0;     /* MegaSquirt reports degF unless CELSIUS */
         }
         raw = c->scale != 0.0 ? (phys - c->translate) / c->scale : 0.0;
         write_scalar(c->type, ini->endian, block, len, c->offset, raw);

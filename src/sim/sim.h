@@ -54,6 +54,10 @@ void   lt_simengine_set_ve(lt_simengine *e, const double *rpm_bins, size_t nx, c
                            size_t ny, const double *ve /* ny*nx */);   /* copies; nx or ny < 2 clears */
 void   lt_simengine_snapshot(const lt_simengine *e, lt_sim_snapshot *out);
 double lt_sim_true_ve(double rpm, double load);             /* 40 + 25*load/100 + 15*rpm/6000, clamp 20..110 */
+/* The VE and AFR target tables: the ones [VeAnalyze] names, else (MegaSquirt) the first
+ * table whose cells are named veTable / veBins, afrTable / afrBins / lambdaTable. NULL none. */
+const lt_ini_table *lt_sim_ve_table(const lt_ini *ini);
+const lt_ini_table *lt_sim_afr_table(const lt_ini *ini);
 /* Seed the INI's VE table in page images with 85% of the true VE (spec 6.1); LT_TRUE on success. */
 lt_bool lt_sim_seed_ve_table(const lt_ini *ini, lt_pagesrc *dst);
 /* Seed the AFR / lambda target table with stoichiometry and the warmup curve with a plain decay. */
