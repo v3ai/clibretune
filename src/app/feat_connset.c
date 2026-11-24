@@ -3,7 +3,8 @@
  *                        the project opens (lt_feat_connset_apply, called by lt_app_open_project);
  *                        changes made in the Connection dialogs are written back by a tick hook.
  *   Protocol tuning      runtime packet mode (Auto / Force Burst / Force OCH / Disabled), adaptive
- *                        timing, FOME fast comms; applied at the next connect.
+ *                        timing; applied at the next connect. (The original's "FOME fast comms"
+ *                        toggle is not offered: it had no faster path behind it.)
  *   Connection metrics   live frame counts, rate, bytes/packets and the last protocol error:
  *                        in the Connection settings page and in the dialog "conn_metrics" (click
  *                        the connection state in the status bar, or Tools menu).
@@ -180,7 +181,6 @@ void lt_feat_connset_draw(lt_app *app)
     if (lt_ui_combo(ui, "pktmode", &p->packet_mode, modes, 4)) { ch = 1; }
     lt_ui_layout_row(ui, 1, &w1, 0);
     if (lt_ui_checkbox(ui, "Adaptive timing (shorten waits on fast links)", &p->adaptive_timing)) { ch = 1; }
-    if (lt_ui_checkbox(ui, "FOME fast comms", &p->fome_fast_comms)) { ch = 1; }
     lt_ui_label_wrap(ui, "Packet mode: Auto picks burst or output-channel reads from the INI. These "
                          "options apply at the next connect.", t->muted);
     lt_ui_layout_space(ui, 8);

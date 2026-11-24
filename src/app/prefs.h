@@ -23,7 +23,7 @@ typedef struct lt_prefs {
     /* protocol tuning (applies at the next connect) */
     int  packet_mode;                /* LT_PKT_* */
     int  adaptive_timing;
-    int  fome_fast_comms;
+    int  fome_fast_comms;      /* kept in prefs.conf for older files; nothing reads it */
     /* behaviour */
     int  auto_burn_close;
     int  change_alert;               /* warn on large cell changes */
