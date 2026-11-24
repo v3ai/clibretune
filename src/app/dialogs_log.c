@@ -719,7 +719,7 @@ static void log_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
     else {
         lt_ui_layout_row(ui, 1, &w1, 0);
         lt_ui_label_wrap(ui, s->mode == 1
-                         ? "Scatter plot: every sample of the log as a point, X against Y, coloured by a third channel. "
+                         ? "Scatter plot: every sample of the log as a point, X against Y, colored by a third channel. "
                            "The filter is an expression over the log channels (for example rpm > 2000 && tps > 50)."
                          : "Histogram / table generator: the average of Z in every X/Y cell (or the hit count). "
                            "Use the axes of a tune table to build a correction table, then Copy values and paste "

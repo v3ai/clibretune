@@ -9,9 +9,9 @@ when the library is generated; `tests/test_inidb.c` checks every file).
 
 The INI files themselves are not kept in git (about 110 MB). Each family folder has a
 `sources.json` manifest that records, for every file, where it comes from (URL, member inside the
-release zip, tag or tags, commit), its size, sha256, signature and licence.
+release zip, tag or tags, commit), its size, sha256, signature and license.
 
-| Family | Folder | What | Files | Licence |
+| Family | Folder | What | Files | License |
 |--------|--------|------|-------|---------|
 | Speeduino | `speeduino/` | `reference/speeduino.ini` of every release tag from 201712 to 202501.7 (39 tags; point releases with an identical INI share one file) | 31 | GPL-2.0-or-later |
 | rusEFI | `rusefi/` | `rusefi_<board>.ini` from every board bundle of the releases release_20260812 (latest stable, 47 boards), release_20260220_2 (39) and release_20251018 (37) | 123 | GPL-3.0 + the rusEFI additional terms |
@@ -21,7 +21,7 @@ release zip, tag or tags, commit), its size, sha256, signature and licence.
 167 files, 109,676,384 bytes, stored in 1,757,539 bytes; the program binary grows by about
 1.8 MB.
 
-## Licences, and what they mean for clibretune binaries
+## Licenses, and what they mean for clibretune binaries
 
 - **Speeduino** (https://github.com/speeduino/speeduino), by Josh Stewart and contributors:
   GPL-2.0, and the source files say "version 2 of the License, or (at your option) any later
@@ -36,7 +36,7 @@ release zip, tag or tags, commit), its size, sha256, signature and licence.
 
 **GPL-3.0 implication.** clibretune's source is GPL-2.0-or-later, but a binary that contains the
 rusEFI, FOME or miata-ecus files is a combined work that can only be distributed under
-**GPL-3.0** (the "or later" of clibretune's licence allows that; GPL-2.0-only terms would not).
+**GPL-3.0** (the "or later" of clibretune's license allows that; GPL-2.0-only terms would not).
 Whoever distributes such a binary must offer the corresponding source under GPL-3.0, which this
 repository is. To build a binary that stays under GPL-2.0-or-later, regenerate the library with
 the Speeduino files only:
@@ -46,8 +46,8 @@ the Speeduino files only:
 ## MegaSquirt: not bundled
 
 MegaSquirt INI files (MS2/Extra, MS3) are not included. The MS3 INI carries "Copyright 2007..2010
-James Murray and Kenneth Culver" with no licence or redistribution grant, and the community
-collections of MegaSquirt INIs have no licence either. Without a grant from the copyright holders
+James Murray and Kenneth Culver" with no license or redistribution grant, and the community
+collections of MegaSquirt INIs have no license either. Without a grant from the copyright holders
 they cannot be redistributed; MegaSquirt users keep using the INI that comes with their firmware
 (or "Search Online").
 

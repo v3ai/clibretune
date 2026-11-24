@@ -712,7 +712,7 @@ static void wue_panel(lt_app *app, wue_tab *st)
         crow(ui, "Divide out the warm-engine error", &st->c.relative_to_warm);
         crow(ui, "Colder bins never get less enrichment", &st->c.monotonic);
         crow(ui, "Never below no enrichment", &st->c.never_below_unity);
-        crow(ui, "Share samples between neighbour bins", &st->c.split_hits);
+        crow(ui, "Share samples between neighbor bins", &st->c.split_hits);
         lt_ui_group_end(ui);
     }
     lt_ui_scroll_end(ui);

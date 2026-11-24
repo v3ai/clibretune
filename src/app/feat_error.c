@@ -29,7 +29,7 @@ const char *lt_feat_error_code_name(int code)
     case LT_PE_TIMEOUT: return "timeout";
     case LT_PE_NOT_CONNECTED: return "not connected";
     case LT_PE_CONNECTION_FAILED: return "connection failed";
-    case LT_PE_CANCELLED: return "cancelled";
+    case LT_PE_CANCELLED: return "canceled";
     case LT_PE_ALREADY_CONNECTED: return "already connected";
     case LT_PE_INVALID_RESPONSE: return "invalid response";
     case LT_PE_CRC_MISMATCH: return "CRC mismatch";

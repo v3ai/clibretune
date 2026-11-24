@@ -1028,7 +1028,7 @@ static void at_panel(lt_app *app, at_tab *st)
     const lt_theme *th = lt_ui_theme(ui);
     int w1 = -1, ch = 0, w2[2], hw;
     char b[160];
-    static const char *const hws[4] = { "Uniform", "Cell proximity", "Proximity squared", "Cell centre only" };
+    static const char *const hws[4] = { "Uniform", "Cell proximity", "Proximity squared", "Cell center only" };
     if (!lt_ui_scroll_begin(ui, "atpanel")) { return; }
     if (!lt_ui_cell_mode(ui)) {
         lt_vk_item pt[5];
@@ -1606,7 +1606,7 @@ static int at_header(lt_app *app, at_tab *st, int *combo_sel)
     it[n].disabled = st->s.nrecs == 0 ? 1 : 0; ids[n++] = AT_APPLY;
     ati(&it[n], LT_VK_BTN, LT_ICON_UNDO_2, "Undo", "Restore the table as it was before the last Send to ECU (Ctrl+Z)");
     it[n].disabled = at_can_undo(&st->s) || (st->sec_on && at_can_undo(&st->o)) ? 0 : 1; ids[n++] = AT_UNDO;
-    ati(&it[n], LT_VK_BTN, LT_ICON_FLAME, "Burn", "Write the changes to ECU flash");
+    ati(&it[n], LT_VK_BTN, LT_ICON_FLAME, "Burn", "Burn the changes to ECU flash");
     it[n].accent = 1; it[n].disabled = lt_app_can_burn(app) ? 0 : 1; ids[n++] = AT_BURN;
     ati(&it[n], LT_VK_END, 0, NULL, NULL);
     rr = lt_rect_make(hr.x + lt_ui_px(ui, 450), hr.y + lt_ui_px(ui, 8), hr.w - lt_ui_px(ui, 450) - lt_ui_px(ui, 12), lt_ui_px(ui, 38));

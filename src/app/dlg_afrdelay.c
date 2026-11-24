@@ -388,7 +388,7 @@ static void afrd_draw(lt_app *app, lt_app_dialog *d)
     open_ok = d->open;
     if (!lt_ui_modal_begin(ui, "AFR delay test", 680, 640, &open_ok)) { d->open = open_ok; if (!open_ok) { restore(app, s); } return; }
     lt_ui_layout_row(ui, 1, &w1, 0);
-    lt_ui_label_wrap(ui, "Steps the fuelling up (enrichment only, 3-20%) through the last warmup-curve slot in ECU RAM, "
+    lt_ui_label_wrap(ui, "Steps the fueling up (enrichment only, 3-20%) through the last warmup-curve slot in ECU RAM, "
                          "holds it, restores it and times how long the wideband takes to react. Never burned: cycling "
                          "the ECU power also restores the tune. Keep the engine steady with a closed throttle.",
                      th->text2);

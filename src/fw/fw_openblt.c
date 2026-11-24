@@ -65,7 +65,7 @@ typedef struct xcp {
 static const char *xcp_err_text(int code)
 {
     switch (code) {
-    case 0x00: return "command processor synchronisation";
+    case 0x00: return "command processor synchronization";
     case 0x10: return "busy";
     case 0x20: return "unknown command";
     case 0x21: return "command syntax";
@@ -451,8 +451,8 @@ static void xcp_step(lt_fw_job *j)
     if (j->cancel) {
         lt_fwj_phase(j, LT_FW_PH_CANCELLED, 0, NULL);
         lt_strlcpy(j->msg, j->phase > LT_FW_PH_CONNECT && j->w_total[LT_FW_PH_ERASE] > 0 && j->done > 0
-                   ? "Cancelled: the application is incomplete; OpenBLT stays active - flash again."
-                   : "Cancelled.", sizeof(j->msg));
+                   ? "Canceled: the application is incomplete; OpenBLT stays active - flash again."
+                   : "Canceled.", sizeof(j->msg));
         lt_fwj_log(j, 2, "%s", j->msg);
         return;
     }

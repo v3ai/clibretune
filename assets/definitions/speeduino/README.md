@@ -4,7 +4,7 @@ Upstream: https://github.com/speeduino/speeduino
 
 What: `reference/speeduino.ini` at every release tag from 201712 on (the mistyped tag `20208`, a duplicate of 202008, is skipped). Tags whose INI is byte-identical share one file.
 
-Licence: GPL-2.0-or-later (repository `LICENSE`: GPLv2; the source files say "version 2 of the License, or (at your option) any later version"). Copyright Josh Stewart and the Speeduino contributors.
+License: GPL-2.0-or-later (repository `LICENSE`: GPLv2; the source files say "version 2 of the License, or (at your option) any later version"). Copyright Josh Stewart and the Speeduino contributors.
 
 Files are bundled unmodified; `sources.json` has the URL, commit, size and sha256 of each. Fetch them with `python3 tools/fetch_definitions.py --family speeduino`.
 

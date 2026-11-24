@@ -42,7 +42,7 @@ Unsigned binaries trigger Gatekeeper (macOS) and SmartScreen (Windows) warnings.
 Done when: the release workflow signs every tagged build and a fresh machine opens it without a
 warning.
 
-## 3. Beta programme
+## 3. Beta program
 
 Tag a `v0.x` beta, announce it where rusEFI, Speeduino and MegaSquirt users meet, and add GitHub
 issue templates (bug report asks for OS, ECU, firmware, INI signature, and attaches the

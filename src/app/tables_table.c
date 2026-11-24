@@ -1005,7 +1005,7 @@ static void tbl_toolbar(lt_app *app, lt_app_tab *tab, tbl_tab *st)
            app->settings.prefs.trail_on ? "Live-cell trail: on (click to hide)" : "Live-cell trail: off (click to show)");
     it[n - 1].on = app->settings.prefs.trail_on;
     TB_GAP();
-    TB_ADD(TB_SHADE, LT_ICON_PALETTE, "Shade", "Colour shading", NULL, "Colour shading: show the value heat map");
+    TB_ADD(TB_SHADE, LT_ICON_PALETTE, "Shade", "Color shading", NULL, "Color shading: show the value heat map");
     it[n - 1].on = st->shading;
     TB_ADD(TB_YBOT, LT_ICON_ARROW_UP_DOWN, "Y-bot", "Y axis zero at the bottom", NULL,
            st->ybottom ? "Y axis: zero at the bottom (click for zero at the top)"
@@ -1021,15 +1021,15 @@ static void tbl_toolbar(lt_app *app, lt_app_tab *tab, tbl_tab *st)
     if (st->show3d) {
         static const char *const sty[LT_T3D_STYLES] = { "Surface style: solid (click for wireframe)",
             "Surface style: wireframe (click for points)", "Surface style: points (click for solid)" };
-        static const char *const cm[LT_T3D_MODES] = { "Colour: by value (click for by change)",
-            "Colour: by change from the values at open (click for a single colour)",
-            "Colour: single colour (click for by value)" };
+        static const char *const cm[LT_T3D_MODES] = { "Color: by value (click for by change)",
+            "Color: by change from the values at open (click for a single color)",
+            "Color: single color (click for by value)" };
         TB_ADD(TB_STYLE3D, LT_ICON_BOXES, "Style", "3D surface style", NULL, sty[st->t3.style]);
-        TB_ADD(TB_COLOR3D, LT_ICON_LAYERS, "Color", "3D colouring", NULL, cm[st->t3.color_mode]);
+        TB_ADD(TB_COLOR3D, LT_ICON_LAYERS, "Color", "3D coloring", NULL, cm[st->t3.color_mode]);
         TB_ADD(TB_RESET3D, LT_ICON_ROTATE_CW, "Reset3D", "Reset 3D camera", "Home", "Reset the 3D camera (Home)");
     }
     TB_SEP();
-    TB_ADD(TB_BURN, LT_ICON_FLAME, "Burn", "Burn", NULL, "Write the changes to ECU flash");
+    TB_ADD(TB_BURN, LT_ICON_FLAME, "Burn", "Burn", NULL, "Burn the changes to ECU flash");
     it[n - 1].label = "Burn";
     it[n - 1].accent = 1;
     it[n - 1].pin = 1;                  /* Burn and 3D stay on a narrow bar */
@@ -1621,7 +1621,7 @@ static void tbl_context(lt_app *app, lt_app_tab *tab, tbl_tab *st, lt_rect area)
     if (lt_ui_menu_item(ui, "3D view", "3", st->show3d ? LT_UI_MENU_CHECKED : 0)) { st->show3d = !st->show3d; }
     if (st->show3d) {
         static const char *const sty[LT_T3D_STYLES] = { "3D style: solid", "3D style: wireframe", "3D style: points" };
-        static const char *const cm[LT_T3D_MODES] = { "3D colour: by value", "3D colour: by change", "3D colour: single" };
+        static const char *const cm[LT_T3D_MODES] = { "3D color: by value", "3D color: by change", "3D color: single" };
         int i;
         for (i = 0; i < LT_T3D_STYLES; i++) {
             if (lt_ui_menu_item(ui, sty[i], NULL, st->t3.style == i ? LT_UI_MENU_CHECKED : 0)) { st->t3.style = i; }

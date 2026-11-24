@@ -48,9 +48,9 @@ static void hk_step(lt_fw_job *j)
     int r;
     if (j->cancel && h->deadline == 0.0) {
         lt_fwj_phase(j, LT_FW_PH_CANCELLED, 0, NULL);
-        lt_strlcpy(j->msg, h->bi > 0 ? "Cancelled: the Teensy flash is incomplete; it stays in its bootloader - "
+        lt_strlcpy(j->msg, h->bi > 0 ? "Canceled: the Teensy flash is incomplete; it stays in its bootloader - "
                                        "flash again."
-                                     : "Cancelled.", sizeof(j->msg));
+                                     : "Canceled.", sizeof(j->msg));
         lt_fwj_log(j, 2, "%s", j->msg);
         return;
     }

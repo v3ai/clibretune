@@ -84,7 +84,7 @@ static const set_kw keywords[] = {
     { "Version Control", "history commit snapshot branch auto message" },
     { "Reconnect", "reconnect firmware controller command retry" },
     { "Data Logging", "record log alert rules channels sample rate auto record" },
-    { "Table Display", "y axis cursor trail fade heat map colours stops gradient value change coverage" },
+    { "Table Display", "y axis cursor trail fade heat map colors colours stops gradient value change coverage" },
     { "Behavior", "burn close exit alert large change threshold help icons session restore tabs demo "
                   "simulated onboarding welcome" },
     { "Status Bar", "channels live values rpm status" },

@@ -278,7 +278,7 @@ static void gal_inputs(lt_ui *ui, gallery *g)
     lt_ui_combo(ui, "mode", &g->mode, gal_modes, 4);
     w3[0] = 8 * 8; w3[1] = 48; w3[2] = -1;
     lt_ui_layout_row(ui, 3, w3, 0);
-    lt_ui_label(ui, "Colour");
+    lt_ui_label(ui, "Color");
     lt_ui_color_edit(ui, "color", &g->color);
     lt_ui_label_ex(ui, "click to edit", lt_ui_theme(ui)->muted, LT_UI_ALIGN_LEFT);
 }

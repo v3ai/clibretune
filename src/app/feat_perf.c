@@ -193,7 +193,7 @@ static void perf_draw(lt_app *app, lt_app_dialog *d)
     perf_state *s = (perf_state *)lt_ext_state(app, "perf", sizeof(perf_state), NULL);
     int open = d->open, w1 = -1, w[6], cell = lt_ui_cell_mode(ui), metric = app->settings.metric ? 1 : 0, i;
     static const char *const wunits[2] = { "lbs", "kg" };
-    static const char *const funits[3] = { "US gallons", "Imperial gallons", "Litres" };
+    static const char *const funits[3] = { "US gallons", "Imperial gallons", "Liters" };
     char b[160], v1[48], v2[48], v3[48], v4[48];
     lt_perf_specs sp;
     lt_perf_result res;
@@ -327,7 +327,7 @@ static void perf_draw(lt_app *app, lt_app_dialog *d)
             }
             lt_ui_layout_row(ui, 1, &w1, 0);
             lt_snprintf(b, sizeof(b), "Fuel flow %.0f cc/min   %.2f %s per hour", cc, gal_hr,
-                        s->fuel_units == 2 ? "litres" : (s->fuel_units == 1 ? "imp. gallons" : "US gallons"));
+                        s->fuel_units == 2 ? "liters" : (s->fuel_units == 1 ? "imp. gallons" : "US gallons"));
             lt_ui_label_ex(ui, b, t->text2, LT_UI_ALIGN_LEFT);
             if (cc > 0.0 && v_ms > 0.0) {
                 lt_ui_layout_row(ui, 1, &w1, 0);
@@ -356,7 +356,7 @@ static void perf_draw(lt_app *app, lt_app_dialog *d)
             if (lt_ui_button(ui, "Reset trip")) { s->trip_m = 0.0; s->trip_cc = 0.0; }
             lt_snprintf(b, sizeof(b), metric ? "Trip %.2f km, %.3f %s" : "Trip %.2f miles, %.3f %s",
                         metric ? s->trip_m / 1000.0 : s->trip_m / LT_PERF_MPH_TO_MS / 3600.0, trip_fuel,
-                        s->fuel_units == 2 ? "litres" : (s->fuel_units == 1 ? "imp. gal" : "US gal"));
+                        s->fuel_units == 2 ? "liters" : (s->fuel_units == 1 ? "imp. gal" : "US gal"));
             lt_ui_label_ex(ui, b, t->text2, LT_UI_ALIGN_LEFT);
             lt_ui_layout_row(ui, 1, &w1, 0);
             (void)lt_ui_checkbox(ui, "Two-stroke (one injection per revolution)", &s->two_stroke);
