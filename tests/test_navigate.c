@@ -87,8 +87,66 @@ LT_TEST(connect_entries)
     lt_app_free(app);
 }
 
+/* ---- Alt access keys of the ECU menus ---- */
+static void check_unique_keys(lt_app *app)
+{
+    char seen[128], lab[160];
+    size_t i;
+    memset(seen, 0, sizeof(seen));
+    seen['f'] = seen['e'] = seen['v'] = seen['t'] = seen['h'] = 1;     /* the shell's own */
+    for (i = 0; i < app->ini->n_menus; i++) {
+        char k = lt_app_menu_access_key(app, i, lab, sizeof(lab));
+        if (k == 0) { continue; }
+        LT_CHECK(!seen[(unsigned char)k]);
+        seen[(unsigned char)k] = 1;
+        LT_CHECK(strchr(lab, '&') != NULL);
+    }
+}
+
+LT_TEST(ini_menu_access_keys)
+{
+    char ini[512], lab[160];
+    lt_app *app;
+    lt_event ev;
+    sandbox("keys");
+    app = lt_app_new();
+    LT_CHECK(lt_app_start_demo(app, lt_app_find_demo_ini(ini, sizeof(ini))) == 0);
+    LT_CHECK(lt_app_screenshot(app, "build/test_navigate_menus.ppm", 1600, 500, 2) == 0);
+    /* rusEFI: the INI's own letters first ("&Setup" S, "&Idle" I), then the first free one: "Fuel"
+     * (F is File) u, "Ignition" g, "&Expert/Extra" (E is Edit) x, "CAN-bus" b */
+    LT_CHECK(lt_app_menu_access_key(app, 0, lab, sizeof(lab)) == 's' && strcmp(lab, "&Setup") == 0);
+    LT_CHECK(lt_app_menu_access_key(app, 1, lab, sizeof(lab)) == 'u' && strcmp(lab, "F&uel") == 0);
+    LT_CHECK(lt_app_menu_access_key(app, 2, lab, sizeof(lab)) == 'g' && strcmp(lab, "I&gnition") == 0);
+    LT_CHECK(lt_app_menu_access_key(app, 4, lab, sizeof(lab)) == 'i' && strcmp(lab, "&Idle") == 0);
+    LT_CHECK(lt_app_menu_access_key(app, 7, lab, sizeof(lab)) == 'b' && strcmp(lab, "CAN-&bus") == 0);
+    LT_CHECK(lt_app_menu_access_key(app, 9, lab, sizeof(lab)) == 'x' && strcmp(lab, "E&xpert/Extra") == 0);
+    check_unique_keys(app);
+    /* Alt+U opens Fuel */
+    memset(&ev, 0, sizeof(ev));
+    ev.type = LT_EV_KEY_DOWN; ev.key = 'u'; ev.mods = LT_MOD_ALT;
+    lt_ui_input(app->ui, &ev);
+    lt_ui_begin(app->ui, &app->gfx, 5000.0);
+    lt_app_frame(app);
+    lt_ui_end(app->ui);
+    LT_CHECK(lt_ui_popup_open(app->ui));
+    /* too narrow for every menu: they move into Tuning, whose T belongs to Tools */
+    LT_CHECK(lt_app_screenshot(app, "build/test_navigate_menus.ppm", 800, 500, 2) == 0);
+    LT_CHECK(lt_app_menu_access_key(app, (size_t)-1, lab, sizeof(lab)) == 'u' && strcmp(lab, "T&uning") == 0);
+    LT_CHECK(lt_app_menu_access_key(app, 1, lab, sizeof(lab)) == 0);
+    lt_app_free(app);
+    /* Speeduino: "&Tuning", "&Spark", "&Startup/Idle", an INI menu called Tools... */
+    app = lt_app_new();
+    LT_CHECK(lt_app_start_demo(app, "tests/fixtures/ini/speeduino_202501.ini") == 0);
+    LT_CHECK(lt_app_screenshot(app, "build/test_navigate_menus.ppm", 2400, 500, 2) == 0);
+    LT_CHECK(lt_app_menu_access_key(app, 1, lab, sizeof(lab)) == 'u' && strcmp(lab, "T&uning") == 0);
+    LT_CHECK(lt_app_menu_access_key(app, 2, lab, sizeof(lab)) == 's' && strcmp(lab, "&Spark") == 0);
+    check_unique_keys(app);
+    lt_app_free(app);
+}
+
 int main(void)
 {
     LT_RUN(connect_entries);
+    LT_RUN(ini_menu_access_keys);
     LT_TEST_MAIN_END
 }

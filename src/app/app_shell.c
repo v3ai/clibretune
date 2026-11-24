@@ -516,21 +516,165 @@ static lt_bool ini_menu_is_help(const char *title)
     return lt_stricmp(lab, "Help") == 0;
 }
 
+/* ---- Alt access keys of the ECU's menus ----
+ * The shell's menus (File, Edit, View, Tools, Help, as translated) keep their letters. Each ECU
+ * menu then gets the letter its INI marked with '&' when that is still free, else the first free
+ * letter or digit of its title; a title without one gets no key. taken[] has 36 slots: a-z, 0-9. */
+static int key_slot(char c)
+{
+    if (c >= 'A' && c <= 'Z') { c = (char)(c - 'A' + 'a'); }
+    if (c >= 'a' && c <= 'z') { return c - 'a'; }
+    if (c >= '0' && c <= '9') { return 26 + (c - '0'); }
+    return -1;
+}
+
+static void take_key(char *taken, const char *title)
+{
+    const char *p;
+    for (p = title; p != NULL && *p != '\0'; p++) {
+        if (*p != '&') { continue; }
+        if (p[1] == '&') { p++; continue; }
+        if (key_slot(p[1]) >= 0) { taken[key_slot(p[1])] = 1; }
+        return;
+    }
+}
+
+/* visible text of a menu title ('&' markers dropped, "&&" -> '&'); *mark = position of the
+ * letter the title marked with '&' (-1 none) */
+static size_t title_visible(const char *title, char *vis, size_t cap, int *mark)
+{
+    size_t n = 0, i;
+    *mark = -1;
+    for (i = 0; title != NULL && title[i] != '\0' && n + 1 < cap; i++) {
+        if (title[i] == '&') {
+            if (title[i + 1] == '&') { vis[n++] = '&'; i++; continue; }
+            if (*mark < 0 && title[i + 1] != '\0') { *mark = (int)n; }
+            continue;
+        }
+        vis[n++] = title[i];
+    }
+    vis[n] = '\0';
+    return n;
+}
+
+/* the letter of title to use as access key: its own '&' letter when free (pass 0), else the
+ * first free letter or digit (pass 1); -1 none. The chosen key is marked taken. */
+static int pick_key(const char *title, char *taken, int pass)
+{
+    char vis[160];
+    int mark, i;
+    size_t n = title_visible(title, vis, sizeof(vis), &mark);
+    if (pass == 0) {
+        if (mark < 0 || key_slot(vis[mark]) < 0 || taken[key_slot(vis[mark])]) { return -1; }
+        taken[key_slot(vis[mark])] = 1;
+        return mark;
+    }
+    for (i = 0; i < (int)n; i++) {
+        if (key_slot(vis[i]) >= 0 && !taken[key_slot(vis[i])]) { taken[key_slot(vis[i])] = 1; return i; }
+    }
+    return -1;
+}
+
+/* title with '&' before visible position pos (a literal '&' doubled); returns the key, 0 none */
+static char keyed_label(const char *title, int pos, char *out, size_t cap)
+{
+    char vis[160];
+    int mark, slot;
+    size_t n = title_visible(title, vis, sizeof(vis), &mark), i, o = 0;
+    for (i = 0; i < n && o + 3 < cap; i++) {
+        if ((int)i == pos) { out[o++] = '&'; }
+        if (vis[i] == '&') { out[o++] = '&'; }
+        out[o++] = vis[i];
+    }
+    out[o] = '\0';
+    if (pos < 0 || pos >= (int)n) { return 0; }
+    slot = key_slot(vis[pos]);
+    return (char)(slot < 26 ? 'a' + slot : '0' + slot - 26);
+}
+
+static void shell_keys(lt_app *app, char *taken)
+{
+    memset(taken, 0, 36);
+    take_key(taken, lt_tr("&File"));
+    if (app->ini != NULL) { take_key(taken, lt_tr("&Edit")); take_key(taken, lt_tr("&Tools")); }
+    take_key(taken, lt_tr("&View"));
+    take_key(taken, lt_tr("&Help"));
+}
+
+/* the ECU menus drawn one by one, or as submenus of a single Tuning menu */
+static int ini_menus_grouped(lt_app *app)
+{
+    const lt_ini *ini = app->ini;
+    size_t i, total = 0;
+    for (i = 0; i < ini->n_menus; i++) {
+        if (ini_menu_is_help(ini->menus[i].title)) { continue; }
+        total += (size_t)lt_ui_text_width(app->ui, ini->menus[i].title) + (size_t)lt_ui_px(app->ui, 24);
+    }
+    return (int)total > lt_ui_surface(app->ui).w - lt_ui_px(app->ui, 520);
+}
+
+/* access key positions of the ECU menus (-1 none): first each menu whose own '&' letter is still
+ * free, in INI order, then the others by their first free letter */
+#define MENU_KEYS 64
+static void menu_key_plan(lt_app *app, int *pos, size_t n)
+{
+    const lt_ini *ini = app->ini;
+    char taken[36];
+    size_t i;
+    int pass;
+    shell_keys(app, taken);
+    for (i = 0; i < n; i++) { pos[i] = -1; }
+    for (pass = 0; pass < 2; pass++) {
+        for (i = 0; i < n; i++) {
+            if (pos[i] >= 0 || ini_menu_is_help(ini->menus[i].title)) { continue; }
+            pos[i] = pick_key(ini->menus[i].title, taken, pass);
+        }
+    }
+}
+
+/* the Tuning menu that holds every ECU menu when the bar is narrow */
+static char tuning_label(lt_app *app, char *out, size_t cap)
+{
+    char taken[36];
+    int pos;
+    shell_keys(app, taken);
+    pos = pick_key(lt_tr("&Tuning"), taken, 0);
+    if (pos < 0) { pos = pick_key(lt_tr("&Tuning"), taken, 1); }
+    return keyed_label(lt_tr("&Tuning"), pos, out, cap);
+}
+
+char lt_app_menu_access_key(lt_app *app, size_t idx, char *label, size_t cap)
+{
+    const lt_ini *ini = app->ini;
+    int pos[MENU_KEYS];
+    char buf[160], key;
+    size_t n;
+    if (label != NULL && cap > 0) { label[0] = '\0'; }
+    if (ini == NULL || app->ui == NULL) { return 0; }
+    if (ini_menus_grouped(app)) {
+        if (idx != (size_t)-1) { return 0; }
+        key = tuning_label(app, buf, sizeof(buf));
+    } else {
+        n = LT_MIN(ini->n_menus, (size_t)MENU_KEYS);
+        if (idx >= ini->n_menus || ini_menu_is_help(ini->menus[idx].title)) { return 0; }
+        menu_key_plan(app, pos, n);
+        key = keyed_label(ini->menus[idx].title, idx < n ? pos[idx] : -1, buf, sizeof(buf));
+    }
+    if (label != NULL) { lt_strlcpy(label, buf, cap); }
+    return key;
+}
+
 static void menu_ini(lt_app *app)
 {
     lt_ui *ui = app->ui;
-    size_t i, total = 0;
-    int group;
+    size_t i, n;
     char lab[160];
+    int pos[MENU_KEYS];
     const lt_ini *ini = app->ini;
     if (ini == NULL || !app->settings.show_ecu_menus || ini->n_menus == 0) { return; }
-    for (i = 0; i < ini->n_menus; i++) {
-        if (ini_menu_is_help(ini->menus[i].title)) { continue; }
-        total += (size_t)lt_ui_text_width(ui, ini->menus[i].title) + (size_t)lt_ui_px(ui, 24);
-    }
-    group = (int)total > lt_ui_surface(ui).w - lt_ui_px(ui, 520);
-    if (group) {
-        if (lt_ui_menu_begin(ui, lt_tr("&Tuning"))) {
+    if (ini_menus_grouped(app)) {
+        (void)tuning_label(app, lab, sizeof(lab));
+        if (lt_ui_menu_begin(ui, lab)) {
             for (i = 0; i < ini->n_menus; i++) {
                 if (ini_menu_is_help(ini->menus[i].title)) { continue; }
                 clean_label(lab, sizeof(lab), ini->menus[i].title);
@@ -543,12 +687,17 @@ static void menu_ini(lt_app *app)
         }
         return;
     }
+    n = LT_MIN(ini->n_menus, (size_t)MENU_KEYS);
+    menu_key_plan(app, pos, n);
     for (i = 0; i < ini->n_menus; i++) {
         if (ini_menu_is_help(ini->menus[i].title)) { continue; }
-        if (lt_ui_menu_begin(ui, ini->menus[i].title)) {
+        (void)keyed_label(ini->menus[i].title, i < n ? pos[i] : -1, lab, sizeof(lab));
+        lt_ui_push_id_int(ui, (int)i);
+        if (lt_ui_menu_begin(ui, lab)) {
             ini_items(app, ini->menus[i].items, ini->menus[i].n_items);
             lt_ui_menu_end(ui);
         }
+        lt_ui_pop_id(ui);
     }
 }
 

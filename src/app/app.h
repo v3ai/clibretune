@@ -305,6 +305,10 @@ int  lt_app_connect_dialog(lt_app *app);    /* File > Connection Settings... */
 /* File > Connect (app_shell.c): the project's saved port; with no project or no saved port the
  * Connect ECU wizard (on the start screen a plugged-in ECU used before opens its project) */
 void lt_app_connect(lt_app *app);
+/* Alt access key (lowercase letter or digit, 0 = none) of ECU menu idx as the menu bar shows it
+ * now, label = its title with the '&' marker; idx (size_t)-1 = the Tuning menu that holds them
+ * all when the bar is too narrow (app_shell.c) */
+char lt_app_menu_access_key(lt_app *app, size_t idx, char *label, size_t cap);
 int  lt_app_settings_dialog(lt_app *app);
 int  lt_app_basemap_wizard(lt_app *app);
 int  lt_app_restore_points_dialog(lt_app *app);
