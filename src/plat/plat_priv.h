@@ -22,6 +22,12 @@ double lt_plat_os_now_ms(void);
 /* lt_serial_list_info from the port names alone (OSes without a cheap USB lookup) */
 int lt_plat_serial_info_by_name(lt_serial_info **out);
 void   lt_plat_os_sleep_ms(int ms);
+/* The text half of lt_plat_abspath: `path` made absolute against `cwd` when it is relative, "."
+ * and ".." folded, empty components dropped, separators normalised, no trailing separator except
+ * at the root. win selects the Windows rules ('\\', "C:\\" drive roots, "C:name" relative to a
+ * drive, "\\name" relative to the current drive's root, "\\\\server\\share" UNC roots). A relative
+ * result (empty cwd) keeps leading ".." and is "." when nothing is left. malloc'd. */
+char  *lt_plat_path_fold(const char *cwd, const char *path, lt_bool win);
 
 LT_END_DECLS
 

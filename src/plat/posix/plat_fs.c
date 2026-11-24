@@ -20,6 +20,14 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/select.h>
+#include <limits.h>
+
+/* the buffer realpath fills; PATH_MAX is optional in POSIX (a feature probe) */
+#ifdef PATH_MAX
+#define LT_POSIX_PATH_MAX PATH_MAX
+#else
+#define LT_POSIX_PATH_MAX 4096
+#endif
 
 double lt_posix_clamp_time(double t)
 {
@@ -266,4 +274,21 @@ int lt_posix_volume_scan(const char *const *parents, size_t nparent, char ***out
     }
     *out = res;
     return n;
+}
+
+char *lt_plat_abspath(const char *path)
+{
+    char *buf, *r;
+    if (path == NULL || path[0] == '\0') return NULL;
+    buf = (char *)lt_malloc((size_t)LT_POSIX_PATH_MAX + 1);
+    if (realpath(path, buf) != NULL) {
+        r = lt_plat_path_fold("/", buf, LT_FALSE);
+    } else if (path[0] == '/') {
+        r = lt_plat_path_fold("/", path, LT_FALSE);        /* does not exist (yet): by its text */
+    } else {
+        r = lt_plat_path_fold(getcwd(buf, (size_t)LT_POSIX_PATH_MAX + 1) != NULL ? buf : "/", path,
+                              LT_FALSE);
+    }
+    lt_free(buf);
+    return r;
 }

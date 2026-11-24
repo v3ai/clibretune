@@ -151,6 +151,7 @@ struct lt_app {
     char        signature[96];       /* ECU signature when connected */
 
     /* recorder */
+    unsigned     log_files_gen;      /* +1 when a datalog file starts or is finished (viewers rescan) */
     lt_recorder *rec;
     char       **rec_names;
     size_t       rec_n;
@@ -177,6 +178,18 @@ struct lt_app {
     int         fd_ready;            /* purpose of a finished user file dialog, path in fd.path */
     char        title[160];
 };
+
+/* ---- command line (main.c; app_args.c) ---- */
+typedef struct lt_app_args {
+    const char *backend, *project, *ini;  /* point into argv; NULL = not given */
+    int demo, mcp, help, version;
+} lt_app_args;
+/* libretune [--backend NAME] [--demo] [--mcp] [--project DIR] [--ini FILE] [PROJECT_DIR]
+ * A single folder argument that holds a project.json opens it like --project. 0 ok, 1 --help or
+ * --version (a->help / a->version), 2 bad command line with the reason in err. */
+int     lt_app_args_parse(int argc, char **argv, lt_app_args *a, char *err, size_t cap);
+/* a directory with a project.json in it */
+lt_bool lt_app_is_project_dir(const char *dir);
 
 /* ---- lifecycle ---- */
 lt_app *lt_app_new(void);

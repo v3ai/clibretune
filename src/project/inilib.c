@@ -119,6 +119,9 @@ int lt_project_set_ini(lt_project *p, const char *ini_src)
     ini = lt_ini_load_file(ini_src, NULL);
     if (ini == NULL) { return LT_EDATA; }
     dst = lt_project_ini_path(p);
+    tmp = lt_path_join(p->path, "projectCfg");
+    (void)lt_plat_mkdirs(tmp);                  /* a project whose projectCfg folder was deleted */
+    lt_free(tmp);
     tmp = lt_proj_join3(p->path, "projectCfg", "definition.ini.new");
     rc = lt_proj_copy_file(ini_src, tmp);
     if (rc == 0) { rc = lt_plat_rename(tmp, dst); }

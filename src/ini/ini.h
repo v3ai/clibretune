@@ -573,6 +573,11 @@ const lt_ini_readout_panel   *lt_ini_find_readout_panel(const lt_ini *ini, const
 const lt_ini_port_editor     *lt_ini_find_port_editor(const lt_ini *ini, const char *name);   /* NULL = first */
 /* constant listed under [ConstantsExtensions] requiresPowerCycle */
 lt_bool lt_ini_needs_power_cycle(const lt_ini *ini, const char *name);
+/* A definition that parsed but cannot be what the ECU runs: no [Menu] entries and no dialogs
+ * (nothing to open), or a constant that does not fit the pageSize of its page (a cut-off or
+ * mixed-up file; editing would write past the page). LT_TRUE with one plain-words sentence in
+ * why (may be NULL). */
+lt_bool lt_ini_looks_incomplete(const lt_ini *ini, char *why, size_t cap);
 /* [SettingGroups]: a group without options is an on/off flag (its name is the symbol); else
  * each option value is a symbol and "DEFAULT" means "none of them". */
 lt_bool lt_ini_setting_is_flag(const lt_ini_setting_group *g);

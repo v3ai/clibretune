@@ -603,7 +603,11 @@ LT_TEST(wizard_reopens_existing_project)
     use_test_dirs();
     app = lt_app_new();
     LT_CHECK(lt_feat_sync_connect_auto(app, "demo", 0, "speeduino 202402", &res) == LT_INIDB_EXACT);
-    lt_strlcpy(first, res.project, sizeof(first));
+    {   /* the project remembers its absolute path */
+        char *a = lt_plat_abspath(res.project);
+        lt_strlcpy(first, a != NULL ? a : res.project, sizeof(first));
+        lt_free(a);
+    }
     lt_app_free(app);
 
     app = lt_app_new();
@@ -612,7 +616,7 @@ LT_TEST(wizard_reopens_existing_project)
     (void)lt_app_screenshot(app, "build/test_inidb_wizard_reopen.ppm", 1000, 760, 3);
     (void)lt_plat_setenv("LT_SHOT_SCRIPT", "");
     LT_CHECK(app->has_project && app->conn == LT_APP_DEMO);
-    LT_CHECK(app->has_project && strcmp(app->project.path, first) == 0);
+    LT_CHECK(app->has_project && lt_plat_path_same(app->project.path, first));   /* both absolute */
     LT_CHECK(n_dialogs_of(app, "connect_wizard") == 0);
     LT_CHECK(lt_project_list(&v, &n, NULL) == 0 && n == 1);      /* no second project */
     lt_project_info_free(v, n);

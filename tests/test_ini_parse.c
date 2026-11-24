@@ -1071,12 +1071,16 @@ LT_TEST(menus)
         "subMenu = warmCurve, \"Warm\"\n",
         "subMenu = helpTopic, \"Help\"\n",
         "subMenu = vis_and_en, \"Both\", {a}, {b}\n",
-        "groupMenu = \"Group\", {gvis}, {gen}\n",
+        "groupMenu = \"Group\", {gen}, {gvis}\n",
         "groupChildMenu = child1, \"Child 1\"\n",
         "groupChildMenu = child2, \"Child 2\", {c2}\n",
         "subMenu = after_group, \"After\"\n",
         "menu = \"&Second\"\n",
         "subMenu = a2, \"A2\"\n",
+        "subMenu = idx_en, \"Index then enable\", 0, {isInjectionEnabled == 1}\n",
+        "subMenu = idx_en_vis, \"Index, enable, visible\", 0, {e3}, {v3}\n",
+        "groupChildMenu = en_only_vis_true, \"Enable, always visible\", {etbFunctions1 == 3}, { 1 }\n",
+        "groupMenu = \"Lambda adders\", { isInjectionEnabled }, { useLambdaOnInterface }\n",
         "[TableEditor]\ntable = veTable1Tbl, veMapName, \"VE Table\", 2\n",
         "[CurveEditor]\ncurve = warmCurve, \"Warmup\"\n",
         "[UserDefined]\nhelp = helpTopic, \"Topic\"\ndialog = child1, \"C1\"\n", (const char *)NULL);
@@ -1096,8 +1100,9 @@ LT_TEST(menus)
     LT_CHECK_STR(m->items[2]->en_cond, "someCondition");
     LT_CHECK_STR(m->items[3]->target, "dcMotorActuatorHw");
     LT_CHECK_STR(m->items[3]->label, "DC motor actuator(s) hardware");
-    LT_CHECK(m->items[3]->vis_cond == NULL);
-    LT_CHECK_STR(m->items[3]->en_cond, "uiMode == 0 || uiMode == 1");
+    /* TunerStudio order: enable first, visibility second ({ 1 } = always enabled) */
+    LT_CHECK(m->items[3]->en_cond == NULL);
+    LT_CHECK_STR(m->items[3]->vis_cond, "uiMode == 0 || uiMode == 1");
     LT_CHECK_STR(m->items[4]->label, "onlyTarget");
     LT_CHECK(m->items[5]->kind == LT_MENU_SEPARATOR);
     LT_CHECK(m->items[6]->kind == LT_MENU_STD);
@@ -1107,19 +1112,33 @@ LT_TEST(menus)
     LT_CHECK(m->items[9]->kind == LT_MENU_TABLE);    /* retyped: table by map name */
     LT_CHECK(m->items[10]->kind == LT_MENU_TABLE);   /* curve */
     LT_CHECK(m->items[11]->kind == LT_MENU_HELP);
-    LT_CHECK_STR(m->items[12]->vis_cond, "a");
-    LT_CHECK_STR(m->items[12]->en_cond, "b");
+    LT_CHECK_STR(m->items[12]->en_cond, "a");
+    LT_CHECK_STR(m->items[12]->vis_cond, "b");
     LT_CHECK(m->items[13]->kind == LT_MENU_SUBMENU);
     LT_CHECK_STR(m->items[13]->label, "Group");
-    LT_CHECK_STR(m->items[13]->vis_cond, "gvis");
     LT_CHECK_STR(m->items[13]->en_cond, "gen");
+    LT_CHECK_STR(m->items[13]->vis_cond, "gvis");
     /* after the submenu: children went into it, later subMenu is a sibling menu */
     LT_CHECK_INT(m->items[13]->n_items, 2);
     LT_CHECK_STR(m->items[13]->items[0]->label, "Child 1");
     LT_CHECK_STR(m->items[13]->items[1]->en_cond, "c2");
     LT_CHECK(m->items[13]->items[0]->kind == LT_MENU_DIALOG);
     LT_CHECK_STR(ini->menus[1].name, "&Second");
-    LT_CHECK_INT(ini->menus[1].n_items, 1);
+    LT_CHECK_INT(ini->menus[1].n_items, 5);
+    m = &ini->menus[1];
+    /* a bare number before the conditions is an index placeholder, not a condition */
+    LT_CHECK_STR(m->items[1]->en_cond, "isInjectionEnabled == 1");
+    LT_CHECK(m->items[1]->vis_cond == NULL);
+    LT_CHECK_STR(m->items[2]->en_cond, "e3");
+    LT_CHECK_STR(m->items[2]->vis_cond, "v3");
+    LT_CHECK(m->items[2]->kind == LT_MENU_DIALOG);
+    LT_CHECK_STR(m->items[2]->label, "Index, enable, visible");
+    /* groupChildMenu with no groupMenu before it in this menu: appended to the menu itself */
+    LT_CHECK_STR(m->items[3]->en_cond, "etbFunctions1 == 3");
+    LT_CHECK(m->items[3]->vis_cond == NULL);
+    LT_CHECK_STR(m->items[4]->label, "Lambda adders");
+    LT_CHECK_STR(m->items[4]->en_cond, "isInjectionEnabled");
+    LT_CHECK_STR(m->items[4]->vis_cond, "useLambdaOnInterface");
     lt_ini_free(ini);
 }
 

@@ -14,7 +14,17 @@ With no project open LibreTune shows its start screen:
 - When an ECU is plugged in, a green strip names it ("rusEFI ECU is plugged in on /dev/ttyACM0").
   If this computer has talked to that ECU before, one click opens its project and connects.
 - **Recent projects** shows each project's ECU and when it was last opened; `x` takes one off the
-  list (the folder stays on disk).
+  list (the folder stays on disk). Projects are remembered by their full path, so a project opened
+  as `./MyCar` from a terminal still opens from the list when LibreTune is started elsewhere.
+- A project that cannot be opened says why in plain words: its folder is gone, its settings file
+  (`project.json`) is missing, empty or damaged, or its ECU definition is missing or unreadable.
+  **Show Folder** opens the folder, **Remove from Recent Projects** takes it off the list and, for a
+  definition problem, **Replace Definition...** picks one (bundled with LibreTune, from the INI library
+  or a file), puts it into the project and opens it. A definition that loads but looks incomplete (no
+  menus and no dialogs, or settings that do not fit its pages) opens with a warning: replace it, or
+  **Continue anyway** to look around (do not burn with it).
+- `libretune <project folder>` (or `--project <folder>`) opens a project straight away, for example
+  from a desktop shortcut or a file manager; the folder must hold the project's `project.json`.
 - **Try the demo**, **Start from a base tune**, **Import a TunerStudio project**, **Open a project
   folder** and **Set up a project manually** cover the other ways in.
 - **Before you connect** lists what a first connection needs, including the exact command when your
@@ -110,7 +120,9 @@ connect and read it.
 - The sidebar is the ECU's own menu tree from its INI; **Ctrl+K** searches it and **Enter** opens the first match.
 - Tables: arrow keys or the mouse select, type a number to set, `+`/`-` step, `=` average,
   `/` interpolate, `s` smooth, Ctrl+Z undo. Right-click for every other operation, including the 3D view.
-- **View > Dashboard** (Ctrl+D) shows gauges; the Designer button edits them.
+- **View > Dashboard** (Ctrl+D) shows gauges; the Designer button edits them. In the designer,
+  double-click a gauge (or select it and press **Properties**) to set its title, channel, range and
+  the warning and danger levels; **Save** keeps them in the dashboard file.
 - **Help > Keyboard Shortcuts** lists everything; **Help > User Manual** is the full manual.
 
 ## 5. Change and burn
@@ -138,7 +150,8 @@ do not fit this ECU definition) first shows what does not map, and is loaded onl
 
 **Tools > Data Logging** (Ctrl+L) records every channel. **Tools > Datalog Viewer...** opens logs
 (`.csv`, `.msl`, `.mlg`) with stacked graph pages, scatter plots and histograms; logs from
-TunerStudio open directly.
+TunerStudio open directly. Its list of logs in the project's `datalogs` folder updates when a
+recording starts or stops and when you come back to the viewer from another tab.
 
 ## 7. AutoTune
 

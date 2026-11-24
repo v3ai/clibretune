@@ -546,6 +546,38 @@ static void image_combo(lt_ui *ui, dash_state *st, const char *id, char **slot)
     lt_free((void *)items);
 }
 
+void lt_dtab_props_open(dash_state *st, int idx)
+{
+    if (st == NULL || st->file == NULL || idx < 0 || (size_t)idx >= st->file->cluster.n_comps) {
+        if (st != NULL) { st->props_open = 0; }
+        return;
+    }
+    st->props_open = 1;
+    st->props_idx = idx;
+}
+
+/* one warning / danger level of a gauge: a checkbox, and the value while it is on (a level that is
+ * switched on starts at the end of the range it belongs to) */
+static void level_row(lt_ui *ui, dash_state *st, const char *label, const char *id, lt_bool *has,
+                      double *val, double dflt)
+{
+    int v = *has ? 1 : 0;
+    double d;
+    lt_ui_push_id(ui, id);
+    lt_ui_label(ui, label);
+    if (lt_ui_checkbox(ui, "on", &v)) {
+        *has = v ? LT_TRUE : LT_FALSE;
+        if (v && *val == 0.0) { *val = dflt; }
+        lt_dtab_touch(st);
+    }
+    if (*has) {
+        d = *val;
+        lt_ui_label(ui, "  value");
+        if (lt_ui_number(ui, id, &d, -1e9, 1e9, 1.0, 2) & LT_UI_CHANGED) { *val = d; lt_dtab_touch(st); }
+    }
+    lt_ui_pop_id(ui);
+}
+
 static void props_window(lt_app *app, dash_state *st)
 {
     lt_ui *ui = app->ui;
@@ -553,6 +585,8 @@ static void props_window(lt_app *app, dash_state *st)
     lt_dash_comp *c;
     char title[96];
     if (!st->props_open) { return; }
+    /* the panel shows the selected item: selecting another one in the designer switches it */
+    if (st->designer && st->sel >= 0 && st->sel != st->props_idx) { st->props_idx = st->sel; }
     if (st->props_idx < 0 || (size_t)st->props_idx >= st->file->cluster.n_comps) { st->props_open = 0; return; }
     c = &st->file->cluster.comps[st->props_idx];
     lt_snprintf(title, sizeof title, "%s Properties", c->gauge ? "Gauge" : "Indicator");
@@ -606,6 +640,11 @@ static void props_window(lt_app *app, dash_state *st)
         if (lt_ui_number(ui, id, &d, lo, hi, step, dg) & LT_UI_CHANGED) { (field) = d; lt_dtab_touch(st); }
         NUMF("Min", "dp_min", g->min, -1e9, 1e9, 1.0, 2)
         NUMF("Max", "dp_max", g->max, -1e9, 1e9, 1.0, 2)
+        /* warning (yellow) and danger (red) ranges: below the low, above the high level */
+        level_row(ui, st, "Low danger", "dp_lc", &g->has_low_critical, &g->low_critical, g->min);
+        level_row(ui, st, "Low warning", "dp_lw", &g->has_low_warning, &g->low_warning, g->min);
+        level_row(ui, st, "High warning", "dp_hw", &g->has_high_warning, &g->high_warning, g->max);
+        level_row(ui, st, "High danger", "dp_hc", &g->has_high_critical, &g->high_critical, g->max);
         d = (double)g->value_digits;
         lt_ui_label(ui, "Value digits");
         if (lt_ui_number(ui, "dp_dig", &d, 0, 6, 1.0, 0) & LT_UI_CHANGED) { g->value_digits = (int)d; lt_dtab_touch(st); }
@@ -624,22 +663,6 @@ static void props_window(lt_app *app, dash_state *st)
             lt_ui_label(ui, "Antialiasing");
             v = g->antialiasing_on ? 1 : 0;
             if (lt_ui_checkbox(ui, "on", &v)) { g->antialiasing_on = v ? LT_TRUE : LT_FALSE; lt_dtab_touch(st); }
-            lt_ui_label(ui, "High warning");
-            v = g->has_high_warning ? 1 : 0;
-            if (lt_ui_checkbox(ui, "enabled", &v)) { g->has_high_warning = v ? LT_TRUE : LT_FALSE; lt_dtab_touch(st); }
-            if (g->has_high_warning) {
-                d = g->high_warning;
-                lt_ui_label(ui, "  value");
-                if (lt_ui_number(ui, "dp_hw", &d, -1e9, 1e9, 1.0, 2) & LT_UI_CHANGED) { g->high_warning = d; lt_dtab_touch(st); }
-            }
-            lt_ui_label(ui, "High critical");
-            v = g->has_high_critical ? 1 : 0;
-            if (lt_ui_checkbox(ui, "enabled", &v)) { g->has_high_critical = v ? LT_TRUE : LT_FALSE; lt_dtab_touch(st); }
-            if (g->has_high_critical) {
-                d = g->high_critical;
-                lt_ui_label(ui, "  value");
-                if (lt_ui_number(ui, "dp_hc", &d, -1e9, 1e9, 1.0, 2) & LT_UI_CHANGED) { g->high_critical = d; lt_dtab_touch(st); }
-            }
         }
         lt_ui_label(ui, "Background image");
         image_combo(ui, st, "dp_bgimg", &g->background_image_file_name);
@@ -692,7 +715,7 @@ static void props_window(lt_app *app, dash_state *st)
 
 /* ---- toolbar ---- */
 enum { T_SEL, T_OPEN, T_VALID, T_FULL, T_DESIGN, T_ADDG, T_ADDI, T_DEL, T_UNDO, T_REDO, T_COPY, T_PASTE,
-       T_LAYERS, T_ASSETS, T_SYNC, T_SAVE, T_SAVEAS, T_NONE };
+       T_PROPS, T_LAYERS, T_ASSETS, T_SYNC, T_SAVE, T_SAVEAS, T_NONE };
 
 static void dt_item(lt_vk_item *it, int kind, int icon, const char *label, const char *tip)
 {
@@ -743,6 +766,9 @@ static void dash_toolbar(lt_app *app, dash_state *st)
         dt_item(&it[n], LT_VK_BTN, LT_ICON_COPY, NULL, "Copy (Ctrl+C)"); it[n].disabled = st->sel < 0; ids[n++] = T_COPY;
         dt_item(&it[n], LT_VK_BTN, LT_ICON_CLIPBOARD_PASTE, NULL, "Paste (Ctrl+V)"); ids[n++] = T_PASTE;
         dt_item(&it[n], LT_VK_SEP, 0, NULL, NULL); ids[n++] = -1;
+        dt_item(&it[n], LT_VK_BTN, LT_ICON_SLIDERS_HORIZONTAL, "Properties",
+                "Title, channel, range and warning levels of the selected item (double-click an item)");
+        it[n].on = st->props_open; it[n].disabled = st->sel < 0 && !st->props_open; ids[n++] = T_PROPS;
         dt_item(&it[n], LT_VK_BTN, LT_ICON_LAYERS, "Layers", "Layer order and visibility"); it[n].on = st->layers_open; ids[n++] = T_LAYERS;
         dt_item(&it[n], LT_VK_BTN, LT_ICON_IMAGE, "Assets", "Embedded images and fonts"); it[n].on = st->assets_open; ids[n++] = T_ASSETS;
         dt_item(&it[n], LT_VK_BTN, LT_ICON_REFRESH_CW, "Sync", "Adopt gauge ranges and limits from the ECU definition"); ids[n++] = T_SYNC;
@@ -769,6 +795,7 @@ static void dash_toolbar(lt_app *app, dash_state *st)
         case T_REDO: lt_dtab_redo(app, st); break;
         case T_COPY: lt_dtab_copy(app, st); break;
         case T_PASTE: lt_dtab_paste(app, st); break;
+        case T_PROPS: lt_dtab_props_open(st, st->props_open ? -1 : st->sel); break;
         case T_LAYERS: st->layers_open = !st->layers_open; break;
         case T_ASSETS: st->assets_open = !st->assets_open; break;
         case T_SYNC: {
@@ -882,7 +909,7 @@ static void context_menu(lt_app *app, dash_state *st, lt_rect area)
         int ci = st->ctx_idx;
         if (ci >= 0 && (size_t)ci < st->file->cluster.n_comps) {
             lt_dash_comp *c = &st->file->cluster.comps[ci];
-            if (lt_ui_menu_item(ui, "Properties...", NULL, 0)) { st->props_open = 1; st->props_idx = ci; }
+            if (lt_ui_menu_item(ui, "Properties...", NULL, 0)) { lt_dtab_props_open(st, ci); }
             if (c->gauge != NULL) {
                 if (lt_ui_submenu_begin(ui, "Gauge type", 0)) {
                     for (i = 0; i < DT_N_PAINTERS; i++) {
@@ -1097,8 +1124,15 @@ static void dash_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
         int adding = (mods & (LT_MOD_SHIFT | LT_MOD_CTRL)) != 0;
         if (down && !st->prev_down && in_area) {
             int h = lt_dash_view_hit(st->view, m.x, m.y);
+            int dbl = h >= 0 && h == st->last_click_idx && now - st->last_click_ms < 400.0 &&
+                      abs(m.x - st->last_click_x) < 6 && abs(m.y - st->last_click_y) < 6 && !adding;
             st->mode = DM_NONE; st->moved = 0;
-            if (h >= 0) {
+            st->last_click_ms = dbl ? -1000.0 : now;
+            st->last_click_x = m.x; st->last_click_y = m.y; st->last_click_idx = h;
+            if (dbl) {                       /* double-click: the item's properties, no drag */
+                lt_dtab_select(st, h, 0);
+                lt_dtab_props_open(st, h);
+            } else if (h >= 0) {
                 lt_rect c = lt_dash_view_component_rect(st->view, (size_t)h);
                 size_t k;
                 if (adding) { lt_dtab_select(st, h, 1); }

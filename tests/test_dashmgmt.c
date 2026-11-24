@@ -573,6 +573,116 @@ LT_TEST(tab_library_roundtrip)
     lt_app_free(app);
 }
 
+static void ui_frame(lt_app *app)
+{
+    lt_ui_begin(app->ui, &app->gfx, lt_plat_now_ms());
+    lt_app_frame(app);
+    lt_ui_end(app->ui);
+}
+
+static void mouse(lt_app *app, lt_ev_type type, int x, int y)
+{
+    lt_event ev;
+    memset(&ev, 0, sizeof(ev));
+    ev.type = type; ev.x = x; ev.y = y; ev.button = LT_MB_LEFT;
+    lt_ui_input(app->ui, &ev);
+    ui_frame(app);
+}
+
+/* Designer: double-click opens an item's properties, the panel follows the selection, and what it
+ * edits (title, channel, range, warning and danger levels) survives Save and a reload */
+LT_TEST(designer_properties)
+{
+    lt_app *app;
+    dash_state *st;
+    lt_dash_file *back;
+    lt_dash_gauge *g;
+    char *dir, *np = NULL;
+    const char *chan;
+    lt_rect r;
+    size_t gi, i;
+    int x, y;
+    fresh_dir();
+    app = app_with_project();
+    LT_CHECK(lt_app_dashboard_tab_open(app) == 0);
+    LT_CHECK(lt_app_screenshot(app, TMP "/p0.ppm", 1100, 700, 3) == 0);
+    st = lt_dtab_state(app);
+    LT_CHECK(st != NULL && st->file != NULL && st->file->cluster.n_comps >= 3);
+    if (st == NULL || st->file == NULL || st->file->cluster.n_comps < 3) { lt_app_free(app); return; }
+    dir = lt_dtab_dir(app);
+    {
+        char *old = lt_dashlib_path(dir, "Props");
+        (void)lt_plat_remove(old);
+        lt_free(old);
+    }
+    LT_CHECK(lt_dashlib_create(dir, "Props", st->file, &np) == 0);
+    LT_CHECK(lt_dtab_load_file(app, st, np) == 0);
+    ui_frame(app);
+    ui_frame(app);
+    /* the first gauge */
+    for (gi = 0; gi < st->file->cluster.n_comps && st->file->cluster.comps[gi].gauge == NULL; gi++) {}
+    LT_CHECK(gi < st->file->cluster.n_comps);
+    if (gi >= st->file->cluster.n_comps) { lt_app_free(app); lt_free(dir); lt_free(np); return; }
+    /* double-click it in the designer */
+    st->designer = 1;
+    ui_frame(app);
+    r = lt_dash_view_component_rect(st->view, gi);
+    x = r.x + r.w / 2; y = r.y + r.h / 2;
+    mouse(app, LT_EV_MOUSE_MOVE, x, y);
+    mouse(app, LT_EV_MOUSE_DOWN, x, y);
+    mouse(app, LT_EV_MOUSE_UP, x, y);
+    LT_CHECK(!st->props_open);                       /* one click selects */
+    LT_CHECK(st->sel == (int)gi);
+    mouse(app, LT_EV_MOUSE_DOWN, x, y);
+    mouse(app, LT_EV_MOUSE_UP, x, y);
+    LT_CHECK(st->props_open && st->props_idx == (int)gi);
+    /* the panel follows the selection; Properties (toolbar) closes and opens it */
+    lt_dtab_select(st, (int)(gi + 1), 0);
+    ui_frame(app);
+    LT_CHECK(st->props_idx == (int)gi + 1);
+    lt_dtab_props_open(st, -1);
+    LT_CHECK(!st->props_open);
+    lt_dtab_select(st, (int)gi, 0);
+    lt_dtab_props_open(st, st->sel);
+    LT_CHECK(st->props_open && st->props_idx == (int)gi);
+    lt_dtab_props_open(st, 9999);                    /* out of range closes */
+    LT_CHECK(!st->props_open);
+    lt_dtab_props_open(st, (int)gi);
+    /* edit what the panel edits, draw it with every level on, save */
+    g = st->file->cluster.comps[gi].gauge;
+    chan = app->ini->channels[app->ini->n_channels - 1]->name;
+    dash_set_str(&g->title, "Oil pressure");
+    dash_set_str(&g->output_channel, chan);
+    g->min = -5.0; g->max = 250.0;
+    g->has_low_critical = LT_TRUE; g->low_critical = 5.0;
+    g->has_low_warning = LT_TRUE; g->low_warning = 15.0;
+    g->has_high_warning = LT_TRUE; g->high_warning = 200.0;
+    g->has_high_critical = LT_TRUE; g->high_critical = 230.0;
+    lt_dtab_touch(st);
+    st->rebuild = 1;
+    for (i = 0; i < 3; i++) { ui_frame(app); }
+    LT_CHECK(lt_app_screenshot(app, TMP "/props.ppm", 1100, 760, 2) == 0);
+    LT_CHECK(lt_dtab_save(app, st) == 0);
+    LT_CHECK(!st->dirty);
+    back = lt_dash_load(np);
+    LT_CHECK(back != NULL && back->cluster.n_comps > gi && back->cluster.comps[gi].gauge != NULL);
+    if (back != NULL && back->cluster.n_comps > gi && back->cluster.comps[gi].gauge != NULL) {
+        const lt_dash_gauge *b = back->cluster.comps[gi].gauge;
+        LT_CHECK_STR(b->title, "Oil pressure");
+        LT_CHECK_STR(b->output_channel, chan);
+        LT_CHECK_NEAR(b->min, -5.0, 1e-9);
+        LT_CHECK_NEAR(b->max, 250.0, 1e-9);
+        LT_CHECK(b->has_low_critical && b->has_low_warning && b->has_high_warning && b->has_high_critical);
+        LT_CHECK_NEAR(b->low_critical, 5.0, 1e-9);
+        LT_CHECK_NEAR(b->low_warning, 15.0, 1e-9);
+        LT_CHECK_NEAR(b->high_warning, 200.0, 1e-9);
+        LT_CHECK_NEAR(b->high_critical, 230.0, 1e-9);
+    }
+    if (back != NULL) { lt_dash_free(back); }
+    lt_free(dir); lt_free(np);
+    lt_app_free(app);
+}
+
 int main(void)
 {
     LT_RUN(lib_names);
@@ -591,5 +701,6 @@ int main(void)
     LT_RUN(backend_fullscreen_null_safe);
     LT_RUN(tab_edit_undo_kiosk);
     LT_RUN(tab_library_roundtrip);
+    LT_RUN(designer_properties);
     LT_TEST_MAIN_END
 }

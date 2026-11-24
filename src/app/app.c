@@ -65,6 +65,14 @@ static void settings_defaults(lt_app_settings *s)
     lt_strlcpy(s->commit_fmt, "Tune saved on {date} at {time}", sizeof(s->commit_fmt));
 }
 
+/* the form a project folder is remembered and compared in: absolute, "." and ".." resolved */
+static void abs_dir(const char *dir, char *out, size_t cap)
+{
+    char *a = lt_plat_abspath(dir);
+    lt_strlcpy(out, a != NULL ? a : dir, cap);
+    lt_free(a);
+}
+
 static char *settings_path(lt_app *app)
 {
     if (app->config_dir == NULL) { return NULL; }
@@ -119,18 +127,22 @@ void lt_app_settings_load(lt_app *app)
         v = lt_props_get(&p, "backend");
         if (v != NULL) { lt_strlcpy(s->backend, v, sizeof(s->backend)); }
         v = lt_props_get(&p, "last_project");
-        if (v != NULL) { lt_strlcpy(s->last_project, v, sizeof(s->last_project)); }
+        if (v != NULL && v[0] != '\0') { abs_dir(v, s->last_project, sizeof(s->last_project)); }
         v = lt_props_get(&p, "port");
         if (v != NULL) { lt_strlcpy(s->port, v, sizeof(s->port)); }
         v = lt_props_get(&p, "heatmap");
         if (v != NULL) { lt_strlcpy(s->heatmap, v, sizeof(s->heatmap)); }
+        /* older builds stored the paths as given: resolve them, and one project reached by two
+         * spellings ("proj", "./proj/", "../x/proj") is listed once */
         n = 0;
         for (i = 0; i < 8; i++) {
+            int k;
             lt_snprintf(key, sizeof(key), "recent%d", i);
             v = lt_props_get(&p, key);
-            if (v != NULL && v[0] != '\0') {
-                lt_strlcpy(s->recent[n++], v, sizeof(s->recent[0]));
-            }
+            if (v == NULL || v[0] == '\0') { continue; }
+            abs_dir(v, s->recent[n], sizeof(s->recent[0]));
+            for (k = 0; k < n && !lt_plat_path_same(s->recent[k], s->recent[n]); k++) {}
+            if (k == n) { n++; }
         }
         s->n_recent = n;
     }
@@ -203,12 +215,14 @@ void lt_app_apply_theme(lt_app *app, const char *name)
     }
 }
 
-void lt_app_recent_add(lt_app *app, const char *dir)
+void lt_app_recent_add(lt_app *app, const char *dir_in)
 {
     lt_app_settings *s = &app->settings;
+    char dir[sizeof(s->recent[0])];
     int i, j;
+    abs_dir(dir_in, dir, sizeof(dir));
     for (i = 0; i < s->n_recent; i++) {
-        if (strcmp(s->recent[i], dir) == 0) { break; }
+        if (lt_plat_path_same(s->recent[i], dir)) { break; }
     }
     if (i == s->n_recent) {
         if (s->n_recent < 8) { s->n_recent++; }
@@ -497,6 +511,7 @@ int lt_app_log_toggle(lt_app *app)
     }
     if (lt_rec_is_recording(app->rec)) {
         lt_rec_stop(app->rec);
+        app->log_files_gen++;
         lt_app_toast(app, 0, "Logging stopped (%ld rows)", lt_rec_count(app->rec));
         return 0;
     }
@@ -511,7 +526,10 @@ int lt_app_log_toggle(lt_app *app)
     path = lt_rec_new_path(app->rec, dir);
     i = (size_t)lt_rec_start(app->rec, path);
     if ((int)i < 0) { lt_app_toast(app, 3, "Cannot start log: %s", lt_err_get()); }
-    else { lt_app_toast(app, 1, "Logging to %s", lt_path_base(lt_rec_path(app->rec))); }
+    else {
+        app->log_files_gen++;
+        lt_app_toast(app, 1, "Logging to %s", lt_path_base(lt_rec_path(app->rec)));
+    }
     lt_free(path);
     lt_free(dir);
     return (int)i < 0 ? -1 : 0;
@@ -545,7 +563,7 @@ static void link_free(lt_app *app)
 void lt_app_disconnect(lt_app *app)
 {
     if (app->conn == LT_APP_OFFLINE && app->proto == NULL) { return; }
-    if (app->rec != NULL && lt_rec_is_recording(app->rec)) { lt_rec_stop(app->rec); }
+    if (app->rec != NULL && lt_rec_is_recording(app->rec)) { lt_rec_stop(app->rec); app->log_files_gen++; }
     if (app->proto != NULL && lt_proto_state(app->proto) == LT_CONN_CONNECTED &&
         lt_proto_write_pending(app->proto)) {
         lt_proto_async_finish(app->proto);         /* edits made just before still reach the ECU */
@@ -1014,13 +1032,71 @@ static void keep_unreadable_tune(lt_app *app)
     lt_free(cur);
 }
 
-int lt_app_open_project(lt_app *app, const char *dir)
+/* project.json of dir could not be read: say why in plain words, with the way out (feat_projerr.c) */
+static void project_json_problem(lt_app *app, const char *dir)
+{
+    char msg[700], why[400];
+    char *f = lt_path_join(dir, "project.json"), *text;
+    const char *file = f, *w = why;
+    size_t len = 0, i;
+    lt_strlcpy(why, lt_err_get(), sizeof(why));
+    if (strncmp(why, f, strlen(f)) == 0 && why[strlen(f)] == ':') {   /* "<path>: detail" */
+        w = why + strlen(f) + 1;
+        while (*w == ' ') { w++; }
+    }
+    if (!lt_plat_is_dir(dir)) {
+        lt_snprintf(msg, sizeof(msg), "The project folder was not found. It may have been moved, renamed "
+                    "or deleted, or it is on a drive that is not connected.");
+        file = dir;
+    } else if (!lt_file_exists(f) || lt_plat_is_dir(f)) {
+        lt_snprintf(msg, sizeof(msg), "This folder has no project settings file (project.json): it is "
+                    "not a LibreTune project, or the file was deleted.");
+    } else {
+        text = lt_file_read(f, &len);
+        for (i = 0; text != NULL && i < len && (text[i] == ' ' || text[i] == '\t' || text[i] == '\r' ||
+                                               text[i] == '\n' || text[i] == '\0'); i++) {}
+        if (text != NULL && i == len) {
+            lt_snprintf(msg, sizeof(msg), "The project settings file (project.json) is empty. It was "
+                        "probably cut off when the disk filled up or the computer lost power.");
+        } else if (text == NULL) {
+            lt_snprintf(msg, sizeof(msg), "The project settings file (project.json) cannot be read: %s", w);
+        } else {
+            lt_snprintf(msg, sizeof(msg), "The project settings file (project.json) is damaged and "
+                        "cannot be used (%s).", w);
+        }
+        lt_free(text);
+    }
+    lt_app_toast(app, 3, "Cannot open project: %s", msg);
+    (void)lt_feat_projerr_show(app, LT_PROJERR_PROJECT, dir, file, msg);
+    lt_free(f);
+}
+
+/* the project's definition is missing or does not parse */
+static void project_ini_problem(lt_app *app, const lt_project *p)
+{
+    char msg[700], why[400];
+    char *f = lt_project_ini_path(p);
+    lt_strlcpy(why, lt_err_get(), sizeof(why));
+    if (!lt_file_exists(f)) {
+        lt_snprintf(msg, sizeof(msg), "The project's ECU definition (projectCfg/definition.ini) is "
+                    "missing, so LibreTune does not know how the settings are laid out.");
+    } else {
+        lt_snprintf(msg, sizeof(msg), "The project's ECU definition (projectCfg/definition.ini) cannot "
+                    "be read: %s", why[0] != '\0' ? why : "it is not a valid INI file.");
+    }
+    lt_app_toast(app, 3, "Project INI failed: %s", why);
+    (void)lt_feat_projerr_show(app, LT_PROJERR_DEFINITION, p->path, f, msg);
+    lt_free(f);
+}
+
+int lt_app_open_project(lt_app *app, const char *dir_in)
 {
     lt_project p;
     lt_ini *ini;
-    char *ip;
+    char *ip, dir[sizeof(app->settings.recent[0])];
+    abs_dir(dir_in, dir, sizeof(dir));          /* project.path, recents and tabs see one spelling */
     if (lt_project_open(dir, &p) < 0) {
-        lt_app_toast(app, 3, "Cannot open project: %s", lt_err_get());
+        project_json_problem(app, dir);
         return -1;
     }
     {   /* the project's [SettingGroups] choice (TunerStudio ecuSettings) seeds the preprocessor */
@@ -1033,8 +1109,8 @@ int lt_app_open_project(lt_app *app, const char *dir)
         lt_proj_symbols_free(&sy);
     }
     if (ini == NULL) {
-        lt_app_toast(app, 3, "Project INI failed: %s", lt_err_get());
-        lt_project_close(&p);
+        project_ini_problem(app, &p);
+        lt_project_free(&p);            /* nothing was opened: nothing to save */
         return -1;
     }
     lt_app_close_project(app);
@@ -1051,6 +1127,14 @@ int lt_app_open_project(lt_app *app, const char *dir)
     lt_app_recent_add(app, app->project.path);
     lt_feat_connset_apply(app);
     lt_app_set_status(app, "Opened project %s", app->project.cfg.name);
+    {   /* it parsed, but would it work? (no menus and no dialogs, constants beyond the pages) */
+        char why[400], msg[700];
+        if (lt_ini_looks_incomplete(ini, why, sizeof(why))) {
+            lt_snprintf(msg, sizeof(msg), "The project opened, but its ECU definition looks incomplete. %s",
+                        why);
+            (void)lt_feat_projerr_show(app, LT_PROJERR_INCOMPLETE, app->project.path, app->ini_path, msg);
+        }
+    }
     return 0;
 }
 

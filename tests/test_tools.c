@@ -12,6 +12,7 @@
 #include "../src/app/tables_3d.h"
 #include "../src/app/dlg_perf.h"
 #include "../src/app/actions_logic.h"
+#include "../src/app/dialogs.h"
 #include "../src/tableops/tablecmp.h"
 
 static void frame(lt_app *app)
@@ -687,6 +688,76 @@ LT_TEST(actions_record_constants)
     LT_CHECK(lt_plat_setenv("LT_ACTIONS_DIR", "") == 0);
 }
 
+static int tab_index(lt_app *app, lt_app_tab *t)
+{
+    int i;
+    for (i = 0; i < app->n_tabs; i++) { if (app->tabs[i] == t) { return i; } }
+    return -1;
+}
+
+/* Datalog Viewer: the file list picks up a recording when it starts and stops, and files that came
+ * or went while another tab was shown when the viewer comes back; the selected file stays selected */
+LT_TEST(logviewer_refresh)
+{
+    lt_app *app = demo_app();
+    lt_app_tab *viewer;
+    const char *sel = NULL;
+    char *dir, *extra, keep[256];
+    int n0, n, vi, li;
+    dir = app->has_project ? lt_project_file(&app->project, "datalogs")
+                           : lt_path_join(app->config_dir != NULL ? app->config_dir : ".", "datalogs");
+    (void)lt_plat_mkdirs(dir);
+    extra = lt_path_join(dir, "zz_copied_in.csv");
+    (void)lt_plat_remove(extra);
+    {   /* one log to start with, so there is a selection to keep */
+        char *first = lt_path_join(dir, "0000_first.csv");
+        LT_CHECK(lt_file_write(first, "Time,RPM\n0,800\n0.1,810\n", 23) == 0);
+        lt_free(first);
+    }
+    LT_CHECK(lt_app_datalog_open(app, 1) == 0);
+    viewer = lt_app_tab_active(app);
+    LT_CHECK(viewer != NULL && strcmp(viewer->kind, "datalog-viewer") == 0);
+    LT_CHECK(lt_app_screenshot(app, "build/lt_test_logviewer.ppm", 1280, 800, 2) == 0);
+    frame(app); frame(app);
+    n0 = lt_dlg_log_files(viewer, &sel);
+    LT_CHECK(n0 >= 1 && sel != NULL);
+    lt_strlcpy(keep, sel != NULL ? sel : "", sizeof(keep));
+    /* a recording starts: its file shows up, the selection stays on the same file */
+    LT_CHECK(lt_app_log_toggle(app) == 0);
+    frame(app);
+    n = lt_dlg_log_files(viewer, &sel);
+    LT_CHECK_INT(n, n0 + 1);
+    LT_CHECK(sel != NULL && strcmp(sel, keep) == 0);
+    LT_CHECK(lt_app_log_toggle(app) == 0);       /* and stops */
+    frame(app);
+    LT_CHECK_INT(lt_dlg_log_files(viewer, NULL), n0 + 1);
+    /* a file appears while the viewer is not shown: not rescanned every frame ... */
+    LT_CHECK(lt_file_write(extra, "Time,RPM\n0,900\n", 16) == 0);
+    frame(app);
+    LT_CHECK_INT(lt_dlg_log_files(viewer, NULL), n0 + 1);
+    /* ... but when the viewer comes back after another tab */
+    vi = tab_index(app, viewer);
+    LT_CHECK(lt_app_datalog_open(app, 0) == 0);  /* Data Logging tab in front */
+    LT_CHECK(lt_app_tab_active(app) != viewer);
+    li = tab_index(app, lt_app_tab_active(app));
+    frame(app); frame(app);
+    app->active_tab = vi;
+    frame(app);
+    n = lt_dlg_log_files(viewer, &sel);
+    LT_CHECK_INT(n, n0 + 2);
+    LT_CHECK(sel != NULL && strcmp(sel, keep) == 0);
+    LT_CHECK(lt_app_screenshot(app, "build/lt_test_logviewer2.ppm", 1280, 800, 2) == 0);
+    /* removed meanwhile: gone from the list */
+    (void)lt_plat_remove(extra);
+    app->active_tab = li;
+    frame(app); frame(app);
+    app->active_tab = vi;
+    frame(app);
+    LT_CHECK_INT(lt_dlg_log_files(viewer, NULL), n0 + 1);
+    lt_free(extra); lt_free(dir);
+    lt_app_free(app);
+}
+
 int main(void)
 {
     LT_RUN(tablecmp_compute);
@@ -711,5 +782,6 @@ int main(void)
     LT_RUN(actions_logic);
     LT_RUN(actions_record_save_play);
     LT_RUN(actions_record_constants);
+    LT_RUN(logviewer_refresh);
     LT_TEST_MAIN_END
 }

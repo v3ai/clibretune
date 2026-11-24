@@ -40,6 +40,8 @@ typedef struct log_state {
     int playing, speed_sel, loop, drive;
     double last_ms;
     char **files; int n_files, file_sel, files_loaded;
+    unsigned files_gen;                  /* app->log_files_gen at the last scan */
+    int last_frame;                      /* ui frame this tab was last drawn in */
     char dir[512];
     char err[160];
     int show_stats;
@@ -185,7 +187,12 @@ static void files_scan(lt_app *app, log_state *s)
 {
     char **names = NULL;
     int n, i, k = 0;
-    char *dir;
+    char *dir, keep[256];
+    keep[0] = '\0';
+    if (s->files != NULL && s->file_sel >= 0 && s->file_sel < s->n_files) {
+        lt_strlcpy(keep, s->files[s->file_sel], sizeof(keep));
+    }
+    s->files_gen = app->log_files_gen;
     dir = app->has_project ? lt_project_file(&app->project, "datalogs")
                            : lt_path_join(app->config_dir != NULL ? app->config_dir : ".", "datalogs");
     lt_strlcpy(s->dir, dir, sizeof(s->dir));
@@ -202,6 +209,22 @@ static void files_scan(lt_app *app, log_state *s)
     }
     s->n_files = k;
     lt_plat_free_list(names, n);
+    /* the same file stays selected when others come or go */
+    for (i = 0; keep[0] != '\0' && i < k; i++) {
+        if (strcmp(s->files[i], keep) == 0) { s->file_sel = i; break; }
+    }
+    if (s->file_sel >= k) { s->file_sel = k - 1; }
+}
+
+/* a cheap rescan of the datalogs folder when a recording started or ended, and when the viewer
+ * comes back into view (another tab was shown, files may have been added or removed meanwhile) */
+static void files_refresh(lt_app *app, log_state *s)
+{
+    int fr = lt_ui_frame_no(app->ui);
+    if (s->files_gen != app->log_files_gen || (s->last_frame != 0 && fr - s->last_frame > 1)) {
+        files_scan(app, s);
+    }
+    s->last_frame = fr;
 }
 
 static const char *file_get(void *ud, int i) { return ((log_state *)ud)->files[i]; }
@@ -647,6 +670,7 @@ static void log_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
         gs_ensure(app, s);
         lt_ui_request_redraw(ui);
     } else {
+        files_refresh(app, s);
         viewer_sync(app, s);
         if (lt_logx_shared_log(app) != NULL) {
             double dt = s->last_ms > 0 && now >= s->last_ms ? (now - s->last_ms) / 1000.0 : 0.0;
@@ -766,6 +790,15 @@ static void log_close(lt_app *app, lt_app_tab *tab)
         lt_free(s);
     }
     tab->data = NULL;
+}
+
+int lt_dlg_log_files(const lt_app_tab *tab, const char **sel_name)
+{
+    const log_state *s = tab != NULL ? (const log_state *)tab->data : NULL;
+    if (sel_name != NULL) { *sel_name = NULL; }
+    if (s == NULL || !s->viewer) { return -1; }
+    if (sel_name != NULL && s->file_sel >= 0 && s->file_sel < s->n_files) { *sel_name = s->files[s->file_sel]; }
+    return s->n_files;
 }
 
 void lt_dlg_register_log(lt_app *app)

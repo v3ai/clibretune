@@ -77,6 +77,27 @@ static void forget(lt_app *app, int idx)
     lt_app_toast(app, 0, "Removed from the list. The project folder was not touched.");
 }
 
+int lt_feat_start_forget(lt_app *app, const char *dir)
+{
+    char *a = dir != NULL ? lt_plat_abspath(dir) : NULL;
+    int i, found = 0;
+    for (i = 0; a != NULL && i < app->settings.n_recent; i++) {
+        if (lt_plat_path_same(app->settings.recent[i], a)) {
+            forget(app, i);
+            found = 1;
+            break;
+        }
+    }
+    if (!found && a != NULL) {           /* recent.conf may know it without the list */
+        start_state *s = st_get(app);
+        if (lt_recent_remove(&s->rec, a) && app->config_dir != NULL && !app->headless) {
+            (void)lt_recent_save(&s->rec, app->config_dir);
+        }
+    }
+    lt_free(a);
+    return found;
+}
+
 static int folder_ok(const char *dir)
 {
     char *p = lt_path_join(dir, "project.json");

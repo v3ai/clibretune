@@ -4,6 +4,10 @@
  *   Tools -> Tune Migration Report  report of the open tune against the open definition
  *   lt_feat_migrate_show            the same dialog for any tune file vs INI report (base tunes),
  *                                   with a continuation run by "Continue with Tune"
+ *   lt_feat_migrate_replace         "Replace Definition..." of a project that cannot open because
+ *                                   its INI is missing or unreadable: pick one, copy it in, open
+ * The definition comes from the bundled catalog (project/inidb.h, the project's signature first),
+ * the INI library or a file.
  * The update re-resolves the tune: every constant keeps its value by name, constants new in the
  * INI get their defaults, the tune is re-stamped with the new INI version and saved, then the
  * project is reopened (the ECU connection is closed).
@@ -11,10 +15,14 @@
  */
 #include <string.h>
 #include "feat.h"
+#include "recent_logic.h"
 #include "../project/inilib.h"
+#include "../project/inidb.h"
 
 #define FD_MIG_PICK (LT_APP_FD_USER0 + 42)
 #define MIG_LIST_MAX 20
+#define MIG_BUNDLE_MAX 256
+enum { SRC_LIBRARY = 0, SRC_FILE = 1, SRC_BUNDLED = 2 };
 
 typedef struct mig_dlg {
     int  update;           /* update flow (else: report of the open tune) */
@@ -23,8 +31,14 @@ typedef struct mig_dlg {
     int  has_changes;
     char summary[160];
     lt_ini_repo repo; int repo_ok;
-    int  source;           /* 0 library, 1 file */
+    int  source;           /* SRC_* */
     int  repo_sel;
+    int  replace;          /* lt_feat_migrate_replace: the project is not open */
+    char dir[512];         /* replace: its folder */
+    char sig[96];          /* signature of the project (replace: from project.json) */
+    char query[64], last_query[64];
+    size_t bidx[MIG_BUNDLE_MAX];
+    int  nb, bsel, bquery_set;
     char file[512];
     char target[512];      /* chosen INI path (stage 1) */
     char err[200];
@@ -42,6 +56,9 @@ typedef struct mig_state {
     lt_ext_action_fn ext_cont;
     char load[512];        /* lt_feat_load_tune_checked: the tune file the report is about */
     int  load_pending;     /* "Continue with Tune" pressed: load it from the tick */
+    char replace_dir[512]; /* lt_feat_migrate_replace: the project folder */
+    char replace_ini[512]; /* the definition chosen for it, put in from the tick */
+    int  replace_pending;
 } mig_state;
 
 static void mig_state_free(lt_app *app, void *p)
@@ -162,9 +179,43 @@ int lt_feat_migrate_apply(lt_app *app, const char *new_ini)
     return rc;
 }
 
+/* ---- replace the definition of a project that does not open ---- */
+void lt_feat_migrate_replace(lt_app *app, const char *dir)
+{
+    mig_state *s = mig_st(app);
+    lt_strlcpy(s->replace_dir, dir != NULL ? dir : "", sizeof(s->replace_dir));
+    (void)lt_app_dialog_push(app, "migration", "replace", "Replace ECU Definition");
+}
+
+int lt_feat_migrate_replace_apply(lt_app *app, const char *dir, const char *new_ini)
+{
+    lt_project p;
+    int rc;
+    if (lt_project_open(dir, &p) < 0) {
+        lt_app_toast(app, 3, "Cannot open the project: %s", lt_err_get());
+        return -1;
+    }
+    rc = lt_project_set_ini(&p, new_ini);       /* checks that it parses; updates the signature */
+    lt_project_free(&p);                        /* the tune on disk is left as it is */
+    if (rc < 0) {
+        lt_app_toast(app, 3, "Cannot replace the definition: %s", lt_err_get());
+        return rc;
+    }
+    rc = lt_app_open_project(app, dir);
+    if (rc == 0) { lt_app_toast(app, 1, "ECU definition replaced. Check the settings before burning."); }
+    return rc;
+}
+
 static void mig_tick(lt_app *app)
 {
     mig_state *s = mig_st(app);
+    if (s->replace_pending) {
+        char dir[512], ini[512];
+        lt_strlcpy(dir, s->replace_dir, sizeof(dir));
+        lt_strlcpy(ini, s->replace_ini, sizeof(ini));
+        s->replace_pending = 0;
+        (void)lt_feat_migrate_replace_apply(app, dir, ini);
+    }
     if (s->load_pending) {
         char path[512];
         lt_strlcpy(path, s->load, sizeof(path));
@@ -371,12 +422,45 @@ static const char *repo_get(void *ud, int i)
     return buf;
 }
 
+static const char *bundle_get(void *ud, int i)
+{
+    mig_dlg *s = (mig_dlg *)ud;
+    static char buf[300];
+    const lt_inidb_def *e = lt_inidb_at(s->bidx[i]);
+    buf[0] = '\0';
+    if (e != NULL) { lt_inidb_label(e, buf, sizeof(buf)); }
+    return buf;
+}
+
+/* the bundled definitions the list shows: those matching the query, or (nothing typed yet) the
+ * ones made for the project's signature when there are any */
+static void bundle_refresh(mig_dlg *s)
+{
+    size_t n = 0;
+    if (s->bquery_set == 2 && strcmp(s->query, s->last_query) == 0) { return; }
+    if (s->bquery_set == 0 && s->sig[0] != '\0') { n = lt_inidb_find(s->sig, s->bidx, MIG_BUNDLE_MAX); }
+    if (n == 0) { n = lt_inidb_filter(s->query, s->bidx, MIG_BUNDLE_MAX); }
+    lt_strlcpy(s->last_query, s->query, sizeof(s->last_query));
+    s->nb = (int)(n > MIG_BUNDLE_MAX ? MIG_BUNDLE_MAX : n);
+    s->bquery_set = 2;
+    if (s->bsel >= s->nb || s->bsel < 0) { s->bsel = 0; }
+}
+
 static void mig_init(lt_app *app, lt_app_dialog *d)
 {
     mig_dlg *s = (mig_dlg *)lt_calloc(1, sizeof(*s));
     d->data = s;
     lt_migration_init(&s->rep);
     s->update = strcmp(d->target, "update") == 0;
+    if (strcmp(d->target, "replace") == 0) {
+        char name[96];
+        s->update = 1;
+        s->replace = 1;
+        lt_strlcpy(s->dir, mig_st(app)->replace_dir, sizeof(s->dir));
+        if (lt_recent_read_project(s->dir, name, sizeof(name), s->sig, sizeof(s->sig)) != 0) { s->sig[0] = '\0'; }
+    } else if (app->has_project && app->project.cfg.signature != NULL) {
+        lt_strlcpy(s->sig, app->project.cfg.signature, sizeof(s->sig));
+    }
     if (strcmp(d->target, "external") == 0) {
         mig_state *st = mig_st(app);
         s->ext = 1;
@@ -393,11 +477,33 @@ static void mig_init(lt_app *app, lt_app_dialog *d)
                     "%lu INI constants not in the tune", (unsigned long)s->rep.n_type,
                     (unsigned long)s->rep.n_missing_in_ini, (unsigned long)s->rep.n_missing_in_tune);
     } else if (s->update) {
+        size_t one[1];
         s->repo_ok = lt_ini_repo_open(&s->repo, NULL) == 0;
-        if (!s->repo_ok || s->repo.n == 0) { s->source = 1; }
+        if (!s->repo_ok || s->repo.n == 0) { s->source = SRC_FILE; }
+        /* the bundled definition made for this ECU is the likeliest answer */
+        if (s->repo_ok && lt_inidb_count() > 0 &&
+            (s->replace || s->source == SRC_FILE || (s->sig[0] != '\0' && lt_inidb_find(s->sig, one, 1) > 0))) {
+            s->source = SRC_BUNDLED;
+        }
     } else {
         rep_build(app, s, app->ini);
     }
+}
+
+/* path of the chosen definition (malloc'd) or NULL with s->err set */
+static char *mig_chosen(mig_dlg *s)
+{
+    char *p = NULL, *id = NULL;
+    if (s->source == SRC_FILE) { return lt_strdup(s->file); }
+    if (s->source == SRC_BUNDLED) {
+        const lt_inidb_def *e = s->bsel >= 0 && s->bsel < s->nb ? lt_inidb_at(s->bidx[s->bsel]) : NULL;
+        if (e != NULL && lt_inidb_materialise(&s->repo, e, &id) == 0) { p = lt_ini_repo_path(&s->repo, id); }
+        else { lt_snprintf(s->err, sizeof(s->err), "Cannot unpack the definition: %s", lt_err_get()); }
+        lt_free(id);
+        return p;
+    }
+    if (s->repo_sel >= 0 && (size_t)s->repo_sel < s->repo.n) { p = lt_ini_repo_path(&s->repo, s->repo.e[s->repo_sel].id); }
+    return p;
 }
 
 static void stage_pick(lt_app *app, lt_app_dialog *d, mig_dlg *s, int *open)
@@ -408,18 +514,38 @@ static void stage_pick(lt_app *app, lt_app_dialog *d, mig_dlg *s, int *open)
     char line[700], *p;
     const char *picked = lt_app_file_result(app, FD_MIG_PICK);
     LT_UNUSED(d);
-    if (picked != NULL) { lt_strlcpy(s->file, picked, sizeof(s->file)); s->source = 1; }
+    if (picked != NULL) { lt_strlcpy(s->file, picked, sizeof(s->file)); s->source = SRC_FILE; }
     lt_ui_layout_row(ui, 1, &w1, 0);
-    lt_snprintf(line, sizeof(line), "Current INI: %s  [%s]", app->ini_path,
-                app->project.cfg.signature != NULL ? app->project.cfg.signature : "");
+    if (s->replace) {
+        lt_snprintf(line, sizeof(line), "Project: %s  [%s]", s->dir, s->sig);
+    } else {
+        lt_snprintf(line, sizeof(line), "Current INI: %s  [%s]", app->ini_path,
+                    app->project.cfg.signature != NULL ? app->project.cfg.signature : "");
+    }
     lt_ui_label_ex(ui, line, t->text2, LT_UI_ALIGN_LEFT);
     lt_ui_layout_row(ui, 1, &w1, 0);
-    lt_ui_label_wrap(ui, "Switch this project to another ECU definition. Tune values are kept by name; "
-                         "constants new in the INI use their defaults.", t->muted);
+    lt_ui_label_wrap(ui, s->replace ? "Choose the ECU definition for this project: the one made for the "
+                                      "firmware on the ECU. The tune in the project is kept and read "
+                                      "with the new definition."
+                                    : "Switch this project to another ECU definition. Tune values are kept "
+                                      "by name; constants new in the INI use their defaults.", t->muted);
     lt_ui_layout_row(ui, 1, &w1, 0);
-    lt_ui_radio(ui, "From the INI library", &s->source, 0);
-    lt_ui_radio(ui, "From an INI file", &s->source, 1);
-    if (s->source == 0) {
+    if (lt_inidb_count() > 0 && s->repo_ok) { lt_ui_radio(ui, "Bundled with LibreTune", &s->source, SRC_BUNDLED); }
+    lt_ui_radio(ui, "From the INI library", &s->source, SRC_LIBRARY);
+    lt_ui_radio(ui, "From an INI file", &s->source, SRC_FILE);
+    if (s->source == SRC_BUNDLED) {
+        w2[0] = 120; w2[1] = -1;
+        lt_ui_layout_row(ui, 2, w2, 0);
+        lt_ui_label(ui, "Search");
+        if (lt_ui_text(ui, "migq", s->query, sizeof(s->query), 0) & LT_UI_CHANGED) { s->bquery_set = 1; }
+        bundle_refresh(s);
+        lt_ui_layout_row(ui, 1, &w1, 176);
+        if (s->nb > 0) {
+            lt_ui_listbox_cb(ui, "migbundle", &s->bsel, s->nb, bundle_get, s);
+        } else {
+            lt_ui_label_ex(ui, "No bundled definition matches.", t->muted, LT_UI_ALIGN_LEFT);
+        }
+    } else if (s->source == SRC_LIBRARY) {
         lt_ui_layout_row(ui, 1, &w1, 200);
         if (s->repo_ok && s->repo.n > 0) {
             lt_ui_listbox_cb(ui, "migrepo", &s->repo_sel, (int)s->repo.n, repo_get, s);
@@ -439,17 +565,30 @@ static void stage_pick(lt_app *app, lt_app_dialog *d, mig_dlg *s, int *open)
         lt_ui_layout_row(ui, 1, &w1, 0);
         lt_ui_label_ex(ui, s->err, t->error, LT_UI_ALIGN_LEFT);
     }
-    ok = s->source == 1 ? s->file[0] != '\0' : (s->repo_ok && s->repo.n > 0);
+    ok = s->source == SRC_FILE ? s->file[0] != '\0'
+       : s->source == SRC_BUNDLED ? (s->repo_ok && s->nb > 0)
+       : (s->repo_ok && s->repo.n > 0);
     w2[0] = -1; w2[1] = -1;
     lt_ui_layout_row(ui, 2, w2, 0);
-    if (lt_ui_button_ex(ui, "Review Changes", ok ? LT_UI_BTN_DEFAULT : LT_UI_BTN_DISABLED) && ok) {
-        if (s->source == 1) {
-            (void)stage_report(app, s, s->file);
-        } else {
-            p = lt_ini_repo_path(&s->repo, s->repo.e[s->repo_sel].id);
-            if (p != NULL) { (void)stage_report(app, s, p); }
-            lt_free(p);
+    if (lt_ui_button_ex(ui, s->replace ? "Use This Definition" : "Review Changes",
+                        ok ? LT_UI_BTN_DEFAULT : LT_UI_BTN_DISABLED) && ok) {
+        p = mig_chosen(s);
+        if (p != NULL && s->replace) {
+            lt_ini *probe = lt_ini_load_file(p, NULL);
+            if (probe == NULL) {
+                lt_snprintf(s->err, sizeof(s->err), "Failed to parse INI file: %s", lt_err_get());
+            } else {
+                mig_state *ms = mig_st(app);
+                lt_ini_free(probe);
+                lt_strlcpy(ms->replace_dir, s->dir, sizeof(ms->replace_dir));
+                lt_strlcpy(ms->replace_ini, p, sizeof(ms->replace_ini));
+                ms->replace_pending = 1;
+                *open = 0;
+            }
+        } else if (p != NULL) {
+            (void)stage_report(app, s, p);
         }
+        lt_free(p);
     }
     if (lt_ui_button(ui, "Cancel")) { *open = 0; }
 }
@@ -461,7 +600,7 @@ static void mig_draw(lt_app *app, lt_app_dialog *d)
     mig_dlg *s = (mig_dlg *)d->data;
     int open = d->open, w1 = -1, wf[3], fh;
     if (s == NULL) { mig_init(app, d); s = (mig_dlg *)d->data; }
-    if (lt_ui_modal_begin(ui, s->update && s->stage == 0 ? "Update Project INI"
+    if (lt_ui_modal_begin(ui, s->replace ? "Replace ECU Definition" : s->update && s->stage == 0 ? "Update Project INI"
                               : s->ext ? d->title : "INI Version Migration", 760, 540, &open)) {
         fh = lt_ui_cell_mode(ui) ? 16 : 30;
         if (s->update && s->stage == 0) {

@@ -1,5 +1,6 @@
 /* main.c - LibreTune entry point.
  * Usage: libretune [--backend NAME] [--demo] [--project DIR] [--ini FILE] [--help] [--version]
+ *        [PROJECT_DIR]   (parsed by lt_app_args_parse, src/app/app_args.c)
  * Env: LT_BACKEND, LT_NO_BROWSER, LT_MAX_FRAMES=N (exit after N frames),
  *      LT_SCREENSHOT=out.ppm [LT_SHOT_SIZE=WxH LT_SHOT_FRAMES=N LT_SHOT_OPEN=target
  *      LT_SHOT_CLICK=x,y LT_SHOT_THEME=name]: render offscreen, write PPM, exit.
@@ -22,8 +23,9 @@
 static void usage(void)
 {
     puts("LibreTune " LT_APP_VERSION " - open source ECU tuning software\n"
-         "usage: libretune [options]\n"
-         "  --backend NAME   GUI backend: auto x11 win32 cocoa web tty\n"
+         "usage: libretune [options] [PROJECT_DIR]\n"
+         "  PROJECT_DIR      a project folder (with project.json): same as --project");
+    puts("  --backend NAME   GUI backend: auto x11 win32 cocoa web tty\n"
          "  --demo           start in demo mode (simulated ECU)\n"
          "  --project DIR    open a project directory\n"
          "  --ini FILE       open an ECU definition offline (or demo with --demo)\n"
@@ -35,21 +37,18 @@ static void usage(void)
 
 int main(int argc, char **argv)
 {
-    const char *backend = NULL, *project = NULL, *ini = NULL;
-    int demo = 0, mcp = 0, i, rc = 0;
+    const char *backend, *project, *ini;
+    int demo, mcp, rc;
     lt_app *app;
-    char *shot;
+    char *shot, err[600];
+    lt_app_args args;
 
-    for (i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) { usage(); return 0; }
-        if (strcmp(argv[i], "--version") == 0) { printf("libretune %s (build %s)\n", LT_APP_VERSION, LT_BUILD_ID); return 0; }
-        if (strcmp(argv[i], "--demo") == 0) { demo = 1; }
-        else if (strcmp(argv[i], "--mcp") == 0) { mcp = 1; }
-        else if (strcmp(argv[i], "--backend") == 0 && i + 1 < argc) { backend = argv[++i]; }
-        else if (strcmp(argv[i], "--project") == 0 && i + 1 < argc) { project = argv[++i]; }
-        else if (strcmp(argv[i], "--ini") == 0 && i + 1 < argc) { ini = argv[++i]; }
-        else { fprintf(stderr, "libretune: unknown option '%s' (try --help)\n", argv[i]); return 2; }
-    }
+    rc = lt_app_args_parse(argc, argv, &args, err, sizeof(err));
+    if (rc == 1 && args.help) { usage(); return 0; }
+    if (rc == 1) { printf("libretune %s (build %s)\n", LT_APP_VERSION, LT_BUILD_ID); return 0; }
+    if (rc != 0) { fprintf(stderr, "libretune: %s\n", err); return 2; }
+    backend = args.backend; project = args.project; ini = args.ini;
+    demo = args.demo; mcp = args.mcp;
     lt_app_set_build_id(LT_BUILD_ID);
     app = lt_app_new();
     if (mcp) {

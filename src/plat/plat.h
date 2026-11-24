@@ -66,6 +66,15 @@ char *lt_plat_config_dir(void);
  * platform (portable installs, tests). Returns a malloc'd, created dir or NULL if unset;
  * each lt_plat_config_dir implementation checks it first. */
 char *lt_plat_config_override(void);
+/* The absolute form of a path, for remembering it: relative paths are taken from the current
+ * directory, "." and ".." are folded, symbolic links resolved where the path exists (POSIX
+ * realpath; Windows GetFullPathNameW), separators normalised ('\\' on Windows, '/' elsewhere)
+ * and there is no trailing separator except at a root ("/", "C:\\"). A path that does not exist
+ * is resolved by its text alone. malloc'd; NULL for NULL or "". */
+char *lt_plat_abspath(const char *path);
+/* LT_TRUE when two lt_plat_abspath results name the same path the way the running OS compares
+ * names: byte for byte on POSIX, ignoring ASCII case on Windows. */
+lt_bool lt_plat_path_same(const char *a, const char *b);
 /* user documents dir for projects (e.g. ~/LibreTune Projects); malloc'd */
 char *lt_plat_projects_dir(void);
 char *lt_plat_getenv(const char *name);    /* malloc'd copy or NULL */

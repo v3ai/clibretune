@@ -138,6 +138,9 @@ lt_bool lt_ui_quit_requested(const lt_ui *ui);  /* LT_EV_QUIT seen */
 lt_bool lt_ui_cell_mode(const lt_ui *ui);
 int    lt_ui_row_height(const lt_ui *ui);       /* 24 pixel mode, 16 cell mode (scaled) */
 double lt_ui_now(const lt_ui *ui);
+/* frames begun so far (lt_ui_begin): code drawn only some frames sees whether it was drawn in the
+ * previous one (e.g. a tab that became active again) */
+int    lt_ui_frame_no(const lt_ui *ui);
 lt_rect lt_ui_surface(const lt_ui *ui);         /* whole drawing surface */
 /* surface minus the menu bar / status bar already declared this frame */
 lt_rect lt_ui_client_rect(const lt_ui *ui);

@@ -2,6 +2,7 @@
  * test lives in tests/os/posix/test_plat_pty.c). */
 #include "lt_test.h"
 #include "../src/plat/plat.h"
+#include "../src/plat/plat_priv.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -53,6 +54,82 @@ LT_TEST(test_fs)
     LT_CHECK(lt_plat_remove(d2) == 0);
     LT_CHECK(!lt_plat_is_dir(d2));
     lt_free(d1); lt_free(d2); lt_free(f1); lt_free(f2); lt_free(f3);
+}
+
+static void fold_is(const char *cwd, const char *path, lt_bool win, const char *want)
+{
+    char *r = lt_plat_path_fold(cwd, path, win);
+    LT_CHECK_STR(r, want);
+    lt_free(r);
+}
+
+LT_TEST(test_path_fold)
+{
+    /* POSIX rules */
+    fold_is("/home/u", "proj", LT_FALSE, "/home/u/proj");
+    fold_is("/home/u", "./proj/", LT_FALSE, "/home/u/proj");
+    fold_is("/home/u", "../v//proj/./x/..", LT_FALSE, "/home/v/proj");
+    fold_is("/home/u", "/abs/path/", LT_FALSE, "/abs/path");
+    fold_is("/home/u", "//abs///p", LT_FALSE, "/abs/p");
+    fold_is("/", "../../..", LT_FALSE, "/");
+    fold_is("/home/u", "/", LT_FALSE, "/");
+    fold_is("/", ".", LT_FALSE, "/");
+    fold_is("/a", "b\\c", LT_FALSE, "/a/b\\c");            /* a backslash is a name character */
+    fold_is("", "a/../..", LT_FALSE, "..");
+    fold_is("", "a/..", LT_FALSE, ".");
+    /* Windows rules */
+    fold_is("C:\\Users\\u", "proj", LT_TRUE, "C:\\Users\\u\\proj");
+    fold_is("C:\\Users\\u", "..\\v/proj/", LT_TRUE, "C:\\Users\\v\\proj");
+    fold_is("C:\\Users\\u", "D:/Tunes/./a/../b\\", LT_TRUE, "D:\\Tunes\\b");
+    fold_is("C:\\Users\\u", "\\Data", LT_TRUE, "C:\\Data");
+    fold_is("C:\\Users\\u", "c:sub", LT_TRUE, "C:\\Users\\u\\sub");
+    fold_is("C:\\Users\\u", "E:sub", LT_TRUE, "E:\\sub");
+    fold_is("C:\\Users\\u", "C:\\..\\..", LT_TRUE, "C:\\");
+    fold_is("C:\\", "C:/", LT_TRUE, "C:\\");
+    fold_is("C:\\x", "\\\\server\\share\\dir\\..\\p\\", LT_TRUE, "\\\\server\\share\\p");
+    fold_is("C:\\x", "//server/share/", LT_TRUE, "\\\\server\\share");
+    fold_is("C:\\x", "\\\\server\\share\\..", LT_TRUE, "\\\\server\\share");
+}
+
+LT_TEST(test_abspath)
+{
+    char *a, *b, *c, *d, *rel;
+    LT_CHECK(lt_plat_abspath(NULL) == NULL);
+    LT_CHECK(lt_plat_abspath("") == NULL);
+    rel = lt_path_join(tmp_root, "abs/one");
+    LT_CHECK(lt_plat_mkdirs(rel) == 0);
+    a = lt_plat_abspath(rel);
+    lt_free(rel);
+    rel = lt_path_join(tmp_root, "abs/two/../one/./");      /* "two" does not exist */
+    b = lt_plat_abspath(rel);
+    lt_free(rel);
+    rel = lt_path_join(tmp_root, "abs/missing/x");
+    c = lt_plat_abspath(rel);
+    lt_free(rel);
+    LT_CHECK(a != NULL && b != NULL && c != NULL);
+    if (a != NULL && b != NULL && c != NULL) {
+        size_t n = strlen(a);
+        LT_CHECK(lt_plat_path_same(a, b));
+        LT_CHECK(a[0] == '/' || (a[1] == ':' && a[2] == '\\'));          /* absolute */
+        LT_CHECK(a[n - 1] != '/' && a[n - 1] != '\\');                    /* no trailing separator */
+        LT_CHECK(strstr(a, "..") == NULL);
+        LT_CHECK(strstr(c, "missing") != NULL && strstr(c, "..") == NULL);
+        LT_CHECK(lt_plat_os() == LT_OS_WINDOWS ? strchr(a, '/') == NULL : strchr(a, '\\') == NULL);
+        d = lt_plat_abspath(a);                                            /* idempotent */
+        LT_CHECK(d != NULL && strcmp(a, d) == 0);
+        lt_free(d);
+        LT_CHECK(lt_plat_is_dir(a));
+    }
+    LT_CHECK(!lt_plat_path_same(a, c));
+    LT_CHECK(!lt_plat_path_same(NULL, a));
+    LT_CHECK(lt_plat_path_same("C:\\A", "c:\\a") == (lt_plat_os() == LT_OS_WINDOWS));
+    lt_free(a); lt_free(b); lt_free(c);
+    rel = lt_path_join(tmp_root, "abs/one");
+    (void)lt_plat_remove(rel);
+    lt_free(rel);
+    rel = lt_path_join(tmp_root, "abs");
+    (void)lt_plat_remove(rel);
+    lt_free(rel);
 }
 
 LT_TEST(test_dirs)
@@ -127,6 +204,8 @@ int main(void)
     lt_free(base);
     LT_RUN(test_time);
     LT_RUN(test_fs);
+    LT_RUN(test_path_fold);
+    LT_RUN(test_abspath);
     LT_RUN(test_dirs);
     LT_RUN(test_tcp_echo);
     LT_RUN(test_serial_list);

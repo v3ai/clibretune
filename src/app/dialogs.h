@@ -12,6 +12,9 @@ void lt_dlg_register_settings(lt_app *app);  /* settings dialog */
 void lt_dlg_register_newproj(lt_app *app);   /* new project wizard */
 void lt_dlg_register_misc(lt_app *app);     /* basemap, restore, special tabs */
 void lt_dlg_register_log(lt_app *app);      /* tab kinds datalog, datalog-viewer */
+/* the viewer's file list as last scanned: the number of files (-1: not a drawn viewer tab) and the
+ * selected file's name (NULL for none) */
+int lt_dlg_log_files(const lt_app_tab *tab, const char **sel_name);
 
 /* shared helpers */
 /* case-insensitive substring test; empty needle matches */

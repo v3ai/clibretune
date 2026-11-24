@@ -138,6 +138,7 @@ void lt_ui_set_backend(lt_ui *ui, lt_backend *b) { ui->be = b; }
 lt_bool lt_ui_cell_mode(const lt_ui *ui) { return ui->cell; }
 int lt_ui_row_height(const lt_ui *ui) { return ui->theme.row_h; }
 double lt_ui_now(const lt_ui *ui) { return ui->now; }
+int lt_ui_frame_no(const lt_ui *ui) { return ui->frame_no; }
 lt_bool lt_ui_quit_requested(const lt_ui *ui) { return ui->quit ? LT_TRUE : LT_FALSE; }
 lt_rect lt_ui_surface(const lt_ui *ui) { return lt_rect_make(0, 0, ui->sw, ui->sh); }
 

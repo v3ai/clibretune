@@ -68,6 +68,11 @@ int  lt_feat_csv_export(lt_app *app, const char *path, size_t *count);
 int  lt_feat_csv_import(lt_app *app, const char *path, size_t *imported);
 /* switch the open project to another INI (tune re-resolved, project reopened); tests and scripts */
 int  lt_feat_migrate_apply(lt_app *app, const char *new_ini);
+/* "Replace Definition..." for a project that does not open because its INI is missing or cannot be
+ * read: the definition picker (bundled, library, file) for the project folder dir; the choice is
+ * copied into the project, which is then opened. _apply does that directly (tests, scripts). */
+void lt_feat_migrate_replace(lt_app *app, const char *dir);
+int  lt_feat_migrate_replace_apply(lt_app *app, const char *dir, const char *new_ini);
 /* migration report dialog for rep (a tune file against an INI, lt_migration_compare_tune); the report
  * is taken over (rep is left empty). intro: one paragraph above the report. on_continue (may be NULL)
  * runs from the dialog when the user presses "Continue with Tune" (Cancel runs nothing); it must only
@@ -239,6 +244,27 @@ void lt_feat_devices_connect(lt_app *app);
 /* the start screen shown while no project is open (feat_start.c) */
 void lt_feat_start_register(lt_app_ext *reg);
 void lt_feat_start_draw(lt_app *app, lt_rect area);
+/* take a folder off Recent Projects (the folder is not touched); 1 when it was listed */
+int  lt_feat_start_forget(lt_app *app, const char *dir);
+
+/* A project that cannot be opened, or opens with a definition that looks incomplete
+ * (feat_projerr.c): a dialog that says what is wrong in plain words and where, with a way out.
+ *   LT_PROJERR_PROJECT     project.json missing, empty or invalid; or the folder is gone:
+ *                          Show Folder, Remove from Recent Projects, Close
+ *   LT_PROJERR_DEFINITION  the project's INI is missing or cannot be read: Replace Definition...
+ *                          (lt_feat_migrate_replace), Show Folder, Remove from Recent Projects, Close
+ *   LT_PROJERR_INCOMPLETE  the INI parsed but looks incomplete (lt_ini_looks_incomplete); the project
+ *                          is open: Replace Definition... (Update Project INI), Continue anyway
+ * dir = project folder, file = the file at fault (may equal dir), msg = what is wrong. */
+enum { LT_PROJERR_PROJECT = 0, LT_PROJERR_DEFINITION, LT_PROJERR_INCOMPLETE };
+enum { LT_PROJERR_ACT_SHOW_FOLDER = 1, LT_PROJERR_ACT_FORGET, LT_PROJERR_ACT_REPLACE, LT_PROJERR_ACT_CLOSE };
+void lt_feat_projerr_register(lt_app_ext *reg);
+lt_app_dialog *lt_feat_projerr_show(lt_app *app, int kind, const char *dir, const char *file,
+                                    const char *msg);
+/* what a projerr dialog shows: kind (or -1 when d is not one), message and file; NULL-safe outs */
+int  lt_feat_projerr_info(const lt_app_dialog *d, const char **msg, const char **file);
+/* run a button of the dialog (what a click does); 0 done, -1 not available in this dialog */
+int  lt_feat_projerr_act(lt_app *app, lt_app_dialog *d, int action);
 
 /* Never lose work (feat_guard.c): unburned / unsaved state in the status bar, the questions
  * before quit / close project / disconnect, autosave of the working tune and the offer to

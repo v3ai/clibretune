@@ -116,10 +116,34 @@ void lt_proj_set_str(char **dst, const char *s)
     *dst = n;
 }
 
+/* Windows device names: a file or folder called CON, con.txt or "Nul " opens the device instead
+ * (COM and LPT also with the superscript digits 1-3, which Windows counts as digits) */
+static lt_bool win_reserved(const char *s, size_t n)
+{
+    static const char *const fixed[4] = { "CON", "PRN", "AUX", "NUL" };
+    size_t i;
+    while (n > 0 && s[n - 1] == ' ') n--;
+    for (i = 0; i < 4; i++) {
+        if (n == 3 && lt_strnicmp(s, fixed[i], 3) == 0) return LT_TRUE;
+    }
+    if (n >= 4 && (lt_strnicmp(s, "COM", 3) == 0 || lt_strnicmp(s, "LPT", 3) == 0)) {
+        if (n == 4 && s[3] >= '1' && s[3] <= '9') return LT_TRUE;
+        if (n == 5 && (unsigned char)s[3] == 0xC2 &&
+            ((unsigned char)s[4] == 0xB9 || (unsigned char)s[4] == 0xB2 ||
+             (unsigned char)s[4] == 0xB3)) return LT_TRUE;          /* UTF-8 superscript 1, 2, 3 */
+    }
+    return LT_FALSE;
+}
+
+/* A directory name that works on every OS, whichever one the project is created on (projects
+ * move between machines): characters other than letters, digits, '-', '_', UTF-8 and (when
+ * allowed) spaces become '_'; trailing dots and spaces go (Windows drops them silently, so two
+ * names would meet); a Windows device name gets '_' after it ("con" -> "con_", "LPT1.x" ->
+ * "LPT1_.x"). Never empty: "_" when nothing is left. */
 char *lt_proj_safe_name(const char *name, lt_bool allow_space)
 {
-    size_t n = strlen(name), i;
-    char *r = (char *)lt_malloc(n + 1);
+    size_t n = strlen(name), i, base;
+    char *r = (char *)lt_malloc(n + 3);
     for (i = 0; i < n; i++) {
         unsigned char c = (unsigned char)name[i];
         if ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
@@ -128,7 +152,15 @@ char *lt_proj_safe_name(const char *name, lt_bool allow_space)
         else
             r[i] = '_';
     }
+    while (n > 0 && (r[n - 1] == ' ' || r[n - 1] == '.')) n--;
+    if (n == 0) r[n++] = '_';
     r[n] = '\0';
+    for (base = 0; base < n && r[base] != '.'; base++) {
+    }
+    if (win_reserved(r, base)) {
+        memmove(r + base + 1, r + base, n - base + 1);
+        r[base] = '_';
+    }
     return r;
 }
 

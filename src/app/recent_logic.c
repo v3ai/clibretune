@@ -6,6 +6,7 @@
 #include "recent_logic.h"
 #include "../project/project.h"
 #include "../json/json.h"
+#include "../plat/plat.h"
 
 #define RECENT_MAX 32
 
@@ -43,8 +44,15 @@ int lt_recent_load(lt_recent *r, const char *config_dir)
             lt_snprintf(key, sizeof(key), "p%d.path", i);
             v = lt_props_get(&p, key);
             if (v == NULL || v[0] == '\0') { continue; }
-            e = &r->e[r->n++];
-            lt_strlcpy(e->path, v, sizeof(e->path));
+            e = &r->e[r->n];
+            {   /* entries of older builds may be relative: resolve them, keep the first of two
+                 * spellings of one folder (the newest) */
+                char *a = lt_plat_abspath(v);
+                lt_strlcpy(e->path, a != NULL ? a : v, sizeof(e->path));
+                lt_free(a);
+            }
+            if (lt_recent_find(r, e->path) != NULL) { continue; }
+            r->n++;
             lt_snprintf(key, sizeof(key), "p%d.name", i);
             v = lt_props_get(&p, key);
             lt_strlcpy(e->name, v != NULL ? v : "", sizeof(e->name));
@@ -89,7 +97,7 @@ const lt_recent_ent *lt_recent_find(const lt_recent *r, const char *path)
 {
     int i;
     for (i = 0; i < r->n; i++) {
-        if (strcmp(r->e[i].path, path) == 0) { return &r->e[i]; }
+        if (lt_plat_path_same(r->e[i].path, path)) { return &r->e[i]; }
     }
     return NULL;
 }
@@ -106,7 +114,7 @@ void lt_recent_touch(lt_recent *r, const char *path, const char *name, const cha
     lt_strlcpy(e.signature, signature != NULL ? signature : "", sizeof(e.signature));
     lt_strlcpy(e.opened, stamp != NULL ? stamp : "", sizeof(e.opened));
     for (i = 0; i < r->n; i++) {
-        if (strcmp(r->e[i].path, path) == 0) { at = i; break; }
+        if (lt_plat_path_same(r->e[i].path, path)) { at = i; break; }
     }
     if (at < 0) { at = r->n < RECENT_MAX ? r->n++ : RECENT_MAX - 1; }
     for (i = at; i > 0; i--) { r->e[i] = r->e[i - 1]; }
@@ -117,7 +125,7 @@ int lt_recent_remove(lt_recent *r, const char *path)
 {
     int i, k;
     for (i = 0; i < r->n; i++) {
-        if (strcmp(r->e[i].path, path) == 0) {
+        if (lt_plat_path_same(r->e[i].path, path)) {
             for (k = i; k < r->n - 1; k++) { r->e[k] = r->e[k + 1]; }
             r->n--;
             return 1;
