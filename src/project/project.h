@@ -51,8 +51,9 @@ typedef struct lt_project {
 
 typedef struct lt_project_info { char *name, *path, *signature, *modified; } lt_project_info;
 
-/* Directory where new projects go: $CLIBRETUNE_PROJECTS, else ~/Documents/clibretuneProjects
- * (if ~/Documents exists) else ~/clibretuneProjects (via plat.h env helpers). malloc'd. */
+/* Directory where new projects go: $CLIBRETUNE_PROJECTS (or the old $LIBRETUNE_PROJECTS), else
+ * "clibretune Projects" in ~/Documents (if it exists) or ~ -- or the "LibreTuneProjects" folder
+ * there when only that one exists (made before the rename). malloc'd. */
 char *lt_projects_dir(void);
 /* Create <parent>/<safe name>/ with the INI copied to projectCfg/definition.ini.
  * parent NULL = lt_projects_dir(). LT_EEXIST if the directory exists. */
