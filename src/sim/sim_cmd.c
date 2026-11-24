@@ -250,6 +250,8 @@ int lt_simcmds_match(const lt_simcmds *c, const lt_u8 *b, size_t n, lt_bool exac
     int r, need = 0;
     lt_simcmd_match tmp;
 
+    memset(m, 0, sizeof(*m));
+    m->page = -1;
     if (c == NULL || n == 0) {
         return 0;
     }
