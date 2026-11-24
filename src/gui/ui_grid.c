@@ -268,6 +268,12 @@ lt_bool lt_ui_grid_begin(lt_ui *ui, const char *label, int rows, int cols, int c
     }
     G->cw = cell_w; G->chh = cell_h; G->rhw = row_header_w; G->chdr = col_header_h;
     G->flags_out = 0;
+    if (G->edit_pend) {
+        /* a double click on another cell committed the edit last frame (the caller read that
+         * edit's text then); now the double-clicked cell's edit opens */
+        G->edit_pend = 0;
+        if (!G->edit) { edit_start(ui, G, NULL); }
+    }
     r = ui_next(ui, 0);
     G->view = r;
     G->parent_clip = ui_clip_cur(ui);
@@ -336,6 +342,7 @@ lt_bool lt_ui_grid_begin(lt_ui *ui, const char *label, int rows, int cols, int c
         if (res & UI_PRESS) {
             int cr = clampi(mr, 0, rows - 1), cc = clampi(mc, 0, cols - 1);
             int ctrl = (ui->mods & LT_MOD_CTRL) != 0, shift = (ui->mods & LT_MOD_SHIFT) != 0;
+            int committed = G->edit;
             if (G->edit) { edit_commit(ui, G); }
             if (ctrl) {
                 G->mask[cr * cols + cc] = (lt_u8)!G->mask[cr * cols + cc];
@@ -352,7 +359,10 @@ lt_bool lt_ui_grid_begin(lt_ui *ui, const char *label, int rows, int cols, int c
             G->flags_out |= LT_UI_GRID_CLICKED;
             if (res & UI_DBLCLICK) {
                 G->flags_out |= LT_UI_GRID_ACTIVATED;
-                edit_start(ui, G, NULL);
+                /* the commit is reported this frame with its own cell and text: starting the new
+                 * edit now would overwrite both before the caller reads them */
+                if (committed) { G->edit_pend = 1; ui_request(ui); }
+                else { edit_start(ui, G, NULL); }
             }
         } else if ((res & UI_ACTIVE) && G->drag) {
             int cr = clampi(mr, 0, rows - 1), cc = clampi(mc, 0, cols - 1);

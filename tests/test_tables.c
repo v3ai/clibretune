@@ -811,6 +811,53 @@ LT_TEST(curve_step_display_units)
     lt_app_free(app);
 }
 
+/* double-clicking another cell while typing commits the typed value to the first cell, then
+ * edits the double-clicked one */
+LT_TEST(table_dblclick_while_editing)
+{
+    size_t rows, cols;
+    double b0;
+    lt_app *app = tbl_open("veTableTbl", &rows, &cols);
+    LT_CHECK(rows > 2 && cols > 2);
+    if (rows <= 2 || cols <= 2) { lt_app_free(app); return; }
+    b0 = cell0(app, "veTableTbl", rows - 2, 1);
+    type_real(app, "12");                              /* editing display (0,0) */
+    click(app, 438, 214, LT_MB_LEFT);                  /* display (1,1), twice: double click */
+    click(app, 438, 214, LT_MB_LEFT);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 0), 12.0, 1e-9);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 2, 1), b0, 1e-9);
+    LT_CHECK(lt_ui_text_focused(app->ui));
+    type_real(app, "13");
+    press(app, LT_KEY_ENTER, 0);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 2, 1), 13.0, 1e-9);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 0), 12.0, 1e-9);
+    /* the same while the first edit was opened by a double click */
+    click(app, 370, 192, LT_MB_LEFT);
+    click(app, 370, 192, LT_MB_LEFT);
+    LT_CHECK(lt_ui_text_focused(app->ui));
+    type_real(app, "21");
+    click(app, 438, 214, LT_MB_LEFT);
+    click(app, 438, 214, LT_MB_LEFT);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 0), 21.0, 1e-9);
+    LT_CHECK(lt_ui_text_focused(app->ui));
+    press(app, LT_KEY_ESCAPE, 0);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 2, 1), 13.0, 1e-9);
+    /* worst case: the click on the next cell is itself the second click of a double click (just
+     * across the border from the click that selected the cell being typed into), so the commit
+     * and the new edit happen in the same frame */
+    click(app, 370, 200, LT_MB_LEFT);                  /* display (0,0), near its bottom edge */
+    type_real(app, "33");
+    click(app, 370, 205, LT_MB_LEFT);                  /* display (1,0) */
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 0), 33.0, 1e-9);
+    LT_CHECK(lt_ui_text_focused(app->ui));
+    LT_CHECK(strcmp(app->status, "Not a number") != 0);
+    type_real(app, "34");
+    press(app, LT_KEY_ENTER, 0);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 2, 0), 34.0, 1e-9);
+    LT_CHECK_NEAR(cell0(app, "veTableTbl", rows - 1, 0), 33.0, 1e-9);
+    lt_app_free(app);
+}
+
 int main(void)
 {
     LT_RUN(autotune_send_undo);
@@ -832,5 +879,6 @@ int main(void)
     LT_RUN(table_clamp_explained);
     LT_RUN(curve_clamp_explained);
     LT_RUN(curve_step_display_units);
+    LT_RUN(table_dblclick_while_editing);
     LT_TEST_MAIN_END
 }
