@@ -111,6 +111,57 @@ int lt_plat_write_atomic(const char *path, const void *data, size_t len)
     return 0;
 }
 
+/* ANSI code page <-> UTF-16 like the *A file functions the rest of this layer uses, so the result
+ * opens with them; NULL on failure */
+static WCHAR *to_wide(const char *s)
+{
+    int n = MultiByteToWideChar(CP_ACP, 0, s, -1, NULL, 0);
+    size_t bytes = 0;
+    WCHAR *w;
+    if (n <= 0 || !lt_mul_size((size_t)n, sizeof(WCHAR), &bytes)) return NULL;
+    w = (WCHAR *)lt_malloc(bytes);
+    if (MultiByteToWideChar(CP_ACP, 0, s, -1, w, n) != n) {
+        lt_free(w);
+        return NULL;
+    }
+    return w;
+}
+
+static char *from_wide(const WCHAR *w)
+{
+    int n = WideCharToMultiByte(CP_ACP, 0, w, -1, NULL, 0, NULL, NULL);
+    char *s;
+    if (n <= 0) return NULL;
+    s = (char *)lt_malloc((size_t)n);
+    if (WideCharToMultiByte(CP_ACP, 0, w, -1, s, n, NULL, NULL) != n) {
+        lt_free(s);
+        return NULL;
+    }
+    return s;
+}
+
+char *lt_plat_abspath(const char *path)
+{
+    WCHAR *w, *full = NULL;
+    DWORD n = 0, got = 0;
+    size_t bytes = 0;
+    char *a = NULL, *r;
+    if (path == NULL || path[0] == '\0') return NULL;
+    w = to_wide(path);
+    if (w != NULL) n = GetFullPathNameW(w, 0, NULL, NULL);
+    if (n > 0 && lt_mul_size((size_t)n, sizeof(WCHAR), &bytes)) {
+        full = (WCHAR *)lt_malloc(bytes);
+        got = GetFullPathNameW(w, n, full, NULL);
+        if (got > 0 && got < n) a = from_wide(full);
+    }
+    lt_free(full);
+    lt_free(w);
+    /* GetFullPathName folds "." and ".."; the fold normalises the separators and the end */
+    r = lt_plat_path_fold("", a != NULL ? a : path, LT_TRUE);
+    lt_free(a);
+    return r;
+}
+
 int lt_plat_list_dir(const char *path, char ***names)
 {
     WIN32_FIND_DATAA fd;

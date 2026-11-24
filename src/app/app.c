@@ -65,6 +65,14 @@ static void settings_defaults(lt_app_settings *s)
     lt_strlcpy(s->commit_fmt, "Tune saved on {date} at {time}", sizeof(s->commit_fmt));
 }
 
+/* the form a project folder is remembered and compared in: absolute, "." and ".." resolved */
+static void abs_dir(const char *dir, char *out, size_t cap)
+{
+    char *a = lt_plat_abspath(dir);
+    lt_strlcpy(out, a != NULL ? a : dir, cap);
+    lt_free(a);
+}
+
 static char *settings_path(lt_app *app)
 {
     if (app->config_dir == NULL) { return NULL; }
@@ -119,18 +127,22 @@ void lt_app_settings_load(lt_app *app)
         v = lt_props_get(&p, "backend");
         if (v != NULL) { lt_strlcpy(s->backend, v, sizeof(s->backend)); }
         v = lt_props_get(&p, "last_project");
-        if (v != NULL) { lt_strlcpy(s->last_project, v, sizeof(s->last_project)); }
+        if (v != NULL && v[0] != '\0') { abs_dir(v, s->last_project, sizeof(s->last_project)); }
         v = lt_props_get(&p, "port");
         if (v != NULL) { lt_strlcpy(s->port, v, sizeof(s->port)); }
         v = lt_props_get(&p, "heatmap");
         if (v != NULL) { lt_strlcpy(s->heatmap, v, sizeof(s->heatmap)); }
+        /* older builds stored the paths as given: resolve them, and one project reached by two
+         * spellings ("proj", "./proj/", "../x/proj") is listed once */
         n = 0;
         for (i = 0; i < 8; i++) {
+            int k;
             lt_snprintf(key, sizeof(key), "recent%d", i);
             v = lt_props_get(&p, key);
-            if (v != NULL && v[0] != '\0') {
-                lt_strlcpy(s->recent[n++], v, sizeof(s->recent[0]));
-            }
+            if (v == NULL || v[0] == '\0') { continue; }
+            abs_dir(v, s->recent[n], sizeof(s->recent[0]));
+            for (k = 0; k < n && !lt_plat_path_same(s->recent[k], s->recent[n]); k++) {}
+            if (k == n) { n++; }
         }
         s->n_recent = n;
     }
@@ -203,12 +215,14 @@ void lt_app_apply_theme(lt_app *app, const char *name)
     }
 }
 
-void lt_app_recent_add(lt_app *app, const char *dir)
+void lt_app_recent_add(lt_app *app, const char *dir_in)
 {
     lt_app_settings *s = &app->settings;
+    char dir[sizeof(s->recent[0])];
     int i, j;
+    abs_dir(dir_in, dir, sizeof(dir));
     for (i = 0; i < s->n_recent; i++) {
-        if (strcmp(s->recent[i], dir) == 0) { break; }
+        if (lt_plat_path_same(s->recent[i], dir)) { break; }
     }
     if (i == s->n_recent) {
         if (s->n_recent < 8) { s->n_recent++; }
@@ -1014,11 +1028,12 @@ static void keep_unreadable_tune(lt_app *app)
     lt_free(cur);
 }
 
-int lt_app_open_project(lt_app *app, const char *dir)
+int lt_app_open_project(lt_app *app, const char *dir_in)
 {
     lt_project p;
     lt_ini *ini;
-    char *ip;
+    char *ip, dir[sizeof(app->settings.recent[0])];
+    abs_dir(dir_in, dir, sizeof(dir));          /* project.path, recents and tabs see one spelling */
     if (lt_project_open(dir, &p) < 0) {
         lt_app_toast(app, 3, "Cannot open project: %s", lt_err_get());
         return -1;

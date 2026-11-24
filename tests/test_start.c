@@ -21,34 +21,67 @@ LT_TEST(test_store)
     const char *dir = "build/test_start_cfg";
     lt_recent r, r2;
     char *f = lt_path_join(dir, "recent.conf");
+    /* stored paths are absolute (lt_plat_abspath), so the test uses absolute ones too */
+    char *pa = lt_plat_abspath("build/test_start_p/a"), *pb = lt_plat_abspath("build/test_start_p/b");
     lt_plat_mkdirs(dir);
     if (lt_file_exists(f)) { lt_plat_remove(f); }
     lt_recent_init(&r);
     LT_CHECK(lt_recent_load(&r, dir) == 0);          /* missing file: empty */
     LT_CHECK_INT(r.n, 0);
-    lt_recent_touch(&r, "/p/a", "Alpha", "rusEFI master.2024.05.03.proteus_f4.1", "2026-11-01 10:00:00");
-    lt_recent_touch(&r, "/p/b", "Beta", "speeduino 202402", "2026-11-02 10:00:00");
-    lt_recent_touch(&r, "/p/a", "Alpha 2", "rusEFI master.2024.05.03.proteus_f4.1", "2026-11-03 10:00:00");
+    lt_recent_touch(&r, pa, "Alpha", "rusEFI master.2024.05.03.proteus_f4.1", "2026-11-01 10:00:00");
+    lt_recent_touch(&r, pb, "Beta", "speeduino 202402", "2026-11-02 10:00:00");
+    lt_recent_touch(&r, pa, "Alpha 2", "rusEFI master.2024.05.03.proteus_f4.1", "2026-11-03 10:00:00");
     LT_CHECK_INT(r.n, 2);
-    LT_CHECK_STR(r.e[0].path, "/p/a");               /* newest first, no duplicate */
+    LT_CHECK_STR(r.e[0].path, pa);                   /* newest first, no duplicate */
     LT_CHECK_STR(r.e[0].name, "Alpha 2");
-    LT_CHECK_STR(r.e[1].path, "/p/b");
+    LT_CHECK_STR(r.e[1].path, pb);
     LT_CHECK(lt_recent_save(&r, dir) == 0);
     lt_recent_init(&r2);
     LT_CHECK(lt_recent_load(&r2, dir) == 0);
     LT_CHECK_INT(r2.n, 2);
-    LT_CHECK(lt_recent_find(&r2, "/p/b") != NULL);
-    if (lt_recent_find(&r2, "/p/b") != NULL) {
-        LT_CHECK_STR(lt_recent_find(&r2, "/p/b")->opened, "2026-11-02 10:00:00");
-        LT_CHECK_STR(lt_recent_find(&r2, "/p/b")->signature, "speeduino 202402");
+    LT_CHECK(lt_recent_find(&r2, pb) != NULL);
+    if (lt_recent_find(&r2, pb) != NULL) {
+        LT_CHECK_STR(lt_recent_find(&r2, pb)->opened, "2026-11-02 10:00:00");
+        LT_CHECK_STR(lt_recent_find(&r2, pb)->signature, "speeduino 202402");
     }
-    LT_CHECK_INT(lt_recent_remove(&r2, "/p/a"), 1);
-    LT_CHECK_INT(lt_recent_remove(&r2, "/p/a"), 0);
+    LT_CHECK_INT(lt_recent_remove(&r2, pa), 1);
+    LT_CHECK_INT(lt_recent_remove(&r2, pa), 0);
     LT_CHECK_INT(r2.n, 1);
-    LT_CHECK(lt_recent_find(&r2, "/p/a") == NULL);
+    LT_CHECK(lt_recent_find(&r2, pa) == NULL);
     lt_recent_free(&r2);
     lt_recent_free(&r);
-    lt_free(f);
+    lt_free(f); lt_free(pa); lt_free(pb);
+}
+
+/* recent.conf of an older build: relative paths are resolved on load and two spellings of one
+ * folder become one entry (the first, newest one keeps its details) */
+LT_TEST(test_migrate)
+{
+    const char *dir = "build/test_start_mig";
+    const char *conf = "p0.path=build/test_start_m/proj\n"
+                       "p0.name=Newest\n"
+                       "p0.opened=2026-11-03 10:00:00\n"
+                       "p1.path=build/test_start_m/x/../proj/\n"
+                       "p1.name=Older spelling\n"
+                       "p2.path=build/test_start_m/./other\n"
+                       "p2.name=Other\n";
+    char *f = lt_path_join(dir, "recent.conf");
+    char *want = lt_plat_abspath("build/test_start_m/proj"), *other = lt_plat_abspath("build/test_start_m/other");
+    lt_recent r;
+    lt_plat_mkdirs(dir);
+    LT_CHECK(lt_file_write(f, conf, strlen(conf)) == 0);
+    lt_recent_init(&r);
+    LT_CHECK(lt_recent_load(&r, dir) == 0);
+    LT_CHECK_INT(r.n, 2);
+    if (r.n == 2) {
+        LT_CHECK_STR(r.e[0].path, want);
+        LT_CHECK_STR(r.e[0].name, "Newest");
+        LT_CHECK_STR(r.e[0].opened, "2026-11-03 10:00:00");
+        LT_CHECK_STR(r.e[1].path, other);
+        LT_CHECK_STR(r.e[1].name, "Other");
+    }
+    lt_recent_free(&r);
+    lt_free(f); lt_free(want); lt_free(other);
 }
 
 LT_TEST(test_cap)
@@ -125,6 +158,7 @@ LT_TEST(test_age)
 int main(void)
 {
     LT_RUN(test_store);
+    LT_RUN(test_migrate);
     LT_RUN(test_cap);
     LT_RUN(test_read_project);
     LT_RUN(test_ecu_label);

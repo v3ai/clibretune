@@ -238,3 +238,123 @@ int lt_plat_serial_info_by_name(lt_serial_info **out)
     *out = a;
     return n;
 }
+
+/* ---- path folding (the universal half of lt_plat_abspath) ---- */
+static lt_bool drive_at(const char *s)
+{
+    return ((s[0] >= 'A' && s[0] <= 'Z') || (s[0] >= 'a' && s[0] <= 'z')) && s[1] == ':';
+}
+
+/* length of the root of a path with normalised separators: "/" (1), "C:\\" (3),
+ * "\\\\server\\share" (without the separator after it); 0 = relative */
+static size_t root_len(const char *s, lt_bool win)
+{
+    size_t i;
+    if (!win) return s[0] == '/' ? 1u : 0u;
+    if (drive_at(s) && s[2] == '\\') return 3;
+    if (s[0] == '\\' && s[1] == '\\') {
+        i = 2;
+        while (s[i] != '\0' && s[i] != '\\') i++;          /* server */
+        if (s[i] == '\\') i++;
+        while (s[i] != '\0' && s[i] != '\\') i++;          /* share */
+        return i;
+    }
+    return 0;
+}
+
+static char *norm_seps(const char *s, lt_bool win)
+{
+    char *r = lt_strdup(s), *q;
+    if (win) {
+        for (q = r; *q != '\0'; q++) {
+            if (*q == '/') *q = '\\';
+        }
+    }
+    return r;
+}
+
+static int up_char(int c)
+{
+    return c >= 'a' && c <= 'z' ? c - 'a' + 'A' : c;
+}
+
+char *lt_plat_path_fold(const char *cwd, const char *path, lt_bool win)
+{
+    char sep = win ? '\\' : '/';
+    char *p = norm_seps(path != NULL ? path : "", win), *c = norm_seps(cwd != NULL ? cwd : "", win);
+    char *full, *out;
+    size_t rl = 0, n = 0, k = 0, i = 0, start = 0, len = 0, base = 0, rootk = 0, cap = 0;
+    lt_buf b;
+
+    lt_buf_init(&b);
+    if (root_len(p, win) > 0) {
+        lt_buf_puts(&b, p);
+    } else if (win && p[0] == '\\') {                       /* root of the current drive */
+        lt_buf_append(&b, c, root_len(c, win));
+        lt_buf_putc(&b, sep);
+        lt_buf_puts(&b, p + 1);
+    } else if (win && drive_at(p)) {                        /* "X:name": relative to drive X */
+        if (drive_at(c) && up_char((unsigned char)c[0]) == up_char((unsigned char)p[0])) {
+            lt_buf_puts(&b, c);
+        } else {
+            lt_buf_append(&b, p, 2);
+        }
+        lt_buf_putc(&b, sep);
+        lt_buf_puts(&b, p + 2);
+    } else {
+        lt_buf_puts(&b, c);
+        if (c[0] != '\0') lt_buf_putc(&b, sep);
+        lt_buf_puts(&b, p);
+    }
+    lt_free(p);
+    lt_free(c);
+    full = lt_buf_take(&b);
+    n = strlen(full);
+    rl = root_len(full, win);
+    if (!lt_add_size(n, 4, &cap)) cap = n;                   /* n bytes are in memory already */
+    out = (char *)lt_malloc(cap);
+    memcpy(out, full, rl);
+    k = rl;
+    if (k > 0 && out[k - 1] != sep) out[k++] = sep;          /* "\\\\server\\share" + '\\' */
+    rootk = base = k;
+    i = rl;
+    while (i < n) {
+        start = i;
+        while (i < n && full[i] != sep) i++;
+        len = i - start;
+        if (i < n) i++;
+        if (len == 0 || (len == 1 && full[start] == '.')) continue;
+        if (len == 2 && full[start] == '.' && full[start + 1] == '.') {
+            if (k > base) {                                  /* drop the last component */
+                k--;
+                while (k > base && out[k - 1] != sep) k--;
+            } else if (rootk == 0) {                         /* relative, nothing to drop */
+                out[k++] = '.';
+                out[k++] = '.';
+                out[k++] = sep;
+                base = k;
+            }                                                /* else ".." at the root stays */
+            continue;
+        }
+        memcpy(out + k, full + start, len);
+        k += len;
+        out[k++] = sep;
+    }
+    if (k > rootk) {
+        k--;                                                 /* no trailing separator */
+    } else if (k > 0 && full[rl - 1] != sep) {
+        k--;                                                 /* a bare UNC root */
+    } else if (k == 0) {
+        out[k++] = '.';
+    }
+    out[k] = '\0';
+    lt_free(full);
+    return out;
+}
+
+lt_bool lt_plat_path_same(const char *a, const char *b)
+{
+    if (a == NULL || b == NULL) return LT_FALSE;
+    if (lt_plat_os() == LT_OS_WINDOWS) return lt_stricmp(a, b) == 0 ? LT_TRUE : LT_FALSE;
+    return strcmp(a, b) == 0 ? LT_TRUE : LT_FALSE;
+}
