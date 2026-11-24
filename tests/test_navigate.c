@@ -21,8 +21,8 @@ static void sandbox(const char *tag)
     for (i = 0; ts[i] != '\0'; i++) { if (ts[i] < '0' || ts[i] > '9') { ts[i] = '_'; } }
     lt_snprintf(cfg, sizeof(cfg), "build/test_navigate_%s_%s_%lu", tag, ts, (unsigned long)lt_plat_now_ms());
     (void)lt_plat_mkdirs(cfg);
-    LT_CHECK(lt_plat_setenv("XDG_CONFIG_HOME", cfg) == 0);
-    LT_CHECK(lt_plat_setenv("CLIBRETUNE_CONFIG_DIR", "") == 0);
+    /* the override, not XDG_CONFIG_HOME: Windows ignores XDG and would share %APPDATA% */
+    LT_CHECK(lt_plat_setenv("CLIBRETUNE_CONFIG_DIR", cfg) == 0);
 }
 
 static int has_dialog(const lt_app *app, const char *kind)

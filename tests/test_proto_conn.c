@@ -192,6 +192,10 @@ static void modern_cmd(fdev *d, const lt_u8 *p, size_t n)
             pg = (unsigned)lt_rd_be(p + 1, 2);
             off = (unsigned)lt_rd_be(p + 3, 2);
             cnt = (unsigned)lt_rd_be(p + 5, 2);
+            if (pg > 2 || off + cnt > d->psize[pg]) {           /* not one of this device's pages */
+                reply_status(d, 0x84, NULL, 0);
+                break;
+            }
             crc = lt_proto_crc32(d->page[pg] + off, cnt);
             if (d->crc_bad) {
                 crc ^= 0x100;
