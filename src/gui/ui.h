@@ -298,6 +298,14 @@ void    lt_ui_region_end(lt_ui *ui);
  * Returns LT_TRUE while the divider moves. */
 lt_bool lt_ui_splitter(lt_ui *ui, const char *id, lt_rect area, int vertical, int *size,
                        int min_a, int min_b, lt_rect *a, lt_rect *b);
+/* same, returning LT_UI_SPLIT_* bits: the divider was dragged to a new place (a size merely
+ * clamped to the area is not a move), a drag ended (mouse released) this frame, the divider was
+ * double-clicked (no drag then; callers reset *size to a default) */
+#define LT_UI_SPLIT_MOVED    1
+#define LT_UI_SPLIT_RELEASED 2
+#define LT_UI_SPLIT_DOUBLE   4
+int     lt_ui_splitter_ex(lt_ui *ui, const char *id, lt_rect area, int vertical, int *size,
+                          int min_a, int min_b, lt_rect *a, lt_rect *b);
 /* Menubar / statusbar occupy the top / bottom edge of the surface */
 lt_bool lt_ui_menubar_begin(lt_ui *ui);
 void    lt_ui_menubar_end(lt_ui *ui);

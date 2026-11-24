@@ -1191,7 +1191,10 @@ static void shortcuts(lt_app *app)
     int i;
     if (lt_hk_pressed(app, "file.quit")) { lt_app_request_quit(app); }
     if (lt_hk_pressed(app, "file.new")) { lt_feat_guard_switch(app, sw_new, ""); }
-    if (lt_hk_pressed(app, "view.sidebar")) { app->settings.sidebar_on = !app->settings.sidebar_on; }
+    if (lt_hk_pressed(app, "view.sidebar")) {
+        app->settings.sidebar_on = !app->settings.sidebar_on;
+        lt_app_settings_save(app);
+    }
     lt_ext_shortcuts(app);
     if (lt_hk_pressed(app, "conn.connect")) { lt_app_connect(app); }
     if (lt_hk_pressed(app, "conn.settings")) { (void)lt_app_connect_dialog(app); }
@@ -1275,15 +1278,20 @@ static void app_dialogs(lt_app *app)
     }
 }
 
-/* sidebar width is stored in logical px; the splitter works in device px */
+/* sidebar width is stored in logical px; the splitter works in device px. Drag the border
+ * (180 px .. half the window), double-click it for the default width; the width is saved when
+ * the drag ends. */
+#define SIDEBAR_DEF_W 260
+#define SIDEBAR_MIN_W 180
 static void sidebar_split(lt_app *app, lt_rect cr, lt_rect *side, lt_rect *main_r)
 {
     lt_ui *ui = app->ui;
-    int dev = lt_ui_px(ui, app->settings.sidebar_w), old = dev;
+    int dev = lt_ui_px(ui, app->settings.sidebar_w), old = dev, fl;
+    int sw = lt_ui_theme(ui)->splitter_w;
     if (lt_ui_cell_mode(ui)) {
         /* terminal: a quarter of the width (22..36 columns) until the user sets one: drag the
-         * border or press Ctrl+Left / Ctrl+Right; the choice is kept in the settings */
-        static int dirty = 0;
+         * border or press Ctrl+Left / Ctrl+Right (double-click: automatic again); the choice is
+         * kept in the settings */
         int cols = cr.w / 8, cell_w, before;
         cell_w = app->settings.sidebar_cols > 0 ? app->settings.sidebar_cols * 8
                                                 : LT_CLAMP(cols * 24 / 100, 22, 36) * 8;
@@ -1291,13 +1299,34 @@ static void sidebar_split(lt_app *app, lt_rect cr, lt_rect *side, lt_rect *main_
         if (lt_ui_key_pressed(ui, LT_KEY_LEFT, LT_MOD_CTRL) && !lt_ui_text_focused(ui)) { cell_w -= 16; }
         if (lt_ui_key_pressed(ui, LT_KEY_RIGHT, LT_MOD_CTRL) && !lt_ui_text_focused(ui)) { cell_w += 16; }
         cell_w = LT_CLAMP(cell_w, 14 * 8, LT_MAX(14 * 8, LT_MIN(cr.w / 2, 80 * 8)));
-        lt_ui_splitter(ui, "sidebar", cr, 1, &cell_w, 14 * 8, LT_MAX(14 * 8, LT_MIN(cr.w / 2, 80 * 8)), side, main_r);
-        if (cell_w != before) { app->settings.sidebar_cols = cell_w / 8; dirty = 1; lt_ui_request_redraw(ui); }
-        if (dirty && !lt_ui_mouse_down(ui, LT_MB_LEFT) && !app->headless) { dirty = 0; lt_app_settings_save(app); }
+        fl = lt_ui_splitter_ex(ui, "sidebar", cr, 1, &cell_w, 14 * 8, LT_MAX(14 * 8, LT_MIN(cr.w / 2, 80 * 8)),
+                               side, main_r);
+        if (fl & LT_UI_SPLIT_DOUBLE) {
+            app->settings.sidebar_cols = 0;
+            lt_app_settings_save(app);
+            lt_ui_request_redraw(ui);
+        } else if (cell_w != before) {
+            app->settings.sidebar_cols = cell_w / 8;
+            lt_ui_request_redraw(ui);
+            if (!lt_ui_mouse_down(ui, LT_MB_LEFT)) { lt_app_settings_save(app); }    /* the keys */
+        }
+        if (fl & LT_UI_SPLIT_RELEASED) { lt_app_settings_save(app); }
         return;
     }
-    lt_ui_splitter(ui, "sidebar", cr, 1, &dev, lt_ui_px(ui, 160), cr.w / 2, side, main_r);
-    if (dev != old) { app->settings.sidebar_w = (int)((lt_s64)dev * 100 / lt_ui_scale_pct(ui)); }
+    fl = lt_ui_splitter_ex(ui, "sidebar", cr, 1, &dev, lt_ui_px(ui, SIDEBAR_MIN_W), cr.w - cr.w / 2 - sw,
+                           side, main_r);
+    if (fl & LT_UI_SPLIT_DOUBLE) {
+        app->settings.sidebar_w = SIDEBAR_DEF_W;
+        lt_app_settings_save(app);
+        lt_ui_request_redraw(ui);
+        return;
+    }
+    /* only a drag changes the setting: clamped to a small window, the width comes back in a
+     * bigger one */
+    if ((fl & LT_UI_SPLIT_MOVED) && dev != old) {
+        app->settings.sidebar_w = (int)((lt_s64)dev * 100 / lt_ui_scale_pct(ui));
+    }
+    if (fl & LT_UI_SPLIT_RELEASED) { lt_app_settings_save(app); }
 }
 
 /* ------------------------------------------------------------------ */

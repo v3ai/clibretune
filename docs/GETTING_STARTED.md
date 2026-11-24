@@ -113,6 +113,8 @@ connect and read it.
 ## 4. Find your way around
 
 - The sidebar is the ECU's own menu tree from its INI; **Ctrl+K** searches it and **Enter** opens the first match.
+  Drag its right edge to make it wider or narrower (double-click the edge for the default width);
+  **F9** hides and shows it. Both are remembered.
 - Tables: arrow keys or the mouse select, type a number to set, `+`/`-` step, `=` average,
   `/` interpolate, `s` smooth, Ctrl+Z undo. Right-click for every other operation, including the 3D view.
 - **View > Dashboard** (Ctrl+D) shows gauges; the Designer button edits them.

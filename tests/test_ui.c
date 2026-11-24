@@ -1436,11 +1436,11 @@ LT_TEST(test_tab_scrolls_focus_into_view)
 }
 
 /* ---- splitter ---------------------------------------------------- */
-static int s_split;
+static int s_split, s_split_fl;
 static void scene_split(lt_ui *ui)
 {
     lt_rect a, b;
-    lt_ui_splitter(ui, "sp", lt_rect_make(0, 0, 400, 200), 1, &s_split, 60, 80, &a, &b);
+    s_split_fl |= lt_ui_splitter_ex(ui, "sp", lt_rect_make(0, 0, 400, 200), 1, &s_split, 60, 80, &a, &b);
     R[0] = a; R[1] = b;
 }
 
@@ -1448,6 +1448,7 @@ LT_TEST(test_splitter)
 {
     reset_state();
     s_split = 100;
+    s_split_fl = 0;
     h_open(400, 200, 0);
     H.scene = scene_split;
     frames(3);
@@ -1460,8 +1461,28 @@ LT_TEST(test_splitter)
     LT_CHECK_INT(s_split, 60);                   /* min_a */
     mouse_move(399, 50); frame();
     LT_CHECK_INT(s_split, 400 - 80 - lt_ui_theme(H.ui)->splitter_w);   /* min_b */
+    LT_CHECK(s_split_fl == LT_UI_SPLIT_MOVED);
     mouse_up(399, 50, LT_MB_LEFT, 0); frame();
     LT_CHECK(R[0].w == s_split && R[0].w + lt_ui_theme(H.ui)->splitter_w + R[1].w == 400);
+    LT_CHECK(s_split_fl == (LT_UI_SPLIT_MOVED | LT_UI_SPLIT_RELEASED));
+    /* a size clamped to a smaller area is no move */
+    s_split_fl = 0;
+    s_split = 390;
+    frame();
+    LT_CHECK(s_split_fl == 0 && s_split == 400 - 80 - lt_ui_theme(H.ui)->splitter_w);
+    /* double-click: reported, and the second press does not start a drag */
+    s_split = 150;
+    frame();
+    mouse_move(152, 50); frame();
+    mouse_down(152, 50, LT_MB_LEFT, 0); frame();
+    mouse_up(152, 50, LT_MB_LEFT, 0); frame();
+    s_split_fl = 0;
+    mouse_down(152, 50, LT_MB_LEFT, 0); frame();
+    LT_CHECK(s_split_fl & LT_UI_SPLIT_DOUBLE);
+    s_split = 100;                               /* what a caller does with it */
+    mouse_move(250, 50); frame();
+    mouse_up(250, 50, LT_MB_LEFT, 0); frame();
+    LT_CHECK_INT(s_split, 100);
     h_close();
 }
 

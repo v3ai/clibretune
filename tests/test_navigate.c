@@ -144,9 +144,127 @@ LT_TEST(ini_menu_access_keys)
     lt_app_free(app);
 }
 
+/* ---- input helpers: one event, one frame (the clock moves 80 ms per frame) ---- */
+static double g_t = 10000.0;
+
+static void run1(lt_app *app)
+{
+    lt_ui_begin(app->ui, &app->gfx, g_t);
+    lt_app_frame(app);
+    lt_ui_end(app->ui);
+    g_t += 80.0;
+}
+
+static void mouse(lt_app *app, int type, int x, int y)
+{
+    lt_event ev;
+    memset(&ev, 0, sizeof(ev));
+    ev.type = type; ev.x = x; ev.y = y; ev.button = LT_MB_LEFT;
+    lt_ui_input(app->ui, &ev);
+    run1(app);
+}
+
+static void key(lt_app *app, int k, int mods)
+{
+    lt_event ev;
+    memset(&ev, 0, sizeof(ev));
+    ev.type = LT_EV_KEY_DOWN; ev.key = k; ev.mods = mods;
+    lt_ui_input(app->ui, &ev);
+    run1(app);
+}
+
+static void text(lt_app *app, const char *s)
+{
+    lt_event ev;
+    for (; *s != '\0'; s++) {
+        memset(&ev, 0, sizeof(ev));
+        ev.type = LT_EV_KEY_DOWN; ev.key = (unsigned char)*s;
+        lt_ui_input(app->ui, &ev);
+        memset(&ev, 0, sizeof(ev));
+        ev.type = LT_EV_TEXT; ev.text[0] = *s;
+        lt_ui_input(app->ui, &ev);
+        run1(app);
+    }
+}
+
+static void drag(lt_app *app, int x0, int y, int x1)
+{
+    mouse(app, LT_EV_MOUSE_MOVE, x0, y);
+    mouse(app, LT_EV_MOUSE_DOWN, x0, y);
+    mouse(app, LT_EV_MOUSE_MOVE, (x0 + x1) / 2, y);
+    mouse(app, LT_EV_MOUSE_MOVE, x1, y);
+    mouse(app, LT_EV_MOUSE_UP, x1, y);
+    mouse(app, LT_EV_MOUSE_MOVE, x1 + 300, y + 100);
+}
+
+/* x of the sidebar's border (the splitter bar) in device px */
+static int edge_x(lt_app *app)
+{
+    return lt_ui_px(app->ui, app->settings.sidebar_w) + lt_ui_theme(app->ui)->splitter_w / 2;
+}
+
+/* ---- the sidebar: drag to resize, double-click resets, width and F9 state are kept ---- */
+LT_TEST(sidebar_resize)
+{
+    char ini[512];
+    lt_app *app;
+    int w;
+    sandbox("side");
+    app = lt_app_new();
+    LT_CHECK(app->settings.sidebar_w == 260 && app->settings.sidebar_on);
+    LT_CHECK(lt_app_start_demo(app, lt_app_find_demo_ini(ini, sizeof(ini))) == 0);
+    LT_CHECK(lt_app_screenshot(app, "build/test_navigate_side.ppm", 1280, 800, 2) == 0);
+    drag(app, edge_x(app), 400, edge_x(app) + 140);
+    w = app->settings.sidebar_w;
+    LT_CHECK(w >= 395 && w <= 405);
+    /* saved when the drag ends */
+    app->settings.sidebar_w = 0;
+    lt_app_settings_load(app);
+    LT_CHECK(app->settings.sidebar_w == w);
+    /* at most half the window, at least 180 px */
+    drag(app, edge_x(app), 400, 1200);
+    LT_CHECK(app->settings.sidebar_w >= 630 && app->settings.sidebar_w <= 640);
+    drag(app, edge_x(app), 400, 20);
+    LT_CHECK(app->settings.sidebar_w == 180);
+    /* double-click: the default width, saved */
+    drag(app, edge_x(app), 400, 500);
+    LT_CHECK(app->settings.sidebar_w > 400);
+    mouse(app, LT_EV_MOUSE_MOVE, edge_x(app), 300);
+    mouse(app, LT_EV_MOUSE_DOWN, edge_x(app), 300);
+    mouse(app, LT_EV_MOUSE_UP, edge_x(app), 300);
+    mouse(app, LT_EV_MOUSE_DOWN, edge_x(app), 300);
+    mouse(app, LT_EV_MOUSE_MOVE, edge_x(app) + 40, 300);     /* no drag after the double-click */
+    mouse(app, LT_EV_MOUSE_UP, edge_x(app) + 40, 300);
+    LT_CHECK(app->settings.sidebar_w == 260);
+    app->settings.sidebar_w = 0;
+    lt_app_settings_load(app);
+    LT_CHECK(app->settings.sidebar_w == 260);
+    /* at 200% the limits are the same logical sizes */
+    lt_plat_setenv("LT_SCALE", "200");
+    LT_CHECK(lt_app_screenshot(app, "build/test_navigate_side.ppm", 1920, 1080, 2) == 0);
+    lt_plat_setenv("LT_SCALE", "");
+    drag(app, edge_x(app), 400, 10);
+    LT_CHECK(app->settings.sidebar_w == 180);
+    drag(app, edge_x(app), 400, 1900);
+    LT_CHECK(app->settings.sidebar_w >= 470 && app->settings.sidebar_w <= 480);
+    /* a smaller window draws it narrower but keeps the setting */
+    LT_CHECK(lt_app_screenshot(app, "build/test_navigate_side.ppm", 800, 600, 2) == 0);
+    LT_CHECK(app->settings.sidebar_w >= 470);
+    /* F9 hides it, and that is kept too */
+    key(app, LT_KEY_F9, 0);
+    LT_CHECK(!app->settings.sidebar_on);
+    app->settings.sidebar_on = 1;
+    lt_app_settings_load(app);
+    LT_CHECK(!app->settings.sidebar_on);
+    key(app, LT_KEY_F9, 0);
+    LT_CHECK(app->settings.sidebar_on);
+    lt_app_free(app);
+}
+
 int main(void)
 {
     LT_RUN(connect_entries);
     LT_RUN(ini_menu_access_keys);
+    LT_RUN(sidebar_resize);
     LT_TEST_MAIN_END
 }
