@@ -696,7 +696,10 @@ LT_TEST(ecu_enveloped_basic)
 
     n = env_xfer(s, LT_ENV_LITTLE, (const lt_u8 *)"S", 1, r, sizeof(r));
     LT_CHECK(n == 14 && r[0] == 0 && memcmp(r + 1, "rusEFI test.1", 13) == 0);
+    /* the declared versionInfo command answers with the title text */
     n = env_xfer(s, LT_ENV_LITTLE, (const lt_u8 *)"V", 1, r, sizeof(r));
+    LT_CHECK(n == 14 && r[0] == 0 && memcmp(r + 1, "rusEFI test.1", 13) == 0);
+    n = env_xfer(s, LT_ENV_LITTLE, (const lt_u8 *)"v", 1, r, sizeof(r));
     LT_CHECK(n == 1 && r[0] == LT_RC_UNKNOWN_CMD);
     n = env_xfer(s, LT_ENV_LITTLE, (const lt_u8 *)"Q", 1, r, sizeof(r));
     LT_CHECK(n == 14 && r[0] == 0);

@@ -193,8 +193,8 @@ Tests: rfcomm0+RusEFI+och "O"-> OCH; Speeduino/MS2/MS3/Unknown with rfcomm, max_
 
 `get_realtime_data() -> bytes`:
 - If chosen OCH but `och_block_size==0` -> switch to BURST (burst cmd).
-- BURST modern: Packet(cmd.bytes) -> send_packet -> `strip_status_byte(payload, och_block_size, "Burst")`. BURST legacy: send_raw_command_expecting([first byte of cmd or 'A'], och_block_size>0 ? Some : None) - raw result returned as-is.
-- OCH: if cmd contains `%`: build via `build_och_command(cmd, och_block_size or 256 if 0)`; else raw bytes of the string (NOT escape-parsed). Modern: send_packet then `strip_status_byte(payload, och_block_size,"OCH")`. Legacy: multi-byte cmd -> send_raw_command(all); else single byte (default 'A'); no expected length.
+- BURST modern: Packet(cmd.bytes) -> send_packet -> `strip_status_byte(payload, och_block_size, "Burst")`. BURST legacy: send_raw_command_expecting(cmd (all of it: MegaSquirt-II 2.x `"a\x00\x06"`; default "A"), och_block_size>0 ? Some : None) - raw result returned as-is.
+- OCH: if cmd contains `%`: build via `build_och_command(cmd, och_block_size or 256 if 0)`; else the string with its escapes decoded (MegaSquirt `"r\x00\x07\x00\x00\x01\x98"`). Modern: send_packet then `strip_status_byte(payload, och_block_size,"OCH")`. Legacy: multi-byte cmd -> send_raw_command(all); else single byte (default 'A'); no expected length.
 `strip_status_byte(payload, want, label)`:
  - want>0: len==want+1 && p[0]==0 -> p[1..]; len==want -> p; len==want+1 && p[0]!=0 -> p[1..] (warn only); else PROTOCOL_ERROR("{label} response: {n} bytes, expected {want} (or {want+1} with a status byte) - channel offsets cannot be trusted").
  - want==0: empty -> empty; p[0]==0 -> p[1..]; else whole payload.
@@ -210,7 +210,7 @@ The GUI is single-threaded, so the blocking exchanges above would freeze drawing
 
 ## 9. Page read / write / burn
 
-Page identifier `page_id(idx)`: `settings.page_identifiers[idx]` raw bytes: >=2 bytes -> u16 LE of first two; 1 byte -> that byte; empty/missing -> idx. (The builder then re-encodes with command endianness; for LE-declared INIs the two inversions cancel so bytes reach the wire in INI order. Do not "fix".)
+Page identifier `page_id(idx)`: `settings.page_identifiers[idx]` raw bytes: >=2 bytes -> u16 of the first two in the command endianness; 1 byte -> that byte; empty/missing -> idx. (The builder then re-encodes with command endianness, so a two-byte identifier reaches the wire in INI order whatever the endianness: MegaSquirt (big endian) `"\$tsCanId\x04"` -> `00 04`, CAN id first.)
 
 `read_memory(page, offset, length)`:
 - fmt = settings.page_read_commands[page] (default "R%2i%2o%2c" when index missing); empty string -> PROTOCOL_ERROR "No read command for page N". cmd = build_read(fmt, page_id, offset, length).

@@ -1827,6 +1827,195 @@ LT_TEST(real_demo_ini_command_encoding)
     lt_ini_free(ini);
 }
 
+/* MegaSquirt: a big-endian INI whose page identifiers are "\$tsCanId\x04" ... goes out as
+ * written, CAN id first (r 00 04 ..), in reads, burns and CRC checks */
+LT_TEST(big_endian_page_identifier_sent_as_written)
+{
+    static const char txt[] =
+        "[MegaTune]\n signature = \"MS3 Format 0238.003\"\n"
+        "[TunerStudio]\n queryCommand = \"Q\"\n"
+        "[PcVariables]\n tsCanId = bits, U08, [0:3], \"CAN ID 0\", \"CAN ID 1\"\n"
+        "[Constants]\n endianness = big\n messageEnvelopeFormat = msEnvelope_1.0\n nPages = 2\n"
+        " pageSize = 64, 64\n pageIdentifier = \"\\$tsCanId\\x04\", \"\\$tsCanId\\x0a\"\n"
+        " pageReadCommand = \"r%2i%2o%2c\", \"r%2i%2o%2c\"\n burnCommand = \"b%2i\", \"b%2i\"\n"
+        " pageValueWrite = \"w%2i%2o%2c%v\", \"w%2i%2o%2c%v\"\n"
+        " crc32CheckCommand = \"k%2i\\x00\\x00\\x00\\x04\", \"k%2i\\x00\\x00\\x00\\x04\"\n";
+    static const lt_u8 want_rd[7] = { 'r', 0x00, 0x0a, 0x00, 0x10, 0x00, 0x08 };
+    static const lt_u8 want_b[3] = { 'b', 0x00, 0x0a };
+    static const lt_u8 want_k[7] = { 'k', 0x00, 0x04, 0x00, 0x00, 0x00, 0x04 };
+    static const lt_u8 zero[64] = { 0 };
+    fclk clk;
+    fdev d;
+    lt_ini *ini = lt_ini_load_string(txt, strlen(txt), NULL, NULL);
+    lt_proto_io io;
+    lt_proto *p;
+    lt_proto_clock ck;
+    lt_buf b;
+
+    if (!ini) {
+        LT_CHECK(0);
+        return;
+    }
+    clk.t = 0;
+    fd_init(&d, &clk);
+    d.order = LT_ENV_BIG;
+    lt_strlcpy(d.sig, ini->signature, sizeof(d.sig));
+    memset(&io, 0, sizeof(io));
+    io.ud = &d;
+    io.read = fd_read;
+    io.write = fd_write;
+    io.clear_input = fd_clear;
+    p = lt_proto_new(&io, ini, NULL);
+    ck.ud = &clk;
+    ck.now_ms = f_now;
+    ck.sleep_ms = f_sleep;
+    lt_proto_set_clock(p, &ck);
+    LT_CHECK(lt_proto_connect(p) == 0);
+    d.stall = 1;
+    lt_buf_init(&b);
+    LT_CHECK(lt_proto_read_memory(p, 1, 16, 8, &b) == LT_ETIMEOUT);
+    LT_CHECK(d.nplog >= 2 && d.plog[d.nplog - 1].len == 7 &&
+             memcmp(d.plog[d.nplog - 1].data, want_rd, 7) == 0);
+    LT_CHECK(lt_proto_burn(p, 1, NULL) == 0);
+    LT_CHECK(d.plog[d.nplog - 1].len == 3 && memcmp(d.plog[d.nplog - 1].data, want_b, 3) == 0);
+    LT_CHECK(lt_proto_verify_page_crc(p, 0, zero, sizeof(zero)) != 0);
+    LT_CHECK(d.plog[d.nplog - 1].len == 7 && memcmp(d.plog[d.nplog - 1].data, want_k, 7) == 0);
+    lt_buf_free(&b);
+    lt_proto_free(p);
+    fd_free(&d);
+    lt_ini_free(ini);
+}
+
+/* a fixed ochGetCommand with escapes (MegaSquirt over CAN) goes out decoded */
+LT_TEST(och_command_escapes_decoded)
+{
+    static const char txt[] =
+        "[MegaTune]\n signature = \"MS3 Format 0238.003\"\n"
+        "[TunerStudio]\n queryCommand = \"Q\"\n"
+        "[Constants]\n endianness = big\n messageEnvelopeFormat = msEnvelope_1.0\n nPages = 1\n"
+        " pageSize = 64\n pageReadCommand = \"r%2i%2o%2c\"\n"
+        "[OutputChannels]\n ochGetCommand = \"r\\x00\\x07\\x00\\x00\\x00\\x10\"\n ochBlockSize = 16\n";
+    static const lt_u8 want[7] = { 'r', 0x00, 0x07, 0x00, 0x00, 0x00, 0x10 };
+    fclk clk;
+    fdev d;
+    lt_ini *ini = lt_ini_load_string(txt, strlen(txt), NULL, NULL);
+    lt_proto_io io;
+    lt_proto *p;
+    lt_proto_clock ck;
+    lt_buf b;
+
+    if (!ini) {
+        LT_CHECK(0);
+        return;
+    }
+    clk.t = 0;
+    fd_init(&d, &clk);
+    d.order = LT_ENV_BIG;
+    lt_strlcpy(d.sig, ini->signature, sizeof(d.sig));
+    memset(&io, 0, sizeof(io));
+    io.ud = &d;
+    io.read = fd_read;
+    io.write = fd_write;
+    io.clear_input = fd_clear;
+    p = lt_proto_new(&io, ini, NULL);
+    ck.ud = &clk;
+    ck.now_ms = f_now;
+    ck.sleep_ms = f_sleep;
+    lt_proto_set_clock(p, &ck);
+    LT_CHECK(lt_proto_connect(p) == 0);
+    LT_CHECK(lt_proto_choose_runtime(p, NULL) == LT_RT_KIND_OCH);
+    d.stall = 1;
+    lt_buf_init(&b);
+    LT_CHECK(lt_proto_get_realtime(p, &b) != 0);
+    LT_CHECK(d.nplog >= 2 && d.plog[d.nplog - 1].len == 7 &&
+             memcmp(d.plog[d.nplog - 1].data, want, 7) == 0);
+    lt_buf_free(&b);
+    lt_proto_free(p);
+    fd_free(&d);
+    lt_ini_free(ini);
+}
+
+/* a legacy device that answers the query and records the last command */
+typedef struct recdev {
+    fclk *clk;
+    lt_u8 last[32];
+    size_t nlast;
+    lt_buf rx;
+} recdev;
+
+static int rec_read(void *ud, void *buf, int n, int timeout_ms)
+{
+    recdev *d = (recdev *)ud;
+    size_t k = d->rx.len < (size_t)n ? d->rx.len : (size_t)n;
+
+    if (k == 0) {
+        d->clk->t += timeout_ms > 0 ? timeout_ms : 1;
+        return 0;
+    }
+    memcpy(buf, d->rx.data, k);
+    memmove(d->rx.data, d->rx.data + k, d->rx.len - k);
+    d->rx.len -= k;
+    return (int)k;
+}
+
+static int rec_write(void *ud, const void *buf, int n)
+{
+    recdev *d = (recdev *)ud;
+
+    d->nlast = (size_t)n < sizeof(d->last) ? (size_t)n : sizeof(d->last);
+    memcpy(d->last, buf, d->nlast);
+    if (n == 1 && ((const lt_u8 *)buf)[0] == 'Q') {
+        lt_buf_puts(&d->rx, "MSII Rev 2.88000");
+    }
+    return n;
+}
+
+/* MegaSquirt-II 2.x: the legacy burst command "a\x00\x06" goes out whole */
+LT_TEST(legacy_burst_command_sent_whole)
+{
+    static const char txt[] =
+        "[MegaTune]\n signature = \"MSII Rev 2.88000\"\n queryCommand = \"Q\"\n"
+        "[Constants]\n endianness = big\n nPages = 1\n pageSize = 64\n"
+        " pageReadCommand = \"r%2i%2o%2c\"\n"
+        "[BurstMode]\n getCommand = \"a\\x00\\x06\"\n"
+        "[OutputChannels]\n ochGetCommand = \"a\\x00\\x06\"\n ochBlockSize = 16\n";
+    static const lt_u8 want[3] = { 'a', 0x00, 0x06 };
+    fclk clk;
+    recdev d;
+    lt_ini *ini = lt_ini_load_string(txt, strlen(txt), NULL, NULL);
+    lt_proto_io io;
+    lt_proto *p;
+    lt_proto_clock ck;
+    lt_buf b;
+
+    if (!ini) {
+        LT_CHECK(0);
+        return;
+    }
+    clk.t = 0;
+    memset(&d, 0, sizeof(d));
+    d.clk = &clk;
+    lt_buf_init(&d.rx);
+    memset(&io, 0, sizeof(io));
+    io.ud = &d;
+    io.read = rec_read;
+    io.write = rec_write;
+    p = lt_proto_new(&io, ini, NULL);
+    ck.ud = &clk;
+    ck.now_ms = f_now;
+    ck.sleep_ms = f_sleep;
+    lt_proto_set_clock(p, &ck);
+    LT_CHECK(lt_proto_connect(p) == 0 && !lt_proto_is_modern(p));
+    LT_CHECK(lt_proto_choose_runtime(p, NULL) == LT_RT_KIND_BURST);
+    lt_buf_init(&b);
+    LT_CHECK(lt_proto_get_realtime(p, &b) != 0);
+    LT_CHECK(d.nlast == 3 && memcmp(d.last, want, 3) == 0);
+    lt_buf_free(&b);
+    lt_buf_free(&d.rx);
+    lt_proto_free(p);
+    lt_ini_free(ini);
+}
+
 int main(void)
 {
     LT_RUN(connect_modern_speeduino_le);
@@ -1861,6 +2050,9 @@ int main(void)
     LT_RUN(run_command_and_send_raw);
     LT_RUN(permissive_crc_config);
     LT_RUN(real_demo_ini_command_encoding);
+    LT_RUN(big_endian_page_identifier_sent_as_written);
+    LT_RUN(och_command_escapes_decoded);
+    LT_RUN(legacy_burst_command_sent_whole);
     LT_RUN(discovery_cases);
     LT_RUN(io_from_stream_adapter_shape);
     LT_TEST_MAIN_END

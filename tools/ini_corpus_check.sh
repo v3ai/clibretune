@@ -19,6 +19,17 @@
 # Output: build/ini_check/results.txt (one line per run: STATUS seconds ini target),
 #         build/ini_check/parse.txt, logs of failures in build/ini_check/logs/.
 # The ASan build goes to its own object directory; build/clibretune is rebuilt normally after.
+#
+# MegaSquirt: the real MS1 / MS2 / MS2-Extra / MS3 INIs carry no redistribution grant, so they
+# are never committed; tests/test_sim_ms.c uses synthetic definitions in the same command
+# formats (tests/fixtures/sim/ms*_sim.ini). To run the real ones locally:
+#   tools/fetch_ini_corpus.sh                         (puts them in build/ini_corpus/megasquirt/)
+#   tools/ini_corpus_check.sh build/ini_corpus/megasquirt
+#   build/clibretune --demo --ini "build/ini_corpus/megasquirt/MS3 Format 0238.003.ini"
+# MS2-Extra, MS3 and MegaSquirt-II 2.x INIs connect, read, show live data and burn in demo
+# mode. MS1 / MS1-Extra INIs only open: their single-byte "%o" write commands, pageActivate
+# and whole-page "V" reads are not spoken by the protocol layer. dfi.ini and
+# test_megatune.ini include a colors24b.ini that is not in that collection (PARSE ERROR).
 set -e
 cd "$(dirname "$0")/.."
 
