@@ -7,8 +7,10 @@
  * tiles whose hash equals the previous frame's keep their pixels, the others are rasterized by
  * replaying the calls that touch them with the clip narrowed to the tile run and to each call's
  * box (rasterization does not depend on the clip except where pixels are written, so this is
- * pixel-identical to drawing everything). Replay starts at the last opaque fill covering the
- * whole run, which skips the overdraw of window and panel backgrounds.
+ * pixel-identical to drawing everything). Occlusion: each tile notes the last call that paints
+ * all of it opaquely (a clear, an opaque fill, gradient or round rect); in that tile nothing
+ * before that call is drawn, so a call is replayed only over the tiles of the run where it can
+ * still show (window and panel backgrounds, and whatever a dialog covers, are skipped).
  *
  * A canvas referenced by the recorded frame that is about to change (drawn into, touched,
  * freed) is copied first (lt_rec_canvas_changing), so the replay always sees the pixels the
@@ -52,6 +54,8 @@ struct lt_tiles {
     lt_u32 *h1, *h2, *p1, *p2;  /* tile hashes: this frame, previous frame */
     long *cut;                  /* per tile: last call of this frame's prefix that equals the
                                  * whole previous frame (pixels already there), or -1 */
+    long *cover;                /* per tile: last call painting all of it opaquely, or -1 */
+    long *tstart;               /* render_run: per tile of the run, the first call to draw */
     int valid;                  /* p1/p2 describe what the canvas shows */
     long *rowstart, *rowidx;    /* per tile row: indices of the calls touching it */
     long caprowidx;
@@ -310,9 +314,9 @@ lt_tiles *lt_tiles_new(void)
 static void tiles_free_grid(lt_tiles *t)
 {
     lt_free(t->h1); lt_free(t->h2); lt_free(t->p1); lt_free(t->p2); lt_free(t->rowstart);
-    lt_free(t->cut);
+    lt_free(t->cut); lt_free(t->cover); lt_free(t->tstart);
     t->h1 = t->h2 = t->p1 = t->p2 = NULL;
-    t->cut = NULL;
+    t->cut = t->cover = t->tstart = NULL;
     t->rowstart = NULL;
     t->valid = 0;
     t->cw = t->ch = t->tx = t->ty = 0;
@@ -371,48 +375,110 @@ static void tiles_grid(lt_tiles *t, int cw, int ch)
     t->p1 = (lt_u32 *)lt_calloc(n, sizeof(lt_u32));
     t->p2 = (lt_u32 *)lt_calloc(n, sizeof(lt_u32));
     t->cut = (long *)lt_malloc(n * sizeof(long));
+    t->cover = (long *)lt_malloc(n * sizeof(long));
+    t->tstart = (long *)lt_malloc((size_t)t->tx * sizeof(long));
     t->rowstart = (long *)lt_malloc(((size_t)t->ty + 1) * sizeof(long));
     t->valid = 0;
 }
 
-/* is k an opaque fill covering all of r? */
-static int covers(const lt_dcmd *k, lt_rect r)
+/* tiles entirely inside q (within the canvas) get cover = i */
+static void cover_rect(lt_tiles *t, lt_rect q, long i)
 {
-    if (k->op == LT_OP_FILL) {
-        if (LT_COLOR_A(k->c) != 255) { return 0; }
-    } else if (k->op != LT_OP_CLEAR) {
-        return 0;
+    int x0, x1, y0, y1, x, y;
+    if (q.w <= 0 || q.h <= 0) { return; }
+    x0 = (q.x + TILE_W - 1) / TILE_W;
+    y0 = (q.y + TILE_H - 1) / TILE_H;
+    x1 = q.x + q.w >= t->cw ? t->tx : (q.x + q.w) / TILE_W;
+    y1 = q.y + q.h >= t->ch ? t->ty : (q.y + q.h) / TILE_H;
+    for (y = y0; y < y1; y++) {
+        long *c = t->cover + (size_t)y * (size_t)t->tx;
+        for (x = x0; x < x1; x++) { c[x] = i; }
     }
-    return k->bb.x <= r.x && k->bb.y <= r.y && k->bb.x + k->bb.w >= r.x + r.w &&
-           k->bb.y + k->bb.h >= r.y + r.h;
 }
 
-/* rasterize the calls idx[0..n) clipped to r. cut >= 0: r already shows calls up to index cut
- * (the previous frame was a prefix of this one), only the later ones are drawn on top */
-static void render_run(lt_tiles *t, lt_gfx *g, lt_rect r, const long *idx, long n, long cut)
+/* note the tiles that call i paints completely with opaque pixels whatever was there before
+ * (conservative: only shapes whose pixels there are a fixed colour) */
+static void cover_call(lt_tiles *t, const lt_dcmd *k, long i)
+{
+    switch (k->op) {
+    case LT_OP_CLEAR:
+        cover_rect(t, k->bb, i);
+        break;
+    case LT_OP_FILL:
+        if (LT_COLOR_A(k->c) == 255) { cover_rect(t, k->bb, i); }
+        break;
+    case LT_OP_VGRAD:
+        if (LT_COLOR_A(k->c) == 255 && LT_COLOR_A(k->c2) == 255) { cover_rect(t, k->bb, i); }
+        break;
+    case LT_OP_ROUND:
+        if (LT_COLOR_A(k->c) == 255) {
+            /* lt_gfx_fill_round_rect: full rows between the corners, and the columns between
+             * the corners over the whole height */
+            lt_rect r = lt_rect_make(k->i[0] + k->ox, k->i[1] + k->oy, k->i[2], k->i[3]);
+            int rad = (int)k->d[0];
+            if (rad > r.w / 2) { rad = r.w / 2; }
+            if (rad > r.h / 2) { rad = r.h / 2; }
+            if (rad < 0) { rad = 0; }
+            cover_rect(t, lt_rect_intersect(k->bb, lt_rect_make(r.x, r.y + rad, r.w, r.h - 2 * rad)), i);
+            cover_rect(t, lt_rect_intersect(k->bb, lt_rect_make(r.x + rad, r.y, r.w - 2 * rad, r.h)), i);
+        }
+        break;
+    default:
+        break;
+    }
+}
+
+/* rasterize the calls idx[0..n) (the calls touching tile row ty, in order) into the run r, which
+ * starts at tile column tx0. cut >= 0: r already shows calls up to index cut (the previous frame
+ * was a prefix of this one), only the later ones are drawn on top. In each tile drawing starts
+ * at its last covering call; a call is replayed over the stretches of tiles where it shows. */
+static void render_run(lt_tiles *t, lt_gfx *g, lt_rect r, int ty, int tx0, const long *idx, long n,
+                       long cut)
 {
     const lt_dcmd *cmd = t->rec.cmd;
-    long i, start = -1, first = 0;
-    if (cut >= 0) {
-        while (first < n && idx[first] <= cut) { first++; }
-    }
-    for (i = n - 1; i >= first; i--) {
-        if (covers(&cmd[idx[i]], r)) { start = i; break; }
-    }
-    if (start < 0 && cut >= 0) {
-        start = first;
-    } else if (start < 0) {
-        int y;
-        for (y = r.y; y < r.y + r.h; y++) {
-            memset(g->canvas->px + (size_t)y * (size_t)g->canvas->pitch + (size_t)r.x, 0,
-                   (size_t)r.w * sizeof(lt_u32));
+    const long *cov = t->cover + (size_t)ty * (size_t)t->tx + (size_t)tx0;
+    long *st = t->tstart, lo = 0, i;
+    int nt = (r.w + TILE_W - 1) / TILE_W, j;
+    for (j = 0; j < nt; j++) {
+        long s = cov[j];
+        if (cut >= 0) {
+            if (s <= cut) { s = cut + 1; }
+        } else if (s < 0) {
+            /* nothing covers this tile: it starts black, like a fresh canvas */
+            int y, x = r.x + j * TILE_W, w = LT_MIN(TILE_W, r.x + r.w - x);
+            for (y = r.y; y < r.y + r.h; y++) {
+                memset(g->canvas->px + (size_t)y * (size_t)g->canvas->pitch + (size_t)x, 0,
+                       (size_t)w * sizeof(lt_u32));
+            }
+            s = 0;
         }
-        start = 0;
+        st[j] = s;
+        if (j == 0 || s < lo) { lo = s; }
     }
-    for (i = start; i < n; i++) {
-        const lt_dcmd *k = &cmd[idx[i]];
-        lt_rect lim = lt_rect_intersect(k->bb, r);
-        if (lim.w > 0 && lim.h > 0) { lt_gfx_replay(g, &t->rec, k, lim); }
+    for (i = 0; i < n; i++) {
+        long gi = idx[i];
+        const lt_dcmd *k;
+        int x0, x1, a, b, e;
+        if (gi < lo) { continue; }
+        k = &cmd[gi];
+        x0 = LT_MAX(k->bb.x, r.x);
+        x1 = LT_MIN(k->bb.x + k->bb.w, r.x + r.w);
+        if (x1 <= x0) { continue; }
+        a = (x0 - r.x) / TILE_W;
+        b = (x1 - 1 - r.x) / TILE_W;
+        for (j = a; j <= b; j++) {
+            lt_rect seg, lim;
+            if (st[j] > gi) { continue; }
+            e = j;
+            while (e < b && st[e + 1] <= gi) { e++; }
+            seg.x = r.x + j * TILE_W;
+            seg.y = r.y;
+            seg.w = LT_MIN(r.x + (e + 1) * TILE_W, r.x + r.w) - seg.x;
+            seg.h = r.h;
+            lim = lt_rect_intersect(k->bb, seg);
+            if (lim.w > 0 && lim.h > 0) { lt_gfx_replay(g, &t->rec, k, lim); }
+            j = e;
+        }
     }
 }
 
@@ -461,7 +527,7 @@ int lt_tiles_end(lt_tiles *t, lt_gfx *g, lt_rect *out, int max_out)
     tiles_grid(t, r->cw, r->ch);
     all = !t->valid;
     for (i = 0; i < (long)t->tx * (long)t->ty; i++) {
-        t->h1[i] = 0x2545F491U; t->h2[i] = 0x9E3779B9U; t->cut[i] = -1;
+        t->h1[i] = 0x2545F491U; t->h2[i] = 0x9E3779B9U; t->cut[i] = -1; t->cover[i] = -1;
     }
     for (ty = 0; ty <= t->ty; ty++) { t->rowstart[ty] = 0; }
     /* hash the calls into the tiles they touch; count the calls per tile row */
@@ -485,6 +551,7 @@ int lt_tiles_end(lt_tiles *t, lt_gfx *g, lt_rect *out, int max_out)
             t->rowstart[ty + 1]++;
             total++;
         }
+        cover_call(t, k, i);
     }
     for (ty = 0; ty < t->ty; ty++) { t->rowstart[ty + 1] += t->rowstart[ty]; }
     t->rowidx = (long *)grow(t->rowidx, &t->caprowidx, total + 1, sizeof(long));
@@ -518,8 +585,8 @@ int lt_tiles_end(lt_tiles *t, lt_gfx *g, lt_rect *out, int max_out)
                 rr.x = run0 * TILE_W; rr.y = ty * TILE_H;
                 rr.w = LT_MIN(tx * TILE_W, r->cw) - rr.x;
                 rr.h = LT_MIN((ty + 1) * TILE_H, r->ch) - rr.y;
-                render_run(t, g, rr, t->rowidx + t->rowstart[ty], t->rowstart[ty + 1] - t->rowstart[ty],
-                           run_cut);
+                render_run(t, g, rr, ty, run0, t->rowidx + t->rowstart[ty],
+                           t->rowstart[ty + 1] - t->rowstart[ty], run_cut);
                 pixels += (double)rr.w * (double)rr.h;
                 if (max_out > 0) { add_out(out, &n_out, max_out, rr); }
                 run0 = -1;

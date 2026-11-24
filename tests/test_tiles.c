@@ -258,6 +258,51 @@ LT_TEST(test_tiles_source_copy_on_change)
     lt_canvas_free(&ref);
 }
 
+/* opaque covers (fill, gradient, round rect, clipped and translated) over changing content:
+ * the tiles they hide skip the calls below them and the result still equals direct drawing */
+static void cover_scene(lt_gfx *g, int k)
+{
+    lt_rect prev;
+    scene(g, k % 5, NULL);
+    lt_gfx_fill_rect(g, lt_rect_make(0, 0, CW, CH), LT_RGBA(k * 30, 50, 80, 128));
+    lt_gfx_fill_round_rect(g, lt_rect_make(k * 2, 0, CW - k * 2, CH), 60 + k, LT_RGB(60, 60, 70));
+    lt_gfx_fill_rect(g, lt_rect_make(64, 32, 128, 64), LT_RGB(10, 20, 30));
+    lt_gfx_fill_rect_vgrad(g, lt_rect_make(0, 100 + k, 140, 70), LT_RGB(200, 0, 0), LT_RGB(0, 0, 200));
+    lt_gfx_fill_round_rect(g, lt_rect_make(130 + k, 10, 180, 180), 70 + k, LT_RGB(240, 240, 220));
+    lt_gfx_fill_rect(g, lt_rect_make(170, 60 + k, 40, 20), LT_RGBA(0, 0, 0, 90));
+    prev = lt_gfx_push_clip(g, lt_rect_make(5, 5, 200 - k * 7, 90));
+    g->ox += 3; g->oy += k;
+    lt_gfx_fill_round_rect(g, lt_rect_make(-20, 0, 300, 70), 12, LT_RGB(30, 90, 30));
+    lt_gfx_text(g, 10, 10, "covered", LT_RGB(255, 255, 255), 2);
+    g->ox -= 3; g->oy -= k;
+    lt_gfx_pop_clip(g, prev);
+    if (k & 1) { lt_gfx_fill_rect(g, lt_rect_make(0, 0, CW, CH), LT_RGBA(0, 0, 0, 120)); }
+}
+
+LT_TEST(test_tiles_occlusion)
+{
+    lt_canvas ref, cur;
+    lt_gfx g, gr;
+    lt_tiles *t = lt_tiles_new();
+    lt_rect out[16];
+    int k, vx, vy;
+    lt_canvas_init(&ref, CW, CH);
+    lt_canvas_init(&cur, CW, CH);
+    lt_gfx_init_canvas(&g, &cur);
+    lt_gfx_init_canvas(&gr, &ref);
+    for (k = 0; k < 8; k++) {
+        lt_tiles_begin(t, &g);
+        cover_scene(&g, k);
+        (void)lt_tiles_end(t, &g, out, 16);
+        cover_scene(&gr, k);
+        LT_CHECK(canvas_cmp(&ref, &cur) < 0);
+        LT_CHECK(lt_tiles_verify(t, &g, &vx, &vy) == 0);
+    }
+    lt_tiles_free(t);
+    lt_canvas_free(&cur);
+    lt_canvas_free(&ref);
+}
+
 /* a cancelled (discarded) frame leaves the canvas and the hashes alone: the next frame is
  * compared with the last one that was shown */
 LT_TEST(test_tiles_cancel)
@@ -406,6 +451,7 @@ int main(void)
     LT_RUN(test_tiles_appended_overlay);
     LT_RUN(test_tiles_source_copy_on_change);
     LT_RUN(test_tiles_cancel);
+    LT_RUN(test_tiles_occlusion);
     LT_RUN(test_shadow_matches_rings);
     LT_RUN(test_blend_exact);
     lt_font_release_all();
