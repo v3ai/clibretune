@@ -2016,6 +2016,333 @@ LT_TEST(legacy_burst_command_sent_whole)
     lt_ini_free(ini);
 }
 
+/* ------------------------------------------------------------------ */
+/* MegaSquirt-I family (B&G MSnS, MSnS-extra): a byte-level fake ECU    */
+/* ------------------------------------------------------------------ */
+#define M1LOG 256
+
+typedef struct m1dev {
+    fclk *clk;
+    lt_u8 page[3][512];
+    size_t psize[3];
+    int active, extra;               /* extra: "P" selects; else B&G pages "V"/"I" */
+    int burns[3];
+    lt_u8 qbyte;
+    const char *sig;
+    lt_buf rx;
+    lt_u8 log[M1LOG][8];
+    size_t loglen[M1LOG];
+    double logt[M1LOG];
+    int nlog;
+} m1dev;
+
+static int m1_read(void *ud, void *buf, int n, int timeout_ms)
+{
+    m1dev *d = (m1dev *)ud;
+    size_t k = d->rx.len < (size_t)n ? d->rx.len : (size_t)n;
+
+    if (k == 0) {
+        d->clk->t += timeout_ms > 0 ? timeout_ms : 1;
+        return 0;
+    }
+    memcpy(buf, d->rx.data, k);
+    memmove(d->rx.data, d->rx.data + k, d->rx.len - k);
+    d->rx.len -= k;
+    return (int)k;
+}
+
+/* one command per write (the protocol writes each command whole) */
+static int m1_write(void *ud, const void *buf, int n)
+{
+    m1dev *d = (m1dev *)ud;
+    const lt_u8 *b = (const lt_u8 *)buf;
+    lt_u8 blk[64];
+    int pg = d->active;
+
+    if (d->nlog < M1LOG) {
+        d->loglen[d->nlog] = (size_t)n < 8 ? (size_t)n : 8;
+        memcpy(d->log[d->nlog], b, d->loglen[d->nlog]);
+        d->logt[d->nlog] = d->clk->t;
+        d->nlog++;
+    }
+    if (n <= 0) {
+        return n;
+    }
+    if (b[0] == 'I' || b[0] == 'J') {
+        pg = 1;                       /* B&G MSnS: the spark page has its own letters */
+    }
+    switch (b[0]) {
+    case 'Q':
+        lt_buf_putc(&d->rx, d->qbyte);
+        break;
+    case 'S':
+        lt_buf_puts(&d->rx, d->sig);
+        break;
+    case 'P':
+        if (n >= 2) {
+            d->active = b[1] == 0 ? 2 : b[1] - 1;   /* "P\001" page 0, "P\002" 1, "P\000" 2 */
+        }
+        break;
+    case 'V':
+    case 'I':
+        lt_buf_append(&d->rx, d->page[pg], d->psize[pg]);
+        break;
+    case 'W':
+    case 'J':
+        if (n == 3) {
+            d->page[pg][b[1]] = b[2];
+        }
+        break;
+    case 'X':
+        if (n >= 3 && n == 3 + b[2]) {
+            memcpy(d->page[pg] + b[1], b + 3, b[2]);
+        }
+        break;
+    case 'B':
+        d->burns[d->extra ? pg : 0]++;
+        break;
+    case 'R':
+    case 'A':
+        memset(blk, 0x11, sizeof(blk));
+        lt_buf_append(&d->rx, blk, b[0] == 'R' ? 38 : 22);
+        break;
+    default:
+        break;
+    }
+    return n;
+}
+
+static lt_proto *m1_open(m1dev *d, fclk *clk, const lt_ini *ini)
+{
+    lt_proto_io io;
+    lt_proto_clock ck;
+    lt_proto *p;
+    size_t i, k;
+
+    memset(d, 0, sizeof(*d));
+    d->clk = clk;
+    lt_buf_init(&d->rx);
+    for (i = 0; i < 3; i++) {
+        d->psize[i] = i < ini->proto.n_page_sizes ? (size_t)ini->proto.page_sizes[i] : 0;
+        for (k = 0; k < sizeof(d->page[i]); k++) {
+            d->page[i][k] = (lt_u8)((i * 64 + k) & 0xFF);
+        }
+    }
+    memset(&io, 0, sizeof(io));
+    io.ud = d;
+    io.read = m1_read;
+    io.write = m1_write;
+    p = lt_proto_new(&io, ini, NULL);
+    ck.ud = clk;
+    ck.now_ms = f_now;
+    ck.sleep_ms = f_sleep;
+    lt_proto_set_clock(p, &ck);
+    return p;
+}
+
+static lt_bool m1_is(const m1dev *d, int i, const char *bytes, size_t n)
+{
+    return (i >= 0 && i < d->nlog && d->loglen[i] == n && memcmp(d->log[i], bytes, n) == 0) ?
+           LT_TRUE : LT_FALSE;
+}
+
+/* MSnS-extra: "P\001"-style page selection (octal), whole-page "V", "X%o%c%v" / "W%o%v",
+ * one "B" for the selected page, realtime "R" (no [BurstMode]) */
+LT_TEST(ms1_extra_wire_bytes)
+{
+    static const char txt[] =
+        "[MegaTune]\n queryCommand = \"S\"\n signature = \"MSnS-extra format 027c *********\"\n"
+        "[Constants]\n endianness = big\n nPages = 3\n burnCommand = \"B\"\n"
+        " pageSize = 200, 200, 189\n"
+        " pageActivate = \"P\\001\", \"P\\002\", \"P\\000\"\n"
+        " pageReadCommand = \"V\", \"V\", \"V\"\n"
+        " pageValueWrite = \"W%o%v\", \"W%o%v\", \"W%o%v\"\n"
+        " pageChunkWrite = \"X%o%c%v\", \"X%o%c%v\", \"\"\n"
+        " pageActivationDelay = 50\n writeBlocks = on\n"
+        "[OutputChannels]\n ochGetCommand = \"R\"\n ochBlockSize = 38\n";
+    static const lt_u8 three[3] = { 0xA1, 0xA2, 0xA3 };
+    fclk clk;
+    m1dev d;
+    lt_ini *ini = lt_ini_load_string(txt, strlen(txt), NULL, NULL);
+    lt_proto *p;
+    lt_ecu_mem *mem;
+    lt_buf b;
+    const lt_u8 *img;
+    size_t len = 0;
+    int at;
+    lt_u8 v = 0x5C;
+
+    if (!ini) {
+        LT_CHECK(0);
+        return;
+    }
+    clk.t = 0;
+    p = m1_open(&d, &clk, ini);
+    d.extra = 1;
+    d.sig = "MSnS-extra format 027c *********";
+    LT_CHECK(lt_proto_connect(p) == 0 && !lt_proto_is_modern(p));
+    LT_CHECK(m1_is(&d, d.nlog - 1, "S", 1));
+    LT_CHECK_STR(lt_proto_signature(p), "MSnS-extra format 027c *********");
+
+    /* every page: select (octal escapes), wait pageActivationDelay, one whole-page "V" */
+    at = d.nlog;
+    mem = lt_ecu_mem_from_ini(ini);
+    LT_CHECK(lt_proto_read_all(p, mem, LT_TRUE) == 0);
+    LT_CHECK(d.nlog - at == 6);
+    LT_CHECK(m1_is(&d, at, "P\001", 2) && m1_is(&d, at + 1, "V", 1));
+    LT_CHECK(m1_is(&d, at + 2, "P\002", 2) && m1_is(&d, at + 3, "V", 1));
+    LT_CHECK(m1_is(&d, at + 4, "P\000", 2) && m1_is(&d, at + 5, "V", 1));
+    LT_CHECK(d.logt[at + 1] - d.logt[at] >= 50.0);
+    img = lt_ecu_mem_page(mem, 1, &len);
+    LT_CHECK(img != NULL && len == 200 && img[7] == (lt_u8)(64 + 7));
+    img = lt_ecu_mem_page(mem, 2, &len);
+    LT_CHECK(img != NULL && len == 189 && img[188] == (lt_u8)((128 + 188) & 0xFF));
+
+    /* a slice of a whole-page read; page 2 is selected now, so page 1 is selected again */
+    at = d.nlog;
+    lt_buf_init(&b);
+    LT_CHECK(lt_proto_read_memory(p, 1, 10, 4, &b) == 0);
+    LT_CHECK(b.len == 4 && (lt_u8)b.data[0] == 64 + 10 && (lt_u8)b.data[3] == 64 + 13);
+    LT_CHECK(d.nlog - at == 2 && m1_is(&d, at, "P\002", 2) && m1_is(&d, at + 1, "V", 1));
+
+    /* chunk write on the selected page: no new selection */
+    at = d.nlog;
+    LT_CHECK(lt_proto_write_memory(p, 1, 0x10, three, 3) == 0);
+    LT_CHECK(d.nlog - at == 1 && m1_is(&d, at, "X\020\003\241\242\243", 6));
+    LT_CHECK(d.page[1][0x11] == 0xA2);
+    /* a page with no chunk write: value writes; the auto-burn of page 1 goes first, while it
+     * is still selected */
+    at = d.nlog;
+    LT_CHECK(lt_proto_write_memory(p, 2, 5, three, 2) == 0);
+    LT_CHECK(d.nlog - at == 4);
+    LT_CHECK(m1_is(&d, at, "B", 1) && m1_is(&d, at + 1, "P\000", 2));
+    LT_CHECK(m1_is(&d, at + 2, "W\005\241", 3) && m1_is(&d, at + 3, "W\006\242", 3));
+    LT_CHECK(d.burns[1] == 1 && d.page[2][6] == 0xA2);
+    LT_CHECK(d.logt[at + 2] - d.logt[at + 1] >= 50.0);
+    /* burn everything written: page 2 is selected */
+    at = d.nlog;
+    LT_CHECK(lt_proto_burn(p, -1, NULL) == 0);
+    LT_CHECK(d.nlog - at == 1 && m1_is(&d, at, "B", 1) && d.burns[2] == 1);
+    /* burning a page that is not selected selects it first */
+    at = d.nlog;
+    LT_CHECK(lt_proto_burn(p, 0, NULL) == 0);
+    LT_CHECK(d.nlog - at == 2 && m1_is(&d, at, "P\001", 2) && m1_is(&d, at + 1, "B", 1));
+    LT_CHECK(d.burns[0] == 1);
+
+    /* realtime: the declared fixed ochGetCommand, not a bare 'A' */
+    LT_CHECK(lt_proto_choose_runtime(p, NULL) == LT_RT_KIND_OCH);
+    at = d.nlog;
+    lt_buf_clear(&b);
+    LT_CHECK(lt_proto_get_realtime(p, &b) == 0 && b.len == 38);
+    LT_CHECK(m1_is(&d, at, "R", 1));
+
+    /* the queued writer: selection, then the chunk */
+    LT_CHECK(lt_ecu_mem_write(mem, 1, 3, &v, 1) == 0);
+    at = d.nlog;
+    LT_CHECK(lt_proto_write_dirty_begin(p, mem) == 1);
+    lt_proto_async_finish(p);
+    LT_CHECK(lt_proto_write_pump(p) == 1);
+    LT_CHECK(d.nlog - at == 2 && m1_is(&d, at, "P\002", 2) && m1_is(&d, at + 1, "X\003\001\134", 4));
+    LT_CHECK(d.page[1][3] == 0x5C);
+
+    /* reconnecting forgets the selection */
+    lt_proto_disconnect(p);
+    LT_CHECK(lt_proto_connect(p) == 0);
+    at = d.nlog;
+    lt_buf_clear(&b);
+    LT_CHECK(lt_proto_read_memory(p, 1, 0, 200, &b) == 0);
+    LT_CHECK(d.nlog - at == 2 && m1_is(&d, at, "P\002", 2));
+
+    lt_buf_free(&b);
+    lt_ecu_mem_free(mem);
+    lt_buf_free(&d.rx);
+    lt_proto_free(p);
+    lt_ini_free(ini);
+}
+
+/* B&G MegaSquirt-I / MSnS: one-byte "Q" signature, pages "V" / "I" without selection, value
+ * writes only, one-byte offsets cannot go past 255 */
+LT_TEST(ms1_bg_wire_bytes)
+{
+    static const char txt[] =
+        "[MegaTune]\n queryCommand = \"Q\"\n signature = 20 ; B&G 2.0 answers 20\n"
+        "[Constants]\n endianness = big\n nPages = 2\n burnCommand = \"B\"\n"
+        " pageSize = 125, 95\n pageActivationDelay = 10\n pageActivate = \" \", \" \"\n"
+        " pageReadCommand = \"V\", \"I\"\n pageValueWrite = \"W%o%v\", \"J%o%v\"\n"
+        " pageChunkWrite = \" \", \" \"\n blockingFactor = 32\n"
+        "[OutputChannels]\n ochBlockSize = 22\n";
+    static const char big[] =
+        "[MegaTune]\n queryCommand = \"Q\"\n signature = 20\n"
+        "[Constants]\n endianness = big\n nPages = 1\n burnCommand = \"b\"\n pageSize = 408\n"
+        " pageActivate = \" \"\n pageReadCommand = \"v\"\n pageValueWrite = \"W%o%v\"\n"
+        " pageChunkWrite = \" \"\n";
+    static const lt_u8 two[2] = { 0x77, 0x78 };
+    fclk clk;
+    m1dev d;
+    lt_ini *ini = lt_ini_load_string(txt, strlen(txt), NULL, NULL);
+    lt_proto *p;
+    lt_ecu_mem *mem;
+    lt_buf b;
+    int at;
+
+    if (!ini) {
+        LT_CHECK(0);
+        return;
+    }
+    clk.t = 0;
+    p = m1_open(&d, &clk, ini);
+    d.qbyte = 20;
+    LT_CHECK(lt_proto_connect(p) == 0);
+    LT_CHECK(m1_is(&d, d.nlog - 1, "Q", 1));
+    LT_CHECK_STR(lt_proto_signature(p), "20");
+    LT_CHECK(!lt_proto_signature_mismatch(p));
+
+    /* whole pages, though blockingFactor is smaller; no page selection (" ") */
+    at = d.nlog;
+    mem = lt_ecu_mem_from_ini(ini);
+    LT_CHECK(lt_proto_read_all(p, mem, LT_TRUE) == 0);
+    LT_CHECK(d.nlog - at == 2 && m1_is(&d, at, "V", 1) && m1_is(&d, at + 1, "I", 1));
+    LT_CHECK(lt_ecu_mem_page(mem, 1, NULL)[94] == (lt_u8)(64 + 94));
+
+    /* value writes: one byte per command, the page's own letter */
+    at = d.nlog;
+    LT_CHECK(lt_proto_write_memory(p, 0, 3, two, 2) == 0);
+    LT_CHECK(d.nlog - at == 2 && m1_is(&d, at, "W\003\167", 3) && m1_is(&d, at + 1, "W\004\170", 3));
+    at = d.nlog;
+    LT_CHECK(lt_proto_write_memory(p, 1, 7, two, 1) == 0);
+    LT_CHECK(d.nlog - at == 2 && m1_is(&d, at, "B", 1) && m1_is(&d, at + 1, "J\007\167", 3));
+    LT_CHECK(d.page[0][4] == 0x78 && d.page[1][7] == 0x77);
+
+    /* realtime: no ochGetCommand, burst 'A', 22 bytes */
+    at = d.nlog;
+    lt_buf_init(&b);
+    LT_CHECK(lt_proto_choose_runtime(p, NULL) == LT_RT_KIND_BURST);
+    LT_CHECK(lt_proto_get_realtime(p, &b) == 0 && b.len == 22 && m1_is(&d, at, "A", 1));
+    lt_ecu_mem_free(mem);
+    lt_buf_free(&d.rx);
+    lt_proto_free(p);
+    lt_ini_free(ini);
+
+    /* a 408-byte page with a one-byte offset: past 255 is refused, nothing is sent */
+    ini = lt_ini_load_string(big, strlen(big), NULL, NULL);
+    LT_CHECK(ini != NULL);
+    if (ini == NULL) {
+        lt_buf_free(&b);
+        return;
+    }
+    p = m1_open(&d, &clk, ini);
+    d.qbyte = 20;
+    LT_CHECK(lt_proto_connect(p) == 0);
+    at = d.nlog;
+    LT_CHECK(lt_proto_write_memory(p, 0, 255, two, 1) == 0);
+    LT_CHECK(lt_proto_write_memory(p, 0, 300, two, 1) == LT_ERANGE);
+    LT_CHECK(d.nlog - at == 1 && m1_is(&d, at, "W\377\167", 3));
+    lt_buf_free(&b);
+    lt_buf_free(&d.rx);
+    lt_proto_free(p);
+    lt_ini_free(ini);
+}
+
 int main(void)
 {
     LT_RUN(connect_modern_speeduino_le);
@@ -2053,6 +2380,8 @@ int main(void)
     LT_RUN(big_endian_page_identifier_sent_as_written);
     LT_RUN(och_command_escapes_decoded);
     LT_RUN(legacy_burst_command_sent_whole);
+    LT_RUN(ms1_extra_wire_bytes);
+    LT_RUN(ms1_bg_wire_bytes);
     LT_RUN(discovery_cases);
     LT_RUN(io_from_stream_adapter_shape);
     LT_TEST_MAIN_END
