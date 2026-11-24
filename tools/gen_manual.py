@@ -76,6 +76,21 @@ REWRITES = [
      " project\n"),
     ("features/table-editing/shortcuts", r"\| Escape \| Clear selection \|\n",
      "| Escape | Cancel the value being typed; otherwise keep only the cursor cell selected |\n"),
+    ("features/table-editing/shortcuts", r"\| Enter \| Edit selected cell \|\n.*?(?=\n## Clipboard)",
+     "| 0-9 or . | Start typing a value for the selected cells |\n"
+     "| Enter or F2 | Edit the cell, starting from its value |\n"
+     "| Delete or Backspace | Clear the selected cells |\n"
+     "| + or > | Increase value by step |\n"
+     "| - or < | Decrease value by step |\n"
+     "| q / w | Increase / decrease by a small step |\n"
+     "| Ctrl + (+/-) | Increase/decrease by the step times the multiplier |\n"
+     "| = | Set equal (average) |\n"
+     "| * | Scale by factor |\n"
+     "| / | Interpolate |\n"
+     "| S | Smooth selection |\n\n"
+     "While a value is being typed, `-` is part of the number. Without an edit open, `-`"
+     " steps the selection down (like TunerStudio): to type a negative value press Enter or F2"
+     " first, then type it (for example `-5`).\n"),
     ("features/table-editing/2d-tables", r"### Single Cell Edit\n1\. Select a cell\n2\. Type a number\n"
      r"3\. Press Enter\n",
      "### Single Cell Edit\n1. Select a cell\n2. Type a number\n3. Press Enter (or click another"

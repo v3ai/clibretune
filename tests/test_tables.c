@@ -477,9 +477,9 @@ static void type_real(lt_app *app, const char *s)
     }
 }
 
-/* demo app with the VE table open at 1100 x 800, the grid focused and the cursor on display
+/* demo app with a table open at 1100 x 800, the grid focused and the cursor on display
  * (0,0) = data (rows-1, 0) */
-static lt_app *ve_open(size_t *rows, size_t *cols)
+static lt_app *tbl_open(const char *name, size_t *rows, size_t *cols)
 {
     char buf[512];
     lt_app *app = lt_app_new();
@@ -487,11 +487,11 @@ static lt_app *ve_open(size_t *rows, size_t *cols)
     lt_tblview v;
     *rows = *cols = 0;
     if (lt_app_find_demo_ini(buf, sizeof(buf)) == NULL || lt_app_start_demo(app, buf) != 0 ||
-        lt_app_table_editor_open(app, "veTableTbl") != 0) { return app; }
+        lt_app_table_editor_open(app, name) != 0) { return app; }
     lt_app_screenshot(app, "build/lt_test_tables10.ppm", 1100, 800, 3);
     ps = lt_app_pages(app);
     lt_tblview_init(&v);
-    if (lt_tblview_load_table(&v, app->ini, lt_ini_find_table(app->ini, "veTableTbl"), &ps) == 0) {
+    if (lt_tblview_load_table(&v, app->ini, lt_ini_find_table(app->ini, name), &ps) == 0) {
         *rows = v.rows; *cols = v.cols;
     }
     lt_tblview_free(&v);
@@ -507,7 +507,7 @@ LT_TEST(table_esc_cancels_edit)
     static double before[2048], after[2048];
     size_t rows, cols, n;
     double a, b, c;
-    lt_app *app = ve_open(&rows, &cols);
+    lt_app *app = tbl_open("veTableTbl", &rows, &cols);
     LT_CHECK(rows > 2 && cols > 3);
     if (rows <= 2 || cols <= 3) { lt_app_free(app); return; }
     n = table_snap(app, "veTableTbl", before, 2048);
@@ -565,6 +565,63 @@ LT_TEST(curve_esc_keeps_values)
     lt_app_free(app);
 }
 
+/* '-' is text while a cell is being edited (F2 / Enter, then a negative number) and the step
+ * key otherwise; typing a digit starts an edit without the digit acting as a shortcut */
+LT_TEST(table_minus_while_editing)
+{
+    size_t rows, cols;
+    double a;
+    lt_app *app = tbl_open("ignitionTableTbl", &rows, &cols);
+    LT_CHECK(rows > 2 && cols > 2);
+    if (rows <= 2 || cols <= 2) { lt_app_free(app); return; }
+    a = cell0(app, "ignitionTableTbl", rows - 1, 0);
+    press(app, LT_KEY_F2, 0);
+    type_real(app, "-5.5");
+    press(app, LT_KEY_ENTER, 0);
+    LT_CHECK_NEAR(cell0(app, "ignitionTableTbl", rows - 1, 0), -5.5, 1e-9);
+    /* not editing: '-' steps down and does not open an edit */
+    type_real(app, "-");
+    LT_CHECK(!lt_ui_text_focused(app->ui));
+    LT_CHECK_NEAR(cell0(app, "ignitionTableTbl", rows - 1, 0), -6.5, 1e-9);
+    /* typed digits then '-' inside the edit: the text is "2-", not a number, nothing is stepped */
+    type_real(app, "2");
+    LT_CHECK(lt_ui_text_focused(app->ui));
+    type_real(app, "-");
+    LT_CHECK(lt_ui_text_focused(app->ui));
+    LT_CHECK_NEAR(cell0(app, "ignitionTableTbl", rows - 1, 0), -6.5, 1e-9);
+    press(app, LT_KEY_ESCAPE, 0);
+    /* Enter starts an edit with the value selected: '-' replaces it */
+    press(app, LT_KEY_ENTER, 0);
+    type_real(app, "-3");
+    press(app, LT_KEY_ENTER, 0);
+    LT_CHECK_NEAR(cell0(app, "ignitionTableTbl", rows - 1, 0), -3.0, 1e-9);
+    /* several keys in one frame (fast typing): '1', '-', '2' still edit text only */
+    {
+        lt_event ev;
+        const char *k = "1-2";
+        for (; *k != '\0'; k++) {
+            memset(&ev, 0, sizeof(ev));
+            ev.type = LT_EV_KEY_DOWN; ev.key = (unsigned char)*k;
+            lt_ui_input(app->ui, &ev);
+            memset(&ev, 0, sizeof(ev));
+            ev.type = LT_EV_TEXT; ev.text[0] = *k;
+            lt_ui_input(app->ui, &ev);
+        }
+        frame(app);
+        frame(app);
+    }
+    LT_CHECK(lt_ui_text_focused(app->ui));
+    LT_CHECK_NEAR(cell0(app, "ignitionTableTbl", rows - 1, 0), -3.0, 1e-9);
+    press(app, LT_KEY_ESCAPE, 0);
+    LT_CHECK_NEAR(cell0(app, "ignitionTableTbl", rows - 1, 0), -3.0, 1e-9);
+    /* '.' starts an edit too */
+    type_real(app, ".5");
+    press(app, LT_KEY_ENTER, 0);
+    LT_CHECK_NEAR(cell0(app, "ignitionTableTbl", rows - 1, 0), 0.5, 1e-9);
+    (void)a;
+    lt_app_free(app);
+}
+
 int main(void)
 {
     LT_RUN(autotune_send_undo);
@@ -579,5 +636,6 @@ int main(void)
     LT_RUN(table_step_in_lambda);
     LT_RUN(table_esc_cancels_edit);
     LT_RUN(curve_esc_keeps_values);
+    LT_RUN(table_minus_while_editing);
     LT_TEST_MAIN_END
 }

@@ -334,6 +334,34 @@ void lt_feat_hotkeys_grid(lt_app *app)
     lt_ui_label_ex(ui, lt_tr("Go to tab"), t->text, LT_UI_ALIGN_LEFT);
     lt_ui_label_ex(ui, "Ctrl+Left/Right", t->primary_hover, LT_UI_ALIGN_LEFT);
     lt_ui_label_ex(ui, lt_tr("Resize sidebar (terminal)"), t->text, LT_UI_ALIGN_LEFT);
+    {   /* table and curve editors (fixed keys, TunerStudio's) */
+        static const char *const tk[][2] = {
+            { "0-9 .", "Type a value into the selection" },
+            { "F2 / Enter", "Edit the cell, e.g. to type -5" },
+            { "Esc", "Cancel edit / select one cell" },
+            { "+ / -", "Step up / down" },
+            { "q / w", "Small step up / down" },
+            { "=", "Set to the average" },
+            { "*", "Multiply, add or set" },
+            { "/  h  v", "Interpolate (both, across, down)" },
+            { "s", "Smooth" },
+            { "Del", "Clear" },
+            { "Ctrl+R / Ctrl+D", "Fill right / down" },
+            { "Ctrl+Shift+V", "Paste special" },
+            { "f / g", "Follow / go to the live cell" },
+            { "3", "3D view" }
+        };
+        int k;
+        lt_ui_layout_row(ui, 1, &w[1], 0);
+        lt_ui_label_ex(ui, lt_tr("Table editor"), t->text2, LT_UI_ALIGN_LEFT);
+        for (k = 0; k < (int)LT_COUNTOF(tk); k += 2) {
+            lt_ui_layout_row(ui, 4, w, 0);
+            lt_ui_label_ex(ui, tk[k][0], t->primary_hover, LT_UI_ALIGN_LEFT);
+            lt_ui_label_ex(ui, lt_tr(tk[k][1]), t->text, LT_UI_ALIGN_LEFT);
+            lt_ui_label_ex(ui, k + 1 < (int)LT_COUNTOF(tk) ? tk[k + 1][0] : "", t->primary_hover, LT_UI_ALIGN_LEFT);
+            lt_ui_label_ex(ui, k + 1 < (int)LT_COUNTOF(tk) ? lt_tr(tk[k + 1][1]) : "", t->text, LT_UI_ALIGN_LEFT);
+        }
+    }
 }
 
 void lt_feat_hotkeys_register(lt_app_ext *reg)

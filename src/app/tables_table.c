@@ -180,6 +180,7 @@ static void tbl_commit(lt_app *app, lt_app_tab *tab, tbl_tab *st)
     (void)lt_tabs_check_change(app, &st->v);
     lt_feat_actions_note_table(app, st->t->name, &st->v);
     n = lt_tblview_commit(&st->v, app->ini, &dst);
+    lt_ui_request_redraw(app->ui);          /* key operations run after the grid was drawn */
     if (n > 0) { lt_app_edited(app); tab->dirty = 1; }
     else if (n < 0) { lt_app_toast(app, 3, "Write failed: %s", lt_err_get()); }
 }
@@ -860,11 +861,21 @@ static void tbl_3d_mouse(lt_ui *ui, tbl_tab *st, lt_rect r3)
     st->lmx = m.x; st->lmy = m.y; st->prev_down = down; st->prev_rdown3 = rdown;
 }
 
+/* view flags a key can flip; a change asks for another frame (the keys run after the grid drew) */
+static int tbl_key_flags(const tbl_tab *st)
+{
+    return st->follow | st->show3d << 1 | st->scale_open << 2 | st->paste_open << 3 |
+           st->goto_live << 4 | st->collapse_sel << 5;
+}
+
+/* Runs after the grid: a digit or '.' typed this frame has opened the cell edit by now, so the
+ * same key ('3', or a '-' typed right after) is text in that edit and not a shortcut. */
 static void tbl_keys(lt_app *app, lt_app_tab *tab, tbl_tab *st)
 {
     lt_ui *ui = app->ui;
     double ss = small_step(st);
     double up = st->step, dn = -st->step, cm = st->step * st->step_mult;
+    int flags0 = tbl_key_flags(st);
     if (lt_ui_text_focused(ui) || lt_ui_popup_open(ui)) { return; }
     if (lt_ui_key_pressed(ui, 'c', LT_MOD_CTRL)) { tbl_copy(app, st); }
     if (lt_ui_key_pressed(ui, 'v', LT_MOD_CTRL | LT_MOD_SHIFT)) { st->paste_open = 1; }
@@ -908,6 +919,7 @@ static void tbl_keys(lt_app *app, lt_app_tab *tab, tbl_tab *st)
     if (lt_tabs_key(ui, 'f')) { st->follow = !st->follow; }
     if (lt_tabs_key(ui, 'g')) { st->goto_live = 1; }
     if (lt_ui_key_pressed(ui, '3', 0)) { st->show3d = !st->show3d; }
+    if (tbl_key_flags(st) != flags0) { lt_ui_request_redraw(ui); }
 }
 
 
@@ -1672,7 +1684,6 @@ static void tbl_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
     if (!st->loaded) { return; }
     tbl_live(app, st);
     tbl_3d_keys(ui, st);
-    tbl_keys(app, tab, st);
     tbl_header(app, tab, st);
     tbl_toolbar(app, tab, st);
     if ((st->show3d || st->lambda_on) && !lt_ui_cell_mode(ui)) {
@@ -1688,6 +1699,7 @@ static void tbl_draw(lt_app *app, lt_app_tab *tab, lt_rect r)
         lt_ui_layout_row(ui, 1, &w1, lt_ui_cell_mode(ui) ? -(lt_ui_row_height(ui) + 8) : -28);
     }
     tbl_grid(app, tab, st, 0);
+    tbl_keys(app, tab, st);
     tbl_context(app, tab, st, st->grid_area);
     if (st->lambda_on) { lt_tabs_lambda_draw(app, &st->v, st->ybottom); }
     if (st->show3d) {

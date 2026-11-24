@@ -119,6 +119,7 @@ static void crv_commit(lt_app *app, lt_app_tab *tab, crv_tab *st)
     int n;
     (void)lt_tabs_check_change(app, &st->v);
     n = lt_tblview_commit(&st->v, app->ini, &dst);
+    lt_ui_request_redraw(app->ui);          /* key operations run after the list was drawn */
     if (n > 0) { lt_app_edited(app); tab->dirty = 1; }
     else if (n < 0) { lt_app_toast(app, 3, "Write failed: %s", lt_err_get()); }
 }
@@ -596,6 +597,8 @@ static void crv_undo_redo(lt_app *app, lt_app_tab *tab, crv_tab *st, int redo)
     if (redo ? lt_tblview_redo(&st->v) : lt_tblview_undo(&st->v)) { crv_commit(app, tab, st); }
 }
 
+/* Runs after the value list: a digit typed this frame has opened the cell edit by now, so a
+ * '-' typed with it is text in that edit and not the step key. */
 static void crv_keys(lt_app *app, lt_app_tab *tab, crv_tab *st)
 {
     lt_ui *ui = app->ui;
@@ -623,7 +626,7 @@ static void crv_keys(lt_app *app, lt_app_tab *tab, crv_tab *st)
     }
     if (lt_tabs_key(ui, 'q')) { crv_op(app, tab, st, C_ADD, ss); }
     if (lt_tabs_key(ui, 'w')) { crv_op(app, tab, st, C_ADD, -ss); }
-    if (lt_tabs_key(ui, '*')) { st->scale_open = 1; st->scale_mode = 0; }
+    if (lt_tabs_key(ui, '*')) { st->scale_open = 1; st->scale_mode = 0; lt_ui_request_redraw(ui); }
     if (lt_tabs_key(ui, '/') || lt_tabs_key(ui, 'h') || lt_tabs_key(ui, 'v')) { crv_op(app, tab, st, C_INTERP, 0); }
     if (lt_tabs_key(ui, 's')) { crv_op(app, tab, st, C_SMOOTH, 0); }
 }
@@ -776,7 +779,6 @@ static void crv_draw(lt_app *app, lt_app_tab *tab, lt_rect rr)
     if (st->xy_y[0] == '\0' && st->c->x_channel != NULL) { xy_default(app, st); }
     xy_sample(app, st);
     if (st->xy_on) { xy_collect(app, st); }
-    crv_keys(app, tab, st);
     /* header + toolbar */
     {
         lt_vk_item it[CB_N + 4];
@@ -926,6 +928,7 @@ static void crv_draw(lt_app *app, lt_app_tab *tab, lt_rect rr)
                     crv_commit(app, tab, st);
                 } else { lt_app_toast(app, 2, "Not a number"); }
             }
+            crv_keys(app, tab, st);
             crv_context(app, tab, st, st->list_area);
         }
     }

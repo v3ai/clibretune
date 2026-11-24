@@ -1517,16 +1517,19 @@ static const char *const mp_8_0[] = {
     "",
     "| Shortcut | Action |",
     "|----------|--------|",
-    "| Enter | Edit selected cell |",
-    "| Delete | Clear selected cells |",
-    "| Backspace | Clear and edit |",
+    "| 0-9 or . | Start typing a value for the selected cells |",
+    "| Enter or F2 | Edit the cell, starting from its value |",
+    "| Delete or Backspace | Clear the selected cells |",
     "| + or > | Increase value by step |",
     "| - or < | Decrease value by step |",
-    "| Shift + (+/-) | Increase/decrease by 10x step |",
+    "| q / w | Increase / decrease by a small step |",
+    "| Ctrl + (+/-) | Increase/decrease by the step times the multiplier |",
     "| = | Set equal (average) |",
     "| * | Scale by factor |",
     "| / | Interpolate |",
     "| S | Smooth selection |",
+    "",
+    "While a value is being typed, `-` is part of the number. Without an edit open, `-` steps the selection down (like TunerStudio): to type a negative value press Enter or F2 first, then type it (for example `-5`).",
     "",
     "## Clipboard",
     "",
@@ -1568,7 +1571,7 @@ static const char *const mp_8_0[] = {
     "",
 };
 static const lt_man_part mpp_8[] = {
-    { mp_8_0, 81 },
+    { mp_8_0, 84 },
 };
 
 static const char *const mp_9_0[] = {
